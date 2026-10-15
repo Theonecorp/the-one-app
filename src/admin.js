@@ -7,6 +7,7 @@ import { RATE_LABELS, RATE_DEFAULT, invType } from './comm.js';
 import { bumpAccountsVer } from './mgr.js';
 import { roleLabel } from './main.js';
 import { parseItemMaster, publishCatalog, loadCatalog } from './catalog.js';
+import { invTypes } from './invoicing.js';
 
 let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); }
@@ -101,7 +102,8 @@ async function settings() {
     '<div class="fg"><label>EXCHANGE 칸 제목</label><input id="stTitle" value="' + esc(s.specialTitle || 'BEAUTY EXCHANGE') + '"></div>' +
     '<div class="fg"><label>담당자 알림 이메일 (옵션)</label><input id="stMail" value="' + esc(s.reportTo || 'check@theonefl.com') + '"></div>' +
     '<div class="muted">AR 기준일: ' + esc(s.arAsOf || '없음') + ' · 거래처 버전: ' + esc(s.accountsVer || '0') + '</div>' +
-    '<div class="btns"><button class="b-blue" id="stSave">저장</button></div></div>';
+    '<div class="btns"><button class="b-blue" id="stSave">저장</button></div></div>' + invTypeCard();
+  bindInvTypes();
   $('stSave').onclick = async () => { const doc = Object.assign({}, s, { discLimit: num($('stDisc').value) / 100, specialKeywords: $('stKw').value.trim(), specialTitle: $('stTitle').value.trim(), reportTo: $('stMail').value.trim() }); busy(true); try { await S.DB.set('settings', 'app', doc); S.settings = doc; toast('저장'); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
@@ -245,6 +247,39 @@ async function catalogAdmin() {
     const on = !S.settings.ordersOn;
     busy(true);
     try { const cur = (await S.DB.get('settings', 'app')) || {}; await S.DB.set('settings', 'app', Object.assign(cur, { ordersOn: on })); S.settings.ordersOn = on; toast(on ? '오더 탭을 켰습니다' : '오더 탭을 껐습니다'); catalogAdmin(); }
+    catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+}
+
+/* ---- 인보이스 종류 (A · P · W · …) — 아이템이 어느 인보이스로 갈지, 번호를 몇부터 매길지 ---- */
+let IT = null;
+function invTypeCard() {
+  IT = invTypes(S).map(t => Object.assign({}, t));
+  return '<div class="card"><h2>🧾 인보이스 종류</h2><div class="muted">오더의 아이템은 아래 규칙대로 종류가 정해지고, 인보이스 확정 때 종류별로 번호가 나옵니다. 첫 줄이 기본(규칙에 안 맞는 아이템)입니다.<br>' +
+    '규칙: 아이템 시트의 Group · Level 1~3 이름을 쉼표로 (예: <b>EDGE BOOSTER, KEY</b>), 코드 앞글자는 <b>코드:EB</b>. 시작 번호는 처음 한 번만 쓰입니다 (SmartBee 다음 번호로).</div><div id="itRows"></div>' +
+    '<div class="btns"><button class="b-ghost" id="itAdd">＋ 종류 추가</button><button class="b-blue" id="itSave">인보이스 종류 저장</button></div></div>';
+}
+function bindInvTypes() {
+  const paint = () => {
+    $('itRows').innerHTML = IT.map((t, i) => '<div class="payrow" style="grid-template-columns:70px 1fr 110px 70px;margin-top:8px">' +
+      '<input data-it="' + i + '" data-k="c" value="' + esc(t.c) + '" placeholder="A" maxlength="3" style="text-transform:uppercase">' +
+      '<input data-it="' + i + '" data-k="n" value="' + esc(t.n) + '" placeholder="이름">' +
+      '<input data-it="' + i + '" data-k="start" type="number" value="' + esc(t.start) + '" placeholder="시작 번호">' +
+      '<input data-it="' + i + '" data-k="pad" type="number" value="' + esc(t.pad) + '" placeholder="자리수">' +
+      '<input class="full" style="grid-column:1/5" data-it="' + i + '" data-k="match" value="' + esc(t.match || '') + '" placeholder="' + (i ? '규칙 (예: EDGE BOOSTER, 코드:EB)' : '기본 — 규칙 없음') + '">' +
+      (i ? '<button class="x" data-itx="' + i + '">✕</button>' : '') + '</div>').join('');
+    document.querySelectorAll('[data-it]').forEach(inp => inp.onchange = () => { const t = IT[+inp.dataset.it], k = inp.dataset.k; t[k] = k === 'start' || k === 'pad' ? Number(inp.value) || 0 : (k === 'c' ? inp.value.trim().toUpperCase() : inp.value.trim()); });
+    document.querySelectorAll('[data-itx]').forEach(b => b.onclick = () => { IT.splice(+b.dataset.itx, 1); paint(); });
+  };
+  paint();
+  $('itAdd').onclick = () => { IT.push({ c: '', n: '', start: 1, pad: 5, match: '' }); paint(); };
+  $('itSave').onclick = async () => {
+    const list = IT.filter(t => t.c);
+    const seen = {}; for (const t of list) { if (!/^[A-Z]{1,3}$/.test(t.c)) return toast('종류 코드는 영문 1~3자: ' + t.c, 'bad'); if (seen[t.c]) return toast('같은 코드가 두 번: ' + t.c, 'bad'); seen[t.c] = 1; }
+    if (!list.length) return toast('종류가 하나는 있어야 합니다', 'bad');
+    busy(true);
+    try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.invTypes = list; await S.DB.set('settings', 'app', cur); S.settings.invTypes = list; toast('인보이스 종류 저장 — 새로 담는 아이템부터 적용', 'good'); }
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };

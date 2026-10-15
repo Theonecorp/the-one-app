@@ -92,6 +92,10 @@ nav button.on{color:var(--blue)}
 .qty{display:flex;align-items:center;gap:4px;flex:0 0 auto}
 .qty button{width:34px;height:38px;border:0;border-radius:9px;background:#e2e8f0;font-size:18px;font-weight:800;color:var(--ink)}
 .qty input{width:58px;padding:8px 4px;text-align:center;font-size:16px;font-weight:800}
+.pin.chg{border-color:#f59e0b!important;background:#fffbeb!important}
+table.pk td{vertical-align:top}table.pk tr.bo td{background:#fef2f2}
+.pq{width:64px!important;padding:6px!important;text-align:center;font-weight:800}
+.tsel{width:auto!important;padding:2px 4px!important;font-size:11.5px!important;display:inline-block}
 .pin{width:84px!important;padding:3px 6px!important;font-size:13px!important;display:inline-block}
 #prt{display:none;position:fixed;inset:0;z-index:200;background:#fff;overflow:auto}#prt.on{display:block}
 #prtbar{position:sticky;top:0;background:var(--navy);color:#fff;padding:10px 14px;display:flex;gap:8px}

@@ -1,6 +1,7 @@
 /* ============================================================
  *  담당자(회계) 화면 — 확인(SmartBee ✓ · 체크 수령 ✓) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
  * ============================================================ */
+import { invTypes } from './invoicing.js';
 import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, dropAccountCache } from './accounts.js';
@@ -149,12 +150,15 @@ function storeForm(a) {
     '<div class="fg"><label>주소</label><input id="sAddr" value="' + esc(a.addr || '') + '"></div>' +
     '<div class="three"><div class="fg"><label>City</label><input id="sCity" value="' + esc(a.city || '') + '"></div><div class="fg"><label>State</label><input id="sState" value="' + esc(a.state || '') + '" maxlength="2" style="text-transform:uppercase"></div><div class="fg"><label>Zip</label><input id="sZip" value="' + esc(a.zip || '') + '"></div></div>' +
     '<div class="two"><div class="fg"><label>전화</label><input id="sTel" value="' + esc(a.tel || '') + '"></div><div class="fg"><label>조건 (N30 · ACH60 …)</label><input id="sTerms" value="' + esc(a.terms || '') + '"></div></div>' +
-    '<div class="fg"><label>메모</label><input id="sNote" value="' + esc(a.note || '') + '"></div>' +
+    '<div class="fg"><label>메모 (오더 화면에 보임)</label><input id="sNote" value="' + esc(a.note || '') + '"></div>' +
+    '<div class="fg"><label>기본 할인 % (인보이스 종류별 — 오더에 자동으로 들어감)</label><div class="three">' + invTypes(S).map(t => '<div><small class="muted">' + esc(t.c) + ' ' + esc(t.n) + '</small><input type="number" inputmode="decimal" min="0" max="100" data-sd="' + esc(t.c) + '" value="' + esc((a.disc || {})[t.c] || '') + '" placeholder="0"></div>').join('') + '</div></div>' +
     '<div class="btns"><button class="b-blue" id="sSave">저장</button></div>');
   $('sSave').onclick = async () => {
     const acct = pad4($('sAcct').value.trim()), store = $('sStore').value.trim().toUpperCase();
     if (!acct || !store) return toast('계정코드와 이름을 넣으세요', 'bad');
     const doc = { acct, store, sm: $('sSm').value, addr: $('sAddr').value.trim(), city: $('sCity').value.trim().toUpperCase(), state: $('sState').value.trim().toUpperCase(), zip: $('sZip').value.trim(), tel: $('sTel').value.trim(), terms: $('sTerms').value.trim().toUpperCase(), note: $('sNote').value.trim(), updatedAt: new Date().toISOString() };
+    const disc = {}; document.querySelectorAll('[data-sd]').forEach(inp => { const v = Math.max(0, Math.min(100, Number(inp.value) || 0)); if (v) disc[inp.dataset.sd] = v; }); doc.disc = disc;
+    Object.keys(a).forEach(k => { if (doc[k] === undefined && k !== 'id' && k[0] !== '_') doc[k] = a[k]; });
     busy(true);
     try { await S.DB.set('accounts', acct, doc); await bumpAccountsVer(); closeModal(); toast('저장'); pageStores(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
   };
