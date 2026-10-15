@@ -6,12 +6,12 @@ service cloud.firestore {
     function email() { return request.auth.token.email.lower(); }
     function isAdminEmail() { return signedIn() && email() == 'luke@theonefl.com'; }
     function userDoc() { return get(/databases/$(database)/documents/users/$(email())).data; }
-    function registered() { return signedIn() && exists(/databases/$(database)/documents/users/$(email())) && userDoc().active != false; }
-    function role() { return registered() ? userDoc().role : ''; }
+    function registered() { return isAdminEmail() || (signedIn() && exists(/databases/$(database)/documents/users/$(email())) && userDoc().get('active', true) != false); }
+    function role() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('role', '') : ''; }
     function isAdmin() { return isAdminEmail() || role() == 'admin'; }
     function isStaff() { return isAdmin() || role() == 'manager'; }       // 담당자(회계) + 관리자
-    function mySm() { return registered() ? userDoc().sm : ''; }
-    function achOk() { return isAdmin() || (registered() && userDoc().achAccess == true); }
+    function mySm() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('sm', '') : ''; }
+    function achOk() { return isAdmin() || (registered() && userDoc().get('achAccess', false) == true); }
 
     // ---------- 사용자 ----------
     match /users/{uid} {

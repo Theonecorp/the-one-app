@@ -11,7 +11,7 @@ import * as Admin from './admin.js';
 import * as Orders from './orders.js';
 import { loadAccounts } from './accounts.js';
 
-export const VER = 'v0.3.1';
+export const VER = 'v0.3.2';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -56,10 +56,22 @@ function userMenu() {
   const roles = S.me && S.me.role === 'admin' ? ['admin', 'manager', 'salesman'] : [];
   openMenu('<h2>' + esc(S.user.name || S.user.email) + '</h2><p class="muted">' + esc(S.user.email) + ' · ' + roleLabel(S.role) + ' · ' + VER + '</p>' +
     (roles.length ? '<div class="fg"><label>화면 보기 (관리자)</label><div class="seg">' + roles.map(r => '<button class="' + (S.role === r ? 'on' : '') + '" data-r="' + r + '">' + roleLabel(r) + '</button>').join('') + '</div></div>' : '') +
-    '<div class="btns"><button class="b-ghost" id="mOut">로그아웃</button><button class="b-blue" id="mReload">새로고침</button></div>');
+    '<div class="btns"><button class="b-ghost" id="mOut">로그아웃</button><button class="b-blue" id="mReload">새로고침</button></div>' +
+    '<button class="b-ghost b-sm" id="mDiag" style="margin-top:10px">🔎 연결 · 권한 점검</button><div id="diagOut"></div>');
+  $('mDiag').onclick = diag;
   document.querySelectorAll('#mbox [data-r]').forEach(b => b.onclick = () => { switchRole(b.dataset.r); closeModal(); });
   $('mOut').onclick = () => { closeModal(); S.AUTH.signOut(); };
   $('mReload').onclick = () => location.reload();
+}
+/** 어떤 자료를 읽을 수 있는지 하나씩 시험 — 권한 오류 원인 찾기용 */
+async function diag() {
+  const out = $('diagOut'); out.innerHTML = '<div class="load">점검 중…</div>';
+  const me = S.me || {};
+  const rows = ['로그인: <b>' + esc(S.user.email) + '</b>', '사용자 기록: 역할 ' + esc(String(me.role)) + ' · 활성 ' + esc(String(me.active)) + ' · 세일즈맨 ' + esc(String(me.sm || '-'))];
+  const tests = [['사용자 (내 것)', () => S.DB.get('users', S.user.email)], ['설정', () => S.DB.get('settings', 'app')], ['세일즈맨', () => S.DB.list('salesmen', { limit: 1 })],
+    ['거래처', () => S.DB.list('accounts', { limit: 1 })], ['아이템', () => S.DB.get('catalog', 'meta')], ['오더', () => S.DB.list('orders', S.role === 'salesman' ? { where: [['sm', '==', me.sm || '-']], limit: 1 } : { limit: 1 })]];
+  for (const [n, f] of tests) { try { await f(); rows.push('✅ ' + n); } catch (e) { rows.push('❌ ' + n + ' — ' + esc(e.code || e.message)); } }
+  out.innerHTML = '<div class="sumbox" style="line-height:1.8">' + rows.join('<br>') + '</div>';
 }
 function openMenu(h) { import('./ui.js').then(u => u.openModal(h)); }
 export function roleLabel(r) { return { admin: '관리자', manager: '담당자', salesman: '세일즈맨' }[r] || r; }
@@ -86,6 +98,10 @@ async function afterLogin(user) {
     try { await S.DB.set('users', email, me); } catch (e) { loginScreen('관리자 기록을 만들지 못했습니다: ' + e.message); return; }
   }
   if (!me || me.active === false) { waitScreen(email); return; }
+  /* 옛 버전이 만든 관리자 기록에 active 가 없으면 규칙의 "등록된 사용자" 검사에 걸림 → 채워 둠 */
+  if (ADMIN_EMAILS.includes(email) && (me.active !== true || me.role !== 'admin')) {
+    try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
+  }
   S.me = me; S.role = me.role || 'salesman';
   busy(true);
   try {
