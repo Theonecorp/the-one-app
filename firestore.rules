@@ -54,6 +54,24 @@ service cloud.firestore {
     match /ach/{id} { allow read, write: if isStaff(); }
     match /achBank/{id} { allow read, write: if achOk(); }
 
+    // ---------- 아이템 목록 · 오더 ----------
+    match /catalog/{id} { allow read: if registered(); allow write: if isStaff(); }
+    function okSt(st) { return st == 'draft' || st == 'sent'; }
+    match /orders/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email() && okSt(request.resource.data.st));
+      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && okSt(resource.data.st)
+                                     && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st));
+      allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.st == 'draft');
+    }
+    match /orderLines/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create, update: if isStaff() || (registered() && request.resource.data.sm == mySm()
+                                     && getAfter(/databases/$(database)/documents/orders/$(id)).data.sm == mySm()
+                                     && okSt(getAfter(/databases/$(database)/documents/orders/$(id)).data.st));
+      allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && !existsAfter(/databases/$(database)/documents/orders/$(id)));
+    }
+
     // ---------- 경영 (루크만) ----------
     match /factories/{id} { allow read, write: if isAdmin(); }
     match /factoryInvoices/{id} { allow read, write: if isAdmin(); }

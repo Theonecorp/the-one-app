@@ -87,6 +87,12 @@ nav button.on{color:var(--blue)}
 .sumbox{background:#f8fafc;border-radius:10px;padding:10px 12px;font-size:13.5px;margin:8px 0}
 .sumbox b{font-variant-numeric:tabular-nums}
 .stage{display:inline-flex;gap:3px}.stage i{width:10px;height:10px;border-radius:3px;background:#e2e8f0;display:inline-block}.stage i.sb{background:#eab308}.stage i.rc{background:#2563eb}.stage i.v{background:#16a34a}
+.irow{gap:10px}.irow.v{background:#f0fdf4}
+.ith{flex:0 0 52px;width:52px;height:52px;border-radius:8px;object-fit:cover;background:#f1f5f9}
+.qty{display:flex;align-items:center;gap:4px;flex:0 0 auto}
+.qty button{width:34px;height:38px;border:0;border-radius:9px;background:#e2e8f0;font-size:18px;font-weight:800;color:var(--ink)}
+.qty input{width:58px;padding:8px 4px;text-align:center;font-size:16px;font-weight:800}
+.pin{width:84px!important;padding:3px 6px!important;font-size:13px!important;display:inline-block}
 #prt{display:none;position:fixed;inset:0;z-index:200;background:#fff;overflow:auto}#prt.on{display:block}
 #prtbar{position:sticky;top:0;background:var(--navy);color:#fff;padding:10px 14px;display:flex;gap:8px}
 #prtbar button{background:rgba(255,255,255,.16);color:#fff;border:0;padding:9px 14px;border-radius:9px;font-size:14px;font-weight:700}

@@ -48,3 +48,14 @@ window.__MOCK_SEED__ = {
   ],
   payees: [{ id: 'BRANDON', who: 'BRANDON', co: 'SNJ', kind: '커미션' }]
 };
+/* 아이템 목록 (오더 시험용) — 실제 Item Master 와 같은 모양으로 1,200개 */
+(function () {
+  const G = [['Jewelry', 'Earrings · Hoops & Pincatch', 'Aluminum', 'Gold'], ['Jewelry', 'Earrings · Hoops & Pincatch', 'Aluminum', 'Silver'], ['Jewelry', 'Chains', '14K', 'Gold'], ['Hair', 'Edge Control', 'EDGE BOOSTER', ''], ['Hair', 'Wax', 'GUMMY', '']];
+  const rows = [];
+  for (let i = 0; i < 1200; i++) { const g = G[i % G.length]; const code = (i % 5 === 3 ? 'EB' : i % 5 === 4 ? 'GM' : 'AHG') + String(100 + i); rows.push([code, (g[2] + ' ' + g[3] + ' ITEM ' + i).trim(), 2.5 + (i % 7) * 0.25, 4.99, String(898000000000 + i), g[0], g[1], g[2], g[3], '']); }
+  window.__MOCK_SEED__.catalog = [{ id: 'meta', ver: 'T1', count: rows.length, chunks: 1, cats: G.map(g => g.join('\u0001')), updatedAt: '2026-10-15T10:00:00Z', by: 'luke@theonefl.com' }, { id: 'c0', j: JSON.stringify(rows), n: rows.length, ver: 'T1' }];
+  window.__MOCK_SEED__.orders = [{ id: 'O261014-AAAA', no: 'O261014-AAAA', d: '2026-10-14', ym: '2026-10', sm: 'ALEX', acct: '3001', store: 'BEAUTY EXCHANGE ORLANDO', st: 'sent', n: 2, qty: 30, amt: 80, memo: 'UPS 로', createdBy: 'alex@x.com', createdAt: '2026-10-14T15:00:00Z', updatedAt: '2026-10-14T15:00:00Z', sentAt: '2026-10-14T15:00:00Z' }];
+  window.__MOCK_SEED__.orderLines = [{ id: 'O261014-AAAA', sm: 'ALEX', lines: [{ c: 'AHG100', d: 'Aluminum Gold ITEM 0', q: 20, p: 2.5 }, { c: 'AHG101', d: 'Aluminum Silver ITEM 1', q: 10, p: 3 }] }];
+})();
+
+if (window.__AFTER_SEED__) window.__AFTER_SEED__(window.__MOCK_SEED__);

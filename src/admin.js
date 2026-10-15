@@ -6,15 +6,16 @@ import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType } from './comm.js';
 import { bumpAccountsVer } from './mgr.js';
 import { roleLabel } from './main.js';
+import { parseItemMaster, publishCatalog, loadCatalog } from './catalog.js';
 
 let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); }
 async function pageAdmin(arg) {
   if (arg) TAB = arg;
-  let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div id="adminBody"><div class="load">읽는 중…</div></div>';
+  let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['cat', '📦 아이템'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div id="adminBody"><div class="load">읽는 중…</div></div>';
   $('page').innerHTML = h;
   document.querySelectorAll('[data-at]').forEach(b => b.onclick = () => { TAB = b.dataset.at; pageAdmin(); });
-  if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') await settings(); else await importer();
+  if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') await settings(); else if (TAB === 'cat') await catalogAdmin(); else await importer();
 }
 
 /* ---- 사용자 ---- */
@@ -202,4 +203,44 @@ async function importComm(file) {
     say('요율 ' + nR + '명 · 정산 기록 ' + nL + '줄 (반영 ' + ok + ' · 못 찾음 ' + fail + ')<br><b>가져오기 끝</b>');
   } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
+}
+
+/* ============================================================
+ *  📦 아이템 — THE ONE Item Master 를 엑셀로 받아 올리면 모든 폰의 아이템 목록이 바뀜
+ * ============================================================ */
+async function catalogAdmin() {
+  const meta = await S.DB.get('catalog', 'meta');
+  $('adminBody').innerHTML = '<div class="card"><h2>📦 아이템 목록 (오더용)</h2>' +
+    (meta ? '<div class="sumbox">지금: <b>' + (meta.count || 0).toLocaleString() + '개</b> · ' + esc(String(meta.updatedAt || '').substring(0, 16).replace('T', ' ')) + ' · ' + esc(meta.by || '') + '</div>' : '<div class="alert a-amb">아직 올린 아이템 목록이 없습니다</div>') +
+    '<div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽고, Hide 에 x 표시된 것은 뺍니다. 시트가 바뀔 때마다 다시 올리면 됩니다.</div>' +
+    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' +
+    '<div class="card"><h2>🛒 오더 탭</h2><label class="pick ' + (S.settings.ordersOn ? 'on' : '') + '" id="ordOn"><span class="ck">✓</span><span class="pm"><b>세일즈맨 · 담당자에게 오더 탭 보이기</b><small>끄면 관리자만 봅니다 (시험용)</small></span></label></div>';
+  $('catFile').onchange = async () => {
+    const file = $('catFile').files[0]; if (!file) return;
+    const out = $('catOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
+    try {
+      const { XLSX, wb } = await readBook(file);
+      const p = parseItemMaster(aoa(XLSX, wb, 'Items'), aoa(XLSX, wb, 'Categories'));
+      const warn = [];
+      if (p.dup.length) warn.push('같은 코드가 두 번: ' + p.dup.length + '개 (첫 줄만 씀) — ' + p.dup.slice(0, 8).join(', '));
+      if (p.dupBar.length) warn.push('같은 바코드를 쓰는 코드: ' + p.dupBar.length + '쌍 (스캔하면 앞의 것이 담김) — ' + p.dupBar.slice(0, 5).join(', '));
+      if (p.noPrice.length) warn.push('가격 없음: ' + p.noPrice.length + '개 — ' + p.noPrice.slice(0, 8).join(', '));
+      out.innerHTML = '<div class="alert a-blu">아이템 <b>' + p.rows.length.toLocaleString() + '개</b> · 사진 ' + p.photos.toLocaleString() + '개 · 카테고리 ' + p.cats.length + '줄 · 숨김(뺌) ' + p.hidden + '개</div>' +
+        warn.map(w => '<div class="alert a-amb">' + esc(w) + '</div>').join('') +
+        '<button class="b-blue" id="catGo" style="margin-top:10px">이대로 올리기</button>';
+      $('catGo').onclick = async () => {
+        busy(true);
+        try { const r = await publishCatalog(S, p); await loadCatalog(S, true); toast('아이템 ' + p.rows.length + '개 올림 (' + r.chunks + '묶음)', 'good'); catalogAdmin(); }
+        catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+        busy(false);
+      };
+    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+  };
+  $('ordOn').onclick = async () => {
+    const on = !S.settings.ordersOn;
+    busy(true);
+    try { const cur = (await S.DB.get('settings', 'app')) || {}; await S.DB.set('settings', 'app', Object.assign(cur, { ordersOn: on })); S.settings.ordersOn = on; toast(on ? '오더 탭을 켰습니다' : '오더 탭을 껐습니다'); catalogAdmin(); }
+    catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
 }

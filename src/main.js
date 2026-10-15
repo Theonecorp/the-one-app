@@ -8,17 +8,20 @@ import * as Sales from './sales.js';
 import * as Mgr from './mgr.js';
 import * as Boss from './boss.js';
 import * as Admin from './admin.js';
+import * as Orders from './orders.js';
 import { loadAccounts } from './accounts.js';
 
-export const VER = 'v0.2.1';
+export const VER = 'v0.3.0';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
 const NAV = {
-  salesman: [['entry', '✍️', '수금 입력'], ['mine', '📋', '내 기록'], ['ar', '💰', '미수금'], ['mycomm', '🧾', '정산서']],
-  manager:  [['verify', '✅', '확인'], ['cod', '💳', 'COD·ACH'], ['ach', '🏦', 'ACH'], ['stores', '🏬', '거래처'], ['arup', '📤', 'AR']],
-  admin:    [['now', '📈', '현황'], ['pay', '🧾', '정산'], ['bossar', '💰', '미수금'], ['mg', '🏭', '경영'], ['admin', '⚙️', '관리']]
+  salesman: [['entry', '✍️', '수금 입력'], ['order', '🛒', '오더'], ['mine', '📋', '내 기록'], ['ar', '💰', '미수금'], ['mycomm', '🧾', '정산서']],
+  manager:  [['verify', '✅', '확인'], ['order', '🛒', '오더'], ['cod', '💳', 'COD·ACH'], ['ach', '🏦', 'ACH'], ['stores', '🏬', '거래처'], ['arup', '📤', 'AR']],
+  admin:    [['now', '📈', '현황'], ['order', '🛒', '오더'], ['pay', '🧾', '정산'], ['bossar', '💰', '미수금'], ['mg', '🏭', '경영'], ['admin', '⚙️', '관리']]
 };
+/* 오더는 관리 → 📦 아이템에서 "오더 켜기" 전까지 관리자에게만 보임 */
+function navFor(r) { const on = S.settings.ordersOn || (S.me && S.me.role === 'admin'); return (NAV[r] || []).filter(x => x[0] !== 'order' || on); }
 
 function shell() {
   document.head.insertAdjacentHTML('beforeend', '<style>' + CSS + '</style>');
@@ -64,10 +67,10 @@ export function roleLabel(r) { return { admin: '관리자', manager: '담당자'
 function switchRole(r) {
   S.role = r;
   paintNav();
-  Router.go(NAV[r][0][0]);
+  Router.go(navFor(r)[0][0]);
 }
 function paintNav() {
-  const items = NAV[S.role] || [];
+  const items = navFor(S.role);
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '</button>').join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => Router.go(b.dataset.go));
   $('hWho').textContent = (S.me && S.me.sm ? S.me.sm + ' · ' : '') + roleLabel(S.role);
@@ -93,8 +96,8 @@ async function afterLogin(user) {
   } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   busy(false);
   paintNav();
-  const valid = (NAV[S.role] || []).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0;
-  if (!valid) location.hash = '#/' + NAV[S.role][0][0];
+  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0;
+  if (!valid) location.hash = '#/' + navFor(S.role)[0][0];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
 }
 let ROUTER_ON = false;
@@ -103,7 +106,7 @@ async function boot() {
   shell();
   const { DB, AUTH } = await connect();
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); Mgr.register(S); Boss.register(S); Admin.register(S);
+  Sales.register(S); Mgr.register(S); Boss.register(S); Admin.register(S); Orders.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
