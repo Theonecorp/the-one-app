@@ -26,7 +26,13 @@ let CAT = null;   // { ver, items, byCode, byBar, cats, tree }
 export function catalog() { return CAT; }
 
 export async function loadCatalog(S, force) {
-  const meta = await S.DB.get('catalog', 'meta');
+  let meta = null;
+  try { meta = await S.DB.get('catalog', 'meta'); }
+  catch (e) {   /* 인터넷이 안 되면 폰에 보관한 목록으로 */
+    if (CAT) return CAT;
+    const c = await idbGet(IDB_KEY); if (c && Array.isArray(c.rows)) { CAT = index(c); return CAT; }
+    throw e;
+  }
   if (!meta || !meta.ver) { CAT = index({ ver: '', rows: [], cats: [] }); return CAT; }
   if (CAT && CAT.ver === meta.ver && !force) return CAT;
   const cached = force ? null : await idbGet(IDB_KEY);

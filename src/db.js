@@ -55,6 +55,7 @@ function makeMemoryDB(seed) {
     async set(c, id, data) { col(c)[id] = clone(Object.assign({}, data, { id })); return id; },
     async update(c, id, patch) { if (!col(c)[id]) throw new Error('not found: ' + c + '/' + id); Object.assign(col(c)[id], clone(patch)); },
     async del(c, id) { delete col(c)[id]; },
+    async seq(id, key, start) { const d = col('counters')[id] = col('counters')[id] || { id }; const cur = d[key] != null ? Number(d[key]) : Number(start || 1); d[key] = cur + 1; return cur; },
     async batch(ops) { for (const o of ops) { if (o.op === 'set') await this.set(o.col, o.id, o.data); else if (o.op === 'update') await this.update(o.col, o.id, o.data); else if (o.op === 'del') await this.del(o.col, o.id); } },
     _dump() { return clone(store); }
   };
@@ -77,7 +78,10 @@ async function makeFirestoreDB() {
     import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js')
   ]);
   const app = initializeApp(firebaseConfig);
-  const db = fs.getFirestore(app);
+  /* 폰에 사본을 두어 인터넷이 끊겨도 읽기 · 쓰기가 됨 (다시 연결되면 자동 전송) */
+  let db;
+  try { db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) }); }
+  catch (e) { db = fs.getFirestore(app); }
   const auth = au.getAuth(app);
   const strip = d => { const o = {}; Object.keys(d).forEach(k => { if (d[k] !== undefined) o[k] = d[k]; }); return o; };
   const DB = {
@@ -95,6 +99,14 @@ async function makeFirestoreDB() {
     async set(c, id, data) { await fs.setDoc(fs.doc(db, c, id), strip(Object.assign({}, data, { id }))); return id; },
     async update(c, id, patch) { await fs.updateDoc(fs.doc(db, c, id), strip(patch)); },
     async del(c, id) { await fs.deleteDoc(fs.doc(db, c, id)); },
+    /** 번호 매기기 — counters/{id}.{key} 를 1 올리고 이전 값을 돌려줌 (동시에 눌러도 겹치지 않음) */
+    async seq(id, key, start) {
+      const ref = fs.doc(db, 'counters', id);
+      return fs.runTransaction(db, async tx => {
+        const s = await tx.get(ref); const cur = s.exists() && s.data()[key] != null ? Number(s.data()[key]) : Number(start || 1);
+        tx.set(ref, { [key]: cur + 1 }, { merge: true }); return cur;
+      });
+    },
     async batch(ops) {
       for (let i = 0; i < ops.length; i += 400) {
         const b = fs.writeBatch(db);

@@ -2,7 +2,7 @@
  *  THE ONE 앱 — 진입점: 로그인 → 역할 → 메뉴
  * ============================================================ */
 import { connect, MOCK, newId } from './db.js';
-import { $, esc, toast, busy, Router, closeModal, printClose, today } from './ui.js';
+import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today } from './ui.js';
 import { CSS } from './style.js';
 import * as Sales from './sales.js';
 import * as Mgr from './mgr.js';
@@ -11,7 +11,7 @@ import * as Admin from './admin.js';
 import * as Orders from './orders.js';
 import { loadAccounts } from './accounts.js';
 
-export const VER = 'v0.3.2';
+export const VER = 'v0.4.0';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -73,7 +73,7 @@ async function diag() {
   for (const [n, f] of tests) { try { await f(); rows.push('✅ ' + n); } catch (e) { rows.push('❌ ' + n + ' — ' + esc(e.code || e.message)); } }
   out.innerHTML = '<div class="sumbox" style="line-height:1.8">' + rows.join('<br>') + '</div>';
 }
-function openMenu(h) { import('./ui.js').then(u => u.openModal(h)); }
+function openMenu(h) { openModal(h); }
 export function roleLabel(r) { return { admin: '관리자', manager: '담당자', salesman: '세일즈맨' }[r] || r; }
 
 function switchRole(r) {

@@ -72,6 +72,14 @@ service cloud.firestore {
       allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && !existsAfter(/databases/$(database)/documents/orders/$(id)));
     }
 
+    // ---------- 인보이스 · 백오더 · 번호 (매니저) ----------
+    match /invoices/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow write: if isStaff();
+    }
+    match /backorders/{id} { allow read, write: if isStaff(); }
+    match /counters/{id} { allow read, write: if isStaff(); }
+
     // ---------- 경영 (루크만) ----------
     match /factories/{id} { allow read, write: if isAdmin(); }
     match /factoryInvoices/{id} { allow read, write: if isAdmin(); }
