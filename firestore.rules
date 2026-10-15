@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ---------- 공통 ----------
+    function signedIn() { return request.auth != null && request.auth.token.email != null; }
+    function email() { return request.auth.token.email.lower(); }
+    function isAdminEmail() { return signedIn() && email() == 'luke@theonefl.com'; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(email())).data; }
+    function registered() { return signedIn() && exists(/databases/$(database)/documents/users/$(email())) && userDoc().active != false; }
+    function role() { return registered() ? userDoc().role : ''; }
+    function isAdmin() { return isAdminEmail() || role() == 'admin'; }
+    function isStaff() { return isAdmin() || role() == 'manager'; }       // 담당자(회계) + 관리자
+    function mySm() { return registered() ? userDoc().sm : ''; }
+    function achOk() { return isAdmin() || (registered() && userDoc().achAccess == true); }
+
+    // ---------- 사용자 ----------
+    match /users/{uid} {
+      allow read: if signedIn() && (uid == email() || isStaff());
+      allow create: if isAdminEmail() && uid == email();   // 루크 첫 로그인
+      allow write: if isAdmin();
+    }
+    // ---------- 기준 자료 ----------
+    match /salesmen/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /accounts/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /settings/{id} { allow read: if registered(); allow write: if isStaff(); }
+
+    // ---------- 현장 수금 ----------
+    match /entries/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email()
+                                     && request.resource.data.sb == false && request.resource.data.rc == false && request.resource.data.v == false && request.resource.data.settled == '');
+      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.sb != true && resource.data.settled == ''
+                                     && request.resource.data.sm == resource.data.sm
+                                     && request.resource.data.sb == resource.data.sb && request.resource.data.rc == resource.data.rc
+                                     && request.resource.data.v == resource.data.v && request.resource.data.settled == resource.data.settled);
+      allow delete: if isAdmin();
+    }
+    // ---------- COD · 카드 · ACH ----------
+    match /cod/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow write: if isStaff();
+    }
+    // ---------- AR (세일즈맨은 자기 것만) ----------
+    match /ar/{sm} {
+      allow read: if isStaff() || (registered() && sm == mySm());
+      allow write: if isStaff();
+    }
+    // ---------- 정산 ----------
+    match /settlements/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow write: if isAdmin();
+    }
+    // ---------- ACH (은행 정보는 따로) ----------
+    match /ach/{id} { allow read, write: if isStaff(); }
+    match /achBank/{id} { allow read, write: if achOk(); }
+
+    // ---------- 아이템 목록 · 오더 ----------
+    match /catalog/{id} { allow read: if registered(); allow write: if isStaff(); }
+    function okSt(st) { return st == 'draft' || st == 'sent'; }
+    match /orders/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email() && okSt(request.resource.data.st));
+      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && okSt(resource.data.st)
+                                     && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st));
+      allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.st == 'draft');
+    }
+    match /orderLines/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create, update: if isStaff() || (registered() && request.resource.data.sm == mySm()
+                                     && getAfter(/databases/$(database)/documents/orders/$(id)).data.sm == mySm()
+                                     && okSt(getAfter(/databases/$(database)/documents/orders/$(id)).data.st));
+      allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && !existsAfter(/databases/$(database)/documents/orders/$(id)));
+    }
+
+    // ---------- 경영 (루크만) ----------
+    match /factories/{id} { allow read, write: if isAdmin(); }
+    match /factoryInvoices/{id} { allow read, write: if isAdmin(); }
+    match /factoryPayments/{id} { allow read, write: if isAdmin(); }
+    match /pay1099/{id} { allow read, write: if isAdmin(); }
+    match /payees/{id} { allow read, write: if isAdmin(); }
+    match /bonusAcc/{id} { allow read, write: if isAdmin(); }
+    match /bonusDist/{id} { allow read, write: if isAdmin(); }
+    match /bonusSplit/{id} { allow read, write: if isAdmin(); }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
