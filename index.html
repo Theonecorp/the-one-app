@@ -2,99 +2,18 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#0f172a">
 <title>THE ONE</title>
-<style>
-  :root{--navy:#0f172a;--blue:#1d4ed8;--bg:#f1f5f9;--card:#fff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--green:#15803d;--red:#b91c1c}
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',Roboto,Arial,sans-serif}
-  header{background:var(--navy);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px}
-  header h1{font-size:15px;margin:0;font-weight:700}
-  header .who{margin-left:auto;font-size:12px;color:#94a3b8}
-  .wrap{max-width:720px;margin:0 auto;padding:16px}
-  .card{background:var(--card);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.06);padding:18px;margin-bottom:12px}
-  .card h2{font-size:14px;margin:0 0 10px;color:#334155}
-  button{font-family:inherit;font-size:15px;font-weight:700;border:0;border-radius:11px;padding:13px 16px;background:var(--blue);color:#fff;width:100%}
-  button.ghost{background:#e2e8f0;color:var(--ink)}
-  .login{text-align:center;padding:40px 16px}
-  .login .logo{font-size:40px;margin-bottom:6px}
-  .login h1{font-size:22px;margin:0 0 4px}
-  .login p{color:var(--muted);font-size:14px;margin:0 0 22px}
-  .ok{color:var(--green);font-weight:700} .bad{color:var(--red);font-weight:700}
-  .kv{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:14px}
-  .kv b{color:var(--muted);font-weight:600}
-  .tag{display:inline-block;font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;background:#dbeafe;color:#1e40af}
-  .err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5;margin-top:10px;word-break:break-all}
-  .muted{color:var(--muted);font-size:12.5px;line-height:1.6}
-</style>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230f172a'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'>1</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f172a'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'>1</text></svg>">
+<style>body{margin:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',Roboto,Arial,sans-serif}.boot{text-align:center;padding:60px 20px;color:#64748b;font-size:14px}</style>
 </head>
 <body>
-<header><h1>THE ONE</h1><span class="who" id="who"></span></header>
-<div class="wrap" id="app"><div class="login"><div class="logo">🔑</div><h1>THE ONE</h1><p>준비 중…</p></div></div>
-
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-
-const VER = 'v0.1 (연결 확인용)';
-const firebaseConfig = {
-  apiKey: "AIzaSyAEvQhEi6H0pPiIRpKRNRXt5m348aU8i24",
-  authDomain: "the-one-app-ff40e.firebaseapp.com",
-  projectId: "the-one-app-ff40e",
-  storageBucket: "the-one-app-ff40e.firebasestorage.app",
-  messagingSenderId: "235028136448",
-  appId: "1:235028136448:web:183b6f84a3aa79dc71cee5"
-};
-const ADMIN_EMAILS = ['luke@theonefl.com'];
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const $ = id => document.getElementById(id);
-const esc = s => String(s==null?'':s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c]);
-
-function showLogin(msg){
-  $('who').textContent = '';
-  $('app').innerHTML = '<div class="card login"><div class="logo">🔑</div><h1>THE ONE</h1><p>회사 구글 계정으로 로그인하세요</p>' +
-    '<button id="btnLogin">Google 로 로그인</button>' + (msg ? '<div class="err">'+esc(msg)+'</div>' : '') +
-    '<p class="muted" style="margin-top:18px">'+VER+'</p></div>';
-  $('btnLogin').onclick = async () => {
-    const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' });
-    try { await signInWithPopup(auth, p); }
-    catch (e) { if (/popup/i.test(String(e.code))) { try { await signInWithRedirect(auth, p); } catch (e2) { showLogin(e2.message); } } else showLogin(e.code + ' — ' + e.message); }
-  };
-}
-async function showHome(user){
-  const email = (user.email || '').toLowerCase();
-  $('who').textContent = email;
-  let role = '', dbMsg = '', dbOk = false;
-  try {
-    const ref = doc(db, 'users', email);
-    const snap = await getDoc(ref);
-    if (snap.exists()) { role = snap.data().role || ''; dbOk = true; dbMsg = '사용자 기록 읽음'; }
-    else if (ADMIN_EMAILS.includes(email)) {
-      await setDoc(ref, { email, name: user.displayName || '', role: 'admin', createdAt: serverTimestamp() });
-      role = 'admin'; dbOk = true; dbMsg = '관리자 계정을 처음 만들었습니다';
-    } else { dbMsg = '아직 등록되지 않은 계정입니다 — 관리자가 등록해야 합니다'; }
-  } catch (e) { dbMsg = 'Firestore 오류: ' + e.code + ' — ' + e.message; }
-  const roleLabel = { admin: '관리자 (루크)', manager: '담당자', salesman: '세일즈맨' }[role] || (role || '미등록');
-  $('app').innerHTML =
-    '<div class="card"><h2>✅ 로그인 성공</h2><div class="kv">' +
-      '<b>이름</b><span>'+esc(user.displayName||'')+'</span>' +
-      '<b>이메일</b><span>'+esc(email)+'</span>' +
-      '<b>역할</b><span><span class="tag">'+esc(roleLabel)+'</span></span>' +
-      '<b>데이터베이스</b><span class="'+(dbOk?'ok':'bad')+'">'+(dbOk?'연결됨':'연결 안 됨')+'</span></div>' +
-      '<p class="muted" style="margin-top:10px">'+esc(dbMsg)+'</p>' +
-      (dbOk ? '' : '<div class="err">Firestore 규칙이 아직 안 들어갔거나(permission-denied), 데이터베이스를 아직 안 만들었을 수 있습니다. 이 화면을 캡처해서 보내 주세요.</div>') +
-    '</div>' +
-    '<div class="card"><h2>다음 단계</h2><p class="muted">이 화면은 Firebase · 로그인 · 데이터베이스가 제대로 이어졌는지 확인하는 첫 버전입니다. 수금 입력 · 정산 · ACH · 경영 화면이 차례로 여기에 올라옵니다.</p></div>' +
-    '<button class="ghost" id="btnOut">로그아웃</button><p class="muted" style="text-align:center;margin-top:12px">'+VER+'</p>';
-  $('btnOut').onclick = () => signOut(auth);
-}
-getRedirectResult(auth).catch(e => showLogin(e.message));
-onAuthStateChanged(auth, u => { if (u) showHome(u); else showLogin(''); });
-</script>
+<div class="boot">THE ONE 여는 중…</div>
+<script type="module" src="app.js?v=0.2"></script>
+<noscript>자바스크립트를 켜 주세요.</noscript>
 </body>
 </html>
