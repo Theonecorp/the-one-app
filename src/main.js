@@ -11,7 +11,7 @@ import * as Admin from './admin.js';
 import * as Orders from './orders.js';
 import { loadAccounts } from './accounts.js';
 
-export const VER = 'v0.3.0';
+export const VER = 'v0.3.1';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
