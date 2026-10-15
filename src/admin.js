@@ -15,7 +15,12 @@ async function pageAdmin(arg) {
   let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['cat', '📦 아이템'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div id="adminBody"><div class="load">읽는 중…</div></div>';
   $('page').innerHTML = h;
   document.querySelectorAll('[data-at]').forEach(b => b.onclick = () => { TAB = b.dataset.at; pageAdmin(); });
-  if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') await settings(); else if (TAB === 'cat') await catalogAdmin(); else await importer();
+  try { if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') await settings(); else if (TAB === 'cat') await catalogAdmin(); else await importer(); }
+  catch (e) {
+    const perm = /permission/i.test(String(e.code || e.message));
+    $('adminBody').innerHTML = '<div class="card"><div class="alert a-red">읽지 못했습니다: ' + esc(e.code || e.message) + '</div>' +
+      (perm ? '<div class="alert a-amb">권한 오류입니다. Firebase 콘솔 → Firestore → 규칙에 저장소의 firestore.rules 가 <b>게시</b>됐는지 확인하세요.</div>' : '') + '</div>';
+  }
 }
 
 /* ---- 사용자 ---- */
