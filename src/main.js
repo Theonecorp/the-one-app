@@ -13,7 +13,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.5.0';
+export const VER = 'v0.5.1';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -28,7 +28,7 @@ function navFor(r) { const on = S.settings.ordersOn || (S.me && S.me.role === 'a
 function shell() {
   document.head.insertAdjacentHTML('beforeend', '<style>' + CSS + '</style>');
   document.body.innerHTML =
-    '<header><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hWho"></span><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
+    '<header><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
     '<div class="wrap" id="page"><div class="load">불러오는 중…</div></div>' +
     '<nav id="nav"></nav>' +
     '<div id="busy"><div class="spin"></div></div>' +
@@ -38,6 +38,8 @@ function shell() {
   $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
   $('prtClose').onclick = printClose;
   $('hMenu').onclick = userMenu;
+  const net = () => { const d = $('hNet'); if (d) { d.classList.toggle('off', navigator.onLine === false); d.title = navigator.onLine === false ? '오프라인 — 저장한 것은 폰에 보관됩니다' : '온라인'; } };
+  window.addEventListener('online', net); window.addEventListener('offline', net); net();
 }
 
 function loginScreen(msg) {
