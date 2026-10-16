@@ -13,7 +13,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.6.2';
+export const VER = 'v0.6.3';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -34,7 +34,7 @@ function navFor(r) {
 function shell() {
   document.head.insertAdjacentHTML('beforeend', '<style>' + CSS + '</style>');
   document.body.innerHTML =
-    '<header><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
+    '<header><button class="hb" id="hBack" title="뒤로">‹</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
     '<div class="wrap" id="page"><div class="load">불러오는 중…</div></div>' +
     '<nav id="nav"></nav>' +
     '<div id="busy"><div class="spin"></div></div>' +
@@ -44,6 +44,7 @@ function shell() {
   $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
   $('prtClose').onclick = printClose;
   $('hMenu').onclick = userMenu;
+  $('hBack').onclick = () => Router.back();
   const net = () => { const d = $('hNet'); if (d) { d.classList.toggle('off', navigator.onLine === false); d.title = navigator.onLine === false ? '오프라인 — 저장한 것은 폰에 보관됩니다' : '온라인'; } };
   window.addEventListener('online', net); window.addEventListener('offline', net); net();
 }
@@ -93,6 +94,7 @@ function switchRole(r) {
 }
 function paintNav() {
   const items = navFor(S.role);
+  Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '</button>').join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => Router.go(b.dataset.go));
   $('hWho').textContent = (S.me && S.me.sm ? S.me.sm + ' · ' : '') + roleLabel(S.role);
