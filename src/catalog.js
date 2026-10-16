@@ -77,25 +77,30 @@ function index(pack) {
     if (st.old && st.old !== code) { it.old = st.old; if (oldIt) { oldIt.gone = true; if (oldIt.b && byBar[oldIt.b] === oldIt) byBar[oldIt.b] = it; } byCode[st.old] = it; byNorm[norm(st.old)] = it; }
   });
   for (let i = items.length - 1; i >= 0; i--) if (items[i].gone) items.splice(i, 1);
-  /* 카테고리 트리: 시트의 Categories 순서를 따르고, 거기 없는 것은 뒤에 붙임 */
-  const tree = { kids: [], map: {} };
-  const add = (path) => {
-    let node = tree;
+  /* 카테고리 트리: 시트의 Categories 순서를 따르고, 거기 없는 것은 뒤에 붙임
+   *  tree  = Group → Level 1 → Level 2 → Level 3   (4단계)
+   *  tree1 = Level 1 → Level 2 → Level 3            (SBMGo 처럼 큰 품목부터, 기본) */
+  const mk = () => ({ kids: [], map: {} });
+  const tree = mk(), tree1 = mk();
+  const add = (root, path) => {
+    let node = root;
     path.forEach(name => {
       if (!name) return;
       if (!node.map[name]) { const n = { name, kids: [], map: {}, n: 0 }; node.map[name] = n; node.kids.push(n); }
       node = node.map[name];
     });
   };
-  (pack.cats || []).forEach(p => add(p));
-  items.forEach(x => {
-    add([x.g, x.l1, x.l2, x.l3]);
-    let node = tree; [x.g, x.l1, x.l2, x.l3].forEach(name => { if (!name) return; node = node.map[name]; node.n++; });
-  });
+  (pack.cats || []).forEach(p => { add(tree, p); add(tree1, p.slice(1)); });
+  const count = (root, path) => { let node = root; path.forEach(name => { if (!name) return; node = node.map[name]; node.n++; }); };
+  items.forEach(x => { add(tree, [x.g, x.l1, x.l2, x.l3]); count(tree, [x.g, x.l1, x.l2, x.l3]); add(tree1, [x.l1, x.l2, x.l3]); count(tree1, [x.l1, x.l2, x.l3]); });
   const prune = n => { n.kids = n.kids.filter(k => k.n > 0); n.kids.forEach(prune); };
-  prune(tree);
-  return { ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, byCode, byBar, byNorm, tree, sets };
+  prune(tree); prune(tree1);
+  return { ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, byCode, byBar, byNorm, tree, tree1, sets, rows: pack.rows, cats: pack.cats || [] };
 }
+/** 오더 화면이 어느 단계부터 보이나 — 'l1'(기본, SBMGo 처럼 ANKLET · EARRING …) 또는 'g'(Jewelry · Beauty … 부터) */
+export function catStart(S) { return S && S.settings && S.settings.catStart === 'g' ? 'g' : 'l1'; }
+export function treeFor(S) { return catStart(S) === 'g' ? CAT.tree : CAT.tree1; }
+export function levelsOf(x, start) { return start === 'g' ? [x.g, x.l1, x.l2, x.l3] : [x.l1, x.l2, x.l3]; }
 
 /** 코드 · 바코드가 정확히 맞는 것 (스캐너 입력) */
 export function exactItem(q) {
@@ -103,11 +108,11 @@ export function exactItem(q) {
   return CAT.byCode[q.toUpperCase()] || CAT.byBar[q] || (/^\d{11}$/.test(q) ? CAT.byBar['0' + q] : null) || CAT.byNorm[norm(q)] || null;
 }
 /** 검색 — 띄어쓰기로 나눈 단어가 모두 들어 있는 것 (코드 · 설명), 정확히 맞는 코드가 먼저 */
-export function searchItems(q, path, limit) {
+export function searchItems(q, path, limit, start) {
   if (!CAT) return [];
   limit = limit || 80;
   let pool = CAT.items;
-  if (path && path.length) pool = pool.filter(x => path.every((p, i) => [x.g, x.l1, x.l2, x.l3][i] === p));
+  if (path && path.length) pool = pool.filter(x => { const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); });
   const words = String(q || '').toUpperCase().split(/\s+/).filter(Boolean);
   if (!words.length) return pool.slice(0, limit);
   const out = [], ex = exactItem(q);
@@ -174,7 +179,7 @@ export async function publishCatalog(S, parsed) {
   for (let i = chunks.length; i < ((old && old.chunks) || 0); i++) ops.push({ op: 'del', col: 'catalog', id: 'c' + i });
   /* 묶음을 먼저 쓰고 meta 를 마지막에 — 중간에 끊겨도 폰은 옛 버전을 그대로 씀 */
   for (const o of ops) await S.DB.batch([o]);
-  await S.DB.set('catalog', 'meta', { ver, count: parsed.rows.length, chunks: chunks.length, cats: parsed.cats.map(p => p.join('\u0001')), updatedAt: new Date().toISOString(), by: (S.user && S.user.email) || '' });
+  await S.DB.set('catalog', 'meta', { ver, count: parsed.rows.length, chunks: chunks.length, cats: parsed.cats.map(p => p.join('\u0001')), setsVer: (old && old.setsVer) || '', updatedAt: new Date().toISOString(), by: (S.user && S.user.email) || '' });
   return { ver, chunks: chunks.length };
 }
 /* Firestore 는 배열 안의 배열을 못 담으므로 cats 는 문자열로 저장 → 읽을 때 풀기 */
@@ -230,4 +235,122 @@ export function parseSetBook(compRows, listRows, which) {
   }
   Object.keys(out).forEach(k => { const x = info[k]; if (x) { if (x.n) out[k].n = x.n; if (x.p) out[k].p = x.p; if (x.st) out[k].st = x.st; if (x.old && which !== 'old') out[k].old = x.old; } });
   return { sets: out, lines: n, named: Object.keys(out).filter(k => out[k].n).length };
+}
+
+/* ============================================================
+ *  분류 · 아이템 일괄 변경 (관리) — SBM 의 "레벨 정리 · 디스크립션 변경 · 코드 변경 · 일괄 업데이트" 파일 역할
+ *  rows 한 줄 = [code, desc, price, srp, barcode, group, l1, l2, l3, photo]
+ * ============================================================ */
+const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9 };
+/** 지금 목록을 바꿔서 다시 올림 — fn(rows, cats, sets) 가 바꾸고 요약을 돌려줌 */
+export async function editCatalog(S, fn) {
+  if (!CAT) await loadCatalog(S);
+  const rows = CAT.rows.map(r => r.slice()), cats = CAT.cats.map(p => p.slice()), sets = JSON.parse(JSON.stringify(CAT.sets || {}));
+  const before = JSON.stringify(sets);
+  const sum = fn(rows, cats, sets) || {};
+  await publishCatalog(S, { rows, cats });
+  if (JSON.stringify(sets) !== before) await publishSets(S, sets);
+  await loadCatalog(S, true);
+  return sum;
+}
+/** 분류 이름 바꾸기 — level: 'g'|'l1'|'l2'|'l3', under: 상위 경로 (start 기준이 아니라 전체 4단계 기준의 앞부분) */
+export function renameCat(rows, cats, level, under, from, to) {
+  const li = COL[level], n = { g: 0, l1: 1, l2: 2, l3: 3 }[level]; let k = 0;
+  const fits = (arr) => under.every((u, i) => !u || arr[i] === u);
+  rows.forEach(r => { if (r[li] === from && fits(r.slice(5, 5 + n))) { r[li] = to; k++; } });
+  cats.forEach(p => { if (p[n] === from && fits(p.slice(0, n))) p[n] = to; });
+  return k;
+}
+/** 분류 순서 바꾸기 — 같은 상위 안에서 name 을 dir(-1 위 / +1 아래) 로 */
+export function moveCat(cats, n, under, name, dir) {
+  const fits = p => under.every((u, i) => !u || p[i] === u);
+  const order = []; cats.forEach(p => { if (fits(p) && p[n] && !order.includes(p[n])) order.push(p[n]); });
+  const i = order.indexOf(name); if (i < 0) return false; const j = i + dir; if (j < 0 || j >= order.length) return false;
+  order.splice(i, 1); order.splice(j, 0, name);
+  /* cats 를 그 순서대로 다시 배열 (해당 상위 안의 줄만) */
+  const mine = cats.filter(fits), rest = cats.filter(p => !fits(p));
+  mine.sort((a, b) => order.indexOf(a[n]) - order.indexOf(b[n]));
+  cats.length = 0; rest.forEach(p => cats.push(p)); mine.forEach(p => cats.push(p));
+  return true;
+}
+/** 분류 목록에 없는 경로를 아이템에서 모아 cats 에 추가 (순서 편집이 되게) */
+export function ensureCats(rows, cats) {
+  const seen = {}; cats.forEach(p => { seen[p.join('\u0001')] = 1; });
+  rows.forEach(r => { const p = [r[5], r[6], r[7], r[8]]; for (let n = 1; n <= 4; n++) { const q = p.slice(0, n); while (q.length < 4) q.push(''); const k = q.join('\u0001'); if (!seen[k]) { seen[k] = 1; cats.push(q); } } });
+}
+/**
+ * 일괄 변경 엑셀 — 머리글로 열을 찾음 (있는 열만 바꿈):
+ *   Code(코드, 필수) · NewCode(새 코드) · Description · Price · SRP · Barcode · Group · Level 1 · Level 2 · Level 3 · Photo · Delete(삭제: x)
+ *   Tree_업데이트 / TreeUpdate 탭 (Code, Group, Level 1~3) 도 그대로 됨
+ */
+export function parseBulkSheet(aoa) {
+  if (!aoa || aoa.length < 2) throw new Error('시트가 비어 있습니다');
+  const hr = aoa[0].map(h => String(h || '').trim().toLowerCase());
+  const f = res => hr.findIndex(h => res.some(re => re.test(h)));
+  const ix = { c: f([/^code$/, /^item ?code$/, /^item ?#?$/, /^코드$/, /^아이템 ?코드$/, /^sku$/]), nc: f([/^new ?code$/, /^새 ?코드$/, /^code2$/]), d: f([/^description$/, /^desc$/, /^디스크립션$/, /^설명$/, /^name$/]),
+    p: f([/^price$/, /^가격$/, /^wholesale/]), s: f([/^srp$/, /^retail$/]), b: f([/^barcode$/, /^upc$/, /^바코드$/]), g: f([/^group$/, /^그룹$/]), l1: f([/^level ?1$/, /^l1$/]), l2: f([/^level ?2$/, /^l2$/]), l3: f([/^level ?3$/, /^l3$/]),
+    ph: f([/^photo$/, /^image$/, /^사진$/]), del: f([/^delete$/, /^삭제$/, /^hide$/, /^remove$/]),
+    /* SBM 의 GROUP_NAME_CHANGE 파일: CURRENT GROUP NAME · NEW GROUP NAME → Level 3 (새 이름이 비어 있으면 현재 이름) */
+    gN: f([/^new group ?name$/, /^new group$/]), gC: f([/^current group ?name$/, /^group ?name$/, /^current group$/]) };
+  if (ix.c < 0) throw new Error('Code(코드) 열을 찾지 못했습니다');
+  const has = Object.keys(ix).filter(k => k !== 'c' && ix[k] >= 0);
+  if (ix.gN >= 0 || ix.gC >= 0) { if (!has.includes('l3')) has.push('l3'); }
+  if (!has.length) throw new Error('바꿀 열이 없습니다 (Description · Price · Level 1 · NewCode …)');
+  const str = v => String(v == null ? '' : v).trim();
+  const out = [], broken = [];
+  for (let i = 1; i < aoa.length; i++) {
+    const r = aoa[i] || []; const code = str(r[ix.c]).toUpperCase(); if (!code) continue;
+    /* SBM 내보내기에서 칸 안에 줄바꿈 · 탭이 섞여 깨진 줄은 건너뜀 */
+    if (r.some(v => /[\n\t]/.test(String(v == null ? '' : v)))) { broken.push(code); continue; }
+    const pt = { code, set: {} };
+    has.forEach(k => {
+      if (k === 'gN' || k === 'gC') return;
+      if (k === 'l3' && ix.l3 < 0) { const nv = ix.gN >= 0 ? str(r[ix.gN]) : '', cv = ix.gC >= 0 ? str(r[ix.gC]) : ''; if (nv || cv) pt.set.l3 = nv || cv; return; }
+      const v = r[ix[k]]; if (v === undefined || v === null || String(v).trim() === '') return;   // 빈 칸은 "그대로"
+      if (k === 'nc') pt.nc = str(v).toUpperCase();
+      else if (k === 'del') pt.del = /^(x|y|yes|true|1|삭제)$/i.test(str(v));
+      else if (k === 'p' || k === 's') pt.set[k] = R2(num(v));
+      else if (k === 'b') { let bb = str(v).replace(/\.0+$/, ''); if (/^\d{11}$/.test(bb)) bb = '0' + bb; pt.set.b = bb; }
+      else pt.set[k] = k === 'ph' ? str(v).split(/\s+/)[0] : str(v);
+    });
+    out.push(pt);
+  }
+  return { patches: out, cols: has.filter(k => k !== 'gN' && k !== 'gC'), broken };
+}
+/** 패치 적용 — rows 와 sets 를 바꾸고 요약 돌려줌 */
+export function applyBulk(rows, cats, sets, patches) {
+  const at = {}; rows.forEach((r, i) => { at[r[0]] = i; });
+  const sum = { changed: 0, renamed: 0, deleted: 0, added: 0, missing: [], dupNew: [] };
+  const del = {};
+  patches.forEach(pt => {
+    let i = at[pt.code];
+    if (i == null) {
+      /* 없는 코드 — 디스크립션 · 가격이 다 있으면 새 아이템으로 추가 */
+      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '']; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; }
+      else sum.missing.push(pt.code);
+      return;
+    }
+    const r = rows[i];
+    if (pt.del) { del[pt.code] = 1; sum.deleted++; return; }
+    let ch = false;
+    Object.keys(pt.set).forEach(k => { const j = COL[k]; if (j != null && r[j] !== pt.set[k]) { r[j] = pt.set[k]; ch = true; } });
+    if (pt.nc && pt.nc !== pt.code) {
+      if (at[pt.nc] != null) { sum.dupNew.push(pt.code + '→' + pt.nc); }
+      else {
+        r[0] = pt.nc; at[pt.nc] = i; delete at[pt.code]; sum.renamed++; ch = true;
+        Object.keys(sets).forEach(sc => { (sets[sc].k || []).forEach(x => { if (x[0] === pt.code) x[0] = pt.nc; }); if (sc === pt.code) { sets[pt.nc] = sets[sc]; delete sets[sc]; } });
+      }
+    }
+    if (ch) sum.changed++;
+  });
+  if (sum.deleted) for (let i = rows.length - 1; i >= 0; i--) if (del[rows[i][0]]) rows.splice(i, 1);
+  ensureCats(rows, cats);
+  return sum;
+}
+/** 지금 아이템 전체를 CSV 로 (엑셀에서 고쳐서 다시 올리는 용) */
+export function catalogCsv() {
+  const q = s => { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const head = ['Code', 'NewCode', 'Description', 'Price', 'SRP', 'Barcode', 'Group', 'Level 1', 'Level 2', 'Level 3', 'Photo', 'Delete'];
+  const lines = [head].concat((CAT ? CAT.rows : []).map(r => [r[0], '', r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], '']));
+  return '﻿' + lines.map(r => r.map(q).join(',')).join('\r\n');
 }

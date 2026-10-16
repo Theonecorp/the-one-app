@@ -13,7 +13,8 @@ const path = require('path'), fs = require('fs');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
   await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200);
   await shot('g0_cats');
-  await pg.click('[data-ck="Jewelry"]'); await pg.waitForTimeout(200);
+  await pg.click('[data-ck="Earrings · Hoops & Pincatch"]'); await pg.waitForTimeout(200);
+  log('L1 tiles:', await pg.$$eval('[data-ck]', els => els.map(e => e.textContent.trim()).join(' | ')));
   await pg.click('[data-gc="AHG100"]'); await pg.click('[data-gc="AHG100"]'); await pg.click('[data-gc="AHG101"]'); await pg.waitForTimeout(100);
   log('card qty AHG100:', await pg.textContent('[data-gq="AHG100"]'), 'N:', await pg.textContent('#eN'));
   await pg.click('[data-gm="AHG100"]'); log('after minus:', await pg.textContent('[data-gq="AHG100"]'));
@@ -26,11 +27,11 @@ const path = require('path'), fs = require('fs');
   log('set card kit badge:', await pg.textContent('[data-gc="FI-TEST01"] .gkit'));
   await pg.click('[data-gc="FI-TEST01"] .gkit'); await pg.waitForSelector('#kSet'); await shot('g2_kit'); await pg.click('#kSet'); await pg.waitForTimeout(100);
   await pg.fill('#eQ1', 'AHG115'); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(100);
-  await pg.waitForTimeout(500); log('old code → new set qty:', await pg.evaluate(() => JSON.parse(localStorage.getItem('theone.order.wip')).lines.find(l => l.c === 'FI-TEST01').q));
+  await pg.waitForTimeout(500); log('old code → new set qty:', await pg.evaluate(() => JSON.parse(localStorage.getItem('theone.order.wip.luke@theonefl.com')).lines.find(l => l.c === 'FI-TEST01').q));
   await pg.fill('#eQ1', 'C4-EB01'); await pg.waitForTimeout(300); await pg.click('[data-gc="C4-EB01"] .gkit'); await pg.waitForSelector('#kAll'); await pg.click('#kAll'); await pg.waitForTimeout(100);
-  await pg.waitForTimeout(500); log('kit spread EB103:', await pg.evaluate(() => (JSON.parse(localStorage.getItem('theone.order.wip')).lines.find(l => l.c === 'EB103') || {}).q));
+  await pg.waitForTimeout(500); log('kit spread EB103:', await pg.evaluate(() => (JSON.parse(localStorage.getItem('theone.order.wip.luke@theonefl.com')).lines.find(l => l.c === 'EB103') || {}).q));
   /* 손님 보기 */
-  await pg.fill('#eQ1', ''); await pg.click('[data-ck="Jewelry"]').catch(() => {}); await pg.waitForTimeout(200);
+  await pg.fill('#eQ1', ''); await pg.click('[data-ck="Earrings · Hoops & Pincatch"]').catch(() => {}); await pg.waitForTimeout(200);
   await pg.click('#eShow'); await pg.waitForSelector('#viewer'); await pg.click('#vR'); await pg.click('#vA'); await pg.click('#vP'); await shot('g3_show'); await pg.click('#vX');
   await pg.click('[data-ev="cart"]'); await pg.waitForTimeout(200); await shot('g4_cart');
   log('types:', (await pg.textContent('#eTypes')).replace(/\s+/g, ' '));
@@ -56,5 +57,24 @@ const path = require('path'), fs = require('fs');
   await shot('g10_listmode');
   log('net dot:', await pg.$eval('#hNet', e => e.className));
   await pg.click('#eVM'); await pg.waitForTimeout(100);
+  /* v0.6.0: 분류 관리 · 일괄 변경 · 세일즈맨 보낼 오더 */
+  await pg.evaluate(() => { location.hash = '#/admin/tree'; }); await pg.waitForSelector('[data-tren]'); await shot('g11_tree');
+  log('tree root:', await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent).join(' | ')));
+  await pg.click('[data-tin="Jewelry"]'); await pg.waitForTimeout(200);
+  await pg.click('[data-tren="Chains"]'); await pg.waitForSelector('#trNew'); await pg.fill('#trNew', 'CHAIN'); await pg.click('#trOk'); await pg.waitForTimeout(800);
+  log('renamed:', await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent).join(' | ')));
+  await pg.click('[data-tdn="Earrings · Hoops & Pincatch"]'); await pg.waitForTimeout(800);
+  log('moved:', await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent).join(' | ')));
+  /* 일괄 변경 적용 (파일 없이 함수로) */
+  const bulk = await pg.evaluate(async () => { const m = await import('/src/catalog.js'); const r = m.parseBulkSheet([['Code', 'NewCode', 'Description', 'Price', 'Level 1'], ['AHG100', 'AHG100X', 'RENAMED ITEM', 9.99, ''], ['GM104', '', '', '', 'Wax Moved'], ['NOPE1', '', '', '', 'x']]); const rows = JSON.parse(window.__MOCK_SEED__.catalog[1].j), cats = [], sets = JSON.parse(window.__MOCK_SEED__.catalog[2].j); const sum = m.applyBulk(rows, cats, sets, r.patches); return { sum, row: rows.find(x => x[0] === 'AHG100X'), gm: rows.find(x => x[0] === 'GM104')[6], setk: sets['FI-TEST01'].k[0][0] }; });
+  log('bulk:', JSON.stringify(bulk));
+  log('csv head:', await pg.evaluate(async () => (await import('/src/catalog.js')).catalogCsv().split('\r\n')[0]));
+  /* 세일즈맨: 임시저장 2건 → 보낼 오더 카드 → 한 번에 보내기 */
+  await pg.click('#hMenu'); await pg.waitForSelector('#mOut'); await pg.evaluate(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'Brandon' }; }); await pg.click('#mOut'); await pg.waitForSelector('#btnLogin'); await pg.click('#btnLogin'); await pg.waitForSelector('#nav button');
+  for (let k = 0; k < 2; k++) { await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', k ? '1271' : 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200); await pg.fill('#eQ1', 'AHG10' + k); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(100); await pg.click('#eDraft'); await pg.waitForTimeout(700); }
+  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#oSendAll'); await shot('g12_sendcard');
+  log('drafts to send:', await pg.$$eval('[data-sd]', els => els.length));
+  await pg.click('#oSendAll'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(1200);
+  log('after send:', (await pg.textContent('#page')).includes('보낼 오더') ? 'card still' : 'card gone', '| sent tags:', await pg.$$eval('#page .tag', els => els.map(e => e.textContent).filter(t => t === '들어옴').length));
   log('errors:', errs); await br.close(); srv.kill();
 })();

@@ -11,7 +11,7 @@
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce } from './ui.js';
 import { searchAccounts, accountLabel } from './accounts.js';
-import { loadCatalog, catalog, searchItems, exactItem, thumb } from './catalog.js';
+import { loadCatalog, catalog, searchItems, exactItem, thumb, catStart, treeFor } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
@@ -29,7 +29,9 @@ export const ST = { draft: ['임시저장', 't-g'], sent: ['들어옴', 't-b'], 
 export const stTag = st => '<span class="tag ' + (ST[st] || ST.draft)[1] + '">' + (ST[st] || ST.draft)[0] + '</span>';
 const isStaff = () => S.role !== 'salesman';
 const mySm = () => (S.me && S.me.sm ? String(S.me.sm).toUpperCase() : '');
-const WIP_KEY = 'theone.order.wip', OUT_KEY = 'theone.outbox.v1';
+const OUT_KEY = 'theone.outbox.v1';
+/* 작성 중 오더는 로그인한 사람별로 보관 (한 기기를 여럿이 쓸 때 섞이지 않게) */
+const WIP_KEY_ = 'theone.order.wip', wipKey = () => WIP_KEY_ + '.' + ((S && S.user && S.user.email) || '');
 export function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
 function newNo() { const d = today().replace(/-/g, '').substring(2); return 'O' + d + '-' + Math.floor(Math.random() * 1679616).toString(36).toUpperCase().padStart(4, '0'); }
 /** 같은 주소면 hashchange 가 안 생기므로 직접 엶 */
@@ -102,13 +104,29 @@ async function pageOrder(arg) {
   if (out.length) h += '<div class="card" style="border:2px solid #fecaca"><h2>📤 아직 회사로 안 간 오더 ' + out.length + '건</h2><div class="muted">폰에 안전하게 저장돼 있습니다. 인터넷이 되면 자동으로 보내고, 아래 버튼으로 바로 보낼 수도 있습니다.</div>' +
     out.map(x => orderRow(x.o, true, x.err)).join('') + '<button class="b-blue" id="oSync" style="margin-top:8px">📤 지금 모두 보내기</button></div>';
   if (err) h += '<div class="alert a-amb">회사 기록을 읽지 못했습니다 (' + esc(err) + ') — 인터넷이 안 되면 폰에 저장된 것만 보입니다.</div>';
+  const drafts = isStaff() ? [] : rows.filter(o => o.st === 'draft');
+  if (drafts.length) h += '<div class="card" style="border:2px solid #bfdbfe"><h2>📤 보낼 오더 ' + drafts.length + '건 · ' + money(drafts.reduce((a, o) => a + (o.amt || 0), 0)) + '</h2><div class="muted">저장해 둔 오더입니다. 체크한 것을 한 번에 회사로 보냅니다 (보낸 뒤에도 매니저가 픽킹을 시작하기 전까지는 고칠 수 있습니다).</div>' +
+    drafts.map(o => '<label class="pick on" style="margin-top:6px"><input type="checkbox" class="ck-big" data-sd="' + esc(o.id) + '" checked><span class="pm"><b>' + esc(o.store) + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.no) + ' · ' + (o.n || 0) + '줄 · ' + money(o.amt) + '</small></span><button class="b-ghost b-sm" data-oid="' + esc(o.id) + '">열기</button></label>').join('') +
+    '<button class="b-green" id="oSendAll" style="margin-top:10px;padding:15px">📤 체크한 오더 회사로 보내기</button></div>';
   const tot = rows.reduce((a, o) => a + (o.amt || 0), 0);
   h += '<div class="card"><h2>' + (isStaff() ? '' : '내 ') + '오더 ' + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달)</span>') + '</h2>' + (rows.length ? rows.map(o => orderRow(o)).join('') : '<div class="none">오더가 없습니다</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead();
   if ($('oWip')) $('oWip').onclick = () => openEditor(null, wip);
   if ($('oSync')) $('oSync').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast(navigator.onLine === false ? '인터넷이 안 됩니다 — 폰에 그대로 있습니다' : '보내지 못했습니다 — 잠시 뒤 다시', 'bad'); pageOrder(''); };
-  document.querySelectorAll('[data-oid]').forEach(el => el.onclick = () => Router.go('order', el.dataset.oid));
+  document.querySelectorAll('[data-oid]').forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); Router.go('order', el.dataset.oid); });
+  if ($('oSendAll')) $('oSendAll').onclick = async () => {
+    const ids = Array.from(document.querySelectorAll('[data-sd]:checked')).map(x => x.dataset.sd); if (!ids.length) return toast('보낼 오더를 체크하세요', 'bad');
+    if (!(await confirmBox(ids.length + '건을 회사로 보낼까요?', '보내기'))) return;
+    busy(true);
+    try {
+      const now = new Date().toISOString();
+      for (const id of ids) { const o = rows.find(x => x.id === id); const L = await S.DB.get('orderLines', id); putOut(Object.assign({}, o, { st: 'sent', sentAt: now, updatedAt: now }), (L && L.lines) || []); }
+      const r = await syncOutbox(true);
+      toast(r.left ? '📱 ' + r.left + '건은 인터넷이 되면 자동으로 보냅니다' : '📤 ' + ids.length + '건 보냈습니다', r.left ? '' : 'good');
+    } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false); pageOrder('');
+  };
 }
 function listHead() {
   if (!isStaff()) return '<button class="b-blue" id="oNew" style="margin-bottom:12px;padding:15px">＋ 새 오더</button>';
@@ -187,9 +205,9 @@ export function typeSummary(by) {
  * ============================================================ */
 let O = null;   // { id, no, st, sm, acct, store, memo, disc, lines:[{c,d,q,p,lp,t}], view, q, path, createdAt, createdBy, d, pick? }
 let IDX = {};
-function readWip() { try { const w = JSON.parse(localStorage.getItem(WIP_KEY) || 'null'); return w && Array.isArray(w.lines) ? w : null; } catch (e) { return null; } }
-function clearWip() { try { localStorage.removeItem(WIP_KEY); } catch (e) {} }
-function flushWip() { if (!O) return; try { localStorage.setItem(WIP_KEY, JSON.stringify(O)); } catch (e) {} }
+function readWip() { try { const w = JSON.parse(localStorage.getItem(wipKey()) || 'null'); return w && Array.isArray(w.lines) ? w : null; } catch (e) { return null; } }
+function clearWip() { try { localStorage.removeItem(wipKey()); } catch (e) {} }
+function flushWip() { if (!O) return; try { localStorage.setItem(wipKey(), JSON.stringify(O)); } catch (e) {} }
 const saveWip = debounce(flushWip, 400);
 if (typeof window !== 'undefined') { window.addEventListener('pagehide', flushWip); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushWip(); }); }
 function reindex() { IDX = {}; O.lines.forEach(l => { IDX[l.c] = l; }); }
@@ -305,7 +323,7 @@ const VM_KEY = 'theone.order.view';
 let VM = (() => { try { return localStorage.getItem(VM_KEY) || 'grid'; } catch (e) { return 'grid'; } })();
 let PAGE = 60, LAST = [];
 function paintAdd() {
-  const T = catalog().tree;
+  const T = treeFor(S);
   let node = T; O.path.forEach(p => { node = (node && node.map[p]) || null; });
   if (!node) { O.path = []; node = T; }
   const crumbs = '<div class="chips" style="margin-top:8px"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">전체</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
@@ -315,7 +333,7 @@ function paintAdd() {
     crumbs + kids + '<div id="eRes"></div></div>';
   const sb = $('eQuick'); if (sb) { sb.innerHTML = quickBar(); bindQuick(sb); }
   const q = $('eQ1');
-  const run = () => { O.q = q.value; PAGE = 60; paintResults(); };
+  const run = () => { if (!O || !$('eQ1')) return; O.q = q.value; PAGE = 60; paintResults(); };
   q.oninput = debounce(run, 160);
   q.onkeydown = e => {
     if (e.key !== 'Enter') return;
@@ -353,7 +371,7 @@ function itemCard(it) {
 const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data-d="-1">−</button><input type="number" inputmode="numeric" min="0" data-qi="' + esc(c) + '" value="' + (v || '') + '" placeholder="0"><button data-dq="' + esc(c) + '" data-d="1">＋</button></div>';
 function paintResults() {
   if (!O || !$('eRes')) return;
-  const all = searchItems(O.q, O.path, 5000);
+  const all = searchItems(O.q, O.path, 5000, catStart(S));
   LAST = all;
   const res = all.slice(0, PAGE);
   const head = '<div class="muted" style="margin:6px 0">' + (O.q || O.path.length ? all.length.toLocaleString() + '개' : '전체 ' + catalog().items.length.toLocaleString() + '개 — 카테고리를 고르거나 검색하세요') + '</div>';

@@ -6,17 +6,17 @@ import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer } from './mgr.js';
 import { roleLabel } from './main.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem } from './catalog.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, moveCat, ensureCats, parseBulkSheet, applyBulk, catalogCsv, catStart } from './catalog.js';
 import { invTypes, fmtNo } from './invoicing.js';
 
 let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); }
 async function pageAdmin(arg) {
   if (arg) TAB = arg;
-  let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['cat', '📦 아이템'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div id="adminBody"><div class="load">읽는 중…</div></div>';
+  let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['cat', '📦 아이템'], ['tree', '🗂 분류'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div id="adminBody"><div class="load">읽는 중…</div></div>';
   $('page').innerHTML = h;
   document.querySelectorAll('[data-at]').forEach(b => b.onclick = () => { TAB = b.dataset.at; pageAdmin(); });
-  try { if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') await settings(); else if (TAB === 'cat') await catalogAdmin(); else await importer(); }
+  try { if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') await settings(); else if (TAB === 'cat') await catalogAdmin(); else if (TAB === 'tree') await treeAdmin(); else await importer(); }
   catch (e) {
     const perm = /permission/i.test(String(e.code || e.message));
     $('adminBody').innerHTML = '<div class="card"><div class="alert a-red">읽지 못했습니다: ' + esc(e.code || e.message) + '</div>' +
@@ -359,4 +359,71 @@ function setForm(code, sets) {
     if ($('sfDel')) $('sfDel').onclick = async () => { if (!(await confirmBox(code + ' 세트를 지울까요?', '삭제'))) return; const all = Object.assign({}, sets); delete all[code]; busy(true); try { await publishSets(S, all); await loadCatalog(S, true); closeModal(); setAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   };
   paint();
+}
+
+/* ============================================================
+ *  🗂 분류 — 레벨 이름 바꾸기 · 순서 · 시작 단계, 그리고 일괄 변경 파일 (SBM 의 레벨 정리 · 디스크립션 · 코드 변경 파일 역할)
+ * ============================================================ */
+let TP = [];   // 펼친 경로 (전체 4단계 기준)
+async function treeAdmin() {
+  $('adminBody').innerHTML = '<div class="load">읽는 중…</div>';
+  try { await loadCatalog(S); } catch (e) {}
+  const C = catalog(); if (!C || !C.items.length) { $('adminBody').innerHTML = '<div class="card"><div class="none">먼저 📦 아이템을 올려 주세요</div></div>'; return; }
+  const start = catStart(S);
+  let node = C.tree, under = [];
+  for (const p of TP) { if (node.map[p]) { node = node.map[p]; under.push(p); } else break; }
+  TP = under.slice();
+  const depth = under.length;   // 0=Group 1=Level1 2=Level2 3=Level3
+  const LV = ['Group', 'Level 1', 'Level 2', 'Level 3'];
+  const crumbs = '<div class="chips" style="margin-top:0"><button class="' + (depth ? '' : 'on') + '" data-tp="0">전체</button>' + under.map((p, i) => '<button class="' + (i === under.length - 1 ? 'on' : '') + '" data-tp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
+  const kids = node.kids;
+  $('adminBody').innerHTML = '<div class="card"><h2>🗂 분류 (' + C.items.length.toLocaleString() + '개 아이템)</h2>' +
+    '<div class="muted">오더 화면의 품목 단계입니다. 이름을 바꾸면 그 분류의 아이템 전체에 적용되고, ↑↓ 로 보이는 순서를 바꿉니다. 아이템을 다른 분류로 옮기는 건 아래 "일괄 변경 파일"로 합니다.</div>' +
+    '<div class="fg" style="margin-top:8px"><label>오더 화면 시작 단계</label><div class="seg"><button class="' + (start === 'l1' ? 'on' : '') + '" data-cs="l1">Level 1 부터 (ANKLET · EARRING … SBMGo 처럼)</button><button class="' + (start === 'g' ? 'on' : '') + '" data-cs="g">Group 부터 (Jewelry · Beauty …)</button></div></div>' +
+    crumbs + '<div class="muted" style="margin:4px 0">' + esc(LV[depth]) + ' · ' + kids.length + '개</div>' +
+    kids.map((k, i) => '<div class="pr"><div class="ct tap" data-tin="' + esc(k.name) + '"><b>' + esc(k.name) + '</b><small>' + k.n.toLocaleString() + '개' + (k.kids.length ? ' · 하위 ' + k.kids.length : '') + '</small></div>' +
+      '<button class="b-ghost b-sm" data-tup="' + esc(k.name) + '" ' + (i === 0 ? 'disabled' : '') + '>↑</button><button class="b-ghost b-sm" data-tdn="' + esc(k.name) + '" ' + (i === kids.length - 1 ? 'disabled' : '') + '>↓</button><button class="b-ghost b-sm" data-tren="' + esc(k.name) + '">✏️</button></div>').join('') + '</div>' +
+    '<div class="card"><h2>📄 일괄 변경 파일</h2><div class="muted">엑셀 첫 줄 머리글로 열을 찾고, <b>있는 열만</b> 바꿉니다 (빈 칸은 그대로). 쓸 수 있는 열: <b>Code</b>(필수) · NewCode(코드 변경) · Description · Price · SRP · Barcode · Group · Level 1 · Level 2 · Level 3 · Photo · Delete(x).<br>' +
+    '드라이브의 <b>Tree_업데이트</b> 파일(TreeUpdate 탭)도 그대로 올리면 분류가 바뀝니다. 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
+    '<div class="btns"><button class="b-ghost" id="tCsv">⬇️ 지금 아이템 전체 CSV (고쳐서 다시 올리기)</button></div>' +
+    '<div class="fg" style="margin-top:8px"><input type="file" id="tFile" accept=".xlsx,.csv"></div><div id="tOut"></div></div>';
+  document.querySelectorAll('[data-cs]').forEach(b => b.onclick = async () => { busy(true); try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.catStart = b.dataset.cs; await S.DB.set('settings', 'app', cur); S.settings.catStart = b.dataset.cs; toast('저장'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
+  document.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { TP = TP.slice(0, +b.dataset.tp); treeAdmin(); });
+  document.querySelectorAll('[data-tin]').forEach(el => el.onclick = () => { if (depth < 3) { TP = under.concat([el.dataset.tin]); treeAdmin(); } });
+  const lvKey = ['g', 'l1', 'l2', 'l3'][depth];
+  document.querySelectorAll('[data-tren]').forEach(b => b.onclick = () => {
+    const from = b.dataset.tren;
+    openModal('<h2>✏️ ' + esc(LV[depth]) + ' 이름 바꾸기</h2><div class="muted">' + esc(under.join(' › ') || '전체') + ' 안의 <b>' + esc(from) + '</b></div><div class="fg" style="margin-top:8px"><input id="trNew" value="' + esc(from) + '"></div><div class="muted">같은 이름이 이미 있으면 거기에 합쳐집니다.</div><div class="btns"><button class="b-ghost" id="trX">닫기</button><button class="b-blue" id="trOk">바꾸기</button></div>');
+    $('trX').onclick = closeModal;
+    $('trOk').onclick = async () => {
+      const to = $('trNew').value.trim(); if (!to || to === from) return closeModal();
+      closeModal(); busy(true);
+      try { const r = await editCatalog(S, (rows, cats) => ({ n: renameCat(rows, cats, lvKey, under, from, to) })); toast(r.n + '개 아이템 분류 이름 변경', 'good'); treeAdmin(); }
+      catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  });
+  const mv = async (name, dir) => { busy(true); try { await editCatalog(S, (rows, cats) => { ensureCats(rows, cats); moveCat(cats, depth, under, name, dir); }); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  document.querySelectorAll('[data-tup]').forEach(b => b.onclick = () => mv(b.dataset.tup, -1));
+  document.querySelectorAll('[data-tdn]').forEach(b => b.onclick = () => mv(b.dataset.tdn, 1));
+  $('tCsv').onclick = () => { const blob = new Blob([catalogCsv()], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'the-one-items-' + today() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
+  $('tFile').onchange = async () => {
+    const file = $('tFile').files[0]; if (!file) return;
+    const out = $('tOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
+    try {
+      const { XLSX, wb } = await readBook(file);
+      const name = wb.SheetNames.find(n => /treeupdate|items|아이템|변경/i.test(n)) || wb.SheetNames[0];
+      const r = parseBulkSheet(aoa(XLSX, wb, name));
+      /* 미리 적용해 보고 요약만 보여 줌 */
+      const rows = catalog().rows.map(x => x.slice()), cats = catalog().cats.map(x => x.slice()), sets = JSON.parse(JSON.stringify(catalog().sets || {}));
+      const sum = applyBulk(rows, cats, sets, r.patches);
+      const lab = { nc: '코드 변경', d: 'Description', p: 'Price', s: 'SRP', b: 'Barcode', g: 'Group', l1: 'Level 1', l2: 'Level 2', l3: 'Level 3', ph: 'Photo', del: '삭제' };
+      out.innerHTML = '<div class="alert a-blu">탭 <b>' + esc(name) + '</b> · ' + r.patches.length.toLocaleString() + '줄 · 바꾸는 열: ' + r.cols.map(k => lab[k]).join(', ') + '<br>바뀌는 아이템 <b>' + sum.changed.toLocaleString() + '</b> · 코드 변경 ' + sum.renamed + ' · 새 아이템 ' + sum.added + ' · 삭제 ' + sum.deleted + '</div>' +
+        (r.broken && r.broken.length ? '<div class="alert a-amb">칸이 깨진 줄 ' + r.broken.length + '개 건너뜀 (줄바꿈 · 탭이 섞임): ' + esc(r.broken.slice(0, 8).join(', ')) + '</div>' : '') +
+        (sum.missing.length ? '<div class="alert a-amb">목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 10).join(', ')) + '</div>' : '') +
+        (sum.dupNew.length ? '<div class="alert a-red">새 코드가 이미 있어 바꾸지 못함 ' + sum.dupNew.length + '개: ' + esc(sum.dupNew.slice(0, 10).join(', ')) + '</div>' : '') +
+        '<button class="b-blue" id="tGo" style="margin-top:8px">이대로 적용</button>';
+      $('tGo').onclick = async () => { busy(true); try { await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches)); toast('적용했습니다 — 모든 폰이 새 목록을 받습니다', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+  };
 }
