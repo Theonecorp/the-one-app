@@ -357,6 +357,14 @@ export function moveCat(cats, n, under, name, dir) {
   return true;
 }
 /** 분류 목록에 없는 경로를 아이템에서 모아 cats 에 추가 (순서 편집이 되게) */
+/** 분류를 통째로 다른 상위로 옮김 — n: 1(Level 1 → 다른 Group) 2(Level 2 → 다른 Level 1) 3(Level 3 → 다른 L1›L2). 돌려주는 값: 바뀐 아이템 수 */
+export function moveCatTo(rows, cats, n, under, name, newUnder) {
+  const fits = arr => under.every((u, i) => !u || arr[i] === u);
+  let k = 0;
+  rows.forEach(r => { const L = r.slice(5, 9); if (L[n] === name && fits(L)) { for (let i = 0; i < n; i++) r[5 + i] = newUnder[i] || ''; k++; } });
+  cats.forEach(p => { if (p[n] === name && fits(p)) for (let i = 0; i < n; i++) p[i] = newUnder[i] || ''; });
+  return k;
+}
 export function ensureCats(rows, cats) {
   const seen = {}; cats.forEach(p => { seen[p.join('\u0001')] = 1; });
   rows.forEach(r => { const p = [r[5], r[6], r[7], r[8]]; for (let n = 1; n <= 4; n++) { const q = p.slice(0, n); while (q.length < 4) q.push(''); const k = q.join('\u0001'); if (!seen[k]) { seen[k] = 1; cats.push(q); } } });
