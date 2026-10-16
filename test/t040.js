@@ -15,7 +15,7 @@ const path = require('path'), fs = require('fs');
   await pg.addInitScript(() => {
     window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'Brandon' };
     window.__AFTER_SEED__ = s => {
-      s.settings[0].ordersOn = true;
+      s.settings[0].ordersOn = true; s.settings[0].catStart = 'g';
       s.settings[0].invTypes = [{ c: 'A', n: '일반', start: 41600, pad: 5, match: '' }, { c: 'P', n: 'HAIR', start: 8200, pad: 6, match: 'Hair' }, { c: 'W', n: 'NEW DP', start: 1, pad: 5, match: '코드:ZZ' }];
       s.accounts.find(a => a.acct === '1111').disc = { A: 20 };
     };
