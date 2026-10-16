@@ -8,7 +8,8 @@
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce } from './ui.js';
 import { loadCatalog, catalog, exactItem } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead } from './invoicing.js';
+import { storeInfo } from './store.js';
 import { stTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit } from './orders.js';
 import { bumpAccountsVer } from './mgr.js';
 import { storeSheet } from './store.js';
@@ -17,6 +18,12 @@ let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
 export function register(state) { S = state; }
 const acctOf = a => (S.accounts.byCode ? S.accounts.byCode[a] : null);
+/** 인보이스 인쇄 — AR 에이징(가게 창 자료)과 회사 정보를 붙여서 */
+async function printInvoices(invs, acc) {
+  let ar = null; try { const i = await storeInfo(invs[0].acct, true); ar = i && i.asOf ? { asOf: i.asOf, bk: i.bk, bal: i.bal } : null; } catch (e) {}
+  try { await loadCatalog(S); } catch (e) {}
+  printOpen(invs.map(x => invoiceHtml(x, acc, { co: company(S), ar })).join(''));
+}
 const typeName = c => { const t = invTypes(S).find(x => x.c === c); return t ? t.n : c; };
 
 /* ============================================================
@@ -137,7 +144,7 @@ export function manage(o, lines) {
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);
   if ($('mCancel')) $('mCancel').onclick = async () => { if (!(await confirmBox('이 오더를 취소할까요?', '오더 취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'x', updatedAt: new Date().toISOString(), cancelBy: S.user.email }); toast('취소했습니다'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-  if ($('mInvPrint')) $('mInvPrint').onclick = async () => { busy(true); try { const invs = []; for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (x) invs.push(x); } printOpen(invs.map(x => invoiceHtml(x, acctOf(x.acct))).join('')); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mInvPrint')) $('mInvPrint').onclick = async () => { busy(true); try { const invs = []; for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (x) invs.push(x); } if (invs.length) await printInvoices(invs, acctOf(o.acct)); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mInv')) $('mInv').onclick = () => confirmInvoice(o, lines);
 }
 
@@ -145,8 +152,9 @@ async function printPicking(o, lines) {
   if (lines.some(l => l.kit)) { try { await loadCatalog(S); } catch (e) {} }
   const acc = acctOf(o.acct);
   const rows = sortBy(lines, l => l.c);
-  printOpen('<h1>PICKING — ' + esc(o.no) + '</h1><div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (acc ? ' · ' + esc([acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ')) : '') +
-    '<br>Sales ' + esc(o.sm) + ' · ' + esc(o.d) + ' · printed ' + esc(new Date().toLocaleString()) + (o.memo ? '<br>메모: ' + esc(o.memo) : '') + '</div>' +
+  printOpen('<div class="iv" style="min-height:0">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
+    '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (acc ? ' · ' + esc([acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ')) : '') +
+    '<br>Rep. ' + esc(o.sm) + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + '</div></div>' +
     '<table><tr><th>#</th><th>CODE</th><th>DESCRIPTION</th><th>TYPE</th><th class="r">ORDER</th><th class="r">PICKED</th><th>NOTE</th></tr>' +
     rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>' +
       (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
@@ -163,6 +171,7 @@ function csv(o, lines) {
 
 /* ---- 🧾 인보이스 확정 ---- */
 async function confirmInvoice(o, lines) {
+  try { await loadCatalog(S); } catch (e) {}
   const groups = Object.values(splitByType(lines, o.disc, 'pq')).filter(g => g.qty > 0);
   const bo = lines.filter(l => (l.pq || 0) < l.q).map(l => Object.assign({ c: l.c, d: l.d, q: l.q - (l.pq || 0), p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }, l.kit ? { kit: l.kit } : {}));
   if (!groups.length) return toast('픽킹된 수량이 없습니다 — 오더를 취소하거나 수량을 넣으세요', 'bad');
@@ -182,7 +191,8 @@ async function confirmInvoice(o, lines) {
       for (const g of groups) {
         const t = types.find(x => x.c === g.t) || { c: g.t, start: 1, pad: 5 };
         const no = await nextInvoiceNo(S, t);
-        const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, sm: o.sm, d, ym: ym(d), lines: g.lines.map(l => Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p }, l.kit ? { kit: l.kit } : {})),
+        const C = catalog();
+        const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, sm: o.sm, d, ym: ym(d), lines: g.lines.map(l => { const it = C && C.byCode[l.c]; return Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, g: it ? (it.l1 || it.g || '') : '' }, l.kit ? { kit: l.kit } : {}); }),
           qty: g.qty, sub: g.sub, list: g.list, disc: g.disc, total: g.total, bal: g.total, terms: (acc && acc.terms) || '', st: 'open', memo, createdBy: S.user.email, createdAt: now };
         invs.push(inv); ops.push({ op: 'set', col: 'invoices', id: no, data: inv });
       }
@@ -193,7 +203,7 @@ async function confirmInvoice(o, lines) {
       await S.DB.batch(ops);
       toast('인보이스 ' + invs.map(x => x.no).join(', '), 'good');
       busy(false);
-      printOpen(invs.map(x => invoiceHtml(x, acc)).join(''));
+      await printInvoices(invs, acc);
       goOrder(o.id);
     } catch (e) { busy(false); toast('실패: ' + (e.code || e.message), 'bad'); }
   };
@@ -270,6 +280,6 @@ export async function openInvoice(no) {
     '<div class="btns"><button class="b-blue" id="iPrint">🖨 인쇄</button>' + (S.me && S.me.role === 'admin' && x.st !== 'x' ? '<button class="b-ghost" id="iVoid" style="color:#991b1b">VOID</button>' : '') + '</div></div>' +
     '<div class="card"><table><tr><th>코드</th><th class="r">수량</th><th class="r">가격</th><th class="r">금액</th></tr>' + x.lines.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table></div>';
   $('iBack').onclick = () => Router.go('order');
-  $('iPrint').onclick = () => printOpen(invoiceHtml(x, acctOf(x.acct)));
+  $('iPrint').onclick = () => printInvoices([x], acctOf(x.acct));
   if ($('iVoid')) $('iVoid').onclick = async () => { if (!(await confirmBox(x.no + ' 인보이스를 VOID 할까요? 번호는 다시 쓰지 않습니다.', 'VOID'))) return; busy(true); try { await S.DB.update('invoices', no, { st: 'x', bal: 0, voidAt: new Date().toISOString(), voidBy: S.user.email }); toast('VOID'); openInvoice(no); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
 }

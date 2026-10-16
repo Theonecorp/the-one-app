@@ -127,6 +127,23 @@ table.pk td{vertical-align:top}table.pk tr.bo td{background:#fef2f2}
 #prtbody h1{font-size:21px;margin:0 0 2px}#prtbody .meta{font-size:12.5px;color:#444;margin-bottom:16px}
 #prtbody table{font-size:12px}#prtbody th,#prtbody td{border:1px solid #bbb;padding:5px 6px}#prtbody th{background:#eef2f7;font-size:11px}
 #prtbody .fin td{background:#fef08a;font-weight:800;font-size:15px}
+/* 인보이스 (SmartBee 양식) */
+#prtbody .iv{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:11.5px;page-break-after:always;min-height:9.6in;display:flex;flex-direction:column}
+#prtbody .iv table{font-size:11px}#prtbody .iv th,#prtbody .iv td{border:1px solid #333;padding:3px 5px}#prtbody .iv th{background:#fff;font-weight:700;text-align:center;font-size:10.5px}
+#prtbody .ivh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+#prtbody .ivco{font-size:20px;font-weight:800;letter-spacing:.3px}#prtbody .ivad{font-size:11px;line-height:1.4;margin-top:2px}
+#prtbody .ivt{font-size:20px;font-weight:800;margin-bottom:6px}#prtbody .ivbox{margin-left:auto;min-width:170px}#prtbody .ivbox td{text-align:center;font-weight:700}
+#prtbody .ivparties{display:flex;gap:30px;margin:6px 0 10px}#prtbody .ivp{flex:1;font-size:11.5px;line-height:1.45}#prtbody .ivp b{display:block;font-size:10.5px;margin-bottom:2px}
+#prtbody .ivinfo{width:100%;margin-bottom:8px}#prtbody .ivinfo td{text-align:center;font-weight:700}
+#prtbody .ivlines{width:100%}#prtbody .ivlines td{vertical-align:top}#prtbody .ivlines th:nth-child(1),#prtbody .ivlines td:nth-child(1){width:84px}#prtbody .ivlines th:nth-child(2),#prtbody .ivlines td:nth-child(2){width:36px}
+#prtbody .ivsub td{background:#d9d9d9;font-weight:700;font-size:10.5px;border-top:1px solid #333}
+#prtbody .ivkit{font-size:9.5px;color:#444}
+#prtbody .ivar{margin:14px auto 0;text-align:center;width:70%}#prtbody .ivart{font-weight:800;font-size:11.5px;margin-bottom:3px}#prtbody .ivar table{width:100%}#prtbody .ivar td{text-align:right;font-weight:700}
+#prtbody .ivfoot{margin-top:auto;display:flex;gap:12px;border:1px solid #333;padding:8px;align-items:flex-start}
+#prtbody .ivthx{flex:1 1 60%;min-width:0;font-size:11.5px;line-height:1.5;white-space:pre-line}#prtbody .ivpcs{color:#555;font-size:10px;margin-top:6px}
+#prtbody .ivtot{flex:0 0 240px;border-left:1px solid #333;padding-left:8px}#prtbody .ivtot td{border:0;padding:1px 6px;font-size:11.5px;white-space:nowrap}#prtbody .ivtot td:first-child{text-align:right;color:#333;width:120px}#prtbody .ivT td{font-weight:800;font-size:13px}
+#prtbody .ivpg{text-align:right;font-size:9.5px;color:#555;margin-top:6px}
+@page{size:letter;margin:.45in}
 #prtbody .sig{margin-top:26px;display:flex;gap:40px;font-size:12.5px}#prtbody .sig div{flex:1;border-top:1px solid #333;padding-top:5px}
 @media print{html,body{background:#fff!important;padding:0!important}body>*{display:none!important}body>#prt{display:block!important;position:static!important}#prtbar{display:none!important}#prtbody{padding:0!important;max-width:none!important}}
 @media (min-width:900px){

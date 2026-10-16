@@ -5,7 +5,8 @@
  *  accounts/{acct}.disc = { A: 20, W: 10 }  ← 거래처 기본 할인 % (종류별)
  *  invoices/{no} = { no, t, order, acct, store, sm, d, ym, lines:[{c,d,q,p,lp}], sub, disc, total, bal, terms, st:'open'|'x', memo, createdBy, createdAt }
  * ============================================================ */
-import { esc, money, R2 } from './ui.js';
+import { esc, money, R2, addDays } from './ui.js';
+import { catalog } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
  *  comm: 커미션 계산 때 어느 칸으로 셀지 (A 기본 · P · W) */
@@ -69,17 +70,52 @@ export function fmtNo(t, n) {
 }
 export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, 1); return fmtNo(t, n); }
 
-/** 세일즈 인보이스 인쇄 html */
-export function invoiceHtml(inv, acc) {
-  const rows = inv.lines.slice().sort((a, b) => a.c < b.c ? -1 : 1);
-  return '<div style="page-break-after:always"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h1>THE ONE</h1><div class="meta">Wholesale</div></div>' +
-    '<div style="text-align:right"><h1>INVOICE ' + esc(inv.no) + '</h1><div class="meta">' + esc(inv.d) + (inv.terms ? ' · ' + esc(inv.terms) : '') + '<br>Order ' + esc(inv.order) + ' · Sales ' + esc(inv.sm) + '</div></div></div>' +
-    '<div class="meta"><b>BILL TO:</b> ' + esc(inv.store) + ' (' + esc(inv.acct || '') + ')' + (acc ? '<br>' + esc([acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ')) + (acc.tel ? ' · ' + esc(acc.tel) : '') : '') + '</div>' +
-    '<table><tr><th>#</th><th>CODE</th><th>DESCRIPTION</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr>' +
-    rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b></td><td>' + esc(l.d) + (l.kit ? '<div style="font-size:10.5px;color:#555">' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + '</div>' : '') + '</td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') +
-    '<tr><td colspan="5" class="r">SUBTOTAL (' + rows.reduce((a, l) => a + l.q, 0) + ' pcs)</td><td class="r">' + money(inv.sub) + '</td></tr>' +
-    (inv.disc ? '<tr><td colspan="5" class="r">DISCOUNT ' + inv.disc + '%</td><td class="r">−' + money(inv.sub - inv.total) + '</td></tr>' : '') +
-    '<tr class="fin"><td colspan="5" class="r">TOTAL</td><td class="r">' + money(inv.total) + '</td></tr></table>' +
-    (inv.memo ? '<div class="meta" style="margin-top:8px">Memo: ' + esc(inv.memo) + '</div>' : '') +
-    '<div class="sig"><div>Received by</div><div>Date</div></div></div>';
+/* ---------- 회사 정보 (관리 → 설정) ---------- */
+export const CO_DEFAULT = { name: 'THE ONE CORP', addr1: '4265 CHURCH STREET, UNIT 1009', addr2: 'SANFORD, FL 32771', tel: '(407) 878 - 7274', thanks: 'Thank You For Your Business !' };
+export function company(S) { return Object.assign({}, CO_DEFAULT, (S && S.settings && S.settings.co) || {}); }
+/** 조건에서 일수 — N30 → 30 · ACH60 → 60 · COD → 0 · 없으면 30 */
+export function termDays(terms) { const t = String(terms || '').toUpperCase(); if (/COD|CASH/.test(t)) return 0; const m = t.match(/(\d{1,3})/); return m ? Number(m[1]) : 30; }
+const fmtD = d => { d = String(d || ''); return d.length >= 10 ? d.substring(5, 7) + '/' + d.substring(8, 10) + '/' + d.substring(2, 4) : d; };
+const n2 = v => { v = Number(v) || 0; const s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < 0 ? '-' : '') + (Math.abs(v) < 1 ? s.replace(/^0/, '') : s); };
+
+/** 문서 머리 — 회사 · 제목 · 날짜/번호 상자 (인보이스 · 픽킹 공용) */
+export function docHead(co, title, boxes) {
+  return '<div class="ivh"><div><div class="ivco">' + esc(co.name) + '</div><div class="ivad">' + esc(co.addr1) + '<br>' + esc(co.addr2) + '<br>Phone. ' + esc(co.tel) + '</div></div>' +
+    '<div style="text-align:right"><div class="ivt">' + esc(title) + '</div><table class="ivbox"><tr>' + boxes.map(b => '<th>' + esc(b[0]) + '</th>').join('') + '</tr><tr>' + boxes.map(b => '<td>' + esc(b[1]) + '</td>').join('') + '</tr></table></div></div>';
+}
+/**
+ * 세일즈 인보이스 — SmartBee 양식: BILL TO/SHIP TO · Acct/Terms/Rep/Ship/Via/S.O./Due · 품목 (DC % · DC Price) · 분류별 소계 · AR 에이징 · 합계
+ *  opt = { co, ar: { asOf, bk:[5], bal }, shipVia, rep }
+ */
+export function invoiceHtml(inv, acc, opt) {
+  opt = opt || {}; const co = opt.co || CO_DEFAULT;
+  const C = catalog();
+  const grpOf = l => { if (l.g) return l.g; const it = C && C.byCode[l.c]; return it ? (it.l1 || it.g || '') : ''; };
+  const rows = inv.lines.slice().sort((a, b) => (grpOf(a) + a.c) < (grpOf(b) + b.c) ? -1 : 1);
+  const dc = Number(inv.disc) || 0, f = 1 - dc / 100;
+  const addr = acc ? [acc.addr, [acc.city, acc.state].filter(Boolean).join(', ') + (acc.zip ? ' ' + acc.zip : '')].filter(Boolean) : [];
+  const party = (t) => '<div class="ivp"><b>' + t + ' :</b><div>' + esc(inv.store) + '</div>' + addr.map(x => '<div>' + esc(x) + '</div>').join('') + (t === 'BILL TO' ? '<div>Phone : ' + esc((acc && acc.tel) || '') + '</div>' : '') + '</div>';
+  const terms = inv.terms || (acc && acc.terms) || 'N30';
+  const due = addDays(inv.d, termDays(terms));
+  /* 품목 — 분류별 소계 */
+  let body = '', cur = null, gq = 0, gl = 0, gd = 0, gt = 0, tq = 0;
+  const flush = () => { if (cur === null) return; body += '<tr class="ivsub"><td colspan="4" class="r">' + esc(cur || '기타') + ' Sub Total:</td><td class="r">' + n2(gl) + '</td><td></td><td class="r">' + n2(gt - gl) + '</td><td class="r">' + n2(gt) + '</td></tr>'; gq = gl = gd = gt = 0; };
+  rows.forEach(l => {
+    const g = grpOf(l); if (g !== cur) { flush(); cur = g; }
+    const dp = R2(l.p * f), lt = R2(l.q * dp); gq += l.q; gl += l.q * l.p; gt += lt; tq += l.q;
+    body += '<tr><td><b>' + esc(l.c) + '</b></td><td class="r">' + l.q + '</td><td>' + esc(l.d) + (l.kit ? '<div class="ivkit">' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + '</div>' : '') + '</td><td class="r">' + n2(l.p) + '</td><td class="r">' + (dc ? dc + '%' : '%') + '</td><td class="r">' + n2(dp) + '</td><td class="r">' + n2(lt) + '</td></tr>';
+  });
+  flush();
+  const ar = opt.ar;
+  const arBox = ar && ar.asOf ? '<div class="ivar"><div class="ivart">AR balance Aging As Of ' + esc(fmtD(ar.asOf)) + '</div><table><tr><th>0-30</th><th>31-60</th><th>61-90</th><th>Over 90</th><th>Total</th></tr><tr><td>' + n2(ar.bk[0] + ar.bk[1]) + '</td><td>' + n2(ar.bk[2]) + '</td><td>' + n2(ar.bk[3]) + '</td><td>' + n2(ar.bk[4]) + '</td><td><b>' + n2(ar.bal) + '</b></td></tr></table></div>' : '';
+  const discAmt = R2(inv.sub - inv.total);
+  return '<div class="iv">' + docHead(co, 'INVOICE', [['Date', fmtD(inv.d)], ['Invoice No.', inv.no]]) +
+    '<div class="ivparties">' + party('BILL TO') + party('SHIP TO') + '</div>' +
+    '<table class="ivinfo"><tr><th>Acct. No.</th><th>Terms</th><th>Rep.</th><th>Ship</th><th>Ship Via</th><th>S.O. No.</th><th>Due Date</th></tr>' +
+    '<tr><td>' + esc(inv.acct || '') + '</td><td>' + esc(terms) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS') + '</td><td>' + esc(inv.order || '') + '</td><td>' + esc(fmtD(due)) + '</td></tr></table>' +
+    '<table class="ivlines"><thead><tr><th>Item</th><th class="r">Qty</th><th>Description</th><th class="r">Price</th><th class="r">DC %</th><th class="r">DC Price</th><th class="r">Total</th></tr></thead><tbody>' + body + '</tbody></table>' +
+    arBox +
+    '<div class="ivfoot"><div class="ivthx">' + esc(co.thanks || '') + (inv.memo ? '<br>' + esc(inv.memo) : '') + '<div class="ivpcs">' + rows.length + ' lines · ' + tq + ' pcs</div></div>' +
+    '<table class="ivtot"><tr><td>Sub Total</td><td class="r">' + n2(inv.sub) + '</td></tr><tr><td>Discount' + (dc ? ' ' + dc + '%' : '') + '</td><td class="r">' + n2(-discAmt) + '</td></tr><tr><td>S &amp; H</td><td class="r">' + n2(inv.ship || 0) + '</td></tr><tr class="ivT"><td>Total</td><td class="r">' + n2(inv.total + (Number(inv.ship) || 0)) + '</td></tr></table></div>' +
+    '<div class="ivpg">' + esc(inv.no) + ' · printed ' + esc(new Date().toLocaleString('en-US')) + '</div></div>';
 }

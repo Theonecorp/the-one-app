@@ -37,7 +37,7 @@ const path = require('path'), fs = require('fs');
   log('types:', (await pg.textContent('#eTypes')).replace(/\s+/g, ' '));
   await pg.click('#eSend'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(800);
   await pg.click('#mPick'); await pg.waitForTimeout(500); await pg.screenshot({ path: path.resolve(__dirname, 'out', 'g5_pickprint.png'), fullPage: true }); await pg.click('#prtClose'); await pg.waitForTimeout(300);
-  await pg.click('#mInv'); await pg.waitForTimeout(200); await pg.click('#ivOk'); await pg.waitForTimeout(900); await pg.screenshot({ path: path.resolve(__dirname, 'out', 'g6_inv.png'), fullPage: true }); await pg.click('#prtClose'); await pg.waitForTimeout(300);
+  await pg.click('#mInv'); await pg.waitForTimeout(200); await pg.click('#ivOk'); await pg.waitForTimeout(1200); await pg.setViewportSize({ width: 820, height: 1100 }); await pg.screenshot({ path: path.resolve(__dirname, 'out', 'g6_inv.png'), fullPage: true }); await pg.setViewportSize({ width: 430, height: 1000 }); await pg.click('#prtClose'); await pg.waitForTimeout(300);
   log('invoices:', (await pg.textContent('#page .sumbox')).replace(/\s+/g, ' '));
   /* 번호 단계 넘김 */
   log('fmtNo:', await pg.evaluate(async () => { const m = await import('/src/invoicing.js').catch(() => null); return m ? [1, 99999, 100000, 199998, 199999].map(n => m.fmtNo({ c: 'G' }, n)).join(' ') : 'skip'; }));
