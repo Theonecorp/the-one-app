@@ -41,6 +41,14 @@ export async function storeInfo(acct, force) {
         out.bal = R2(out.bal); out.bk = out.bk.map(R2);
       }
     }
+    /* 앱에서 확정한 인보이스 — AR 에 아직 없는 것은 미결 목록에 더함 */
+    try {
+      const app = await S.DB.list('invoices', { where: wh.concat([['st', '==', 'open']]) });
+      const have = {}; out.invs.forEach(v => { have[v.no] = 1; });
+      const paidApp = {}; pays.forEach(e => { if (e.void || e.repl) return; (e.invs || []).forEach(v => { paidApp[v.no] = R2((paidApp[v.no] || 0) + num(v.amt)); }); });
+      app.forEach(x => { if (have[x.no]) return; const p = paidApp[x.no] || 0, bal = R2((x.bal != null ? x.bal : x.total) - p), pdd = Math.max(0, daysBetween(x.d, today()) - 30), bk = pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4; out.invs.push({ no: x.no, d: x.d, amt: x.total, paid: p, bal, pdd, bk, app: true }); if (bal > 0.005) { out.bal = R2(out.bal + bal); out.bk[bk] = R2(out.bk[bk] + bal); } });
+      out.invs.sort((x, y) => x.d < y.d ? 1 : -1);
+    } catch (e) {}
     out.orders = sortBy(orders.filter(o => o.st !== 'x'), o => o.d + (o.createdAt || ''), true).slice(0, 30);
     out.pays = sortBy(pays.filter(e => !e.void), e => e.d + (e.createdAt || ''), true).slice(0, 30);
     /* 아이템별 최근 구매 — 최근 오더 8건의 줄을 읽음 (인보이스 확정된 것 우선) */
@@ -66,7 +74,7 @@ export async function storeSheet(acct, onPick) {
   const paint = () => {
     let body = '';
     if (tab === 'inv') body = live.length || credits.length ? '<table><tr><th>인보이스 Invoice</th><th>날짜 Date</th><th class="r">금액 Amt</th><th class="r">잔액 Bal</th></tr>' +
-      live.concat(credits).map(v => '<tr' + (v.bk >= 3 ? ' style="background:#fef2f2"' : '') + '><td><b>' + esc(v.no) + '</b></td><td>' + esc(md(v.d)) + (v.pdd > 0 ? ' <span class="muted">' + v.pdd + '일</span>' : '') + '</td><td class="r">' + money(v.amt) + '</td><td class="r"><b>' + money(v.bal) + '</b></td></tr>').join('') + '</table>' : '<div class="none">미결 인보이스 없음 · No open invoices' + (info.asOf ? '' : ' (AR 아직 안 올라옴 · AR not uploaded yet)') + '</div>';
+      live.concat(credits).map(v => '<tr' + (v.bk >= 3 ? ' style="background:#fef2f2"' : '') + '><td><b>' + esc(v.no) + '</b>' + (v.app ? ' <span class="tag t-b">앱</span>' : '') + '</td><td>' + esc(md(v.d)) + (v.pdd > 0 ? ' <span class="muted">' + v.pdd + '일</span>' : '') + '</td><td class="r">' + money(v.amt) + '</td><td class="r"><b>' + money(v.bal) + '</b></td></tr>').join('') + '</table>' : '<div class="none">미결 인보이스 없음 · No open invoices' + (info.asOf ? '' : ' (AR 아직 안 올라옴 · AR not uploaded yet)') + '</div>';
     else if (tab === 'ord') body = info.orders.length ? info.orders.map(o => '<div class="pr tap" data-so="' + esc(o.id) + '"><div class="ct"><b>' + esc(o.no) + ' ' + stTag(o.st) + '</b><small>' + esc(o.d) + ' · ' + esc(o.sm) + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.memo ? ' · ' + esc(o.memo) : '') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div></div>').join('') : '<div class="none">앱으로 넣은 오더가 아직 없습니다 · No app orders yet</div>';
     else body = info.pays.length ? info.pays.map(e => '<div class="pr"><div class="ct"><b>' + esc((e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(', ') || '수금') + '</b><small>' + esc(e.d) + ' · ' + esc(e.sm) + (e.invs && e.invs.length ? ' · ' + esc(e.invs.map(v => v.no).filter(Boolean).join(', ')) : '') + '</small></div><div class="pa"><b>' + money(e.total) + '</b><small>' + (e.settled ? '정산됨' : e.v ? '확인' : e.sb ? '입력' : '') + '</small></div></div>').join('') : '<div class="none">최근 6개월 수금 기록 없음 · No payments in 6 months</div>';
     $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><h2 style="margin:0">' + esc(a ? a.store : acct) + '</h2><div class="muted">' + esc(acct) + (a ? ' · ' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.tel ? ' · ' + esc(a.tel) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + (a.sm ? ' · ' + esc(a.sm) : '') : '') + '</div>' + (a && a.note ? '<div class="alert a-blu" style="margin-top:6px">📝 ' + esc(a.note) + '</div>' : '') + '</div><button class="b-ghost b-sm" id="ssX">✕</button></div>' +

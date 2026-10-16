@@ -161,9 +161,16 @@ export async function openInvoices(acct) {
   const ar = await arDoc(); if (!ar || !ar.stores) return { asOf: '', list: [] };
   const st = ar.stores.find(s => s.acct === acct); if (!st) return { asOf: ar.asOf, list: [] };
   const paid = await paidSince(ar.asOf || '');
-  const list = (st.invs || []).map(v => { const p = paid[acct + '|' + v.inv] || 0; return { no: v.inv, d: v.d, amt: v.amt, paid: p, bal: R2(v.bal - p), pdd: v.pdd, bk: v.bk }; })
-    .filter(v => v.bal > 0.005 || v.bal < -0.005).sort((a, b) => a.d < b.d ? -1 : 1);
-  return { asOf: ar.asOf, list };
+  const list = (st.invs || []).map(v => { const p = paid[acct + '|' + v.inv] || 0; return { no: v.inv, d: v.d, amt: v.amt, paid: p, bal: R2(v.bal - p), pdd: v.pdd, bk: v.bk }; });
+  /* 앱에서 확정한 인보이스 (아직 SmartBee AR 에 없는 것) 도 같이 — 세일즈맨이 어느 인보이스에 얼마를 적용할지 고를 수 있게 */
+  try {
+    const wh = [['acct', '==', acct], ['st', '==', 'open']]; if (S.role === 'salesman') wh.push(['sm', '==', me()]);
+    const app = await S.DB.list('invoices', { where: wh });
+    const have = {}; list.forEach(v => { have[v.no] = 1; });
+    app.forEach(x => { if (have[x.no]) return; const p = paid[acct + '|' + x.no] || 0, pdd = Math.max(0, daysBetween(x.d, today()) - 30); list.push({ no: x.no, d: x.d, amt: x.total, paid: p, bal: R2((x.bal != null ? x.bal : x.total) - p), pdd, bk: pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4, app: true }); });
+  } catch (e) {}
+  list.sort((a, b) => a.d < b.d ? -1 : 1);
+  return { asOf: ar.asOf, list: list.filter(v => v.bal > 0.005 || v.bal < -0.005) };
 }
 async function paintArPick() {
   const box = $('arPick'); if (!box) return;

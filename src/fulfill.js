@@ -75,7 +75,7 @@ export function manage(o, lines) {
   $('page').innerHTML = h;
 
   let MF = 'all';
-  const sumNow = () => { $('mSum').innerHTML = typeSummary(splitByType(lines, o.disc, picking ? 'pq' : 'q')) + (picking ? boLine() : ''); };
+  const sumNow = () => { $('mSum').innerHTML = (picking ? '<div class="muted" style="margin-top:8px">🧾 픽킹한 수량 기준 — 확정하면 종류마다 인보이스가 따로 나옵니다 <span class="en">Based on picked qty; one invoice per type on confirm</span></div>' : '<div class="muted" style="margin-top:8px">🧾 주문 수량 기준 미리보기 — 픽킹 후 확정 <span class="en">Preview by ordered qty; split after picking</span></div>') + typeSummary(splitByType(lines, o.disc, picking ? 'pq' : 'q')) + (picking ? boLine() : ''); };
   const boLine = () => { const b = lines.filter(l => (l.pq || 0) < l.q); return b.length ? '<div class="alert a-red">⏳ 백오더 ' + b.length + '줄 · ' + b.reduce((a, l) => a + l.q - (l.pq || 0), 0) + '개</div>' : '<div class="alert a-grn">✓ 모두 픽킹됨</div>'; };
   const types = invTypes(S);
   const paint = () => {
