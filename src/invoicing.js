@@ -80,7 +80,7 @@ const n2 = v => { v = Number(v) || 0; const s = Math.abs(v).toFixed(2).replace(/
 
 /** 문서 머리 — 회사 · 제목 · 날짜/번호 상자 (인보이스 · 픽킹 공용) */
 export function docHead(co, title, boxes) {
-  return '<div class="ivh"><div><div class="ivco">' + esc(co.name) + '</div><div class="ivad">' + esc(co.addr1) + '<br>' + esc(co.addr2) + '<br>Phone. ' + esc(co.tel) + '</div></div>' +
+  return '<div class="ivh"><div style="display:flex;align-items:center"><img src="logo.png" class="ivlogo" alt=""><div><div class="ivco">' + esc(co.name) + '</div><div class="ivad">' + esc(co.addr1) + '<br>' + esc(co.addr2) + '<br>Phone. ' + esc(co.tel) + '</div></div></div>' +
     '<div style="text-align:right"><div class="ivt">' + esc(title) + '</div><table class="ivbox"><tr>' + boxes.map(b => '<th>' + esc(b[0]) + '</th>').join('') + '</tr><tr>' + boxes.map(b => '<td>' + esc(b[1]) + '</td>').join('') + '</tr></table></div></div>';
 }
 /**

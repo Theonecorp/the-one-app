@@ -19,7 +19,7 @@ import * as Store from './store.js';
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
 export function register(state) {
-  S = state; Router.on('order', pageOrder); Fulfill.register(state); Store.register(state);
+  S = state; Router.on('order', pageOrder); Router.on('home', pageHome); Fulfill.register(state); Store.register(state);
   /* 인터넷이 다시 되면 · 앱을 다시 열면 보낼 함을 비움 */
   window.addEventListener('online', () => syncOutbox(true));
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncOutbox(true); });
@@ -67,6 +67,25 @@ export async function syncOutbox(quiet) {
   if (!quiet || sent) { if (sent) toast('📤 오더 ' + sent + '건 보냄' + (left ? ' · 남은 ' + left + '건' : ''), 'good'); }
   if (sent && location.hash === '#/order' && !O) pageOrder('');
   return { sent, left };
+}
+
+/* ============================================================
+ *  🏠 홈 (세일즈맨) — SBMGo 시작 화면처럼 큰 버튼
+ * ============================================================ */
+async function pageHome() {
+  const name = (S.user && (S.user.name || S.user.email)) || '';
+  const out = outboxList().filter(x => x.o.sm === mySm()).length;
+  const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + icon + '</span><b>' + label + '</b><small id="hs-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
+  $('page').innerHTML = '<div class="card" style="text-align:center"><img src="logo.png" alt="" style="width:64px;height:64px"><div style="font-weight:800;font-size:17px;margin-top:4px">' + esc(name) + '</div><div class="muted">' + esc(mySm()) + ' · ' + (navigator.onLine === false ? '<span class="warn">오프라인</span>' : '<span class="ok">온라인</span>') + (out ? ' · <span class="warn">📤 안 보낸 오더 ' + out + '건</span>' : '') + '</div></div>' +
+    '<div class="hgrid">' + tile('order/new', '🛒', '새 오더', '가게 고르고 담기', 'blue') + tile('order', '📤', '보낼 오더', '읽는 중…', 'green') + tile('order', '📋', '내 오더', '최근 2달') + tile('entry/new', '✍️', '수금 입력', '체크 · 캐쉬') + tile('ar', '💰', '미수금', '내 가게 AR') + tile('mycomm', '🧾', '정산서', '커미션') + '</div>' +
+    '<button class="b-ghost" id="hMine" style="margin-top:4px">📋 내 수금 기록</button>';
+  document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
+  $('hMine').onclick = () => Router.go('mine');
+  try {
+    const rows = await S.DB.list('orders', { where: [['sm', '==', mySm()], ['ym', 'in', recentYms(2)]] });
+    const d = rows.filter(o => o.st === 'draft').length + out, sent = rows.filter(o => o.st === 'sent').length;
+    const el = document.querySelectorAll('#hs-order'); if (el[0]) el[0].textContent = d ? d + '건 대기 중' : '보낼 것 없음'; if (el[1]) el[1].textContent = rows.length + '건 · 회사 확인 중 ' + sent;
+  } catch (e) { const el = $('hs-order'); if (el) el.textContent = '—'; }
 }
 
 /* ============================================================

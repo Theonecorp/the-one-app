@@ -4,7 +4,7 @@ export const CSS = `
 html,body{margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45;padding-bottom:78px;-webkit-tap-highlight-color:transparent}
 header{position:sticky;top:0;z-index:40;background:var(--navy);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
-header h1{font-size:15px;margin:0;font-weight:700}
+header h1{font-size:15px;margin:0;font-weight:700}header .hlogo{width:26px;height:26px;border-radius:50%}
 header .hr{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:#94a3b8}
 header .hb{background:rgba(255,255,255,.12);color:#fff;border:0;font-size:17px;padding:5px 11px;border-radius:9px}
 .wrap{max-width:880px;margin:0 auto;padding:12px 12px 0}
@@ -15,7 +15,7 @@ header .hb{background:rgba(255,255,255,.12);color:#fff;border:0;font-size:17px;p
 .muted{color:var(--muted);font-size:12.5px;line-height:1.6}
 .up{color:var(--green);font-weight:700}.down{color:var(--red);font-weight:700}
 .warn{color:var(--red);font-weight:800}.ok{color:var(--green);font-weight:700}
-.login{text-align:center;padding:40px 16px}.login .logo{font-size:40px;margin-bottom:6px}.login h1{font-size:22px;margin:0 0 4px}.login p{color:var(--muted);font-size:14px;margin:0 0 22px}
+.login{text-align:center;padding:40px 16px}.login .logo{font-size:40px;margin-bottom:6px}.login .logo img{width:110px;height:110px}.login h1{font-size:22px;margin:0 0 4px}.login p{color:var(--muted);font-size:14px;margin:0 0 22px}
 .load{text-align:center;padding:36px 0;color:var(--muted);font-size:14px}
 .none{text-align:center;padding:22px 0;color:#94a3b8;font-size:14px}
 button{font-family:inherit;cursor:pointer}
@@ -114,6 +114,10 @@ table.pk td{vertical-align:top}table.pk tr.bo td{background:#fef2f2}
 #viewer .vnav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.12);color:#fff;border:0;width:46px;height:64px;border-radius:12px;font-size:30px;z-index:2}#viewer #vL{left:8px}#viewer #vR{right:8px}
 #viewer .vinfo{padding:12px 16px 18px;background:#0f172a}#viewer .vinfo b{font-size:18px}#viewer .vprice{font-size:22px;font-weight:800;margin-top:4px}#viewer .vkit{color:#c4b5fd;font-weight:700;margin-top:4px}
 @media (min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.htile{background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:18px 12px;text-align:center;box-shadow:var(--sh);min-height:112px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.htile .hi{font-size:30px;line-height:1.1}.htile b{font-size:15px}.htile small{color:var(--muted);font-size:11.5px}
+.htile.blue{background:var(--blue);border-color:var(--blue);color:#fff}.htile.blue small{color:#dbeafe}.htile.green{background:var(--green);border-color:var(--green);color:#fff}.htile.green small{color:#dcfce7}
 .qbar{display:flex;gap:4px;align-items:center;background:var(--navy);border-radius:11px;padding:6px;margin-bottom:8px;overflow:auto}
 .qbar span{flex:1;min-width:0;color:#cbd5e1;font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px}
 .qbar button{flex:0 0 auto;min-width:40px;height:40px;border:0;border-radius:9px;background:rgba(255,255,255,.14);color:#fff;font-size:15px;font-weight:800}.qbar button:last-child{background:#b91c1c}
@@ -130,7 +134,7 @@ table.pk td{vertical-align:top}table.pk tr.bo td{background:#fef2f2}
 /* 인보이스 (SmartBee 양식) */
 #prtbody .iv{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:11.5px;page-break-after:always;min-height:9.6in;display:flex;flex-direction:column}
 #prtbody .iv table{font-size:11px}#prtbody .iv th,#prtbody .iv td{border:1px solid #333;padding:3px 5px}#prtbody .iv th{background:#fff;font-weight:700;text-align:center;font-size:10.5px}
-#prtbody .ivh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+#prtbody .ivh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}#prtbody .ivh .ivlogo{width:62px;height:62px;margin-right:10px;float:left}
 #prtbody .ivco{font-size:20px;font-weight:800;letter-spacing:.3px}#prtbody .ivad{font-size:11px;line-height:1.4;margin-top:2px}
 #prtbody .ivt{font-size:20px;font-weight:800;margin-bottom:6px}#prtbody .ivbox{margin-left:auto;min-width:170px}#prtbody .ivbox td{text-align:center;font-weight:700}
 #prtbody .ivparties{display:flex;gap:30px;margin:6px 0 10px}#prtbody .ivp{flex:1;font-size:11.5px;line-height:1.45}#prtbody .ivp b{display:block;font-size:10.5px;margin-bottom:2px}
