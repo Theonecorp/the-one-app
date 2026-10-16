@@ -45,6 +45,8 @@ export function prefixRank(name) {
   if (/^[<*#]/.test(s) || /^zz?[A-Z]/.test(s)) return 4;
   return 2;
 }
+/** Level 1 이름 → Group (인보이스 종류): "" " → Set & Display(W) · [ < * z → Other(P) · 보통 이름 → Jewelry(A) */
+export function familyOf(l1) { const r = prefixRank(l1); return r <= 1 ? 'Set & Display' : r === 2 ? 'Jewelry' : 'Other'; }
 /** 깨끗한 이름 — 화면에 보일 때는 "" [ ] < > 를 뗌 */
 export function cleanName(name) { return String(name || '').replace(/^""|""$/g, '').replace(/^["\[<*]+|["\]>*]+$/g, '').replace(/^zz?(?=[A-Z])/, '').trim() || String(name || ''); }
 function rank(name) { const k = pinKey(name); const t = PINS.top.findIndex(x => pinKey(x) === k); if (t >= 0) return [0, t]; const b = PINS.bottom.findIndex(x => pinKey(x) === k); if (b >= 0) return [2, b]; return [1, prefixRank(name)]; }
@@ -388,11 +390,29 @@ export function parseBulkSheet(aoa) {
   if (ix.gN >= 0 || ix.gC >= 0) { if (!has.includes('l3')) has.push('l3'); }
   if (!has.length) throw new Error('바꿀 열이 없습니다 (Description · Price · Level 1 · NewCode …)');
   const str = v => String(v == null ? '' : v).trim();
-  const out = [], broken = [];
+  const out = [], broken = [], fixed = [];
+  /* SmartBee 내보내기(LEVEL_1_AND_2 · GROUP_NAME_CHANGE)에서 칸 안에 줄바꿈 · 탭이 섞여 깨진 줄 —
+   *   'L1\tL2\r\ncode2\tL1\r\ncode3\t\t…' 꼴. 첫 조각은 이 줄의 값, 그 뒤 줄들은 "코드 \t 값" 으로 살려서 따로 패치를 만듦 */
+  const sbmLevel = ix.l1 >= 0 && ix.g < 0 && ix.d < 0, sbmGroup = ix.gC >= 0 && ix.l1 < 0;
+  const rowsIn = [];
   for (let i = 1; i < aoa.length; i++) {
-    const r = aoa[i] || []; const code = str(r[ix.c]).toUpperCase(); if (!code) continue;
-    /* SBM 내보내기에서 칸 안에 줄바꿈 · 탭이 섞여 깨진 줄은 건너뜀 */
-    if (r.some(v => /[\n\t]/.test(String(v == null ? '' : v)))) { broken.push(code); continue; }
+    const r = (aoa[i] || []).slice(); const code = str(r[ix.c]).toUpperCase(); if (!code) continue;
+    const bad = r.findIndex(v => /[\n\t]/.test(String(v == null ? '' : v)));
+    if (bad < 0) { rowsIn.push(r); continue; }
+    if (!(sbmLevel || sbmGroup)) { broken.push(code); continue; }
+    const lines = String(r[bad]).replace(/_x000D_/g, '').split(/\r?\n/);
+    const first = lines[0].split('\t'), last = str(r[bad + 1]);
+    const me = r.slice(); me[bad] = str(first[0]); if (sbmLevel) me[bad + 1] = str(first[1] || ''); rowsIn.push(me); fixed.push(code);
+    lines.slice(1).forEach((ln, j) => {
+      const p = ln.split('\t'), c2 = str(p[0]).toUpperCase(); if (!c2) return;
+      const x = []; x[ix.c] = c2;
+      if (sbmLevel) { x[ix.l1] = str(p[1] || ''); x[ix.l2] = j === lines.length - 2 && str(p[1]) ? last : str(p[2] || ''); }
+      else { x[ix.gC] = str(p[1] || ''); }
+      rowsIn.push(x); fixed.push(c2);
+    });
+  }
+  for (const r of rowsIn) {
+    const code = str(r[ix.c]).toUpperCase(); if (!code) continue;
     const pt = { code, set: {} };
     has.forEach(k => {
       if (k === 'gN' || k === 'gC') return;
@@ -404,9 +424,11 @@ export function parseBulkSheet(aoa) {
       else if (k === 'b') { let bb = str(v).replace(/\.0+$/, ''); if (/^\d{11}$/.test(bb)) bb = '0' + bb; pt.set.b = bb; }
       else pt.set[k] = k === 'ph' ? str(v).split(/\s+/)[0] : str(v);
     });
-    out.push(pt);
+    /* Level 1 만 주고 Group 이 없는 파일 (SmartBee LEVEL_1_AND_2) — Group 은 앞글자 규칙으로 (Jewelry · Other · Set & Display = A · P · W) */
+    if (pt.set.l1 && ix.g < 0) pt.set.g = familyOf(pt.set.l1);
+    if (Object.keys(pt.set).length || pt.nc || pt.del) out.push(pt);
   }
-  return { patches: out, cols: has.filter(k => k !== 'gN' && k !== 'gC'), broken };
+  return { patches: out, cols: has.filter(k => k !== 'gN' && k !== 'gC'), broken, fixed };
 }
 /** 패치 적용 — rows 와 sets 를 바꾸고 요약 돌려줌 */
 export function applyBulk(rows, cats, sets, patches) {
@@ -439,6 +461,9 @@ export function applyBulk(rows, cats, sets, patches) {
   return sum;
 }
 /** 지금 아이템 전체를 CSV 로 (엑셀에서 고쳐서 다시 올리는 용) */
+/** SmartBee 편의 파일 모양으로 내려받기 — LEVEL_1_AND_2 (ITEM CODE · LEVEL 1 · LEVEL 2) / GROUP_NAME_CHANGE (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) */
+export function sbmLevelRows() { return [['ITEM CODE', 'LEVEL 1', 'LEVEL 2']].concat(CAT.items.filter(x => !x.virt).map(x => [x.c, x.l1 || '', x.l2 || ''])); }
+export function sbmGroupRows() { return [['ITEM CODE', 'CURRENT GROUP NAME', 'NEW GROUP NAME']].concat(CAT.items.filter(x => !x.virt).map(x => [x.c, x.l3 || '', ''])); }
 export function catalogCsv() {
   const q = s => { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const head = ['Code', 'NewCode', 'Description', 'Price', 'SRP', 'Barcode', 'Group', 'Level 1', 'Level 2', 'Level 3', 'Photo', 'Delete'];
