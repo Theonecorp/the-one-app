@@ -403,7 +403,7 @@ function itemRow(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const t = typeOfItem(S, it), dc = Number((O.disc || {})[t]) || 0, hist = Store.histText(INFO, it.c), lp = Store.lastPrice(INFO, it.c);
   return '<div class="pr irow' + (cur ? ' v' : '') + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
-    (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
+    (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
     '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '</b><small>' + esc(it.d) + '</small>' +
     '<small><b>' + money(it.p) + '</b>' + (dc ? ' → 할인가 ' + money(it.p * (1 - dc / 100)) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · 지난번 ' + money(lp) : '') + (it.s ? ' · SRP ' + money(it.s) : '') + '</small>' +
     (hist ? '<small class="hist">🕘 ' + esc(hist) + '</small>' : '') + '</div>' +
@@ -412,8 +412,8 @@ function itemRow(it) {
 /** 사진 카드 — 누르면 1개 담김, 숫자를 누르면 수량 입력, − 로 빼기 */
 function itemCard(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
-  return '<div class="gcard' + (cur ? ' on' : '') + '" data-gc="' + esc(it.c) + '">' +
-    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="">' : '<span>' + esc(it.c.substring(0, 6)) + '</span>') + '</div>' +
+  return '<div class="gcard' + (cur ? ' on' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
+    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span>' + esc(it.c.substring(0, 6)) + '</span>\'">' : '<span>' + esc(it.c.substring(0, 6)) + '</span>') + '</div>' +
     (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') +
     '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
     '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(it.d) + '</small><span>' + money(it.p) + '</span></div></div>';

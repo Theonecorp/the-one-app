@@ -6,7 +6,7 @@ import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer } from './mgr.js';
 import { roleLabel, JOBS, jobLabel } from './main.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes } from './catalog.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl } from './catalog.js';
 import { invTypes, fmtNo, company } from './invoicing.js';
 
 let S = null, TAB = 'users';
@@ -224,8 +224,22 @@ async function catalogAdmin() {
     '<div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽고, Hide 에 x 표시된 것은 뺍니다. 시트가 바뀔 때마다 다시 올리면 됩니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' +
     '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
+    photoCard() +
     '<div class="card"><h2>🛒 오더 탭</h2><label class="pick ' + (S.settings.ordersOn ? 'on' : '') + '" id="ordOn"><span class="ck">✓</span><span class="pm"><b>세일즈맨 · 담당자에게 오더 탭 보이기</b><small>끄면 관리자만 봅니다 (시험용)</small></span></label></div>';
   setAdmin();
+  $('phDrive').onclick = async () => {
+    const on = !S.settings.photoDrive;
+    busy(true);
+    try { const cur = (await S.DB.get('settings', 'app')) || {}; await S.DB.set('settings', 'app', Object.assign(cur, { photoDrive: on })); S.settings.photoDrive = on; await loadCatalog(S, true); toast(on ? '드라이브 사진을 씁니다' : '드라이브 사진을 끔'); catalogAdmin(); }
+    catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+  if ($('phTest')) $('phTest').onclick = () => {
+    const px = photoIndex(); const id = px && (px.pic['N_BH01G'] || Object.values(px.pic)[0]);
+    const out = $('phTestOut'); out.innerHTML = '<div class="load">사진 불러오는 중…</div>';
+    const img = new Image(); img.onload = () => { out.innerHTML = '<div class="alert a-grn">✅ 드라이브 사진이 열립니다 — 켜도 됩니다</div>'; }; img.onerror = () => { out.innerHTML = '<div class="alert a-red">❌ 열리지 않습니다 — 드라이브에서 <b>item_picture</b> · <b>The One item</b> 공유 드라이브(폴더)를 "링크가 있는 모든 사용자 · 뷰어"로 바꾼 뒤 다시 시험하세요</div>'; };
+    img.src = driveUrl(id, 100) + '&t=' + Date.now();
+  };
   $('catFile').onchange = async () => {
     const file = $('catFile').files[0]; if (!file) return;
     const out = $('catOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
@@ -256,6 +270,15 @@ async function catalogAdmin() {
   };
 }
 
+/* ---- 사진 규칙 ---- */
+function photoCard() {
+  const C = catalog(), st = (C && C.photoStat) || { dropped: 0, drive: 0 }, px = photoIndex();
+  const withPh = C ? C.items.filter(x => x.ph).length : 0;
+  return '<div class="card"><h2>🖼 사진 규칙 — 코드와 맞는 사진만</h2><div class="muted">① 드라이브 item_picture 에 <b>코드 이름</b>으로 있는 사진 (세트 · 인서트는 Gallery 의 세트 사진) ② 시트 Photo 칸 — 같은 사진을 골드 · 실버 아이템이 같이 쓰면 URL 에 코드가 들어 있는 것만 ③ 세트는 구성품 사진을 빌리지 않음.</div>' +
+    '<div class="sumbox" style="margin-top:8px">지금 사진 있는 아이템 <b>' + withPh.toLocaleString() + '</b>개 · 골드/실버 섞여서 뺀 것 <b>' + st.dropped + '</b>개 · 드라이브 사진 ' + (S.settings.photoDrive ? '<b>' + st.drive + '</b>개 사용 중' : '꺼짐') + (px ? ' · 드라이브 색인 ' + Object.keys(px.pic).length + ' + 세트 ' + Object.keys(px.gal).length : '') + '</div>' +
+    '<label class="pick ' + (S.settings.photoDrive ? 'on' : '') + '" id="phDrive" style="margin-top:8px"><span class="ck">✓</span><span class="pm"><b>드라이브 item_picture 사진 쓰기</b><small>폴더가 "링크가 있는 모든 사용자" 로 공유돼 있어야 폰에서 보입니다. 아래 시험으로 먼저 확인하세요.</small></span></label>' +
+    '<div class="btns"><button class="b-ghost b-sm" id="phTest">🔎 드라이브 사진 시험</button></div><div id="phTestOut"></div></div>';
+}
 /* ---- 인보이스 종류 — 아이템이 어느 인보이스로 갈지, 커미션은 어느 칸으로 셀지 ---- */
 let IT = null;
 function invTypeCard() {

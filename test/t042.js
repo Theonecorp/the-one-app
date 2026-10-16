@@ -14,6 +14,9 @@ const path = require('path'), fs = require('fs');
     window.__AFTER_SEED__ = s => {
       s.settings[0].ordersOn = true;
       s.settings[0].catPins = { top: ['Wax'], bottom: ['Chains'] };
+      /* 사진 규칙: AHG100(gold) 과 AHG101(silver) 이 같은 사진 → 둘 다 뺌, AHG102 는 URL 에 코드 → 유지, 세트는 구성품 사진 안 빌림 */
+      const rows = JSON.parse(s.catalog[1].j); rows[0][9] = 'https://cdn.x/files/shared.jpg'; rows[1][9] = 'https://cdn.x/files/shared.jpg'; rows[2][9] = 'https://cdn.x/files/AHG102.jpg'; rows[3][9] = 'https://cdn.x/files/AHG103-1.jpg'; rows[4][9] = 'https://cdn.x/files/only.jpg';
+      rows[0][1] = 'ALUMINUM HOOP GOLD 100'; rows[1][1] = 'ALUMINUM HOOP SILVER 101'; s.catalog[1].j = JSON.stringify(rows);
       s.catalog.push({ id: 'pop', j: JSON.stringify([['GM104', 500], ['EB103', 300], ['AHG100', 200], ['AHG101', 150]]), n: 4 });
       const mk = (no, t, d, acct, store, sm, total, st) => ({ id: no, no, t, d, ym: d.substring(0, 7), acct, store, sm, order: 'O261014-AAAA', orderId: 'O261014-AAAA', qty: 10, sub: total, disc: 0, total, bal: total, terms: 'N30', st: st || 'open', lines: [{ c: 'AHG100', d: 'x', q: 10, p: total / 10 }], createdAt: d + 'T10:00:00Z' });
       s.invoices = [mk('G00001', 'G', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 100), mk('P00001', 'P', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 50), mk('G00002', 'G', d1, '1049', 'ELEGANT BEAUTY', 'SOO', 80), mk('G00003', 'G', d40, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 70), mk('H00001', 'H', d1, '1049', 'ELEGANT BEAUTY', 'SOO', 30, 'x')];
@@ -49,8 +52,18 @@ const path = require('path'), fs = require('fs');
   if (!/Chains/.test(after[0])) errs.push('pin top failed: ' + after.join('|'));
   await pg.click('[data-tup="Chains"]'); await pg.waitForTimeout(600);
   log('after unpin:', await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent).join(' | ')));
+  /* 사진 규칙 — 오더 담기 화면에서 코드별 사진 확인 */
+  await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eQ1');
+  const phs = [];
+  for (const c of ['AHG100', 'AHG101', 'AHG102', 'EB103', 'GM104', 'FI-TEST01']) {
+    await pg.fill('#eQ1', c); await pg.waitForTimeout(350);
+    phs.push(c + '=' + (await pg.$$eval('#eRes .gcard', (els, c) => { const e = els.find(x => x.dataset.gc === c); return e && e.dataset.ph ? e.dataset.ph : '-'; }, c)));
+  }
+  log('photos:', phs.join(' '));
+  if (!/AHG100=-/.test(phs[0]) || !/AHG101=-/.test(phs[1]) || !/AHG102=.*AHG102/.test(phs[2]) || !/EB103=.*AHG103-1/.test(phs[3]) || !/GM104=.*only/.test(phs[4]) || !/FI-TEST01=-/.test(phs[5])) errs.push('photo rule: ' + phs.join(' '));
+  await pg.fill('#eQ1', '');
   /* 2a. 🐝 SmartBee 분류로 한 번에 */
-  await pg.click('[data-tp="0"]'); await pg.waitForTimeout(200);
+  await pg.evaluate(() => { location.hash = '#/admin/tree'; }); await pg.waitForSelector('#sbmGo'); await pg.waitForTimeout(200);
   await pg.click('#sbmGo'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(2500);
   const sbmRoot = await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent));
   log('after sbm:', sbmRoot.join(' | '));

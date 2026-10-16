@@ -59,6 +59,36 @@ async function loadPop(S) {
   try { const d = await S.DB.get('catalog', 'pop'); if (d && d.j) { POP = JSON.parse(d.j); await idbSet(IDB_KEY + '.pop', POP); return; } } catch (e) {}
   if (!POP.length) { const c = await idbGet(IDB_KEY + '.pop'); if (Array.isArray(c)) POP = c; }
 }
+/* ---------- 사진 규칙: 아이템 코드와 맞는 사진만 ----------
+ *   1) 드라이브 item_picture 에 코드 이름으로 있는 사진 (data/photo-index.json, 설정 photoDrive 켠 뒤) — 세트 · 인서트는 Gallery 의 세트 사진
+ *   2) 시트 Photo 칸 — 여러 아이템이 같은 URL 을 쓰는데 골드 · 실버가 섞여 있으면, URL 에 코드가 들어 있는 아이템만 씀
+ *   3) 세트는 구성품 사진을 빌려 쓰지 않음 */
+let PHX = null, DRIVE_ON = false;   // { pic: {code: driveId}, gal: {code: driveId} }
+export function photoIndex() { return PHX; }
+export const driveUrl = (id, w) => 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + (w || 400);
+async function loadPhotoIndex() {
+  if (PHX) return;
+  try { const r = await fetch('data/photo-index.json'); if (r.ok) { PHX = await r.json(); await idbSet(IDB_KEY + '.phx', PHX); } } catch (e) {}
+  if (!PHX) { const c = await idbGet(IDB_KEY + '.phx'); if (c && c.pic) PHX = c; }
+  if (PHX && CAT) fixPhotos(CAT);
+}
+const colorOf = d => { d = String(d || '').toUpperCase(); const g = /GOLD/.test(d), s = /SILVER|SLV|RHODIUM/.test(d); return g && !s ? 'G' : s && !g ? 'S' : ''; };
+const codeInUrl = (c, u) => { const U = String(u || '').toUpperCase(), i = U.lastIndexOf('/'); const f = U.substring(i + 1).split('?')[0]; return f.startsWith(c.toUpperCase() + '.') || f.startsWith(c.toUpperCase() + '_') || f.startsWith(c.toUpperCase() + '-'); };
+export function fixPhotos(C) {
+  const grp = {};
+  C.items.forEach(x => { if (x.ph0 == null) x.ph0 = x.virt ? '' : (x.ph || ''); if (x.ph0) (grp[x.ph0] = grp[x.ph0] || new Set()).add(colorOf(x.d)); });
+  let dropped = 0, drive = 0;
+  C.items.forEach(x => {
+    const conflict = x.ph0 && grp[x.ph0].has('G') && grp[x.ph0].has('S');
+    const sheet = x.ph0 && (!conflict || codeInUrl(x.c, x.ph0)) ? x.ph0 : '';
+    if (x.ph0 && !sheet) dropped++;
+    let d = '';
+    if (DRIVE_ON && PHX) { const id = PHX.pic[x.c] || PHX.gal[x.c] || (x.old && (PHX.pic[x.old] || PHX.gal[x.old])); if (id) { d = driveUrl(id); drive++; } }
+    x.ph = d || sheet;
+  });
+  C.photoStat = { dropped, drive };
+  return C.photoStat;
+}
 /** 이 가게가 최근에 산 것(hist: code → [[d,q,p]…]) 먼저, 그 다음 전체에서 많이 나가는 순 — path 안의 것만 */
 export function popularItems(path, start, hist, limit) {
   if (!CAT) return [];
@@ -75,6 +105,8 @@ export function popularItems(path, start, hist, limit) {
 export async function loadCatalog(S, force) {
   if (S && S.settings && S.settings.catPins) setPins(S.settings.catPins);
   if (!POP.length || force) loadPop(S);
+  DRIVE_ON = !!(S && S.settings && S.settings.photoDrive);
+  loadPhotoIndex();
   let meta = null;
   try { meta = await S.DB.get('catalog', 'meta'); }
   catch (e) {   /* 인터넷이 안 되면 폰에 보관한 목록으로 */
@@ -117,7 +149,7 @@ function index(pack) {
     const oldIt = st.old && st.old !== code ? byCode[st.old] : null;   // 기존 코드 아이템 (FLSIDE01) → 새 세트 코드로 대체
     if (!it) {
       const p = st.p || (oldIt && oldIt.p) || R2(k.reduce((a, x) => a + (byCode[x[0]] ? byCode[x[0]].p : 0) * x[1], 0));
-      const ph = (oldIt && oldIt.ph) || (k.map(x => byCode[x[0]]).find(x => x && x.ph) || {}).ph || '';
+      const ph = (oldIt && oldIt.ph) || '';   // 세트는 자기 사진만 (구성품 사진을 빌리지 않음)
       it = { c: code, d: st.n || (oldIt && oldIt.d) || code, p, s: (oldIt && oldIt.s) || 0, b: (oldIt && oldIt.b) || '', g: oldIt ? oldIt.g : SET_GROUP, l1: oldIt ? oldIt.l1 : '', l2: oldIt ? oldIt.l2 : '', l3: oldIt ? oldIt.l3 : '', ph, _i: items.length, _n: norm(code) + ' ' + norm(st.old) + ' ' + String(st.n || '').toUpperCase(), virt: true };
       items.push(it); byCode[code] = it; byNorm[norm(code)] = byNorm[norm(code)] || it;
     }
@@ -144,7 +176,8 @@ function index(pack) {
   items.forEach(x => { add(tree, [x.g, x.l1, x.l2, x.l3]); count(tree, [x.g, x.l1, x.l2, x.l3]); add(tree1, [x.l1, x.l2, x.l3]); count(tree1, [x.l1, x.l2, x.l3]); });
   const prune = n => { n.kids = n.kids.filter(k => k.n > 0); n.kids.forEach(prune); };
   prune(tree); prune(tree1); sortTree(tree); sortTree(tree1);
-  return { ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, byCode, byBar, byNorm, tree, tree1, sets, rows: pack.rows, cats: pack.cats || [] };
+  const tmp = { items }; fixPhotos(tmp);
+  return { photoStat: tmp.photoStat, ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, byCode, byBar, byNorm, tree, tree1, sets, rows: pack.rows, cats: pack.cats || [] };
 }
 /** 오더 화면이 어느 단계부터 보이나 — 'l1'(기본, SBMGo 처럼 ANKLET · EARRING …) 또는 'g'(Jewelry · Beauty … 부터) */
 export function catStart(S) { return S && S.settings && S.settings.catStart === 'g' ? 'g' : 'l1'; }
@@ -177,6 +210,7 @@ export function searchItems(q, path, limit, start) {
 /** 사진 — Shopify 사진은 작은 크기로 받아 빨리 뜨게 */
 export function thumb(url, w) {
   if (!url) return '';
+  if (/drive\.google\.com\/thumbnail/.test(url)) return url.replace(/&sz=w\d+/, '&sz=w' + (w || 160));
   if (/cdn\.shopify\.com/.test(url)) return url + (url.includes('?') ? '&' : '?') + 'width=' + (w || 160);
   return url;
 }
