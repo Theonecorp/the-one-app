@@ -13,6 +13,7 @@ import { storeInfo } from './store.js';
 import { stTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit } from './orders.js';
 import { bumpAccountsVer } from './mgr.js';
 import { storeSheet } from './store.js';
+import { searchAccounts } from './accounts.js';
 
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
@@ -213,25 +214,15 @@ async function confirmInvoice(o, lines) {
  *  백오더 · 인보이스 목록
  * ============================================================ */
 export async function pageLists(LF, head) {
+  if (LF.st === 'inv') return invBrowser(LF, head);
   $('page').innerHTML = head + '<div class="load">읽는 중…</div>';
   let rows = [];
-  try {
-    if (LF.st === 'bo') rows = await S.DB.list('backorders', { where: [['st', '==', 'open']] });
-    else rows = await S.DB.list('invoices', { where: [['ym', 'in', recentYms(2)]] });
-  } catch (e) { $('page').innerHTML = head + '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return bind(); }
+  try { rows = await S.DB.list('backorders', { where: [['st', '==', 'open']] }); }
+  catch (e) { $('page').innerHTML = head + '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return bind(); }
   if (LF.sm) rows = rows.filter(r => r.sm === LF.sm);
-  let h = head;
-  if (LF.st === 'bo') {
-    rows = sortBy(rows, r => r.createdAt || '', true);
-    h += '<div class="card"><h2>⏳ 백오더 ' + rows.length + '건 · ' + money(rows.reduce((a, r) => a + (r.amt || 0), 0)) + '</h2><div class="muted">물건이 들어오면 골라서 새 오더로 만들거나, 필요 없으면 닫으세요.</div>' +
-      (rows.length ? rows.map(r => '<div class="pr tap" data-go="bo:' + esc(r.id) + '"><div class="ct"><b>' + esc(r.store) + '</b><small>' + esc(md(r.d)) + ' · ' + esc(r.sm) + ' · ' + esc(r.order) + '</small></div><div class="pa"><b>' + money(r.amt) + '</b><small>' + r.lines.length + '줄 · ' + r.qty + '개</small></div></div>').join('') : '<div class="none">백오더가 없습니다</div>') + '</div>';
-  } else {
-    rows = sortBy(rows, r => r.createdAt || '', true);
-    const live = rows.filter(r => r.st !== 'x');
-    h += '<div class="card"><h2>📄 인보이스 ' + live.length + '건 · ' + money(live.reduce((a, r) => a + (r.total || 0), 0)) + ' <span class="muted">(최근 2달)</span></h2>' +
-      (rows.length ? rows.map(r => '<div class="pr tap" data-go="inv:' + esc(r.no) + '"><div class="ct"><b>' + esc(r.no) + ' · ' + esc(r.store) + (r.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</b><small>' + esc(md(r.d)) + ' · ' + esc(r.sm) + ' · ' + esc(r.order) + (r.disc ? ' · 할인 ' + r.disc + '%' : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + r.qty + '개</small></div></div>').join('') : '<div class="none">인보이스가 없습니다</div>') + '</div>';
-  }
-  $('page').innerHTML = h;
+  rows = sortBy(rows, r => r.createdAt || '', true);
+  $('page').innerHTML = head + '<div class="card"><h2>⏳ 백오더 ' + rows.length + '건 · ' + money(rows.reduce((a, r) => a + (r.amt || 0), 0)) + '</h2><div class="muted">물건이 들어오면 골라서 새 오더로 만들거나, 필요 없으면 닫으세요.</div>' +
+    (rows.length ? rows.map(r => '<div class="pr tap" data-go="bo:' + esc(r.id) + '"><div class="ct"><b>' + esc(r.store) + '</b><small>' + esc(md(r.d)) + ' · ' + esc(r.sm) + ' · ' + esc(r.order) + '</small></div><div class="pa"><b>' + money(r.amt) + '</b><small>' + r.lines.length + '줄 · ' + r.qty + '개</small></div></div>').join('') : '<div class="none">백오더가 없습니다</div>') + '</div>';
   bind();
   function bind() {
     document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
@@ -239,6 +230,89 @@ export async function pageLists(LF, head) {
     if ($('oNew')) $('oNew').onclick = () => Router.go('order', 'new');
     document.querySelectorAll('#page [data-go]').forEach(el => el.onclick = () => Router.go('order', el.dataset.go));
   }
+}
+
+/* ============================================================
+ *  📄 인보이스 찾기 — SmartBee "Sales Invoice List" 를 폰에 맞게
+ *    · 기간 (오늘 · 어제 · 이번 주 · 이번 달 · 지난 달 · 직접) 으로 보고, 날짜별로 묶어서 하루치가 한눈에
+ *    · 가게 이름 · 어카운트 번호를 치면 그 가게 인보이스 전부 (기간 상관없이)
+ *    · 인보이스 번호 · 오더 번호로도 바로 찾기, 종류 (G J H D R) · 세일즈맨 거르기, CSV
+ * ============================================================ */
+const WD = ['일', '월', '화', '수', '목', '금', '토'];
+function dayLabel(d) { if (!d || d.length < 10) return d || ''; const x = new Date(d + 'T12:00:00'); const t = today(); return (d === t ? '오늘 · ' : d === addD(t, -1) ? '어제 · ' : '') + Number(d.substring(5, 7)) + '월 ' + Number(d.substring(8, 10)) + '일 (' + WD[x.getDay()] + ')'; }
+function addD(s, n) { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function periodRange(p, from, to) {
+  const t = today();
+  if (p === 'today') return [t, t];
+  if (p === 'yday') return [addD(t, -1), addD(t, -1)];
+  if (p === 'week') { const x = new Date(t + 'T12:00:00'); return [addD(t, -x.getDay()), t]; }
+  if (p === 'month') return [t.substring(0, 8) + '01', t];
+  if (p === 'lastm') { const f = addD(t.substring(0, 8) + '01', -1); return [f.substring(0, 8) + '01', f]; }
+  if (p === '2m') return [addD(t, -60), t];
+  return [from || addD(t, -7), to || t];
+}
+export async function invBrowser(LF, head) {
+  LF.ip = LF.ip || 'month'; LF.iq = LF.iq || ''; LF.it = LF.it || '';
+  const types = invTypes(S);
+  const q = LF.iq.trim();
+  /* 가게로 찾나? (어카운트 번호 · 가게 이름) — 인보이스 번호 · 오더 번호 모양이면 아님 */
+  const isNo = /^[A-Z]{1,2}\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);
+  const accs = q && !isNo ? searchAccounts(S.accounts, q, 6) : [];
+  const acc = accs.length === 1 || (accs.length && accs[0].acct === q) ? accs[0] : null;
+  const [from, to] = periodRange(LF.ip, LF.ifrom, LF.ito);
+  const top = '<div class="card" style="padding-bottom:8px"><div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 오더 #" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>' +
+    (accs.length > 1 && !acc ? '<div class="chips">' + accs.map(a => '<button data-iqa="' + esc(a.acct) + '">' + esc(a.acct) + ' ' + esc(a.store) + '</button>').join('') + '</div>' : '') +
+    (acc ? '' : '<div class="chips">' + [['today', '오늘'], ['yday', '어제'], ['week', '이번 주'], ['month', '이번 달'], ['lastm', '지난 달'], ['2m', '최근 2달'], ['custom', '기간 직접']].map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' +
+      (LF.ip === 'custom' ? '<div class="two" style="margin:6px 0"><input type="date" id="iFrom" value="' + esc(from) + '"><input type="date" id="iTo" value="' + esc(to) + '"></div>' : '')) +
+    '<div class="chips" style="margin-top:4px"><button class="' + (LF.it ? '' : 'on') + '" data-it="">종류 전체</button>' + types.map(t => '<button class="' + (LF.it === t.c ? 'on' : '') + '" data-it="' + esc(t.c) + '">' + esc(t.c) + ' ' + esc(t.n) + '</button>').join('') + '<button class="' + (LF.ivoid ? 'on' : '') + '" data-ivoid="1">VOID 포함</button></div></div>';
+  $('page').innerHTML = head + top + '<div id="iList"><div class="load">읽는 중…</div></div>';
+  bind();
+  let rows = [], err = '';
+  try {
+    if (acc) rows = await S.DB.list('invoices', { where: [['acct', '==', acc.acct]] });
+    else if (isNo) { const x = await S.DB.get('invoices', q.toUpperCase()); rows = x ? [x] : await S.DB.list('invoices', { where: [['order', '==', q.toUpperCase()]] }); }
+    else rows = await S.DB.list('invoices', { where: [['d', '>=', from], ['d', '<=', to]] });
+  } catch (e) { err = String(e.code || e.message); }
+  if (!$('iList')) return;
+  if (LF.sm) rows = rows.filter(r => r.sm === LF.sm);
+  if (LF.it) rows = rows.filter(r => r.t === LF.it);
+  if (!LF.ivoid) rows = rows.filter(r => r.st !== 'x');
+  if (q && !acc && !isNo) { const qq = q.toUpperCase(); rows = rows.filter(r => String(r.store || '').toUpperCase().includes(qq) || String(r.no).includes(qq) || String(r.order || '').includes(qq) || String(r.acct || '') === qq); }
+  rows = sortBy(rows, r => r.d + ' ' + (r.createdAt || '') + ' ' + r.no, true);
+  const live = rows.filter(r => r.st !== 'x'), tot = live.reduce((a, r) => a + (r.total || 0), 0), bal = live.reduce((a, r) => a + (r.bal != null ? r.bal : r.total || 0), 0);
+  const days = {}; rows.forEach(r => { (days[r.d] = days[r.d] || []).push(r); });
+  const dayKeys = Object.keys(days).sort().reverse();
+  let h = '';
+  if (err) h += '<div class="alert a-red">' + esc(err) + '</div>';
+  if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 가게 창</button></div></div>';
+  h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스</span></div><div><b>' + money(tot) + '</b><span>합계</span></div><div><b>' + money(bal) + '</b><span>미수</span></div><div><b>' + dayKeys.length + '</b><span>날짜</span></div></div>' +
+    '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + '</div>' +
+    (rows.length ? dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<div class="iday"><b>' + esc(dayLabel(d)) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>' + L.map(r => invRow(r)).join(''); }).join('') : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
+  $('iList').innerHTML = h;
+  document.querySelectorAll('#iList [data-go]').forEach(el => el.onclick = () => Router.go('order', el.dataset.go));
+  if ($('iAcc')) $('iAcc').onclick = () => storeSheet(acc.acct);
+  if ($('iCsv')) $('iCsv').onclick = () => {
+    const csv = [['Invoice', 'Date', 'Type', 'Acct', 'Store', 'SalesRep', 'Terms', 'Order', 'Qty', 'Sub', 'Disc%', 'Total', 'Balance', 'Status']].concat(rows.map(r => [r.no, r.d, r.t, r.acct, r.store, r.sm, r.terms || '', r.order, r.qty, r.sub, r.disc || 0, r.total, r.bal != null ? r.bal : r.total, r.st === 'x' ? 'VOID' : 'open'])).map(a => a.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'invoices-' + (acc ? acc.acct : from + '_' + to) + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  };
+  function bind() {
+    document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; invBrowser(LF, head); };
+    if ($('oNew')) $('oNew').onclick = () => Router.go('order', 'new');
+    const inp = $('iqQ');
+    inp.oninput = debounce(() => { if (!$('iqQ')) return; LF.iq = $('iqQ').value; const pos = inp.selectionStart; invBrowser(LF, head).then(() => { const n = $('iqQ'); if (n && document.activeElement !== n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }); }, 350);
+    inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); LF.iq = inp.value; invBrowser(LF, head); } };
+    if ($('iqX')) $('iqX').onclick = () => { LF.iq = ''; invBrowser(LF, head); };
+    document.querySelectorAll('[data-iqa]').forEach(b => b.onclick = () => { LF.iq = b.dataset.iqa; invBrowser(LF, head); });
+    document.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => { LF.ip = b.dataset.ip; invBrowser(LF, head); });
+    document.querySelectorAll('[data-it]').forEach(b => b.onclick = () => { LF.it = b.dataset.it; invBrowser(LF, head); });
+    const vb = document.querySelector('[data-ivoid]'); if (vb) vb.onclick = () => { LF.ivoid = !LF.ivoid; invBrowser(LF, head); };
+    if ($('iFrom')) { $('iFrom').onchange = () => { LF.ifrom = $('iFrom').value; invBrowser(LF, head); }; $('iTo').onchange = () => { LF.ito = $('iTo').value; invBrowser(LF, head); }; }
+  }
+}
+function invRow(r) {
+  const bal = r.bal != null ? r.bal : r.total;
+  return '<div class="pr tap" data-go="inv:' + esc(r.no) + '"><div class="ct"><b>' + esc(r.store) + ' <span class="muted" style="font-weight:400">' + esc(r.acct || '') + '</span></b><small><b>' + esc(r.no) + '</b> <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + ' · ' + esc(r.sm) + (r.terms ? ' · ' + esc(r.terms) : '') + ' · ' + esc(r.order) + (r.disc ? ' · 할인 ' + r.disc + '%' : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + r.qty + '개' + (r.st !== 'x' && Math.abs(bal - r.total) > 0.005 ? ' · 잔액 ' + money(bal) : '') + '</small></div></div>';
 }
 
 export async function openBackorder(id) {
