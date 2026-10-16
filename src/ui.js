@@ -51,15 +51,27 @@ export function printClose() { $('prt').classList.remove('on'); }
 
 /* 간단 라우터 — 해시 기반 (#/page/sub) */
 export const Router = {
-  routes: {}, cur: '',
+  routes: {}, cur: '', stack: [], home: '',
   on(name, fn) { this.routes[name] = fn; },
   go(name, arg) { location.hash = '#/' + name + (arg ? '/' + encodeURIComponent(arg) : ''); },
+  /** ‹ 뒤로 — 열린 창이 있으면 닫고, 앱 안에서 온 길이 있으면 브라우저 뒤로, 없으면 그 탭의 첫 화면 → 홈 */
+  back() {
+    const m = $('modal'); if (m && m.classList.contains('on')) { closeModal(); return; }
+    const v = document.getElementById('viewer'); if (v) { v.remove(); return; }
+    const p = $('prt'); if (p && p.classList.contains('on')) { printClose(); return; }
+    const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
+    if (!arg && this.home && name === this.home) return;   // 홈에서는 더 갈 곳이 없음
+    if (this.stack.length > 1) { this._back = true; this.stack.pop(); history.back(); return; }
+    if (arg) this.go(name); else if (this.home && name !== this.home) this.go(this.home);
+  },
   start() {
     const run = () => {
       const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
       this.cur = name || '';
+      if (this._back) this._back = false; else if (this.stack[this.stack.length - 1] !== h) { this.stack.push(h); if (this.stack.length > 60) this.stack.shift(); }
       const fn = this.routes[name] || this.routes['']; if (fn) fn(arg ? decodeURIComponent(arg) : '');
       document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === name));
+      const bk = $('hBack'); if (bk) bk.classList.toggle('show', !!arg || !!(this.home && name !== this.home));
       window.scrollTo(0, 0);
     };
     if (!this._bound) { this._bound = true; window.addEventListener('hashchange', run); }

@@ -7,6 +7,7 @@ header{position:sticky;top:0;z-index:40;background:var(--navy);color:#fff;paddin
 header h1{font-size:15px;margin:0;font-weight:700}header .hlogo{width:26px;height:26px;border-radius:50%}
 header .hr{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:#94a3b8}
 header .hb{background:rgba(255,255,255,.12);color:#fff;border:0;font-size:17px;padding:5px 11px;border-radius:9px}
+#hBack{display:none;font-size:22px;line-height:1;padding:2px 12px 5px;margin-right:2px}#hBack.show{display:inline-block}
 .wrap{max-width:880px;margin:0 auto;padding:12px 12px 0}
 .card{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:14px;margin-bottom:12px}
 .card h2{font-size:13px;margin:0 0 10px;color:var(--ink2);font-weight:700;letter-spacing:.3px}

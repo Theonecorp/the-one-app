@@ -81,5 +81,11 @@ const path = require('path'), fs = require('fs');
   log('nav:', await pg.$$eval('#nav button', els => els.map(e => e.textContent.trim()).join(' | ')), '| tiles:', await pg.$$eval('.htile b', els => els.map(e => e.textContent).join(',')), '| send sub:', await pg.textContent('#hs-order'));
   await pg.click('[data-hg="order/new"]'); await pg.waitForSelector('#eStoreQ'); log('new order from home: ok');
   await pg.click('#hMenu'); await pg.waitForSelector('#mOut'); await pg.click('#mOut'); await pg.waitForSelector('#btnLogin'); await shot('g14_login');
+  /* v0.6.3: ‹ 뒤로 */
+  await pg.click('#btnLogin'); await pg.waitForSelector('#nav button'); await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('.htile'); await pg.waitForTimeout(300);
+  log('back hidden at home:', !(await pg.$eval('#hBack', e => e.classList.contains('show'))));
+  await pg.click('[data-hg="order/new"]'); await pg.waitForSelector('#eStoreQ'); log('back shown in editor:', await pg.$eval('#hBack', e => e.classList.contains('show')));
+  await pg.click('#hBack'); await pg.waitForTimeout(400); log('after back hash:', await pg.evaluate(() => location.hash));
+  await pg.evaluate(() => { location.hash = '#/ar'; }); await pg.waitForTimeout(300); await pg.click('#hBack'); await pg.waitForTimeout(400); log('back from ar →', await pg.evaluate(() => location.hash));
   log('errors:', errs); await br.close(); srv.kill();
 })();
