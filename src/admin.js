@@ -6,7 +6,7 @@ import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer } from './mgr.js';
 import { roleLabel, JOBS, jobLabel } from './main.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName } from './catalog.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows } from './catalog.js';
 import { invTypes, fmtNo, company } from './invoicing.js';
 
 let S = null, TAB = 'users';
@@ -442,9 +442,10 @@ async function treeAdmin() {
     '<div class="card"><h2>✨ 자주 나가는 아이템</h2><div class="muted">오더 화면 맨 위 "✨ 자주 나가는" 칸의 순서입니다. 가게가 최근에 산 것이 먼저 나오고, 그 다음 이 목록 순서입니다. SmartBee 의 <b>Sales Report by Item</b>(엑셀) 처럼 <b>Item</b>(코드) 과 <b>Qty</b>(수량) 열이 있는 파일을 올리면 많이 나간 순으로 저장됩니다.' + (popularCodes().length ? ' 지금 <b>' + popularCodes().length + '개</b> 올라와 있음.' : ' 아직 없음.') + '</div>' +
     '<div class="fg" style="margin-top:8px"><input type="file" id="popFile" accept=".xlsx,.csv"></div><div id="popOut"></div></div>' +
     sbmCard(C) +
-    '<div class="card"><h2>📄 일괄 변경 파일</h2><div class="muted">엑셀 첫 줄 머리글로 열을 찾고, <b>있는 열만</b> 바꿉니다 (빈 칸은 그대로). 쓸 수 있는 열: <b>Code</b>(필수) · NewCode(코드 변경) · Description · Price · SRP · Barcode · Group · Level 1 · Level 2 · Level 3 · Photo · Delete(x).<br>' +
-    '드라이브의 <b>Tree_업데이트</b> 파일(TreeUpdate 탭)도 그대로 올리면 분류가 바뀝니다. 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
-    '<div class="btns"><button class="b-ghost" id="tCsv">⬇️ 지금 아이템 전체 CSV (고쳐서 다시 올리기)</button></div>' +
+    '<div class="card"><h2>📄 일괄 변경 파일 — SmartBee 편의 파일 그대로</h2><div class="muted">SmartBee 에서 쓰던 <b>LEVEL_1_AND_2</b> (ITEM CODE · LEVEL 1 · LEVEL 2) 와 <b>GROUP_NAME_CHANGE</b> (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) 파일을 그대로 올리면 됩니다. 아래에서 지금 상태를 같은 모양으로 받아 엑셀에서 고친 뒤 다시 올리세요. SmartBee 내보내기에서 칸이 깨진 줄(줄바꿈 · 탭)도 알아서 살려 읽습니다.<br>' +
+    'LEVEL 파일은 Level 1 이름의 앞글자로 Group(인보이스 A · P · W)이 정해집니다: 보통 이름 → Jewelry(A), [ ] → Other(P), "" → Set &amp; Display(W). GROUP NAME 은 Level 3 으로 들어갑니다 (NEW 가 비어 있으면 CURRENT 그대로).<br>' +
+    '그 밖의 열도 됩니다 (<b>있는 열만</b> 바꾸고 빈 칸은 그대로): Code(필수) · NewCode · Description · Price · SRP · Barcode · Group · Level 1 · 2 · 3 · Photo · Delete(x). 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
+    '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="tDlLevel">⬇️ LEVEL_1_AND_2.xlsx</button><button class="b-ghost" id="tDlGroup">⬇️ GROUP_NAME_CHANGE.xlsx</button><button class="b-ghost" id="tCsv">⬇️ 전체 CSV</button></div>' +
     '<div class="fg" style="margin-top:8px"><input type="file" id="tFile" accept=".xlsx,.csv"></div><div id="tOut"></div></div>';
   document.querySelectorAll('[data-cs]').forEach(b => b.onclick = async () => { busy(true); try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.catStart = b.dataset.cs; await S.DB.set('settings', 'app', cur); S.settings.catStart = b.dataset.cs; toast('저장'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
   document.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { TP = TP.slice(0, +b.dataset.tp); treeAdmin(); });
@@ -544,6 +545,9 @@ async function treeAdmin() {
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
+  const dlXlsx = async (rows, name) => { busy(true); try { const XLSX = await loadXlsx(); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Sheet1'); XLSX.writeFile(wb, name); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  $('tDlLevel').onclick = () => dlXlsx(sbmLevelRows(), 'LEVEL_1_AND_2_' + today() + '.xlsx');
+  $('tDlGroup').onclick = () => dlXlsx(sbmGroupRows(), 'GROUP_NAME_CHANGE_' + today() + '.xlsx');
   $('tCsv').onclick = () => { const blob = new Blob([catalogCsv()], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'the-one-items-' + today() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
   $('tFile').onchange = async () => {
     const file = $('tFile').files[0]; if (!file) return;
@@ -557,6 +561,7 @@ async function treeAdmin() {
       const sum = applyBulk(rows, cats, sets, r.patches);
       const lab = { nc: '코드 변경', d: 'Description', p: 'Price', s: 'SRP', b: 'Barcode', g: 'Group', l1: 'Level 1', l2: 'Level 2', l3: 'Level 3', ph: 'Photo', del: '삭제' };
       out.innerHTML = '<div class="alert a-blu">탭 <b>' + esc(name) + '</b> · ' + r.patches.length.toLocaleString() + '줄 · 바꾸는 열: ' + r.cols.map(k => lab[k]).join(', ') + '<br>바뀌는 아이템 <b>' + sum.changed.toLocaleString() + '</b> · 코드 변경 ' + sum.renamed + ' · 새 아이템 ' + sum.added + ' · 삭제 ' + sum.deleted + '</div>' +
+        (r.fixed && r.fixed.length ? '<div class="alert a-grn">SmartBee 내보내기에서 깨진 줄 ' + r.fixed.length + '개를 살려 읽었습니다</div>' : '') +
         (r.broken && r.broken.length ? '<div class="alert a-amb">칸이 깨진 줄 ' + r.broken.length + '개 건너뜀 (줄바꿈 · 탭이 섞임): ' + esc(r.broken.slice(0, 8).join(', ')) + '</div>' : '') +
         (sum.missing.length ? '<div class="alert a-amb">목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 10).join(', ')) + '</div>' : '') +
         (sum.dupNew.length ? '<div class="alert a-red">새 코드가 이미 있어 바꾸지 못함 ' + sum.dupNew.length + '개: ' + esc(sum.dupNew.slice(0, 10).join(', ')) + '</div>' : '') +
