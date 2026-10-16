@@ -294,7 +294,7 @@ function paintEditor() {
   h += '<div class="sticky">' + (O.view === 'add' ? '<div id="eQuick"></div>' : '') +
     '<div class="tbar"><div class="tl"><b>' + esc(O.store || '가게를 고르세요') + '</b><small><span id="eN">' + t.n + '</span> lines · <span id="eQ">' + t.qty + '</span> pcs · <span id="eTm">' + typeMini(t.by) + '</span></small></div><div class="ta" id="eA">' + money(t.amt) + '</div></div>' +
     '<div class="btns" style="margin-top:6px">' +
-    (!isSentEdit ? (isStaff() ? '<button class="b-ghost" id="eDraft">💾 ' + bi('저장', 'Save') + '</button><button class="b-green" id="eSend">📤 ' + bi('보내기', 'Send') + '</button>' : '<button class="b-ghost" id="eClose" style="flex:0 0 auto;padding:12px 16px">' + bi('닫기', 'Close') + '</button><button class="b-green" id="eDraft">💾 ' + bi('저장', 'Save') + ' <small style="font-weight:600;opacity:.85">· 보내기는 목록에서</small></button>') :
+    (!isSentEdit ? (isStaff() ? '<button class="b-ghost" id="eDraft">💾 ' + bi('저장', 'Save') + '</button><button class="b-green" id="eSend">📤 ' + bi('보내기', 'Send') + '</button>' : '<button class="b-ghost" id="eClose" style="flex:0 0 96px">' + bi('닫기', 'Close') + '</button><button class="b-green" id="eDraft" style="flex:1 1 auto;min-width:0">💾 ' + bi('저장', 'Save') + '</button>') :
       '<button class="b-ghost" id="eQuit">' + bi('닫기', 'Close') + '</button><button class="b-green" id="eSave">💾 ' + bi('저장', 'Save') + '</button>') + '</div></div>';
   $('page').innerHTML = h;
   if ($('eStoreX')) $('eStoreX').onclick = () => { O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
