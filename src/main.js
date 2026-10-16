@@ -10,8 +10,10 @@ import * as Boss from './boss.js';
 import * as Admin from './admin.js';
 import * as Orders from './orders.js';
 import { loadAccounts } from './accounts.js';
+import { setInvTypeMap } from './comm.js';
+import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.4.0';
+export const VER = 'v0.5.0';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -108,6 +110,7 @@ async function afterLogin(user) {
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] });
     S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
     S.settings = (await S.DB.get('settings', 'app')) || {};
+    setInvTypeMap(invTypes(S));
     S.accounts = await loadAccounts(S);
   } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   busy(false);

@@ -1,20 +1,26 @@
 /* ============================================================
  *  인보이스 종류 · 할인 · 번호 · 인쇄 — 오더(세일즈맨)와 오더 처리(매니저)가 같이 씀
- *  settings/app.invTypes = [{ c:'A', n:'일반', start:41600, pad:5, match:'' }, { c:'P', n:'EDGE & KEY', match:'EDGE BOOSTER, KEY' }, …]
+ *  settings/app.invTypes = [{ c:'G', n:'일반', comm:'A', match:'' }, { c:'H', n:'헤어', comm:'P', match:'EDGE BOOSTER, 코드:EB' }, …]
  *    match: 아이템의 Group · Level 1~3 이름이나 "코드:EB" (코드 앞글자) 중 하나라도 맞으면 그 종류. 안 맞으면 첫 종류(A).
  *  accounts/{acct}.disc = { A: 20, W: 10 }  ← 거래처 기본 할인 % (종류별)
  *  invoices/{no} = { no, t, order, acct, store, sm, d, ym, lines:[{c,d,q,p,lp}], sub, disc, total, bal, terms, st:'open'|'x', memo, createdBy, createdAt }
  * ============================================================ */
 import { esc, money, R2 } from './ui.js';
 
+/* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
+ *  comm: 커미션 계산 때 어느 칸으로 셀지 (A 기본 · P · W) */
 export const INV_DEFAULT = [
-  { c: 'A', n: '일반', start: 50001, pad: 5, match: '' },
-  { c: 'P', n: 'P 인보이스', start: 9001, pad: 6, match: '' },
-  { c: 'W', n: 'W 인보이스', start: 1, pad: 5, match: '' }
+  { c: 'G', n: '일반', comm: 'A', match: '' },
+  { c: 'J', n: '주얼리', comm: 'A', match: 'Jewelry, Body & Nose' },
+  { c: 'H', n: '뷰티 · 헤어', comm: 'P', match: 'Beauty' },
+  { c: 'D', n: '세트 · 인서트 · 디스플레이', comm: 'W', match: 'Set Orders & Displays, 🧩 세트 · 인서트' },
+  { c: 'R', n: '반품 · 크레딧', comm: 'CM', match: '' }
 ];
+export const NUM_DIGITS = 5, NUM_MAX = 99999;
+const LEVELS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';   // I · O 는 숫자와 헷갈려서 뺌
 export function invTypes(S) {
   const t = (S.settings && Array.isArray(S.settings.invTypes) && S.settings.invTypes.length) ? S.settings.invTypes : INV_DEFAULT;
-  return t.map(x => Object.assign({ n: x.c, start: 1, pad: 5, match: '' }, x, { c: String(x.c).toUpperCase() }));
+  return t.map(x => Object.assign({ n: x.c, comm: 'A', match: '' }, x, { c: String(x.c).toUpperCase() }));
 }
 /** 아이템 → 인보이스 종류 */
 export function typeOfItem(S, it) {
@@ -42,7 +48,7 @@ export function splitByType(lines, disc, useQ) {
   const by = {};
   lines.forEach(l => {
     const q = useQ === 'pq' ? (l.pq == null ? l.q : l.pq) : l.q; if (!q) return;
-    const t = l.t || 'A';
+    const t = l.t || 'G';
     const g = by[t] = by[t] || { t, lines: [], sub: 0, list: 0, qty: 0 };
     g.lines.push(Object.assign({}, l, { q })); g.sub += q * l.p; g.list += q * (l.lp != null ? l.lp : l.p); g.qty += q;
   });
@@ -55,8 +61,13 @@ export function priceDiff(lines, useQ) {
   lines.forEach(l => { const q = useQ === 'pq' ? (l.pq == null ? l.q : l.pq) : l.q; if (l.lp == null || !q) return; list += q * l.lp; real += q * l.p; if (Math.abs(l.lp - l.p) > 0.0001) n++; });
   return { list: R2(list), real: R2(real), diff: R2(real - list), n, pct: list ? R2((real - list) / list * 100) : 0 };
 }
-export function fmtNo(t, n) { return t.c + String(n).padStart(Number(t.pad) || 0, '0'); }
-export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv', t.c, t.start || 1); return fmtNo(t, n); }
+/** n 번째 인보이스 번호 — 1 → G00001 · 99999 → G99999 · 100000 → GA00001 · … */
+export function fmtNo(t, n) {
+  n = Math.max(1, Math.floor(Number(n) || 1));
+  const lv = Math.floor((n - 1) / NUM_MAX), k = ((n - 1) % NUM_MAX) + 1;
+  return t.c + (lv ? LEVELS[lv - 1] || ('Z' + lv) : '') + String(k).padStart(NUM_DIGITS, '0');
+}
+export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, 1); return fmtNo(t, n); }
 
 /** 세일즈 인보이스 인쇄 html */
 export function invoiceHtml(inv, acc) {
@@ -65,7 +76,7 @@ export function invoiceHtml(inv, acc) {
     '<div style="text-align:right"><h1>INVOICE ' + esc(inv.no) + '</h1><div class="meta">' + esc(inv.d) + (inv.terms ? ' · ' + esc(inv.terms) : '') + '<br>Order ' + esc(inv.order) + ' · Sales ' + esc(inv.sm) + '</div></div></div>' +
     '<div class="meta"><b>BILL TO:</b> ' + esc(inv.store) + ' (' + esc(inv.acct || '') + ')' + (acc ? '<br>' + esc([acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ')) + (acc.tel ? ' · ' + esc(acc.tel) : '') : '') + '</div>' +
     '<table><tr><th>#</th><th>CODE</th><th>DESCRIPTION</th><th class="r">QTY</th><th class="r">PRICE</th><th class="r">AMOUNT</th></tr>' +
-    rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b></td><td>' + esc(l.d) + '</td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') +
+    rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b></td><td>' + esc(l.d) + (l.kit ? '<div style="font-size:10.5px;color:#555">' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + '</div>' : '') + '</td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') +
     '<tr><td colspan="5" class="r">SUBTOTAL (' + rows.reduce((a, l) => a + l.q, 0) + ' pcs)</td><td class="r">' + money(inv.sub) + '</td></tr>' +
     (inv.disc ? '<tr><td colspan="5" class="r">DISCOUNT ' + inv.disc + '%</td><td class="r">−' + money(inv.sub - inv.total) + '</td></tr>' : '') +
     '<tr class="fin"><td colspan="5" class="r">TOTAL</td><td class="r">' + money(inv.total) + '</td></tr></table>' +

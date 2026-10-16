@@ -17,8 +17,15 @@ export function commSettings(settings) {
 }
 export function ratesOf(sm) { const r = Object.assign({}, RATE_DEFAULT, (sm && sm.rates) || {}); Object.keys(r).forEach(k => { r[k] = Number(r[k]) > 1 ? Number(r[k]) / 100 : Number(r[k]) || 0; }); return r; }
 
-/** 인보이스 종류 */
-export function invType(no) { const s = String(no || '').toUpperCase().trim(); if (/^CM/.test(s)) return 'CM'; if (/^P/.test(s)) return 'P'; if (/^W/.test(s)) return 'W'; return 'A'; }
+/** 인보이스 종류 → 커미션 칸 (A · P · W · CM)
+ *  새 앱 인보이스 (G00001, JA00001 …) 는 관리 → 설정의 인보이스 종류에 적힌 칸으로, 옛 SmartBee 번호 (A4xxxx, P-00xxxx, W…, CM…) 는 앞글자로 */
+let NEW_TYPES = [];
+export function setInvTypeMap(types) { NEW_TYPES = (types || []).map(t => ({ re: new RegExp('^' + t.c + '[A-Z]?\\d{5}$'), comm: t.comm || 'A' })); }
+export function invType(no) {
+  const s = String(no || '').toUpperCase().trim();
+  for (const t of NEW_TYPES) if (t.re.test(s)) return t.comm === 'CM' ? 'CM' : t.comm;
+  if (/^CM/.test(s)) return 'CM'; if (/^P/.test(s)) return 'P'; if (/^W/.test(s)) return 'W'; return 'A';
+}
 
 /** 방문(entry) → 정산 줄 */
 export function lineOfEntry(e) {
