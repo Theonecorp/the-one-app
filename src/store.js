@@ -3,13 +3,13 @@
  *    미수금(AR) · 에이징 · 지난 오더 · 수금 기록, 그리고 아이템별 "이 가게가 최근에 산 기록"
  *  세일즈맨은 자기 가게(자기 sm 의 AR · 수금)만, 담당자는 가게 담당 세일즈맨 기준으로 봅니다
  * ============================================================ */
-import { $, esc, money, R2, num, md, toast, openModal, closeModal, sortBy, daysBetween, today } from './ui.js';
+import { $, esc, money, R2, num, md, toast, openModal, closeModal, sortBy, daysBetween, today, bi, bt } from './ui.js';
 import { recentYms, stTag } from './orders.js';
 
 let S = null;
 export function register(state) { S = state; }
 const CACHE = {};   // acct → { at, ar, orders, pays, hist }
-const BK = ['기한 전', '1-30', '31-60', '61-90', '90+'];
+const BK = ['기한 전 Current', '1-30', '31-60', '61-90', '90+'];
 const isStaff = () => S.role !== 'salesman';
 const mySm = () => (S.me && S.me.sm ? String(S.me.sm).toUpperCase() : '');
 
@@ -65,17 +65,17 @@ export async function storeSheet(acct, onPick) {
   let tab = 'inv';
   const paint = () => {
     let body = '';
-    if (tab === 'inv') body = live.length || credits.length ? '<table><tr><th>인보이스</th><th>날짜</th><th class="r">금액</th><th class="r">잔액</th></tr>' +
-      live.concat(credits).map(v => '<tr' + (v.bk >= 3 ? ' style="background:#fef2f2"' : '') + '><td><b>' + esc(v.no) + '</b></td><td>' + esc(md(v.d)) + (v.pdd > 0 ? ' <span class="muted">' + v.pdd + '일</span>' : '') + '</td><td class="r">' + money(v.amt) + '</td><td class="r"><b>' + money(v.bal) + '</b></td></tr>').join('') + '</table>' : '<div class="none">미결 인보이스 없음' + (info.asOf ? '' : ' (AR 아직 안 올라옴)') + '</div>';
-    else if (tab === 'ord') body = info.orders.length ? info.orders.map(o => '<div class="pr tap" data-so="' + esc(o.id) + '"><div class="ct"><b>' + esc(o.no) + ' ' + stTag(o.st) + '</b><small>' + esc(o.d) + ' · ' + esc(o.sm) + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.memo ? ' · ' + esc(o.memo) : '') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div></div>').join('') : '<div class="none">앱으로 넣은 오더가 아직 없습니다</div>';
-    else body = info.pays.length ? info.pays.map(e => '<div class="pr"><div class="ct"><b>' + esc((e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(', ') || '수금') + '</b><small>' + esc(e.d) + ' · ' + esc(e.sm) + (e.invs && e.invs.length ? ' · ' + esc(e.invs.map(v => v.no).filter(Boolean).join(', ')) : '') + '</small></div><div class="pa"><b>' + money(e.total) + '</b><small>' + (e.settled ? '정산됨' : e.v ? '확인' : e.sb ? '입력' : '') + '</small></div></div>').join('') : '<div class="none">최근 6개월 수금 기록 없음</div>';
+    if (tab === 'inv') body = live.length || credits.length ? '<table><tr><th>인보이스 Invoice</th><th>날짜 Date</th><th class="r">금액 Amt</th><th class="r">잔액 Bal</th></tr>' +
+      live.concat(credits).map(v => '<tr' + (v.bk >= 3 ? ' style="background:#fef2f2"' : '') + '><td><b>' + esc(v.no) + '</b></td><td>' + esc(md(v.d)) + (v.pdd > 0 ? ' <span class="muted">' + v.pdd + '일</span>' : '') + '</td><td class="r">' + money(v.amt) + '</td><td class="r"><b>' + money(v.bal) + '</b></td></tr>').join('') + '</table>' : '<div class="none">미결 인보이스 없음 · No open invoices' + (info.asOf ? '' : ' (AR 아직 안 올라옴 · AR not uploaded yet)') + '</div>';
+    else if (tab === 'ord') body = info.orders.length ? info.orders.map(o => '<div class="pr tap" data-so="' + esc(o.id) + '"><div class="ct"><b>' + esc(o.no) + ' ' + stTag(o.st) + '</b><small>' + esc(o.d) + ' · ' + esc(o.sm) + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.memo ? ' · ' + esc(o.memo) : '') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div></div>').join('') : '<div class="none">앱으로 넣은 오더가 아직 없습니다 · No app orders yet</div>';
+    else body = info.pays.length ? info.pays.map(e => '<div class="pr"><div class="ct"><b>' + esc((e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(', ') || '수금') + '</b><small>' + esc(e.d) + ' · ' + esc(e.sm) + (e.invs && e.invs.length ? ' · ' + esc(e.invs.map(v => v.no).filter(Boolean).join(', ')) : '') + '</small></div><div class="pa"><b>' + money(e.total) + '</b><small>' + (e.settled ? '정산됨' : e.v ? '확인' : e.sb ? '입력' : '') + '</small></div></div>').join('') : '<div class="none">최근 6개월 수금 기록 없음 · No payments in 6 months</div>';
     $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><h2 style="margin:0">' + esc(a ? a.store : acct) + '</h2><div class="muted">' + esc(acct) + (a ? ' · ' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.tel ? ' · ' + esc(a.tel) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + (a.sm ? ' · ' + esc(a.sm) : '') : '') + '</div>' + (a && a.note ? '<div class="alert a-blu" style="margin-top:6px">📝 ' + esc(a.note) + '</div>' : '') + '</div><button class="b-ghost b-sm" id="ssX">✕</button></div>' +
       '<div class="kpi" style="grid-template-columns:repeat(5,1fr);margin-top:10px">' + info.bk.map((v, i) => '<div' + (i >= 3 && v > 0.005 ? ' style="background:#fef2f2"' : '') + '><b style="font-size:12px">' + money(v) + '</b><span>' + BK[i] + '</span></div>').join('') + '</div>' +
-      '<div class="sumbox" style="display:flex;justify-content:space-between"><span>미수금 합계' + (info.asOf ? ' <span class="muted">기준 ' + esc(info.asOf) + (stale > 10 ? ' (' + stale + '일 전)' : '') + '</span>' : '') + '</span><b class="' + (info.bal > 0.005 ? 'warn' : 'ok') + '">' + money(info.bal) + '</b></div>' +
+      '<div class="sumbox" style="display:flex;justify-content:space-between"><span>' + bi('미수금 합계', 'Balance due') + (info.asOf ? ' <span class="muted">기준 as of ' + esc(info.asOf) + (stale > 10 ? ' (' + stale + '일 전)' : '') + '</span>' : '') + '</span><b class="' + (info.bal > 0.005 ? 'warn' : 'ok') + '">' + money(info.bal) + '</b></div>' +
       (info.err ? '<div class="alert a-amb">일부를 읽지 못했습니다 (' + esc(info.err) + ')</div>' : '') +
-      '<div class="seg">' + [['inv', '미결 인보이스 ' + live.length], ['ord', '오더 ' + info.orders.length], ['pay', '수금 ' + info.pays.length]].map(t => '<button class="' + (tab === t[0] ? 'on' : '') + '" data-ss="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
+      '<div class="seg">' + [['inv', bi('미결 인보이스', 'Open inv') + ' ' + live.length], ['ord', bi('오더', 'Orders') + ' ' + info.orders.length], ['pay', bi('수금', 'Payments') + ' ' + info.pays.length]].map(t => '<button class="' + (tab === t[0] ? 'on' : '') + '" data-ss="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
       '<div style="max-height:45vh;overflow:auto">' + body + '</div>' +
-      (onPick ? '<div class="btns"><button class="b-blue" id="ssPick">이 가게로 오더</button></div>' : '');
+      (onPick ? '<div class="btns"><button class="b-blue" id="ssPick">' + bi('이 가게로 오더', 'Order for this store') + '</button></div>' : '');
     $('ssX').onclick = closeModal;
     document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { tab = b.dataset.ss; paint(); });
     document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); location.hash = '#/order/' + encodeURIComponent(el.dataset.so); });

@@ -34,9 +34,22 @@ export function setPins(p) {
   PINS = { top: ((p && p.top) || []).map(String), bottom: ((p && p.bottom) || []).map(String) };
   if (CAT) { sortTree(CAT.tree); sortTree(CAT.tree1); }
 }
-function rank(name) { const k = pinKey(name); const t = PINS.top.findIndex(x => pinKey(x) === k); if (t >= 0) return [0, t]; const b = PINS.bottom.findIndex(x => pinKey(x) === k); if (b >= 0) return [2, b]; return [1, 0]; }
+/* SmartBee 에서 쓰던 앞글자 규칙 (세일즈맨이 익숙한 순서):
+ *   ""  → 맨 앞 (SET ORDER"")   "  → 그 다음 (디스플레이 · 인서트)   보통 이름 → 주얼리 ABC
+ *   [   → 그 외 제품 ([NEXONE] [PERFUME] …)   < * z → 맨 뒤 (<GIFT> *SUPPLY* zCREDIT) */
+export function prefixRank(name) {
+  const s = String(name || '').trim();
+  if (s.startsWith('""') || s.endsWith('""')) return 0;
+  if (s.startsWith('"')) return 1;
+  if (s.startsWith('[')) return 3;
+  if (/^[<*#]/.test(s) || /^zz?[A-Z]/.test(s)) return 4;
+  return 2;
+}
+/** 깨끗한 이름 — 화면에 보일 때는 "" [ ] < > 를 뗌 */
+export function cleanName(name) { return String(name || '').replace(/^""|""$/g, '').replace(/^["\[<*]+|["\]>*]+$/g, '').replace(/^zz?(?=[A-Z])/, '').trim() || String(name || ''); }
+function rank(name) { const k = pinKey(name); const t = PINS.top.findIndex(x => pinKey(x) === k); if (t >= 0) return [0, t]; const b = PINS.bottom.findIndex(x => pinKey(x) === k); if (b >= 0) return [2, b]; return [1, prefixRank(name)]; }
 function sortTree(node) {
-  node.kids.sort((a, b) => { const x = rank(a.name), y = rank(b.name); return x[0] - y[0] || x[1] - y[1] || a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }); });
+  node.kids.sort((a, b) => { const x = rank(a.name), y = rank(b.name); return x[0] - y[0] || x[1] - y[1] || cleanName(a.name).localeCompare(cleanName(b.name), 'en', { numeric: true, sensitivity: 'base' }); });
   node.kids.forEach(sortTree);
 }
 /* ---------- ✨ 자주 나가는 아이템 (catalog/pop = SmartBee 아이템별 판매 수량에서 올림) ---------- */

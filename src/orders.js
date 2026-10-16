@@ -9,9 +9,10 @@
  *  orderLines/{id} = { sm, lines:[{c, d, q, p, lp, t, pq?, note?}] }   (lp = 목록가, t = 인보이스 종류, pq = 픽킹 수량)
  *  st: draft(임시저장) → sent(보냄) → pick(픽킹 중) → done(인보이스 확정) · x(취소)
  * ============================================================ */
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt } from './ui.js';
 import { searchAccounts, accountLabel } from './accounts.js';
-import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor } from './catalog.js';
+import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
+import { jobOf } from './main.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
@@ -76,15 +77,15 @@ async function pageHome() {
   const name = (S.user && (S.user.name || S.user.email)) || '';
   const out = outboxList().filter(x => x.o.sm === mySm()).length;
   const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + icon + '</span><b>' + label + '</b><small id="hs-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
-  $('page').innerHTML = '<div class="card" style="text-align:center"><img src="logo.png" alt="" style="width:64px;height:64px"><div style="font-weight:800;font-size:17px;margin-top:4px">' + esc(name) + '</div><div class="muted">' + esc(mySm()) + ' · ' + (navigator.onLine === false ? '<span class="warn">오프라인</span>' : '<span class="ok">온라인</span>') + (out ? ' · <span class="warn">📤 안 보낸 오더 ' + out + '건</span>' : '') + '</div></div>' +
-    '<div class="hgrid">' + tile('order/new', '🛒', '새 오더', '가게 고르고 담기', 'blue') + tile('order', '📤', '보낼 오더', '읽는 중…', 'green') + tile('order', '📋', '내 오더', '최근 2달') + tile('entry/new', '✍️', '수금 입력', '체크 · 캐쉬') + tile('ar', '💰', '미수금', '내 가게 AR') + tile('mycomm', '🧾', '정산서', '커미션') + '</div>' +
-    '<button class="b-ghost" id="hMine" style="margin-top:4px">📋 내 수금 기록</button>';
+  $('page').innerHTML = '<div class="card" style="text-align:center"><img src="logo.png" alt="" style="width:64px;height:64px"><div style="font-weight:800;font-size:17px;margin-top:4px">' + esc(name) + '</div><div class="muted">' + esc(mySm()) + ' · ' + (navigator.onLine === false ? '<span class="warn">오프라인 Offline</span>' : '<span class="ok">온라인 Online</span>') + (out ? ' · <span class="warn">📤 안 보낸 오더 ' + out + '건</span>' : '') + '</div></div>' +
+    '<div class="hgrid">' + tile('order/new', '🛒', bi('새 오더', 'New order'), '가게 고르고 담기 · pick a store', 'blue') + tile('order', '📤', bi('보낼 오더', 'To send'), '읽는 중…', 'green') + tile('order', '📋', bi('내 오더', 'My orders'), '최근 2달 · last 2 months') + tile('entry/new', '✍️', bi('수금 입력', 'Payment'), '체크 · 캐쉬 · check / cash') + tile('ar', '💰', bi('미수금', 'A/R'), '내 가게 AR · my stores') + tile('mycomm', '🧾', bi('정산서', 'Commission'), '커미션 statement') + '</div>' +
+    '<button class="b-ghost" id="hMine" style="margin-top:4px">📋 ' + bi('내 수금 기록', 'My payment log') + '</button>';
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
   $('hMine').onclick = () => Router.go('mine');
   try {
     const rows = await S.DB.list('orders', { where: [['sm', '==', mySm()], ['ym', 'in', recentYms(2)]] });
     const d = rows.filter(o => o.st === 'draft').length + out, sent = rows.filter(o => o.st === 'sent').length;
-    const el = document.querySelectorAll('#hs-order'); if (el[0]) el[0].textContent = d ? d + '건 대기 중' : '보낼 것 없음'; if (el[1]) el[1].textContent = rows.length + '건 · 회사 확인 중 ' + sent;
+    const el = document.querySelectorAll('#hs-order'); if (el[0]) el[0].textContent = d ? d + '건 대기 중 · waiting' : '보낼 것 없음 · nothing to send'; if (el[1]) el[1].textContent = rows.length + '건 · 회사 확인 중 in office ' + sent;
   } catch (e) { const el = $('hs-order'); if (el) el.textContent = '—'; }
 }
 
@@ -99,6 +100,8 @@ async function pageOrder(arg) {
   if (arg) return openOrder(arg);
   if (!isStaff() && !mySm()) { $('page').innerHTML = '<div class="card"><div class="none">이 계정에 세일즈맨 코드가 연결돼 있지 않습니다.</div></div>'; return; }
   O = null;
+  if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(); if (j === 'invoice') LF.st = 'pick'; else if (j === 'acct') LF.st = 'inv'; }
+  if (isStaff() && !chipsFor().some(c => c[0] === LF.st)) LF.st = chipsFor()[0][0];
   if (isStaff() && (LF.st === 'bo' || LF.st === 'inv')) return Fulfill.pageLists(LF, listHead());
   $('page').innerHTML = listHead() + '<div class="load">오더 읽는 중…</div>';
   bindHead();
@@ -128,9 +131,10 @@ async function pageOrder(arg) {
     drafts.map(o => '<label class="pick on" style="margin-top:6px"><input type="checkbox" class="ck-big" data-sd="' + esc(o.id) + '" checked><span class="pm"><b>' + esc(o.store) + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.no) + ' · ' + (o.n || 0) + '줄 · ' + money(o.amt) + '</small></span><button class="b-ghost b-sm" data-oid="' + esc(o.id) + '">열기</button></label>').join('') +
     '<button class="b-green" id="oSendAll" style="margin-top:10px;padding:15px">📤 체크한 오더 회사로 보내기</button></div>';
   const tot = rows.reduce((a, o) => a + (o.amt || 0), 0);
-  h += '<div class="card"><h2>' + (isStaff() ? '' : '내 ') + '오더 ' + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달)</span>') + '</h2>' + (rows.length ? rows.map(o => orderRow(o)).join('') : '<div class="none">오더가 없습니다</div>') + '</div>';
+  const chip = CHIPS.find(c => c[0] === LF.st);
+  h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 오더', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' + (rows.length ? dayGroups(rows) : '<div class="none">' + bt('오더가 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
-  bindHead();
+  bindHead(); fillStrip();
   if ($('oWip')) $('oWip').onclick = () => openEditor(null, wip);
   if ($('oSync')) $('oSync').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast(navigator.onLine === false ? '인터넷이 안 됩니다 — 폰에 그대로 있습니다' : '보내지 못했습니다 — 잠시 뒤 다시', 'bad'); pageOrder(''); };
   document.querySelectorAll('[data-oid]').forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); Router.go('order', el.dataset.oid); });
@@ -147,16 +151,40 @@ async function pageOrder(arg) {
     busy(false); pageOrder('');
   };
 }
+/* 담당자의 일(job) 에 따라 보이는 칩이 다름 — 픽킹: 들어온 오더 · 픽킹 중 · 백오더 / 인보이스: 픽킹 중(확정 대기) · 완료 · 인보이스 찾기 · 백오더 */
+const CHIPS = [['sent', '📥 들어온 오더', 'New'], ['pick', '📦 픽킹 중', 'Picking'], ['done', '🧾 인보이스 완료', 'Invoiced'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 찾기', 'Find invoice'], ['draft', '임시저장', 'Drafts'], ['x', '취소', 'Cancelled'], ['all', '전체 (2달)', 'All']];
+const JOB_CHIPS = { pick: ['sent', 'pick', 'bo'], invoice: ['pick', 'done', 'inv', 'bo', 'sent', 'all'], acct: ['inv', 'done', 'bo', 'all'] };
+export function chipsFor() { const j = jobOf(); const keys = JOB_CHIPS[j]; return keys ? keys.map(k => CHIPS.find(c => c[0] === k)) : CHIPS; }
+export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 들어온 New</span></div><div><b>…</b><span>📦 픽킹 중 Picking</span></div><div><b>…</b><span>🧾 오늘 인보이스 Today</span></div><div><b>…</b><span>⏳ 백오더 B/O</span></div></div>'; }
+export async function fillStrip() {
+  const el = $('oStrip'); if (!el) return;
+  try {
+    const [live, inv, bo] = await Promise.all([S.DB.list('orders', { where: [['st', 'in', ['sent', 'pick', 'ok']]] }), S.DB.list('invoices', { where: [['d', '==', today()]] }), S.DB.list('backorders', { where: [['st', '==', 'open']] })]);
+    if (!$('oStrip')) return;
+    const b = el.querySelectorAll('b'), sent = live.filter(o => o.st === 'sent'), pk = live.filter(o => o.st !== 'sent'), iv = inv.filter(x => x.st !== 'x');
+    b[0].textContent = sent.length; b[1].textContent = pk.length; b[2].textContent = iv.length + (iv.length ? ' · ' + money(iv.reduce((a, x) => a + (x.total || 0), 0)) : ''); b[3].textContent = bo.length;
+    el.querySelectorAll('div').forEach((d, i) => { d.onclick = () => { LF.st = ['sent', 'pick', 'inv', 'bo'][i]; if (i === 2) LF.ip = 'today'; pageOrder(''); }; d.classList.add('tap'); });
+  } catch (e) { el.querySelectorAll('b').forEach(x => { x.textContent = '—'; }); }
+}
 function listHead() {
-  if (!isStaff()) return '<button class="b-blue" id="oNew" style="margin-bottom:12px;padding:15px">＋ 새 오더</button>';
-  return '<div class="chips">' + [['sent', '📥 들어온 오더'], ['pick', '📦 픽킹 중'], ['done', '🧾 인보이스 완료'], ['bo', '⏳ 백오더'], ['inv', '📄 인보이스'], ['draft', '임시저장'], ['x', '취소'], ['all', '전체 (2달)']].map(c => '<button class="' + (LF.st === c[0] ? 'on' : '') + '" data-lf="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' +
-    '<div class="two" style="margin-bottom:10px">' + sel('lfSm', [['', '세일즈맨 전체']].concat(S.sms.map(s => [s.code, s.code])), LF.sm) + '<button class="b-blue" id="oNew">＋ 오더 만들기</button></div>';
+  if (!isStaff()) return '<button class="b-blue" id="oNew" style="margin-bottom:12px;padding:15px">＋ ' + bi('새 오더', 'New order') + '</button>';
+  const j = jobOf();
+  return statusStrip() + '<div class="chips">' + chipsFor().map(c => '<button class="' + (LF.st === c[0] ? 'on' : '') + '" data-lf="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
+    '<div class="two" style="margin-bottom:10px">' + sel('lfSm', [['', bt('세일즈맨 전체', 'All salesmen')]].concat(S.sms.map(s => [s.code, s.code])), LF.sm) + (j === 'pick' ? '<span></span>' : '<button class="b-blue" id="oNew">＋ ' + bi('오더 만들기', 'New order') + '</button>') + '</div>';
 }
 function bindHead() {
   if ($('oNew')) $('oNew').onclick = () => { if (readWip() && !confirm('작성 중인 오더가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); Router.go('order', 'new'); };
   document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { LF.st = b.dataset.lf; pageOrder(''); });
   if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageOrder(''); };
 }
+/** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */
+function dayGroups(rows) {
+  if (!isStaff()) return rows.map(o => orderRow(o)).join('');
+  const days = {}; rows.forEach(o => { const k = (o.st === 'sent' && o.sentAt ? o.sentAt : o.updatedAt || o.createdAt || o.d).substring(0, 10); (days[k] = days[k] || []).push(o); });
+  return Object.keys(days).sort().reverse().map(d => { const L = days[d]; return '<div class="iday"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>' + L.map(o => orderRow(o)).join(''); }).join('');
+}
+const WDK = ['일', '월', '화', '수', '목', '금', '토'];
+function dayLbl(d) { const t = today(); const x = new Date(d + 'T12:00:00'); return (d === t ? '오늘 Today · ' : '') + Number(d.substring(5, 7)) + '/' + Number(d.substring(8, 10)) + ' (' + WDK[x.getDay()] + ')'; }
 function orderRow(o, local, err) {
   const flags = (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '');
   return '<div class="pr tap" data-oid="' + esc(o.id) + '"><div class="ct"><b>' + esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + flags + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.sm) + ' · ' + esc(o.no) + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + '</small>' + (err ? '<small class="warn">' + esc(err) + '</small>' : '') + '</div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div></div>';
@@ -253,16 +281,16 @@ function totals() { const by = splitByType(O.lines, O.disc, 'q'); let qty = 0, a
 function paintEditor() {
   const t = totals();
   const acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
-  let h = '<div class="card">' + (O.id ? '<div class="alert a-amb" style="margin:0 0 10px">✏️ ' + esc(O.no) + ' 수정 중 ' + stTag(O.st) + '</div>' : '') + '<h2>가게</h2>';
+  let h = '<div class="card">' + (O.id ? '<div class="alert a-amb" style="margin:0 0 10px">✏️ ' + esc(O.no) + ' 수정 중 ' + stTag(O.st) + '</div>' : '') + '<h2>' + bi('가게', 'Store') + '</h2>';
   if (O.store) h += '<div class="pick on"><div class="pm"><b>' + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : (O.acct || '계정 없음')) + '</small>' + (acc && acc.note ? '<small>📝 ' + esc(acc.note) + '</small>' : '') + '<small id="eStoreBal"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI">📋 미수금 · 기록</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">바꾸기</button></div>';
-  else h += '<input id="eStoreQ" placeholder="가게 이름 · 계정코드 · 도시" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div>';
-  if (isStaff()) h += '<div class="fg" style="margin-top:8px"><label>세일즈맨</label>' + sel('eSm', [['', '— 선택 —']].concat(S.sms.map(s => [s.code, s.code])), O.sm) + '</div>';
+  else h += '<input id="eStoreQ" placeholder="가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div>';
+  if (isStaff()) h += '<div class="fg" style="margin-top:8px"><label>세일즈맨 <span class="en">Salesman</span></label>' + sel('eSm', [['', '— 선택 — select —']].concat(S.sms.map(s => [s.code, s.code])), O.sm) + '</div>';
   h += '</div>';
-  h += '<div class="seg"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🔍 아이템 담기</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">🧾 오더 <span id="eCnt">' + t.n + '</span>줄</button></div>';
+  h += '<div class="seg"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🔍 ' + bi('아이템 담기', 'Add items') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">🧾 ' + bi('오더', 'Order') + ' <span id="eCnt">' + t.n + '</span></button></div>';
   h += '<div id="eBody"></div>';
   const isSentEdit = O.st && O.st !== 'draft';
-  h += '<div class="sticky">' + (O.view === 'add' ? '<div id="eQuick"></div>' : '') + '<div class="sumbox" style="margin:0 0 8px;display:flex;justify-content:space-between"><span><b id="eN">' + t.n + '</b>줄 · 수량 <b id="eQ">' + t.qty + '</b></span><b id="eA">' + money(t.amt) + '</b></div><div class="btns" style="margin-top:0">' +
-    (!isSentEdit ? '<button class="b-ghost" id="eDraft">💾 임시저장</button><button class="b-green" id="eSend">📤 보내기</button>' : '<button class="b-ghost" id="eQuit">닫기</button><button class="b-green" id="eSave">💾 저장</button>') + '</div></div>';
+  h += '<div class="sticky">' + (O.view === 'add' ? '<div id="eQuick"></div>' : '') + '<div class="sumbox" style="margin:0 0 8px;display:flex;justify-content:space-between"><span><b id="eN">' + t.n + '</b> <span class="en">lines</span> · <span class="en">qty</span> <b id="eQ">' + t.qty + '</b></span><b id="eA">' + money(t.amt) + '</b></div><div class="btns" style="margin-top:0">' +
+    (!isSentEdit ? '<button class="b-ghost" id="eDraft">💾 ' + bi('임시저장', 'Save') + '</button><button class="b-green" id="eSend">📤 ' + bi('보내기', 'Send') + '</button>' : '<button class="b-ghost" id="eQuit">' + bi('닫기', 'Close') + '</button><button class="b-green" id="eSave">💾 ' + bi('저장', 'Save') + '</button>') + '</div></div>';
   $('page').innerHTML = h;
   if ($('eStoreX')) $('eStoreX').onclick = () => { O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
   if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct);
@@ -345,11 +373,11 @@ function paintAdd() {
   const T = treeFor(S);
   let node = T; O.path.forEach(p => { node = (node && node.map[p]) || null; });
   if (!node) { O.path = []; node = T; }
-  const crumbs = '<div class="chips" style="margin-top:8px"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">전체</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
+  const crumbs = '<div class="chips" style="margin-top:8px"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">' + bi('전체', 'All') + '</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
   const popN = popularItems(O.path, catStart(S), INFO && INFO.hist, 300).length;
-  const popTile = popN ? '<button class="pop' + (O.pop ? ' on' : '') + '" data-pop="1"><b>✨ 자주 나가는</b><span>' + (INFO && Object.keys(INFO.hist).length ? '이 가게 최근 구매 + 많이 나가는 순' : '많이 나가는 순') + ' · ' + popN + '</span></button>' : '';
-  const kids = node.kids.length || popTile ? '<div class="cats">' + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(k.name) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
-  $('eBody').innerHTML = '<div class="card"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 (스캐너는 여기에)" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
+  const popTile = popN ? '<button class="pop' + (O.pop ? ' on' : '') + '" data-pop="1"><b>✨ 자주 나가는 <span class="en">Popular</span></b><span>' + (INFO && Object.keys(INFO.hist).length ? '이 가게 최근 구매 + 많이 나가는 순 · recent + best sellers' : '많이 나가는 순 · best sellers') + ' · ' + popN + '</span></button>' : '';
+  const kids = node.kids.length || popTile ? '<div class="cats">' + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
+  $('eBody').innerHTML = '<div class="card"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
     '<button class="b-ghost b-sm" id="eVM" title="보기 바꾸기" style="font-size:18px">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost b-sm" id="eShow" title="손님 보기" style="font-size:18px">🖼</button></div>' +
     crumbs + kids + '<div id="eRes"></div></div>';
   const sb = $('eQuick'); if (sb) { sb.innerHTML = quickBar(); bindQuick(sb); }
@@ -397,9 +425,9 @@ function paintResults() {
   const all = pop ? popularItems(O.path, catStart(S), INFO && INFO.hist, 300) : searchItems(O.q, O.path, 5000, catStart(S));
   LAST = all;
   const res = all.slice(0, PAGE);
-  const head = '<div class="muted" style="margin:6px 0">' + (pop ? '✨ ' + (all.nStore ? '이 가게가 최근에 산 ' + all.nStore + '개 먼저, 그 다음 ' : '') + '많이 나가는 순 · ' + all.length + '개' : O.q || O.path.length ? all.length.toLocaleString() + '개 (코드 순)' : '전체 ' + catalog().items.length.toLocaleString() + '개 — 카테고리를 고르거나 검색하세요') + '</div>';
+  const head = '<div class="muted" style="margin:6px 0">' + (pop ? '✨ ' + (all.nStore ? '이 가게가 최근에 산 ' + all.nStore + '개 먼저, 그 다음 ' : '') + '많이 나가는 순 · ' + all.length + '개' : O.q || O.path.length ? all.length.toLocaleString() + '개 (코드 순)' : '전체 ' + catalog().items.length.toLocaleString() + '개 — 카테고리를 고르거나 검색하세요 <span class="en">Pick a category or search</span>') + '</div>';
   $('eRes').innerHTML = head + (res.length ? (VM === 'grid' ? '<div class="grid">' + res.map(itemCard).join('') + '</div>' : res.map(itemRow).join('')) +
-    (all.length > res.length ? '<button class="b-ghost" id="eMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') : '<div class="none">찾는 아이템이 없습니다</div>');
+    (all.length > res.length ? '<button class="b-ghost" id="eMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') : '<div class="none">' + bt('찾는 아이템이 없습니다', 'No items found') + '</div>');
   const root = $('eRes');
   bindQty(root);
   if ($('eMore')) $('eMore').onclick = () => { PAGE += 60; paintResults(); };
