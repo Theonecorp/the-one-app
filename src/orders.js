@@ -14,11 +14,12 @@ import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, exactItem, thumb } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
+import * as Store from './store.js';
 
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
 export function register(state) {
-  S = state; Router.on('order', pageOrder); Fulfill.register(state);
+  S = state; Router.on('order', pageOrder); Fulfill.register(state); Store.register(state);
   /* 인터넷이 다시 되면 · 앱을 다시 열면 보낼 함을 비움 */
   window.addEventListener('online', () => syncOutbox(true));
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncOutbox(true); });
@@ -149,6 +150,7 @@ function viewOrder(o, lines, local) {
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
     (local ? '<div class="alert a-red">📤 아직 회사로 안 갔습니다 — 폰에 저장돼 있습니다</div>' : '') + '</div>';
   const B = [];
+  if (o.acct) B.push('<button class="b-ghost" id="oStoreI">📋 가게 기록</button>');
   if (canEdit(o)) B.push('<button class="b-ghost" id="oEdit">✏️ 수정</button>');
   if (local) B.push('<button class="b-blue" id="oSyncOne">📤 지금 보내기</button>');
   if (local && readOut()[o.id] && readOut()[o.id].err) B.push('<button class="b-ghost" id="oDropLocal" style="color:#991b1b">🗑 이 기록 지우기</button>');
@@ -165,6 +167,7 @@ function viewOrder(o, lines, local) {
   paint(); $('oFind').oninput = debounce(paint, 150);
   $('oBack').onclick = () => Router.go('order');
   if ($('oEdit')) $('oEdit').onclick = () => openEditor(o, null, lines);
+  if ($('oStoreI')) $('oStoreI').onclick = () => Store.storeSheet(o.acct);
   if ($('oDropLocal')) $('oDropLocal').onclick = async () => { if (!(await confirmBox('회사로 못 간 이 오더를 폰에서 지울까요? (' + readOut()[o.id].err + ')', '지우기'))) return; const b = readOut(); delete b[o.id]; writeOut(b); Router.go('order'); };
   if ($('oSyncOne')) $('oSyncOne').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast('인터넷이 안 됩니다 — 폰에 그대로 있습니다', 'bad'); else goOrder(o.id); };
   if ($('oSend')) $('oSend').onclick = async () => { const ol = Object.assign({}, o, { st: 'sent', sentAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); putOut(ol, lines); await syncOutbox(false); goOrder(o.id); };
@@ -204,6 +207,7 @@ export async function openEditor(order, wip, lines) {
   } else O = { id: '', no: '', st: 'draft', sm: isStaff() ? '' : mySm(), acct: '', store: '', memo: '', disc: {}, lines: [], d: today() };
   O.disc = O.disc || {};
   O.view = O.view || (O.lines.length ? 'cart' : 'add'); O.q = ''; O.path = O.path || [];
+  INFO = null; FOCUS = '';
   reindex(); saveWip();
   paintEditor();
 }
@@ -213,32 +217,36 @@ function paintEditor() {
   const t = totals();
   const acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
   let h = '<div class="card">' + (O.id ? '<div class="alert a-amb" style="margin:0 0 10px">✏️ ' + esc(O.no) + ' 수정 중 ' + stTag(O.st) + '</div>' : '') + '<h2>가게</h2>';
-  if (O.store) h += '<div class="pick on"><div class="pm"><b>' + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : (O.acct || '계정 없음')) + '</small>' + (acc && acc.note ? '<small>📝 ' + esc(acc.note) + '</small>' : '') + '</div><button class="b-ghost b-sm" id="eStoreX">바꾸기</button></div>';
+  if (O.store) h += '<div class="pick on"><div class="pm"><b>' + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : (O.acct || '계정 없음')) + '</small>' + (acc && acc.note ? '<small>📝 ' + esc(acc.note) + '</small>' : '') + '<small id="eStoreBal"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI">📋 미수금 · 기록</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">바꾸기</button></div>';
   else h += '<input id="eStoreQ" placeholder="가게 이름 · 계정코드 · 도시" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div>';
   if (isStaff()) h += '<div class="fg" style="margin-top:8px"><label>세일즈맨</label>' + sel('eSm', [['', '— 선택 —']].concat(S.sms.map(s => [s.code, s.code])), O.sm) + '</div>';
   h += '</div>';
   h += '<div class="seg"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🔍 아이템 담기</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">🧾 오더 <span id="eCnt">' + t.n + '</span>줄</button></div>';
   h += '<div id="eBody"></div>';
   const isSentEdit = O.st && O.st !== 'draft';
-  h += '<div class="sticky"><div class="sumbox" style="margin:0 0 8px;display:flex;justify-content:space-between"><span><b id="eN">' + t.n + '</b>줄 · 수량 <b id="eQ">' + t.qty + '</b></span><b id="eA">' + money(t.amt) + '</b></div><div class="btns" style="margin-top:0">' +
+  h += '<div class="sticky">' + (O.view === 'add' ? '<div id="eQuick"></div>' : '') + '<div class="sumbox" style="margin:0 0 8px;display:flex;justify-content:space-between"><span><b id="eN">' + t.n + '</b>줄 · 수량 <b id="eQ">' + t.qty + '</b></span><b id="eA">' + money(t.amt) + '</b></div><div class="btns" style="margin-top:0">' +
     (!isSentEdit ? '<button class="b-ghost" id="eDraft">💾 임시저장</button><button class="b-green" id="eSend">📤 보내기</button>' : '<button class="b-ghost" id="eQuit">닫기</button><button class="b-green" id="eSave">💾 저장</button>') + '</div></div>';
   $('page').innerHTML = h;
-  if ($('eStoreX')) $('eStoreX').onclick = () => { O.store = ''; O.acct = ''; saveWip(); paintEditor(); };
+  if ($('eStoreX')) $('eStoreX').onclick = () => { O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
+  if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct);
+  if (O.acct) loadInfo(O.acct);
   if ($('eStoreQ')) {
     const q = $('eStoreQ'), box = $('eStoreHits');
     q.oninput = () => {
       if (!q.value.trim()) { box.style.display = 'none'; return; }
       const mine = isStaff() ? S.accounts : S.accounts;
       const hits = searchAccounts(mine, q.value, 12);
-      box.innerHTML = hits.map(a => '<div data-ac="' + esc(a.acct) + '"><b>' + esc(accountLabel(a)) + '</b><small>' + esc(a.acct + ' · ' + [a.addr, a.city].filter(Boolean).join(', ') + (a.sm ? ' · ' + a.sm : '')) + '</small></div>').join('') || '<div class="muted">찾는 가게가 없습니다</div>';
+      box.innerHTML = hits.map(a => '<div data-ac="' + esc(a.acct) + '" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(accountLabel(a)) + '</b><small>' + esc(a.acct + ' · ' + [a.addr, a.city].filter(Boolean).join(', ') + (a.sm ? ' · ' + a.sm : '')) + '</small></div><button class="b-ghost b-sm" data-ai="' + esc(a.acct) + '">📋</button></div>').join('') || '<div class="muted">찾는 가게가 없습니다</div>';
       box.style.display = 'block';
-      box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => {
-        const a = S.accounts.byCode[el.dataset.ac]; O.acct = a.acct; O.store = a.store;
+      box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => pickStore(el.dataset.ac));
+      box.querySelectorAll('[data-ai]').forEach(el => el.onclick = e => { e.stopPropagation(); Store.storeSheet(el.dataset.ai, pickStore); });
+    };
+  }
+  function pickStore(code) {
+        const a = S.accounts.byCode[code]; if (!a) return; O.acct = a.acct; O.store = a.store;
         if (isStaff() && !O.sm && a.sm) O.sm = String(a.sm).toUpperCase();
         O.disc = acctDisc(a);   // 가게 기본 할인으로 시작
         saveWip(); paintEditor();
-      });
-    };
   }
   if ($('eSm')) $('eSm').onchange = () => { O.sm = $('eSm').value; saveWip(); };
   document.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => { O.view = b.dataset.ev; saveWip(); paintEditor(); });
@@ -271,6 +279,27 @@ function addKitItems(setIt, times) {
   (setIt.k || []).forEach(x => { const c = catalog().byCode[x[0]]; if (c) setQty(c.c, (IDX[c.c] ? IDX[c.c].q : 0) + x[1] * (times || 1)); });
 }
 
+/* 가게 자료 (미수금 · 최근 구매) — 담기 화면의 "최근" 표시와 잔액 한 줄에 씀 */
+let INFO = null;
+async function loadInfo(acct) {
+  try { const i = await Store.storeInfo(acct); if (!O || O.acct !== acct) return; INFO = i; } catch (e) { return; }
+  const el = $('eStoreBal'); if (el) el.innerHTML = (INFO.asOf ? '미수금 <b class="' + (INFO.bal > 0.005 ? 'warn' : 'ok') + '">' + money(INFO.bal) + '</b>' + (INFO.bk[3] + INFO.bk[4] > 0.005 ? ' · 60일+ <b class="warn">' + money(INFO.bk[3] + INFO.bk[4]) + '</b>' : '') : '') + (INFO.orders.length ? ' · 최근 오더 ' + esc(md(INFO.orders[0].d)) + ' ' + money(INFO.orders[0].amt) : '');
+  if (O.view === 'add' && VM === 'list') paintResults();
+}
+/* 빠른 수량 — 마지막에 만진 아이템에 1 · 2 · 3 · 6 · 12 · 24 · 36 · 0 */
+let FOCUS = '';
+const QUICK = [1, 2, 3, 6, 12, 24, 36, 0];
+function quickBar() { return '<div class="qbar" id="qbar"><span id="qbarWho">' + (FOCUS ? esc(FOCUS) : '아이템을 고르고 수량을 누르세요') + '</span>' + QUICK.map(n => '<button data-qk="' + n + '">' + n + '</button>').join('') + '</div>'; }
+function setFocus(c) { FOCUS = c; const w = $('qbarWho'); if (w) w.textContent = c + (IDX[c] ? ' · ' + IDX[c].q + '개' : ''); }
+function bindQuick(root) {
+  root.querySelectorAll('[data-qk]').forEach(b => b.onclick = () => {
+    if (!FOCUS) return toast('먼저 아이템을 누르세요', 'bad');
+    const n = setQty(FOCUS, Number(b.dataset.qk)); setFocus(FOCUS);
+    const inp = document.querySelector('[data-qi="' + CSS.escape(FOCUS) + '"]'); if (inp) { inp.value = n || ''; markRow($('eRes') || $('eCart'), FOCUS, n); }
+    refreshCard(FOCUS);
+  });
+}
+
 /* ---- 담기: 사진 카드(누르면 1개) · 목록 · 검색 · 스캔 · 카테고리 ---- */
 const VM_KEY = 'theone.order.view';
 let VM = (() => { try { return localStorage.getItem(VM_KEY) || 'grid'; } catch (e) { return 'grid'; } })();
@@ -284,6 +313,7 @@ function paintAdd() {
   $('eBody').innerHTML = '<div class="card"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 (스캐너는 여기에)" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
     '<button class="b-ghost b-sm" id="eVM" title="보기 바꾸기" style="font-size:18px">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost b-sm" id="eShow" title="손님 보기" style="font-size:18px">🖼</button></div>' +
     crumbs + kids + '<div id="eRes"></div></div>';
+  const sb = $('eQuick'); if (sb) { sb.innerHTML = quickBar(); bindQuick(sb); }
   const q = $('eQ1');
   const run = () => { O.q = q.value; PAGE = 60; paintResults(); };
   q.oninput = debounce(run, 160);
@@ -303,9 +333,12 @@ function paintAdd() {
 }
 function itemRow(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
-  return '<div class="pr irow' + (cur ? ' v' : '') + '" data-row="' + esc(it.c) + '">' +
+  const t = typeOfItem(S, it), dc = Number((O.disc || {})[t]) || 0, hist = Store.histText(INFO, it.c), lp = Store.lastPrice(INFO, it.c);
+  return '<div class="pr irow' + (cur ? ' v' : '') + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
     (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
-    '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + money(it.p) + (it.s ? ' · SRP ' + money(it.s) : '') + '</small></div>' +
+    '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '</b><small>' + esc(it.d) + '</small>' +
+    '<small><b>' + money(it.p) + '</b>' + (dc ? ' → 할인가 ' + money(it.p * (1 - dc / 100)) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · 지난번 ' + money(lp) : '') + (it.s ? ' · SRP ' + money(it.s) : '') + '</small>' +
+    (hist ? '<small class="hist">🕘 ' + esc(hist) + '</small>' : '') + '</div>' +
     qtyBox(it.c, cur) + '</div>';
 }
 /** 사진 카드 — 누르면 1개 담김, 숫자를 누르면 수량 입력, − 로 빼기 */
@@ -330,6 +363,7 @@ function paintResults() {
   bindQty(root);
   if ($('eMore')) $('eMore').onclick = () => { PAGE += 60; paintResults(); };
   root.querySelectorAll('[data-big]').forEach(el => el.onclick = () => { const i = LAST.findIndex(x => x.c === el.dataset.big); showMode(LAST, Math.max(0, i)); });
+  root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { const r = el.closest('[data-frow]'); root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); setFocus(r.dataset.frow); });
   root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
   root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); });
   root.querySelectorAll('[data-gq]').forEach(b => b.onclick = e => { if (!b.textContent) return; e.stopPropagation(); qtyPad(b.dataset.gq); });
@@ -337,7 +371,7 @@ function paintResults() {
     let t = null, long = false;
     el.addEventListener('pointerdown', () => { long = false; t = setTimeout(() => { long = true; qtyPad(el.dataset.gc); }, 550); });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
-    el.onclick = () => { if (long) return; const c = el.dataset.gc; setQty(c, (IDX[c] ? IDX[c].q : 0) + 1); refreshCard(c); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); };
+    el.onclick = () => { if (long) return; const c = el.dataset.gc; setQty(c, (IDX[c] ? IDX[c].q : 0) + 1); refreshCard(c); setFocus(c); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); };
     el.oncontextmenu = e => e.preventDefault();
   });
 }
@@ -410,7 +444,7 @@ function bindQty(root) {
   });
   root.querySelectorAll('[data-qi]').forEach(inp => {
     inp.onchange = () => { const n = setQty(inp.dataset.qi, inp.value); inp.value = n || ''; markRow(root, inp.dataset.qi, n); };
-    inp.onfocus = () => inp.select();
+    inp.onfocus = () => { inp.select(); setFocus(inp.dataset.qi); root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); const r = inp.closest('[data-row]'); if (r) r.classList.add('foc'); };
     inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); const q = $('eQ1'); if (q) q.focus(); } };
   });
 }

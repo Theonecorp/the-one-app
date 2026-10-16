@@ -11,6 +11,7 @@ import { loadCatalog, catalog, exactItem } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml } from './invoicing.js';
 import { stTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit } from './orders.js';
 import { bumpAccountsVer } from './mgr.js';
+import { storeSheet } from './store.js';
 
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
@@ -48,6 +49,7 @@ export function manage(o, lines) {
   if (picking) B.push('<button class="b-ghost" id="mPickSave">💾 픽킹 저장</button><button class="b-green" id="mInv">🧾 인보이스 확정</button>');
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 픽킹 인보이스</button>' : '') +
+    (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 가게 기록</button>' : '') +
     (canEdit(o) ? '<button class="b-ghost b-sm" id="mEdit">✏️ 오더 수정</button>' : '') +
     (picking ? '<button class="b-ghost b-sm" id="mUnpick">↩️ 들어온 오더로</button>' : '') +
     (o.st === 'done' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 인보이스 인쇄</button>' : '') +
@@ -131,6 +133,7 @@ export function manage(o, lines) {
   if ($('mPickPrint')) $('mPickPrint').onclick = () => printPicking(o, lines);
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 오더로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mStoreI')) $('mStoreI').onclick = () => storeSheet(o.acct);
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);
   if ($('mCancel')) $('mCancel').onclick = async () => { if (!(await confirmBox('이 오더를 취소할까요?', '오더 취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'x', updatedAt: new Date().toISOString(), cancelBy: S.user.email }); toast('취소했습니다'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
