@@ -13,22 +13,28 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.6.1';
+export const VER = 'v0.6.2';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
 const NAV = {
-  salesman: [['entry', '✍️', '수금 입력'], ['order', '🛒', '오더'], ['mine', '📋', '내 기록'], ['ar', '💰', '미수금'], ['mycomm', '🧾', '정산서']],
+  salesman: [['home', '🏠', '홈'], ['order', '🛒', '오더'], ['entry', '✍️', '수금 입력'], ['ar', '💰', '미수금'], ['mycomm', '🧾', '정산서'], ['mine', '📋', '내 기록']],
   manager:  [['verify', '✅', '확인'], ['order', '🛒', '오더'], ['cod', '💳', 'COD·ACH'], ['ach', '🏦', 'ACH'], ['stores', '🏬', '거래처'], ['arup', '📤', 'AR']],
   admin:    [['now', '📈', '현황'], ['order', '🛒', '오더'], ['pay', '🧾', '정산'], ['bossar', '💰', '미수금'], ['mg', '🏭', '경영'], ['admin', '⚙️', '관리']]
 };
 /* 오더는 관리 → 📦 아이템에서 "오더 켜기" 전까지 관리자에게만 보임 */
-function navFor(r) { const on = S.settings.ordersOn || (S.me && S.me.role === 'admin'); return (NAV[r] || []).filter(x => x[0] !== 'order' || on); }
+/* 오더가 켜지면 세일즈맨은 🏠 홈(큰 버튼) 이 첫 화면, 꺼져 있으면 예전처럼 수금 입력부터 */
+function navFor(r) {
+  const on = S.settings.ordersOn || (S.me && S.me.role === 'admin');
+  let items = (NAV[r] || []).filter(x => (x[0] !== 'order' && x[0] !== 'home') || on);
+  if (r === 'salesman') items = items.filter(x => on ? x[0] !== 'mine' : true);   // 홈이 있으면 내 기록은 홈 안의 버튼으로
+  return items;
+}
 
 function shell() {
   document.head.insertAdjacentHTML('beforeend', '<style>' + CSS + '</style>');
   document.body.innerHTML =
-    '<header><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
+    '<header><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
     '<div class="wrap" id="page"><div class="load">불러오는 중…</div></div>' +
     '<nav id="nav"></nav>' +
     '<div id="busy"><div class="spin"></div></div>' +
@@ -44,7 +50,7 @@ function shell() {
 
 function loginScreen(msg) {
   $('nav').innerHTML = ''; $('hWho').textContent = '';
-  $('page').innerHTML = '<div class="card login"><div class="logo">🔑</div><h1>THE ONE</h1><p>회사 구글 계정으로 로그인하세요</p>' +
+  $('page').innerHTML = '<div class="card login"><div class="logo"><img src="logo.png" alt="ONE"></div><h1>THE ONE</h1><p>회사 구글 계정으로 로그인하세요</p>' +
     '<button class="b-blue" id="btnLogin">Google 로 로그인</button>' + (msg ? '<div class="alert a-red" style="margin-top:12px">' + esc(msg) + '</div>' : '') +
     '<p class="muted" style="margin-top:18px">' + VER + '</p></div>';
   $('btnLogin').onclick = async () => { try { await S.AUTH.signIn(); } catch (e) { loginScreen(e.code + ' — ' + e.message); } };
@@ -117,7 +123,7 @@ async function afterLogin(user) {
   } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   busy(false);
   paintNav();
-  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0;
+  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0;
   if (!valid) location.hash = '#/' + navFor(S.role)[0][0];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
 }
