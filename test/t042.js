@@ -49,6 +49,15 @@ const path = require('path'), fs = require('fs');
   if (!/Chains/.test(after[0])) errs.push('pin top failed: ' + after.join('|'));
   await pg.click('[data-tup="Chains"]'); await pg.waitForTimeout(600);
   log('after unpin:', await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent).join(' | ')));
+  /* 2a. 🐝 SmartBee 분류로 한 번에 */
+  await pg.click('[data-tp="0"]'); await pg.waitForTimeout(200);
+  await pg.click('#sbmGo'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(2500);
+  const sbmRoot = await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent));
+  log('after sbm:', sbmRoot.join(' | '));
+  if (!sbmRoot.some(x => /Jewelry/.test(x))) errs.push('sbm apply failed: ' + sbmRoot.join('|'));
+  await pg.click('[data-tin="Jewelry"]'); await pg.waitForTimeout(300);
+  log('sbm L1:', (await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent))).slice(0, 8).join(' | '));
+  await shot('h2a_sbm');
   /* 2b. 담당자 오더 목록 — 현황 띠 · 날짜별 묶음 */
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#oStrip'); await pg.waitForTimeout(600); await shot('h2b_staff_list');
   log('strip:', (await pg.textContent('#oStrip')).replace(/\s+/g, ' '));
