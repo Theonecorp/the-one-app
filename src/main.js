@@ -13,7 +13,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.7.1';
+export const VER = 'v0.7.2';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -114,7 +114,7 @@ function paintNav() {
   Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '<span class="en">' + (x[3] || '') + '</span></button>').join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => Router.go(b.dataset.go));
-  $('hWho').textContent = (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? jobLabel(jobOf()).split(' ')[0] : roleLabel(S.role));
+  $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? jobLabel(jobOf()).split(' ')[0] : roleLabel(S.role).split(' ')[0]);
 }
 
 async function afterLogin(user) {

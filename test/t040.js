@@ -34,13 +34,16 @@ const path = require('path'), fs = require('fs');
   await shot(pg, 'p1_cart');
   /* 인터넷 끊고 보내기 */
   await ctx.setOffline(true);
-  await pg.click('#eSend'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(600);
+  await pg.click('#eDraft'); await pg.waitForTimeout(600);
   log('offline toast:', await pg.textContent('#toast'));
   log('outbox count:', await pg.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('theone.outbox.v1') || '{}')).length));
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(500); await shot(pg, 'p2_outbox');
   log('outbox card:', !!(await pg.$('#oSync')));
   await ctx.setOffline(false); await pg.evaluate(() => window.dispatchEvent(new Event('online'))); await pg.waitForTimeout(800);
   log('outbox after online:', await pg.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('theone.outbox.v1') || '{}')).length));
+  /* 세일즈맨: 저장해 둔 오더를 "보낼 오더" 에서 한 번에 보냄 */
+  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(300); await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForTimeout(200); await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#oSendAll');
+  await pg.click('#oSendAll'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(800); log('sent via send-all:', await pg.textContent('#toast'));
   /* 매니저로 바꿔서 (같은 메모리 DB) */
   await pg.evaluate(async () => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; });
   await pg.click('#hMenu'); await pg.waitForSelector('#mOut'); await pg.click('#mOut'); await pg.waitForSelector('#btnLogin'); await pg.click('#btnLogin'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
