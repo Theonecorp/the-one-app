@@ -1,7 +1,7 @@
 /* THE ONE — 인터넷이 없어도 앱이 열리게 화면 파일만 폰에 보관 (데이터는 Firestore 가 따로 보관)
  *  · index.html / app.js : 먼저 인터넷에서 새로 받고, 안 되면 보관본
  *  · Firebase SDK (gstatic, 버전 고정) · 아이콘 : 보관본 먼저 */
-const CACHE = 'theone-shell-v2';
+const CACHE = 'theone-shell-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './logo.png', './logo-96.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

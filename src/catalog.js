@@ -26,7 +26,42 @@ async function idbSet(key, v) { try { const db = await idb(); await new Promise(
 let CAT = null;   // { ver, items, byCode, byBar, cats, tree }
 export function catalog() { return CAT; }
 
+/* ---------- 분류 순서 규칙: 📌 위에 고정 → ABC → 📌 아래에 고정 (설정 settings.app.catPins) ---------- */
+let PINS = { top: [], bottom: [] };
+const pinKey = s => String(s || '').trim().toUpperCase();
+export function pins() { return PINS; }
+export function setPins(p) {
+  PINS = { top: ((p && p.top) || []).map(String), bottom: ((p && p.bottom) || []).map(String) };
+  if (CAT) { sortTree(CAT.tree); sortTree(CAT.tree1); }
+}
+function rank(name) { const k = pinKey(name); const t = PINS.top.findIndex(x => pinKey(x) === k); if (t >= 0) return [0, t]; const b = PINS.bottom.findIndex(x => pinKey(x) === k); if (b >= 0) return [2, b]; return [1, 0]; }
+function sortTree(node) {
+  node.kids.sort((a, b) => { const x = rank(a.name), y = rank(b.name); return x[0] - y[0] || x[1] - y[1] || a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' }); });
+  node.kids.forEach(sortTree);
+}
+/* ---------- ✨ 자주 나가는 아이템 (catalog/pop = SmartBee 아이템별 판매 수량에서 올림) ---------- */
+let POP = [];   // [code, qty] 많이 나간 순
+export function popularCodes() { return POP; }
+async function loadPop(S) {
+  try { const d = await S.DB.get('catalog', 'pop'); if (d && d.j) { POP = JSON.parse(d.j); await idbSet(IDB_KEY + '.pop', POP); return; } } catch (e) {}
+  if (!POP.length) { const c = await idbGet(IDB_KEY + '.pop'); if (Array.isArray(c)) POP = c; }
+}
+/** 이 가게가 최근에 산 것(hist: code → [[d,q,p]…]) 먼저, 그 다음 전체에서 많이 나가는 순 — path 안의 것만 */
+export function popularItems(path, start, hist, limit) {
+  if (!CAT) return [];
+  const inPath = x => { if (!path || !path.length) return true; const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); };
+  const out = [], seen = {};
+  const push = c => { const it = CAT.byCode[c]; if (!it || seen[it.c] || !inPath(it)) return; seen[it.c] = 1; out.push(it); };
+  if (hist) Object.keys(hist).sort((a, b) => (hist[b][0] && hist[b][0][0] || '') < (hist[a][0] && hist[a][0][0] || '') ? -1 : 1).forEach(push);
+  const nStore = out.length;
+  for (const r of POP) { if (out.length >= (limit || 300)) break; push(r[0]); }
+  out.nStore = nStore;
+  return out;
+}
+
 export async function loadCatalog(S, force) {
+  if (S && S.settings && S.settings.catPins) setPins(S.settings.catPins);
+  if (!POP.length || force) loadPop(S);
   let meta = null;
   try { meta = await S.DB.get('catalog', 'meta'); }
   catch (e) {   /* 인터넷이 안 되면 폰에 보관한 목록으로 */
@@ -77,7 +112,8 @@ function index(pack) {
     if (st.old && st.old !== code) { it.old = st.old; if (oldIt) { oldIt.gone = true; if (oldIt.b && byBar[oldIt.b] === oldIt) byBar[oldIt.b] = it; } byCode[st.old] = it; byNorm[norm(st.old)] = it; }
   });
   for (let i = items.length - 1; i >= 0; i--) if (items[i].gone) items.splice(i, 1);
-  /* 카테고리 트리: 시트의 Categories 순서를 따르고, 거기 없는 것은 뒤에 붙임
+  items.sort((a, b) => a.c.localeCompare(b.c, 'en', { numeric: true }));   // 분류 안에서는 코드 순
+  /* 카테고리 트리: 📌 위 고정 → ABC → 📌 아래 고정 (sortTree)
    *  tree  = Group → Level 1 → Level 2 → Level 3   (4단계)
    *  tree1 = Level 1 → Level 2 → Level 3            (SBMGo 처럼 큰 품목부터, 기본) */
   const mk = () => ({ kids: [], map: {} });
@@ -94,7 +130,7 @@ function index(pack) {
   const count = (root, path) => { let node = root; path.forEach(name => { if (!name) return; node = node.map[name]; node.n++; }); };
   items.forEach(x => { add(tree, [x.g, x.l1, x.l2, x.l3]); count(tree, [x.g, x.l1, x.l2, x.l3]); add(tree1, [x.l1, x.l2, x.l3]); count(tree1, [x.l1, x.l2, x.l3]); });
   const prune = n => { n.kids = n.kids.filter(k => k.n > 0); n.kids.forEach(prune); };
-  prune(tree); prune(tree1);
+  prune(tree); prune(tree1); sortTree(tree); sortTree(tree1);
   return { ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, byCode, byBar, byNorm, tree, tree1, sets, rows: pack.rows, cats: pack.cats || [] };
 }
 /** 오더 화면이 어느 단계부터 보이나 — 'l1'(기본, SBMGo 처럼 ANKLET · EARRING …) 또는 'g'(Jewelry · Beauty … 부터) */

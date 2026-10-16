@@ -11,7 +11,7 @@
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce } from './ui.js';
 import { searchAccounts, accountLabel } from './accounts.js';
-import { loadCatalog, catalog, searchItems, exactItem, thumb, catStart, treeFor } from './catalog.js';
+import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
@@ -346,7 +346,9 @@ function paintAdd() {
   let node = T; O.path.forEach(p => { node = (node && node.map[p]) || null; });
   if (!node) { O.path = []; node = T; }
   const crumbs = '<div class="chips" style="margin-top:8px"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">전체</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
-  const kids = node.kids.length ? '<div class="cats">' + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(k.name) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
+  const popN = popularItems(O.path, catStart(S), INFO && INFO.hist, 300).length;
+  const popTile = popN ? '<button class="pop' + (O.pop ? ' on' : '') + '" data-pop="1"><b>✨ 자주 나가는</b><span>' + (INFO && Object.keys(INFO.hist).length ? '이 가게 최근 구매 + 많이 나가는 순' : '많이 나가는 순') + ' · ' + popN + '</span></button>' : '';
+  const kids = node.kids.length || popTile ? '<div class="cats">' + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(k.name) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
   $('eBody').innerHTML = '<div class="card"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 (스캐너는 여기에)" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
     '<button class="b-ghost b-sm" id="eVM" title="보기 바꾸기" style="font-size:18px">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost b-sm" id="eShow" title="손님 보기" style="font-size:18px">🖼</button></div>' +
     crumbs + kids + '<div id="eRes"></div></div>';
@@ -361,8 +363,9 @@ function paintAdd() {
     if (it) { const n = setQty(it.c, (IDX[it.c] ? IDX[it.c].q : 0) + 1); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
     else { run(); toast('정확히 맞는 코드가 없습니다 — 아래에서 고르세요', 'bad'); }
   };
-  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); PAGE = 60; paintAdd(); });
-  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); PAGE = 60; paintAdd(); });
+  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.pop = false; PAGE = 60; paintAdd(); });
+  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); O.pop = false; PAGE = 60; paintAdd(); });
+  const pt = document.querySelector('[data-pop]'); if (pt) pt.onclick = () => { O.pop = !O.pop; PAGE = 60; paintAdd(); };
   $('eVM').onclick = () => { VM = VM === 'grid' ? 'list' : 'grid'; try { localStorage.setItem(VM_KEY, VM); } catch (e) {} paintAdd(); };
   $('eShow').onclick = () => showMode(LAST, 0);
   paintResults();
@@ -390,10 +393,11 @@ function itemCard(it) {
 const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data-d="-1">−</button><input type="number" inputmode="numeric" min="0" data-qi="' + esc(c) + '" value="' + (v || '') + '" placeholder="0"><button data-dq="' + esc(c) + '" data-d="1">＋</button></div>';
 function paintResults() {
   if (!O || !$('eRes')) return;
-  const all = searchItems(O.q, O.path, 5000, catStart(S));
+  const pop = O.pop && !O.q;
+  const all = pop ? popularItems(O.path, catStart(S), INFO && INFO.hist, 300) : searchItems(O.q, O.path, 5000, catStart(S));
   LAST = all;
   const res = all.slice(0, PAGE);
-  const head = '<div class="muted" style="margin:6px 0">' + (O.q || O.path.length ? all.length.toLocaleString() + '개' : '전체 ' + catalog().items.length.toLocaleString() + '개 — 카테고리를 고르거나 검색하세요') + '</div>';
+  const head = '<div class="muted" style="margin:6px 0">' + (pop ? '✨ ' + (all.nStore ? '이 가게가 최근에 산 ' + all.nStore + '개 먼저, 그 다음 ' : '') + '많이 나가는 순 · ' + all.length + '개' : O.q || O.path.length ? all.length.toLocaleString() + '개 (코드 순)' : '전체 ' + catalog().items.length.toLocaleString() + '개 — 카테고리를 고르거나 검색하세요') + '</div>';
   $('eRes').innerHTML = head + (res.length ? (VM === 'grid' ? '<div class="grid">' + res.map(itemCard).join('') + '</div>' : res.map(itemRow).join('')) +
     (all.length > res.length ? '<button class="b-ghost" id="eMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') : '<div class="none">찾는 아이템이 없습니다</div>');
   const root = $('eRes');

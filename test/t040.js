@@ -66,7 +66,7 @@ const path = require('path'), fs = require('fs');
   await pg.click('#page [data-go^="bo:"]'); await pg.waitForTimeout(500); await shot(pg, 'p7_bo');
   await pg.click('#bMake'); await pg.waitForTimeout(600); log('new from bo:', (await pg.textContent('#page h2')).trim());
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(300); await pg.click('[data-lf="inv"]'); await pg.waitForTimeout(600);
-  log('inv list:', (await pg.textContent('#page .card h2')).trim()); await shot(pg, 'p8_invlist');
+  log('inv list:', (await pg.textContent('#iList .kpi')).replace(/\s+/g, ' ')); await shot(pg, 'p8_invlist');
   /* 큰 오더: 1,100줄 (매니저가 만들기) */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
   await pg.fill('#eStoreQ', '1271'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200);
