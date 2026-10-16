@@ -10,17 +10,19 @@ import { catalog } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
  *  comm: 커미션 계산 때 어느 칸으로 셀지 (A 기본 · P · W) */
+/* SmartBee 와 같은 A · P · W — A 주얼리, P 그 외 제품, W 디스플레이 · 세트 오더.
+ *  번호는 SmartBee 마지막 번호(2026-10-16: A43106 · P-008748 · W00611) 다음부터 (관리 → 설정에서 바꿀 수 있음) */
 export const INV_DEFAULT = [
-  { c: 'G', n: '일반', comm: 'A', match: '' },
-  { c: 'J', n: '주얼리', comm: 'A', match: 'Jewelry, Body & Nose' },
-  { c: 'H', n: '뷰티 · 헤어', comm: 'P', match: 'Beauty' },
-  { c: 'D', n: '세트 · 인서트 · 디스플레이', comm: 'W', match: 'Set Orders & Displays, 🧩 세트 · 인서트' },
-  { c: 'R', n: '반품 · 크레딧', comm: 'CM', match: '' }
+  { c: 'A', n: '주얼리 Jewelry', comm: 'A', match: 'Jewelry', start: 43107 },
+  { c: 'P', n: '그 외 제품 Other', comm: 'P', match: 'Other, Beauty, Hair', start: 8749 },
+  { c: 'W', n: '디스플레이 · 세트 Display & Set', comm: 'W', match: 'Set & Display, Set Orders & Displays, 🧩 세트 · 인서트', start: 612 }
 ];
+const OLD_DEFAULT = 'G,J,H,D,R';   // v0.6.x 임시 종류 — 저장돼 있어도 무시
 export const NUM_DIGITS = 5, NUM_MAX = 99999;
 const LEVELS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';   // I · O 는 숫자와 헷갈려서 뺌
 export function invTypes(S) {
-  const t = (S.settings && Array.isArray(S.settings.invTypes) && S.settings.invTypes.length) ? S.settings.invTypes : INV_DEFAULT;
+  let t = (S.settings && Array.isArray(S.settings.invTypes) && S.settings.invTypes.length) ? S.settings.invTypes : INV_DEFAULT;
+  if (t !== INV_DEFAULT && t.map(x => x.c).join(',') === OLD_DEFAULT) t = INV_DEFAULT;
   return t.map(x => Object.assign({ n: x.c, comm: 'A', match: '' }, x, { c: String(x.c).toUpperCase() }));
 }
 /** 아이템 → 인보이스 종류 */
@@ -68,7 +70,7 @@ export function fmtNo(t, n) {
   const lv = Math.floor((n - 1) / NUM_MAX), k = ((n - 1) % NUM_MAX) + 1;
   return t.c + (lv ? LEVELS[lv - 1] || ('Z' + lv) : '') + String(k).padStart(NUM_DIGITS, '0');
 }
-export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, 1); return fmtNo(t, n); }
+export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, t.start || 1); return fmtNo(t, n); }
 
 /* ---------- 회사 정보 (관리 → 설정) ---------- */
 export const CO_DEFAULT = { name: 'THE ONE CORP', addr1: '4265 CHURCH STREET, UNIT 1009', addr2: 'SANFORD, FL 32771', tel: '(407) 878 - 7274', thanks: 'Thank You For Your Business !' };

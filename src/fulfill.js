@@ -6,11 +6,12 @@
  *    ④ 백오더는 매니저가 골라서 새 오더로 만들거나 닫음
  *  backorders/{orderId} = { id, order, acct, store, sm, d, lines:[{c,d,q,p,lp,t}], qty, amt, st:'open'|'used'|'closed', newOrders:[], createdAt }
  * ============================================================ */
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt } from './ui.js';
+import { jobOf } from './main.js';
 import { loadCatalog, catalog, exactItem } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead } from './invoicing.js';
 import { storeInfo } from './store.js';
-import { stTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit } from './orders.js';
+import { stTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer } from './mgr.js';
 import { storeSheet } from './store.js';
 import { searchAccounts } from './accounts.js';
@@ -40,7 +41,7 @@ export function manage(o, lines) {
     '<div style="font-size:18px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div>' +
     '<div class="muted">' + esc([o.acct, acc ? [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : ''].filter(Boolean).join(' · ')) + (acc && acc.terms ? ' · ' + esc(acc.terms) : '') + '</div>' +
     '<div class="muted">' + esc(o.sm) + ' · ' + esc(o.d) + (o.sentAt ? ' · 들어옴 ' + esc(o.sentAt.substring(5, 16).replace('T', ' ')) : '') + (o.pickAt ? ' · 픽킹 ' + esc(o.pickAt.substring(5, 16).replace('T', ' ')) : '') + '</div></div>' +
-    '<button class="b-ghost b-sm" id="mBack">‹ 목록</button></div>' +
+    '<button class="b-ghost b-sm" id="mBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     (acc && acc.note ? '<div class="alert a-blu">🏬 ' + esc(acc.note) + '</div>' : '') +
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
     '<div id="mSum"></div>';
@@ -49,26 +50,28 @@ export function manage(o, lines) {
   const dk = {}; Object.keys(ad).concat(Object.keys(o.disc || {})).forEach(k => { dk[k] = 1; });
   const dchg = Object.keys(dk).filter(k => Number((o.disc || {})[k] || 0) !== Number(ad[k] || 0));
   if (dchg.length) h += '<div class="alert a-amb">🏷 할인 변경: ' + dchg.map(k => '<b>' + esc(k) + '</b> 오더 ' + ((o.disc || {})[k] || 0) + '% · 가게 기본 ' + (ad[k] || 0) + '%').join(' · ') +
-    (o.acct ? ' <button class="b-ghost b-sm" id="mDiscSave">이 할인을 가게 기본으로</button>' : '') + '</div>';
+    (o.acct && jobOf() !== 'pick' ? ' <button class="b-ghost b-sm" id="mDiscSave">이 할인을 가게 기본으로 · set as store default</button>' : '') + '</div>';
   h += '</div>';
   /* 버튼 */
+  /* 픽킹·팩킹 담당은 픽킹까지만 — 인보이스 확정 · 오더 취소 · 할인 저장은 인보이스 · 오피스 담당이 */
+  const J = jobOf(), canInv = J !== 'pick';
   const B = [];
-  if (o.st === 'sent') B.push('<button class="b-blue" id="mPick">🖨 픽킹 인보이스 인쇄 · 픽킹 시작</button>');
-  if (picking) B.push('<button class="b-ghost" id="mPickSave">💾 픽킹 저장</button><button class="b-green" id="mInv">🧾 인보이스 확정</button>');
+  if (o.st === 'sent') B.push('<button class="b-blue" id="mPick">🖨 ' + bi('픽킹 인보이스 인쇄 · 픽킹 시작', 'Print picking list · Start') + '</button>');
+  if (picking) B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('픽킹 저장', 'Save picking') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 확정', 'Confirm invoice') + '</button>' : '<span class="muted" style="align-self:center">인보이스 확정은 인보이스 담당이 합니다 · invoicing staff confirms</span>'));
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
-    (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 픽킹 인보이스</button>' : '') +
-    (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 가게 기록</button>' : '') +
-    (canEdit(o) ? '<button class="b-ghost b-sm" id="mEdit">✏️ 오더 수정</button>' : '') +
-    (picking ? '<button class="b-ghost b-sm" id="mUnpick">↩️ 들어온 오더로</button>' : '') +
-    (o.st === 'done' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 인보이스 인쇄</button>' : '') +
+    (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
+    (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 ' + bi('가게 기록', 'Store') + '</button>' : '') +
+    (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('오더 수정', 'Edit') + '</button>' : '') +
+    (picking ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('들어온 오더로', 'Back to new') + '</button>' : '') +
+    (o.st === 'done' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 ' + bi('인보이스 인쇄', 'Print invoice') + '</button>' : '') +
     '<button class="b-ghost b-sm" id="mCsv">⬇️ CSV</button>' +
-    (o.st !== 'done' && o.st !== 'x' ? '<button class="b-ghost b-sm" id="mCancel" style="color:#991b1b">✕ 오더 취소</button>' : '') +
+    (o.st !== 'done' && o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mCancel" style="color:#991b1b">✕ ' + bi('오더 취소', 'Cancel order') + '</button>' : '') +
     '</div>' + (B.length ? '<div class="btns">' + B.join('') + '</div>' : '') +
     (o.st === 'done' ? '<div class="sumbox">🧾 인보이스: ' + (o.invs || []).map(n => '<a href="#/order/inv:' + esc(n) + '"><b>' + esc(n) + '</b></a>').join(' · ') + (o.bo ? ' · ⏳ <a href="#/order/bo:' + esc(o.bo) + '">백오더 있음</a>' : '') + '</div>' : '') + '</div>';
   /* 줄 */
-  h += '<div class="card"><h2>' + (picking ? '📦 픽킹 결과 — 실제로 담은 수량' : '아이템') + ' ' + lines.length + '줄</h2>' +
-    (picking ? '<div class="muted">픽 칸에 실제 담은 수량을 넣으세요. 주문보다 적으면 백오더가 됩니다. 가격 · 종류 · 메모도 여기서 고칩니다.</div><div class="btns" style="flex-wrap:wrap"><button class="b-ghost b-sm" id="mAllQ">모두 주문 수량으로</button><button class="b-ghost b-sm" id="mAllZ">모두 0 으로</button><button class="b-ghost b-sm" id="mAdd">＋ 아이템 추가</button></div>' : '') +
-    '<input id="mFind" placeholder="이 오더 안에서 찾기 · 스캔" autocomplete="off" style="margin:8px 0 6px"><div class="chips" style="margin:0 0 6px"><button class="on" data-mf="all">전체</button>' + (picking ? '<button data-mf="bo">백오더만</button>' : '') + '<button data-mf="p">가격 수정만</button></div><div id="mLines"></div></div>';
+  h += '<div class="card"><h2>' + (picking ? '📦 ' + bi('픽킹 결과 — 실제로 담은 수량', 'Picked qty') : bi('아이템', 'Items')) + ' ' + lines.length + '</h2>' +
+    (picking ? '<div class="muted">픽 칸에 실제 담은 수량을 넣으세요. 주문보다 적으면 백오더가 됩니다. <span class="en">Enter the quantity actually picked; less than ordered becomes a backorder.</span></div><div class="btns" style="flex-wrap:wrap"><button class="b-ghost b-sm" id="mAllQ">' + bi('모두 주문 수량으로', 'All as ordered') + '</button><button class="b-ghost b-sm" id="mAllZ">' + bi('모두 0 으로', 'All zero') + '</button><button class="b-ghost b-sm" id="mAdd">＋ ' + bi('아이템 추가', 'Add item') + '</button></div>' : '') +
+    '<input id="mFind" placeholder="이 오더 안에서 찾기 · 스캔 / Find in this order · scan" autocomplete="off" style="margin:8px 0 6px"><div class="chips" style="margin:0 0 6px"><button class="on" data-mf="all">' + bi('전체', 'All') + '</button>' + (picking ? '<button data-mf="bo">' + bi('백오더만', 'Backorder only') + '</button>' : '') + '<button data-mf="p">' + bi('가격 수정만', 'Price changed') + '</button></div><div id="mLines"></div></div>';
   $('page').innerHTML = h;
 
   let MF = 'all';
@@ -221,9 +224,9 @@ export async function pageLists(LF, head) {
   catch (e) { $('page').innerHTML = head + '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return bind(); }
   if (LF.sm) rows = rows.filter(r => r.sm === LF.sm);
   rows = sortBy(rows, r => r.createdAt || '', true);
-  $('page').innerHTML = head + '<div class="card"><h2>⏳ 백오더 ' + rows.length + '건 · ' + money(rows.reduce((a, r) => a + (r.amt || 0), 0)) + '</h2><div class="muted">물건이 들어오면 골라서 새 오더로 만들거나, 필요 없으면 닫으세요.</div>' +
-    (rows.length ? rows.map(r => '<div class="pr tap" data-go="bo:' + esc(r.id) + '"><div class="ct"><b>' + esc(r.store) + '</b><small>' + esc(md(r.d)) + ' · ' + esc(r.sm) + ' · ' + esc(r.order) + '</small></div><div class="pa"><b>' + money(r.amt) + '</b><small>' + r.lines.length + '줄 · ' + r.qty + '개</small></div></div>').join('') : '<div class="none">백오더가 없습니다</div>') + '</div>';
-  bind();
+  $('page').innerHTML = head + '<div class="card"><h2>⏳ ' + bi('백오더', 'Backorders') + ' ' + rows.length + '건 · ' + money(rows.reduce((a, r) => a + (r.amt || 0), 0)) + '</h2><div class="muted">물건이 들어오면 골라서 새 오더로 만들거나, 필요 없으면 닫으세요. <span class="en">When stock arrives, make a new order from selected lines, or close.</span></div>' +
+    (rows.length ? rows.map(r => '<div class="pr tap" data-go="bo:' + esc(r.id) + '"><div class="ct"><b>' + esc(r.store) + '</b><small>' + esc(md(r.d)) + ' · ' + esc(r.sm) + ' · ' + esc(r.order) + '</small></div><div class="pa"><b>' + money(r.amt) + '</b><small>' + r.lines.length + '줄 · ' + r.qty + '개</small></div></div>').join('') : '<div class="none">' + bt('백오더가 없습니다', 'No backorders') + '</div>') + '</div>';
+  bind(); fillStrip();
   function bind() {
     document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
     if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageLists(LF, head); };
@@ -239,7 +242,7 @@ export async function pageLists(LF, head) {
  *    · 인보이스 번호 · 오더 번호로도 바로 찾기, 종류 (G J H D R) · 세일즈맨 거르기, CSV
  * ============================================================ */
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
-function dayLabel(d) { if (!d || d.length < 10) return d || ''; const x = new Date(d + 'T12:00:00'); const t = today(); return (d === t ? '오늘 · ' : d === addD(t, -1) ? '어제 · ' : '') + Number(d.substring(5, 7)) + '월 ' + Number(d.substring(8, 10)) + '일 (' + WD[x.getDay()] + ')'; }
+function dayLabel(d) { if (!d || d.length < 10) return d || ''; const x = new Date(d + 'T12:00:00'); const t = today(); return (d === t ? '오늘 Today · ' : d === addD(t, -1) ? '어제 Yesterday · ' : '') + Number(d.substring(5, 7)) + '월 ' + Number(d.substring(8, 10)) + '일 (' + WD[x.getDay()] + ')'; }
 function addD(s, n) { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function periodRange(p, from, to) {
   const t = today();
@@ -260,13 +263,13 @@ export async function invBrowser(LF, head) {
   const accs = q && !isNo ? searchAccounts(S.accounts, q, 6) : [];
   const acc = accs.length === 1 || (accs.length && accs[0].acct === q) ? accs[0] : null;
   const [from, to] = periodRange(LF.ip, LF.ifrom, LF.ito);
-  const top = '<div class="card" style="padding-bottom:8px"><div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 오더 #" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>' +
+  const top = '<div class="card" style="padding-bottom:8px"><div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 오더 # / Store · Acct · Invoice · Order" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>' +
     (accs.length > 1 && !acc ? '<div class="chips">' + accs.map(a => '<button data-iqa="' + esc(a.acct) + '">' + esc(a.acct) + ' ' + esc(a.store) + '</button>').join('') + '</div>' : '') +
-    (acc ? '' : '<div class="chips">' + [['today', '오늘'], ['yday', '어제'], ['week', '이번 주'], ['month', '이번 달'], ['lastm', '지난 달'], ['2m', '최근 2달'], ['custom', '기간 직접']].map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' +
+    (acc ? '' : '<div class="chips">' + [['today', '오늘', 'Today'], ['yday', '어제', 'Yesterday'], ['week', '이번 주', 'This week'], ['month', '이번 달', 'This month'], ['lastm', '지난 달', 'Last month'], ['2m', '최근 2달', '2 months'], ['custom', '기간 직접', 'Custom']].map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
       (LF.ip === 'custom' ? '<div class="two" style="margin:6px 0"><input type="date" id="iFrom" value="' + esc(from) + '"><input type="date" id="iTo" value="' + esc(to) + '"></div>' : '')) +
-    '<div class="chips" style="margin-top:4px"><button class="' + (LF.it ? '' : 'on') + '" data-it="">종류 전체</button>' + types.map(t => '<button class="' + (LF.it === t.c ? 'on' : '') + '" data-it="' + esc(t.c) + '">' + esc(t.c) + ' ' + esc(t.n) + '</button>').join('') + '<button class="' + (LF.ivoid ? 'on' : '') + '" data-ivoid="1">VOID 포함</button></div></div>';
+    '<div class="chips" style="margin-top:4px"><button class="' + (LF.it ? '' : 'on') + '" data-it="">' + bi('종류 전체', 'All types') + '</button>' + types.map(t => '<button class="' + (LF.it === t.c ? 'on' : '') + '" data-it="' + esc(t.c) + '">' + esc(t.c) + ' ' + esc(t.n) + '</button>').join('') + '<button class="' + (LF.ivoid ? 'on' : '') + '" data-ivoid="1">VOID ' + bi('포함', 'incl.') + '</button></div></div>';
   $('page').innerHTML = head + top + '<div id="iList"><div class="load">읽는 중…</div></div>';
-  bind();
+  bind(); fillStrip();
   let rows = [], err = '';
   try {
     if (acc) rows = await S.DB.list('invoices', { where: [['acct', '==', acc.acct]] });
@@ -284,8 +287,8 @@ export async function invBrowser(LF, head) {
   const dayKeys = Object.keys(days).sort().reverse();
   let h = '';
   if (err) h += '<div class="alert a-red">' + esc(err) + '</div>';
-  if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 가게 창</button></div></div>';
-  h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스</span></div><div><b>' + money(tot) + '</b><span>합계</span></div><div><b>' + money(bal) + '</b><span>미수</span></div><div><b>' + dayKeys.length + '</b><span>날짜</span></div></div>' +
+  if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 ' + bi('가게 창', 'Store') + '</button></div></div>';
+  h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스 Invoices</span></div><div><b>' + money(tot) + '</b><span>합계 Total</span></div><div><b>' + money(bal) + '</b><span>미수 Balance</span></div><div><b>' + dayKeys.length + '</b><span>날짜 Days</span></div></div>' +
     '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + '</div>' +
     (rows.length ? dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<div class="iday"><b>' + esc(dayLabel(d)) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>' + L.map(r => invRow(r)).join(''); }).join('') : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
   $('iList').innerHTML = h;
@@ -349,9 +352,9 @@ export async function openInvoice(no) {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
   const x = await S.DB.get('invoices', no);
   if (!x) { $('page').innerHTML = '<div class="card"><div class="none">인보이스를 찾지 못했습니다</div></div>'; return; }
-  $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between"><div><h2 style="margin:0">📄 ' + esc(x.no) + (x.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(x.store) + '</div><div class="muted">' + esc(x.sm) + ' · ' + esc(x.d) + ' · 오더 <a href="#/order/' + esc(x.orderId) + '">' + esc(x.order) + '</a></div></div><button class="b-ghost b-sm" id="iBack">‹ 목록</button></div>' +
+  $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between"><div><h2 style="margin:0">📄 ' + esc(x.no) + (x.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(x.store) + '</div><div class="muted">' + esc(x.sm) + ' · ' + esc(x.d) + ' · 오더 <a href="#/order/' + esc(x.orderId) + '">' + esc(x.order) + '</a></div></div><button class="b-ghost b-sm" id="iBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     '<div class="kpi"><div><b>' + x.qty + '</b><span>수량</span></div><div><b>' + money(x.sub) + '</b><span>금액</span></div><div><b>' + (x.disc ? x.disc + '%' : '—') + '</b><span>할인</span></div><div><b>' + money(x.total) + '</b><span>합계</span></div></div>' +
-    '<div class="btns"><button class="b-blue" id="iPrint">🖨 인쇄</button>' + (S.me && S.me.role === 'admin' && x.st !== 'x' ? '<button class="b-ghost" id="iVoid" style="color:#991b1b">VOID</button>' : '') + '</div></div>' +
+    '<div class="btns"><button class="b-blue" id="iPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' + (S.me && S.me.role === 'admin' && x.st !== 'x' ? '<button class="b-ghost" id="iVoid" style="color:#991b1b">VOID</button>' : '') + '</div></div>' +
     '<div class="card"><table><tr><th>코드</th><th class="r">수량</th><th class="r">가격</th><th class="r">금액</th></tr>' + x.lines.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table></div>';
   $('iBack').onclick = () => Router.go('order');
   $('iPrint').onclick = () => printInvoices([x], acctOf(x.acct));

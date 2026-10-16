@@ -5,7 +5,7 @@ import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, 
 import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer } from './mgr.js';
-import { roleLabel } from './main.js';
+import { roleLabel, JOBS, jobLabel } from './main.js';
 import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes } from './catalog.js';
 import { invTypes, fmtNo, company } from './invoicing.js';
 
@@ -28,7 +28,7 @@ async function pageAdmin(arg) {
 async function users() {
   const list = sortBy(await S.DB.list('users'), u => (u.role === 'admin' ? '0' : u.role === 'manager' ? '1' : '2') + u.email);
   $('adminBody').innerHTML = '<div class="card"><h2>사용자 ' + list.length + '명</h2><div class="muted">구글 계정 이메일로 등록합니다. 세일즈맨은 세일즈맨 코드를 꼭 연결하세요. ACH 은행 정보는 "ACH 접근" 켠 사람만 봅니다.</div><button class="b-blue" id="uNew" style="margin-top:8px">＋ 사용자 추가</button></div>' +
-    '<div class="card">' + list.map(u => '<div class="pr tap" data-u="' + esc(u.email) + '"><div class="ct"><b>' + esc(u.name || u.email) + ' <span class="tag ' + (u.role === 'admin' ? 't-a' : u.role === 'manager' ? 't-b' : 't-k') + '">' + roleLabel(u.role) + '</span>' + (u.sm ? ' <span class="tag t-g">' + esc(u.sm) + '</span>' : '') + (u.achAccess ? ' <span class="tag t-r">ACH</span>' : '') + (u.active === false ? ' <span class="tag t-g">비활성</span>' : '') + '</b><small>' + esc(u.email) + '</small></div></div>').join('') + '</div>';
+    '<div class="card">' + list.map(u => '<div class="pr tap" data-u="' + esc(u.email) + '"><div class="ct"><b>' + esc(u.name || u.email) + ' <span class="tag ' + (u.role === 'admin' ? 't-a' : u.role === 'manager' ? 't-b' : 't-k') + '">' + roleLabel(u.role).split(' ')[0] + '</span>' + (u.role === 'manager' && u.job ? ' <span class="tag t-b">' + esc(jobLabel(u.job).split(' ')[0]) + '</span>' : '') + (u.sm ? ' <span class="tag t-g">' + esc(u.sm) + '</span>' : '') + (u.achAccess ? ' <span class="tag t-r">ACH</span>' : '') + (u.active === false ? ' <span class="tag t-g">비활성</span>' : '') + '</b><small>' + esc(u.email) + '</small></div></div>').join('') + '</div>';
   $('uNew').onclick = () => userForm(null);
   document.querySelectorAll('[data-u]').forEach(el => el.onclick = () => userForm(list.find(u => u.email === el.dataset.u)));
 }
@@ -37,13 +37,14 @@ function userForm(u) {
   openModal('<h2>' + (u.email ? esc(u.email) : '＋ 사용자') + '</h2>' +
     '<div class="fg"><label>구글 이메일</label><input id="uEmail" value="' + esc(u.email || '') + '" ' + (u.email ? 'readonly' : '') + ' placeholder="name@gmail.com"></div>' +
     '<div class="two"><div class="fg"><label>이름</label><input id="uName" value="' + esc(u.name || '')+ '"></div><div class="fg"><label>역할</label>' + sel('uRole', [['salesman', '세일즈맨'], ['manager', '담당자'], ['admin', '관리자']], u.role || 'salesman') + '</div></div>' +
+    '<div class="fg"><label>담당자의 일 (담당자만) — 화면이 달라집니다</label>' + sel('uJob', JOBS.map(j => [j[0], j[1] + ' · ' + j[2]]), u.job || 'office') + '<small class="muted">오피스: 오더 · 수금 확인 · COD · AR 전부 / 인보이스: 픽킹 확인 · 인보이스 확정 · 인보이스 찾기 / 픽킹·팩킹: 들어온 오더 · 픽킹 결과만 / 어카운팅: 수금 확인 · COD · ACH · AR · 인보이스 찾기</small></div>' +
     '<div class="two"><div class="fg"><label>세일즈맨 코드</label><input id="uSm" list="uSmList" value="' + esc(u.sm || '') + '" placeholder="예: BRANDON" style="text-transform:uppercase" autocomplete="off"><datalist id="uSmList">' + S.sms.map(s => '<option value="' + esc(s.code) + '">').join('') + '</datalist><small class="muted">목록에 없으면 그대로 입력 — 저장할 때 세일즈맨도 같이 만듭니다</small></div><div class="fg"><label>옵션</label><label class="muted" style="display:flex;gap:6px;align-items:center;padding:8px 0"><input type="checkbox" id="uAch" style="width:18px;height:18px" ' + (u.achAccess ? 'checked' : '') + '> ACH 은행 정보 접근</label><label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="uAct" style="width:18px;height:18px" ' + (u.active !== false ? 'checked' : '') + '> 활성</label></div></div>' +
     '<div class="btns">' + (u.email && u.email !== S.user.email ? '<button class="b-ghost" id="uDel">삭제</button>' : '') + '<button class="b-blue" id="uSave">저장</button></div>');
   $('uSave').onclick = async () => {
     const email = $('uEmail').value.trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('이메일을 확인하세요', 'bad');
     let smv = $('uSm').value.trim().toUpperCase().replace(/\s+/g, ' ');
     if (!smv && $('uRole').value === 'salesman' && $('uName').value.trim()) smv = $('uName').value.trim().toUpperCase().split(/\s+/)[0];
-    const doc = { email, name: $('uName').value.trim(), role: $('uRole').value, sm: smv, achAccess: $('uAch').checked, active: $('uAct').checked, updatedAt: new Date().toISOString() };
+    const doc = { email, name: $('uName').value.trim(), role: $('uRole').value, job: $('uJob').value, sm: smv, achAccess: $('uAch').checked, active: $('uAct').checked, updatedAt: new Date().toISOString() };
     if (doc.role === 'salesman' && !doc.sm) return toast('세일즈맨 코드(또는 이름)를 넣으세요', 'bad');
     busy(true); try {
       let made = '';
@@ -259,9 +260,9 @@ async function catalogAdmin() {
 let IT = null;
 function invTypeCard() {
   IT = invTypes(S).map(t => Object.assign({}, t));
-  return '<div class="card"><h2>🧾 인보이스 종류</h2><div class="muted">번호는 <b>영문 한 글자 + 다섯 자리</b> (G00001). 99999 다음은 자동으로 GA00001 → GB00001 … 로 넘어갑니다.<br>' +
-    '첫 줄은 기본 (규칙에 안 맞는 아이템). 규칙은 아이템 시트의 Group · Level 1~3 이름을 쉼표로 (예: <b>Hair, EDGE BOOSTER</b>), 코드 앞글자는 <b>코드:EB</b>.<br>' +
-    'SmartBee 번호와 섞이지 않게 A · P · W · C 는 쓰지 않습니다. 커미션 칸은 정산서의 A(기본) · P · W 요율 중 어느 것으로 셀지입니다.</div><div id="itRows"><div class="load">읽는 중…</div></div>' +
+  return '<div class="card"><h2>🧾 인보이스 종류 <span class="en">Invoice types</span></h2><div class="muted">SmartBee 와 같이 <b>A 주얼리 · P 그 외 제품 · W 디스플레이 · 세트</b>. 번호는 <b>영문 한 글자 + 다섯 자리</b> (A43107). 99999 다음은 자동으로 AA00001 → AB00001 … 로 넘어갑니다.<br>' +
+    '첫 줄은 기본 (규칙에 안 맞는 아이템). 규칙은 아이템의 Group · Level 1~3 이름을 쉼표로 (예: <b>Jewelry</b>, <b>Other</b>, <b>Set &amp; Display</b>), 코드 앞글자는 <b>코드:EB</b>.<br>' +
+    '<b>다음 번호</b>는 SmartBee 에서 마지막으로 쓴 번호 다음으로 맞춰 두세요 (두 프로그램을 같이 쓰는 동안 겹치지 않게). 커미션 칸은 정산서의 A · P · W 요율 중 어느 것으로 셀지입니다.</div><div id="itRows"><div class="load">읽는 중…</div></div>' +
     '<div class="btns"><button class="b-ghost" id="itAdd">＋ 종류 추가</button><button class="b-blue" id="itSave">인보이스 종류 저장</button></div></div>';
 }
 async function bindInvTypes() {
@@ -272,19 +273,24 @@ async function bindInvTypes() {
       '<input data-it="' + i + '" data-k="n" value="' + esc(t.n) + '" placeholder="이름">' +
       sel('', [['A', '커미션 A'], ['P', '커미션 P'], ['W', '커미션 W'], ['CM', '반품(CM)']], t.comm || 'A', 'data-it="' + i + '" data-k="comm"') +
       '<input class="full" style="grid-column:1/4" data-it="' + i + '" data-k="match" value="' + esc(t.match || '') + '" placeholder="' + (i ? '규칙 (예: Hair, 코드:EB)' : '기본 — 규칙 없음') + '">' +
-      '<small class="muted" style="grid-column:1/4">다음 번호: <b>' + esc(fmtNo(t, cnt[t.c] || 1)) + '</b></small>' +
+      '<small class="muted" style="grid-column:1/4;display:flex;align-items:center;gap:6px">다음 번호 <b>' + esc(fmtNo(t, cnt[t.c] || t.start || 1)) + '</b> <input type="number" data-itn="' + esc(t.c) + '" value="' + (cnt[t.c] || t.start || 1) + '" style="width:110px;padding:4px 8px;font-size:13px"><button class="b-ghost b-sm" data-itset="' + esc(t.c) + '">번호 맞추기</button></small>' +
       (i ? '<button class="x" data-itx="' + i + '">✕</button>' : '') + '</div>').join('');
     document.querySelectorAll('[data-it]').forEach(inp => inp.onchange = () => { const t = IT[+inp.dataset.it], k = inp.dataset.k; t[k] = k === 'c' ? inp.value.trim().toUpperCase() : inp.value.trim(); if (k === 'c') paint(); });
     document.querySelectorAll('[data-itx]').forEach(b => b.onclick = () => { IT.splice(+b.dataset.itx, 1); paint(); });
+    document.querySelectorAll('[data-itset]').forEach(b => b.onclick = async () => {
+      const c = b.dataset.itset, n = Math.floor(Number(document.querySelector('[data-itn="' + c + '"]').value) || 0); if (n < 1) return toast('1 이상', 'bad');
+      const t = IT.find(x => x.c === c);
+      if (!(await confirmBox(c + ' 다음 번호를 ' + fmtNo(t, n) + ' 로 맞출까요? (이미 쓴 번호보다 작으면 겹칩니다)', '맞추기'))) return;
+      busy(true); try { const cur = (await S.DB.get('counters', 'inv2')) || {}; cur[c] = n; await S.DB.set('counters', 'inv2', cur); cnt = cur; toast(c + ' 다음 번호 ' + fmtNo(t, n), 'good'); paint(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
+    });
   };
   paint();
   $('itAdd').onclick = () => { IT.push({ c: '', n: '', comm: 'A', match: '' }); paint(); };
   $('itSave').onclick = async () => {
-    const list = IT.filter(t => t.c).map(t => ({ c: t.c, n: t.n || t.c, comm: t.comm || 'A', match: t.match || '' }));
+    const list = IT.filter(t => t.c).map(t => ({ c: t.c, n: t.n || t.c, comm: t.comm || 'A', match: t.match || '', start: t.start || 1 }));
     const seen = {};
     for (const t of list) {
       if (!/^[A-Z]$/.test(t.c)) return toast('종류 코드는 영문 한 글자: ' + t.c, 'bad');
-      if ('APWC'.includes(t.c)) return toast(t.c + ' 는 SmartBee 번호와 섞여서 쓸 수 없습니다', 'bad');
       if (seen[t.c]) return toast('같은 코드가 두 번: ' + t.c, 'bad'); seen[t.c] = 1;
     }
     if (!list.length) return toast('종류가 하나는 있어야 합니다', 'bad');

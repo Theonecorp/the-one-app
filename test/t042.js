@@ -16,7 +16,7 @@ const path = require('path'), fs = require('fs');
       s.settings[0].catPins = { top: ['Wax'], bottom: ['Chains'] };
       s.catalog.push({ id: 'pop', j: JSON.stringify([['GM104', 500], ['EB103', 300], ['AHG100', 200], ['AHG101', 150]]), n: 4 });
       const mk = (no, t, d, acct, store, sm, total, st) => ({ id: no, no, t, d, ym: d.substring(0, 7), acct, store, sm, order: 'O261014-AAAA', orderId: 'O261014-AAAA', qty: 10, sub: total, disc: 0, total, bal: total, terms: 'N30', st: st || 'open', lines: [{ c: 'AHG100', d: 'x', q: 10, p: total / 10 }], createdAt: d + 'T10:00:00Z' });
-      s.invoices = [mk('G00001', 'G', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 100), mk('J00001', 'J', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 50), mk('G00002', 'G', d1, '1049', 'ELEGANT BEAUTY', 'SOO', 80), mk('G00003', 'G', d40, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 70), mk('H00001', 'H', d1, '1049', 'ELEGANT BEAUTY', 'SOO', 30, 'x')];
+      s.invoices = [mk('G00001', 'G', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 100), mk('P00001', 'P', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 50), mk('G00002', 'G', d1, '1049', 'ELEGANT BEAUTY', 'SOO', 80), mk('G00003', 'G', d40, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 70), mk('H00001', 'H', d1, '1049', 'ELEGANT BEAUTY', 'SOO', 30, 'x')];
     };
   }, [d0, d1, d40]);
   await pg.goto('http://127.0.0.1:8770/test/demo.html'); await pg.waitForSelector('#nav button');
@@ -26,7 +26,7 @@ const path = require('path'), fs = require('fs');
   await shot('h0_cats');
   const tiles = await pg.$$eval('.cats button', els => els.map(e => e.querySelector('b').textContent.trim()));
   log('L1 tiles:', tiles.join(' | '));
-  if (tiles[0] !== '✨ 자주 나가는' || tiles[1] !== 'Wax' || tiles[tiles.length - 1] !== 'Chains') errs.push('tile order wrong: ' + tiles.join('|'));
+  if (!tiles[0].startsWith('✨ 자주 나가는') || tiles[1] !== 'Wax' || tiles[tiles.length - 1] !== 'Chains') errs.push('tile order wrong: ' + tiles.join('|'));
   const mid = tiles.slice(2, -1); if (mid.join() !== mid.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).join()) errs.push('not ABC: ' + mid.join('|'));
   /* ✨ 자주 나가는: 이 가게(3001) 가 최근 산 AHG100 · AHG101 먼저, 그 다음 GM104 EB103 */
   await pg.click('[data-pop]'); await pg.waitForTimeout(300); await shot('h1_pop');
@@ -49,6 +49,9 @@ const path = require('path'), fs = require('fs');
   if (!/Chains/.test(after[0])) errs.push('pin top failed: ' + after.join('|'));
   await pg.click('[data-tup="Chains"]'); await pg.waitForTimeout(600);
   log('after unpin:', await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent).join(' | ')));
+  /* 2b. 담당자 오더 목록 — 현황 띠 · 날짜별 묶음 */
+  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#oStrip'); await pg.waitForTimeout(600); await shot('h2b_staff_list');
+  log('strip:', (await pg.textContent('#oStrip')).replace(/\s+/g, ' '));
   /* 3. 📄 인보이스 찾기 */
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="inv"]'); await pg.click('[data-lf="inv"]'); await pg.waitForSelector('#iqQ'); await pg.waitForSelector('.iday'); await shot('h3_inv_month');
   const dayHeads = () => pg.$$eval('.iday b', els => els.map(e => e.textContent));
@@ -61,7 +64,7 @@ const path = require('path'), fs = require('fs');
   if (n2m !== 4) errs.push('2m should be 4 (void hidden), got ' + n2m);
   await pg.click('[data-ivoid]'); await pg.waitForTimeout(300); log('with void:', await rowsN());
   await pg.click('[data-ivoid]'); await pg.waitForTimeout(300);
-  await pg.click('[data-it="J"]'); await pg.waitForTimeout(300); log('type J:', await rowsN()); if (await rowsN() !== 1) errs.push('type filter');
+  await pg.click('[data-it="P"]'); await pg.waitForTimeout(300); log('type P:', await rowsN()); if (await rowsN() !== 1) errs.push('type filter');
   await pg.click('[data-it=""]'); await pg.waitForTimeout(300);
   await pg.fill('#iqQ', 'elegant'); await pg.waitForTimeout(700); await shot('h4_inv_store');
   log('store search:', await rowsN(), '|', (await pg.textContent('#iList')).includes('이 가게 인보이스 전부') ? 'account mode' : 'text mode');

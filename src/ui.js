@@ -2,6 +2,9 @@
  *  화면 도우미 — 돈 · 날짜 · 토스트 · 모달 · 간단 라우터
  * ============================================================ */
 export const $ = id => document.getElementById(id);
+/* 한글 · 영문 병기 — bi: 화면(HTML) 용, bt: 글자만 (placeholder · toast · confirm) */
+export const bi = (ko, en) => ko + ' <span class="en">' + en + '</span>';
+export const bt = (ko, en) => ko + ' / ' + en;
 export const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
 export const money = n => { n = Number(n) || 0; return (n < 0 ? '−$' : '$') + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
 export const k = n => { n = Number(n) || 0; const a = Math.abs(n), s = n < 0 ? '−' : ''; if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(2) + 'M'; if (a >= 1e3) return s + '$' + Math.round(a / 1e3) + 'K'; return s + '$' + Math.round(a); };
