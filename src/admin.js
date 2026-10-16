@@ -3,11 +3,11 @@
  * ============================================================ */
 import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz } from './ui.js';
 import { newId } from './db.js';
-import { RATE_LABELS, RATE_DEFAULT, invType } from './comm.js';
+import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer } from './mgr.js';
 import { roleLabel } from './main.js';
-import { parseItemMaster, publishCatalog, loadCatalog } from './catalog.js';
-import { invTypes } from './invoicing.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem } from './catalog.js';
+import { invTypes, fmtNo } from './invoicing.js';
 
 let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); }
@@ -221,7 +221,9 @@ async function catalogAdmin() {
     (meta ? '<div class="sumbox">지금: <b>' + (meta.count || 0).toLocaleString() + '개</b> · ' + esc(String(meta.updatedAt || '').substring(0, 16).replace('T', ' ')) + ' · ' + esc(meta.by || '') + '</div>' : '<div class="alert a-amb">아직 올린 아이템 목록이 없습니다</div>') +
     '<div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽고, Hide 에 x 표시된 것은 뺍니다. 시트가 바뀔 때마다 다시 올리면 됩니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' +
+    '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
     '<div class="card"><h2>🛒 오더 탭</h2><label class="pick ' + (S.settings.ordersOn ? 'on' : '') + '" id="ordOn"><span class="ck">✓</span><span class="pm"><b>세일즈맨 · 담당자에게 오더 탭 보이기</b><small>끄면 관리자만 봅니다 (시험용)</small></span></label></div>';
+  setAdmin();
   $('catFile').onchange = async () => {
     const file = $('catFile').files[0]; if (!file) return;
     const out = $('catOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
@@ -252,35 +254,109 @@ async function catalogAdmin() {
   };
 }
 
-/* ---- 인보이스 종류 (A · P · W · …) — 아이템이 어느 인보이스로 갈지, 번호를 몇부터 매길지 ---- */
+/* ---- 인보이스 종류 — 아이템이 어느 인보이스로 갈지, 커미션은 어느 칸으로 셀지 ---- */
 let IT = null;
 function invTypeCard() {
   IT = invTypes(S).map(t => Object.assign({}, t));
-  return '<div class="card"><h2>🧾 인보이스 종류</h2><div class="muted">오더의 아이템은 아래 규칙대로 종류가 정해지고, 인보이스 확정 때 종류별로 번호가 나옵니다. 첫 줄이 기본(규칙에 안 맞는 아이템)입니다.<br>' +
-    '규칙: 아이템 시트의 Group · Level 1~3 이름을 쉼표로 (예: <b>EDGE BOOSTER, KEY</b>), 코드 앞글자는 <b>코드:EB</b>. 시작 번호는 처음 한 번만 쓰입니다 (SmartBee 다음 번호로).</div><div id="itRows"></div>' +
+  return '<div class="card"><h2>🧾 인보이스 종류</h2><div class="muted">번호는 <b>영문 한 글자 + 다섯 자리</b> (G00001). 99999 다음은 자동으로 GA00001 → GB00001 … 로 넘어갑니다.<br>' +
+    '첫 줄은 기본 (규칙에 안 맞는 아이템). 규칙은 아이템 시트의 Group · Level 1~3 이름을 쉼표로 (예: <b>Hair, EDGE BOOSTER</b>), 코드 앞글자는 <b>코드:EB</b>.<br>' +
+    'SmartBee 번호와 섞이지 않게 A · P · W · C 는 쓰지 않습니다. 커미션 칸은 정산서의 A(기본) · P · W 요율 중 어느 것으로 셀지입니다.</div><div id="itRows"><div class="load">읽는 중…</div></div>' +
     '<div class="btns"><button class="b-ghost" id="itAdd">＋ 종류 추가</button><button class="b-blue" id="itSave">인보이스 종류 저장</button></div></div>';
 }
-function bindInvTypes() {
+async function bindInvTypes() {
+  let cnt = {}; try { cnt = (await S.DB.get('counters', 'inv2')) || {}; } catch (e) {}
   const paint = () => {
-    $('itRows').innerHTML = IT.map((t, i) => '<div class="payrow" style="grid-template-columns:70px 1fr 110px 70px;margin-top:8px">' +
-      '<input data-it="' + i + '" data-k="c" value="' + esc(t.c) + '" placeholder="A" maxlength="3" style="text-transform:uppercase">' +
+    $('itRows').innerHTML = IT.map((t, i) => '<div class="payrow" style="grid-template-columns:56px 1fr 120px;margin-top:8px">' +
+      '<input data-it="' + i + '" data-k="c" value="' + esc(t.c) + '" placeholder="G" maxlength="1" style="text-transform:uppercase;text-align:center;font-weight:800">' +
       '<input data-it="' + i + '" data-k="n" value="' + esc(t.n) + '" placeholder="이름">' +
-      '<input data-it="' + i + '" data-k="start" type="number" value="' + esc(t.start) + '" placeholder="시작 번호">' +
-      '<input data-it="' + i + '" data-k="pad" type="number" value="' + esc(t.pad) + '" placeholder="자리수">' +
-      '<input class="full" style="grid-column:1/5" data-it="' + i + '" data-k="match" value="' + esc(t.match || '') + '" placeholder="' + (i ? '규칙 (예: EDGE BOOSTER, 코드:EB)' : '기본 — 규칙 없음') + '">' +
+      sel('', [['A', '커미션 A'], ['P', '커미션 P'], ['W', '커미션 W'], ['CM', '반품(CM)']], t.comm || 'A', 'data-it="' + i + '" data-k="comm"') +
+      '<input class="full" style="grid-column:1/4" data-it="' + i + '" data-k="match" value="' + esc(t.match || '') + '" placeholder="' + (i ? '규칙 (예: Hair, 코드:EB)' : '기본 — 규칙 없음') + '">' +
+      '<small class="muted" style="grid-column:1/4">다음 번호: <b>' + esc(fmtNo(t, cnt[t.c] || 1)) + '</b></small>' +
       (i ? '<button class="x" data-itx="' + i + '">✕</button>' : '') + '</div>').join('');
-    document.querySelectorAll('[data-it]').forEach(inp => inp.onchange = () => { const t = IT[+inp.dataset.it], k = inp.dataset.k; t[k] = k === 'start' || k === 'pad' ? Number(inp.value) || 0 : (k === 'c' ? inp.value.trim().toUpperCase() : inp.value.trim()); });
+    document.querySelectorAll('[data-it]').forEach(inp => inp.onchange = () => { const t = IT[+inp.dataset.it], k = inp.dataset.k; t[k] = k === 'c' ? inp.value.trim().toUpperCase() : inp.value.trim(); if (k === 'c') paint(); });
     document.querySelectorAll('[data-itx]').forEach(b => b.onclick = () => { IT.splice(+b.dataset.itx, 1); paint(); });
   };
   paint();
-  $('itAdd').onclick = () => { IT.push({ c: '', n: '', start: 1, pad: 5, match: '' }); paint(); };
+  $('itAdd').onclick = () => { IT.push({ c: '', n: '', comm: 'A', match: '' }); paint(); };
   $('itSave').onclick = async () => {
-    const list = IT.filter(t => t.c);
-    const seen = {}; for (const t of list) { if (!/^[A-Z]{1,3}$/.test(t.c)) return toast('종류 코드는 영문 1~3자: ' + t.c, 'bad'); if (seen[t.c]) return toast('같은 코드가 두 번: ' + t.c, 'bad'); seen[t.c] = 1; }
+    const list = IT.filter(t => t.c).map(t => ({ c: t.c, n: t.n || t.c, comm: t.comm || 'A', match: t.match || '' }));
+    const seen = {};
+    for (const t of list) {
+      if (!/^[A-Z]$/.test(t.c)) return toast('종류 코드는 영문 한 글자: ' + t.c, 'bad');
+      if ('APWC'.includes(t.c)) return toast(t.c + ' 는 SmartBee 번호와 섞여서 쓸 수 없습니다', 'bad');
+      if (seen[t.c]) return toast('같은 코드가 두 번: ' + t.c, 'bad'); seen[t.c] = 1;
+    }
     if (!list.length) return toast('종류가 하나는 있어야 합니다', 'bad');
     busy(true);
-    try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.invTypes = list; await S.DB.set('settings', 'app', cur); S.settings.invTypes = list; toast('인보이스 종류 저장 — 새로 담는 아이템부터 적용', 'good'); }
+    try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.invTypes = list; await S.DB.set('settings', 'app', cur); S.settings.invTypes = list; setInvTypeMap(list); toast('인보이스 종류 저장 — 새로 담는 아이템부터 적용', 'good'); }
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
+}
+
+/* ---- 🧩 세트 구성 — SET_MASTER 엑셀 올리기 · 세트 하나씩 고치기 ---- */
+let SETQ = '';
+async function setAdmin() {
+  try { await loadCatalog(S, false); } catch (e) {}
+  const C = catalog(), sets = (C && C.sets) || {};
+  const codes = Object.keys(sets).sort();
+  const hits = SETQ ? codes.filter(k => (k + ' ' + (sets[k].n || '') + ' ' + (sets[k].old || '')).toUpperCase().includes(SETQ.toUpperCase())).slice(0, 40) : [];
+  $('setBox').innerHTML = '<div class="sumbox">지금 <b>' + codes.length + '</b>개 세트</div>' +
+    '<div class="muted">드라이브의 <b>SET_MASTER_코드변경_구성.xlsx</b> 를 그대로 올리면 "세트 구성" 탭(구성품 · 수량)과 "세트 목록" 탭(이름 · 리스트 가격)을 읽습니다. SET · CODE · QTY 세 칸짜리 시트도 됩니다. 올리면 전체를 바꿉니다.</div>' +
+    '<div class="seg" style="margin-top:8px"><button class="on" data-sw="new">새 세트 코드 (FI-…, C4-…)</button><button data-sw="old">기존 코드 (FLSIDE01 …)</button></div>' +
+    '<input type="file" id="setFile" accept=".xlsx"><div id="setOut"></div>' +
+    '<div class="fg" style="margin-top:12px"><label>세트 찾아서 고치기</label><input id="setQ" value="' + esc(SETQ) + '" placeholder="세트 코드 · 이름" autocomplete="off"></div>' +
+    hits.map(k => '<div class="pr tap" data-set="' + esc(k) + '"><div class="ct"><b>' + esc(k) + (sets[k].old ? ' <span class="muted">(' + esc(sets[k].old) + ')</span>' : '') + '</b><small>' + esc(sets[k].n || '') + ' · ' + sets[k].k.length + '종 · ' + sets[k].k.reduce((a, x) => a + x[1], 0) + '개' + (sets[k].st ? ' · ' + esc(sets[k].st) : '') + '</small></div></div>').join('') +
+    '<button class="b-ghost b-sm" id="setNew" style="margin-top:8px">＋ 새 세트</button>';
+  let which = 'new';
+  document.querySelectorAll('[data-sw]').forEach(b => b.onclick = () => { which = b.dataset.sw; document.querySelectorAll('[data-sw]').forEach(x => x.classList.toggle('on', x === b)); });
+  $('setQ').oninput = debounceA(() => { SETQ = $('setQ').value; setAdmin().then(() => { const q = $('setQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }); }, 300);
+  document.querySelectorAll('[data-set]').forEach(el => el.onclick = () => setForm(el.dataset.set, sets));
+  $('setNew').onclick = () => setForm('', sets);
+  $('setFile').onchange = async () => {
+    const file = $('setFile').files[0]; if (!file) return;
+    const out = $('setOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
+    try {
+      const { XLSX, wb } = await readBook(file);
+      const names = wb.SheetNames;
+      const comp = aoa(XLSX, wb, names.find(n => /세트\s*구성/.test(n)) || names.find(n => /SET/i.test(n) && !/목록|LIST|요약/i.test(n)) || names[0]);
+      const list = aoa(XLSX, wb, names.find(n => /세트\s*목록/.test(n)) || '');
+      const r = parseSetBook(comp, list, which);
+      const C2 = catalog(); const miss = {}; let missN = 0;
+      Object.values(r.sets).forEach(st => st.k.forEach(x => { if (C2 && !C2.byCode[x[0]]) { miss[x[0]] = 1; } }));
+      missN = Object.keys(miss).length;
+      const inCat = C2 ? Object.keys(r.sets).filter(k => C2.byCode[k] && !C2.byCode[k].virt).length : 0;
+      out.innerHTML = '<div class="alert a-blu">세트 <b>' + Object.keys(r.sets).length + '개</b> · 구성 ' + r.lines.toLocaleString() + '줄 · 이름 있는 세트 ' + r.named + '개<br>아이템 목록에 같은 코드가 있는 세트 ' + inCat + '개 (그 가격 사용) · 나머지는 세트 목록의 리스트 가격 (없으면 구성품 합)</div>' +
+        (missN ? '<div class="alert a-amb">아이템 목록에 없는 구성품 코드 ' + missN + '개 — 오더는 되지만 사진 · 가격이 비어 있습니다: ' + esc(Object.keys(miss).slice(0, 12).join(', ')) + '</div>' : '') +
+        '<button class="b-blue" id="setGo" style="margin-top:8px">이대로 세트 올리기</button>';
+      $('setGo').onclick = async () => { busy(true); try { await publishSets(S, r.sets); await loadCatalog(S, true); toast('세트 ' + Object.keys(r.sets).length + '개 올림', 'good'); setAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+  };
+}
+function debounceA(fn, ms) { let t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
+function setForm(code, sets) {
+  const st = code ? JSON.parse(JSON.stringify(sets[code])) : { n: '', k: [] };
+  const paint = () => {
+    openModal('<h2>🧩 ' + (code ? esc(code) : '새 세트') + '</h2>' +
+      '<div class="two"><div class="fg"><label>세트 코드</label><input id="sfC" value="' + esc(code) + '" ' + (code ? 'readonly' : '') + ' style="text-transform:uppercase"></div><div class="fg"><label>리스트 가격 (비우면 구성품 합)</label><input id="sfP" type="number" step="0.01" value="' + esc(st.p || '') + '"></div></div>' +
+      '<div class="fg"><label>이름</label><input id="sfN" value="' + esc(st.n || '') + '"></div>' +
+      '<div class="fg"><label>구성품 ' + st.k.length + '종 · ' + st.k.reduce((a, x) => a + x[1], 0) + '개</label>' + st.k.map((x, i) => {
+        const it = catalog() && catalog().byCode[x[0]];
+        return '<div class="invrow" style="grid-template-columns:1fr 70px 28px"><div><b>' + esc(x[0]) + '</b><small class="muted" style="display:block">' + esc(it ? it.d : '목록에 없음') + '</small></div><input type="number" min="1" data-sfq="' + i + '" value="' + x[1] + '"><button class="b-ghost b-sm" data-sfx="' + i + '" style="padding:4px">✕</button></div>';
+      }).join('') + '</div>' +
+      '<div class="two"><input id="sfAdd" placeholder="아이템 코드 · 바코드 + 엔터" style="text-transform:uppercase"><input id="sfAddQ" type="number" value="1" min="1"></div>' +
+      '<div class="btns">' + (code ? '<button class="b-ghost" id="sfDel" style="color:#991b1b">세트 삭제</button>' : '') + '<button class="b-blue" id="sfSave">저장</button></div>');
+    document.querySelectorAll('[data-sfq]').forEach(inp => inp.onchange = () => { st.k[+inp.dataset.sfq][1] = Math.max(1, Math.floor(Number(inp.value) || 1)); });
+    document.querySelectorAll('[data-sfx]').forEach(b => b.onclick = () => { st.k.splice(+b.dataset.sfx, 1); keep(); paint(); });
+    $('sfAdd').onkeydown = e => { if (e.key !== 'Enter') return; e.preventDefault(); const it = exactItem($('sfAdd').value); const c = it ? it.c : $('sfAdd').value.trim().toUpperCase(); if (!c) return; const q = Math.max(1, Math.floor(Number($('sfAddQ').value) || 1)); const ex = st.k.find(x => x[0] === c); if (ex) ex[1] += q; else st.k.push([c, q]); keep(); paint(); setTimeout(() => $('sfAdd').focus(), 30); };
+    const keep = () => { st.n = $('sfN').value.trim(); st.p = Number($('sfP').value) || 0; if (!code) code = $('sfC').value.trim().toUpperCase(); };
+    $('sfSave').onclick = async () => {
+      keep(); const c = code || $('sfC').value.trim().toUpperCase(); if (!c) return toast('세트 코드를 넣으세요', 'bad'); if (!st.k.length) return toast('구성품을 넣으세요', 'bad');
+      if (!st.p) delete st.p;
+      const all = Object.assign({}, sets, { [c]: st });
+      busy(true); try { await publishSets(S, all); await loadCatalog(S, true); closeModal(); toast('세트 저장', 'good'); setAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
+    };
+    if ($('sfDel')) $('sfDel').onclick = async () => { if (!(await confirmBox(code + ' 세트를 지울까요?', '삭제'))) return; const all = Object.assign({}, sets); delete all[code]; busy(true); try { await publishSets(S, all); await loadCatalog(S, true); closeModal(); setAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  };
+  paint();
 }

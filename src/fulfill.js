@@ -13,6 +13,7 @@ import { stTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit }
 import { bumpAccountsVer } from './mgr.js';
 
 let S = null;
+const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
 export function register(state) { S = state; }
 const acctOf = a => (S.accounts.byCode ? S.accounts.byCode[a] : null);
 const typeName = c => { const t = invTypes(S).find(x => x.c === c); return t ? t.n : c; };
@@ -73,8 +74,8 @@ export function manage(o, lines) {
     $('mLines').innerHTML = '<table class="pk"><tr><th>코드</th><th class="r">주문</th>' + (picking ? '<th class="r">픽</th>' : '') + '<th class="r">가격</th><th class="r">금액</th></tr>' + rows.slice(0, 2500).map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001, bo = picking && (l.pq || 0) < l.q;
       const qq = picking ? (l.pq || 0) : l.q;
-      return '<tr class="' + (bo ? 'bo' : '') + '"><td><b>' + esc(l.c) + '</b> ' + (picking ? sel('', types.map(t => [t.c, t.c]), l.t || 'A', 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || 'A') + '</span>') +
-        '<div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div>' + (picking ? '<input class="sm" data-note="' + l._i + '" value="' + esc(l.note || '') + '" placeholder="메모" style="margin-top:3px;padding:4px 7px;font-size:12px">' : (l.note ? '<div class="muted">📝 ' + esc(l.note) + '</div>' : '')) + '</td>' +
+      return '<tr class="' + (bo ? 'bo' : '') + '"><td><b>' + esc(l.c) + '</b> ' + (picking ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
+        '<div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div>' + (l.kit ? '<div class="muted" style="font-size:11px">🧩 ' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + (picking ? ' <button class="b-ghost b-sm" data-brk="' + l._i + '" style="padding:2px 7px">세트 풀기</button>' : '') + '</div>' : '') + (picking ? '<input class="sm" data-note="' + l._i + '" value="' + esc(l.note || '') + '" placeholder="메모" style="margin-top:3px;padding:4px 7px;font-size:12px">' : (l.note ? '<div class="muted">📝 ' + esc(l.note) + '</div>' : '')) + '</td>' +
         '<td class="r"><b>' + l.q + '</b></td>' +
         (picking ? '<td class="r"><input class="sm pq" type="number" inputmode="numeric" min="0" data-pq="' + l._i + '" value="' + (l.pq || 0) + '"></td>' : '') +
         '<td class="r">' + (picking ? '<input class="sm pin' + (chg ? ' chg' : '') + '" type="number" step="0.01" inputmode="decimal" data-pp="' + l._i + '" value="' + l.p + '">' : money(l.p)) + (chg ? '<div class="muted" style="text-decoration:line-through">' + money(l.lp) + '</div>' : '') + '</td>' +
@@ -83,6 +84,13 @@ export function manage(o, lines) {
     document.querySelectorAll('[data-pq]').forEach(inp => { inp.onfocus = () => inp.select(); inp.onchange = () => { lines[+inp.dataset.pq].pq = Math.max(0, Math.floor(Number(inp.value) || 0)); dirty = true; sumNow(); inp.closest('tr').classList.toggle('bo', lines[+inp.dataset.pq].pq < lines[+inp.dataset.pq].q); }; });
     document.querySelectorAll('[data-pp]').forEach(inp => inp.onchange = () => { lines[+inp.dataset.pp].p = R2(inp.value); dirty = true; setTimeout(() => { if ($('mLines')) { sumNow(); paint(); } }, 0); });
     document.querySelectorAll('[data-t]').forEach(s => s.onchange = () => { lines[+s.dataset.t].t = s.value; dirty = true; sumNow(); });
+    document.querySelectorAll('[data-brk]').forEach(b => b.onclick = async () => {
+      const i = +b.dataset.brk, l = lines[i];
+      if (!(await confirmBox(l.c + ' 세트를 구성품 ' + l.kit.length + '종으로 풀까요? (구성품을 따로 픽킹 · 인보이스, 가격은 구성품 목록가)', '풀기'))) return;
+      try { await loadCatalog(S); } catch (e) {}
+      const C = catalog(), add = l.kit.map(k => { const it = C && C.byCode[k.c]; return { c: k.c, d: it ? it.d : k.c, q: k.q * l.q, pq: k.q * (l.pq == null ? l.q : l.pq), p: it ? it.p : 0, lp: it ? it.p : 0, t: it ? typeOfItem(S, it) : (l.t || DT()), note: '세트 ' + l.c + ' 풀음' }; });
+      lines.splice(i, 1, ...add); dirty = true; sumNow(); paint();
+    });
     document.querySelectorAll('[data-note]').forEach(inp => inp.onchange = () => { const v = inp.value.trim(); if (v) lines[+inp.dataset.note].note = v; else delete lines[+inp.dataset.note].note; dirty = true; });
   };
   let dirty = false;
@@ -130,19 +138,21 @@ export function manage(o, lines) {
   if ($('mInv')) $('mInv').onclick = () => confirmInvoice(o, lines);
 }
 
-function printPicking(o, lines) {
+async function printPicking(o, lines) {
+  if (lines.some(l => l.kit)) { try { await loadCatalog(S); } catch (e) {} }
   const acc = acctOf(o.acct);
   const rows = sortBy(lines, l => l.c);
   printOpen('<h1>PICKING — ' + esc(o.no) + '</h1><div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (acc ? ' · ' + esc([acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ')) : '') +
     '<br>Sales ' + esc(o.sm) + ' · ' + esc(o.d) + ' · printed ' + esc(new Date().toLocaleString()) + (o.memo ? '<br>메모: ' + esc(o.memo) : '') + '</div>' +
     '<table><tr><th>#</th><th>CODE</th><th>DESCRIPTION</th><th>TYPE</th><th class="r">ORDER</th><th class="r">PICKED</th><th>NOTE</th></tr>' +
-    rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b></td><td>' + esc(l.d) + '</td><td>' + esc(l.t || 'A') + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>').join('') +
+    rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>' +
+      (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
     '<tr class="fin"><td colspan="4">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></table>' +
     '<div class="sig"><div>Picked by</div><div>Checked by</div><div>Date</div></div>');
 }
 function csv(o, lines) {
   const q = s => { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const out = [['Type', 'Code', 'Description', 'Qty', 'Picked', 'Price', 'ListPrice', 'Amount', 'Note']].concat(lines.map(l => [l.t || 'A', l.c, l.d, l.q, l.pq == null ? '' : l.pq, l.p.toFixed(2), l.lp != null ? Number(l.lp).toFixed(2) : '', ((l.pq == null ? l.q : l.pq) * l.p).toFixed(2), l.note || '']));
+  const out = [['Type', 'Code', 'Description', 'Qty', 'Picked', 'Price', 'ListPrice', 'Amount', 'Note']].concat(lines.map(l => [l.t || DT(), l.c, l.d, l.q, l.pq == null ? '' : l.pq, l.p.toFixed(2), l.lp != null ? Number(l.lp).toFixed(2) : '', ((l.pq == null ? l.q : l.pq) * l.p).toFixed(2), l.note || '']));
   const blob = new Blob(['﻿' + out.map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = o.no + '.csv';
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
@@ -151,7 +161,7 @@ function csv(o, lines) {
 /* ---- 🧾 인보이스 확정 ---- */
 async function confirmInvoice(o, lines) {
   const groups = Object.values(splitByType(lines, o.disc, 'pq')).filter(g => g.qty > 0);
-  const bo = lines.filter(l => (l.pq || 0) < l.q).map(l => ({ c: l.c, d: l.d, q: l.q - (l.pq || 0), p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || 'A' }));
+  const bo = lines.filter(l => (l.pq || 0) < l.q).map(l => Object.assign({ c: l.c, d: l.d, q: l.q - (l.pq || 0), p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }, l.kit ? { kit: l.kit } : {}));
   if (!groups.length) return toast('픽킹된 수량이 없습니다 — 오더를 취소하거나 수량을 넣으세요', 'bad');
   const types = invTypes(S);
   openModal('<h2>🧾 인보이스 확정 — ' + esc(o.store) + '</h2><div class="muted">종류별로 인보이스 번호가 하나씩 나옵니다. 확정하면 고칠 수 없습니다 (취소 후 다시).</div>' +
@@ -169,7 +179,7 @@ async function confirmInvoice(o, lines) {
       for (const g of groups) {
         const t = types.find(x => x.c === g.t) || { c: g.t, start: 1, pad: 5 };
         const no = await nextInvoiceNo(S, t);
-        const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, sm: o.sm, d, ym: ym(d), lines: g.lines.map(l => ({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p })),
+        const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, sm: o.sm, d, ym: ym(d), lines: g.lines.map(l => Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p }, l.kit ? { kit: l.kit } : {})),
           qty: g.qty, sub: g.sub, list: g.list, disc: g.disc, total: g.total, bal: g.total, terms: (acc && acc.terms) || '', st: 'open', memo, createdBy: S.user.email, createdAt: now };
         invs.push(inv); ops.push({ op: 'set', col: 'invoices', id: no, data: inv });
       }
@@ -225,7 +235,7 @@ export async function openBackorder(id) {
   const pick = b.lines.map(() => true);
   const paint = () => {
     $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between"><div><h2 style="margin:0">⏳ 백오더 — ' + esc(b.order) + ' ' + (b.st === 'open' ? '<span class="tag t-c">대기</span>' : '<span class="tag t-g">' + (b.st === 'used' ? '처리됨' : '닫힘') + '</span>') + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(b.store) + '</div><div class="muted">' + esc(b.sm) + ' · ' + esc(b.d) + (b.newOrders && b.newOrders.length ? ' · 새 오더 ' + esc(b.newOrders.join(', ')) : '') + '</div></div><button class="b-ghost b-sm" id="bBack">‹ 목록</button></div></div>' +
-      '<div class="card"><h2>' + b.lines.length + '줄 — 새 오더에 넣을 줄을 고르세요</h2>' + b.lines.map((l, i) => '<label class="pick ' + (pick[i] ? 'on' : '') + '" data-bi="' + i + '"><span class="ck">✓</span><span class="pm"><b>' + esc(l.c) + ' × ' + l.q + '</b><small>' + esc(l.d) + ' · ' + money(l.p) + ' · ' + esc(l.t || 'A') + '</small></span></label>').join('') +
+      '<div class="card"><h2>' + b.lines.length + '줄 — 새 오더에 넣을 줄을 고르세요</h2>' + b.lines.map((l, i) => '<label class="pick ' + (pick[i] ? 'on' : '') + '" data-bi="' + i + '"><span class="ck">✓</span><span class="pm"><b>' + esc(l.c) + ' × ' + l.q + '</b><small>' + esc(l.d) + ' · ' + money(l.p) + ' · ' + esc(l.t || DT()) + '</small></span></label>').join('') +
       (b.st === 'open' ? '<div class="btns"><button class="b-ghost" id="bClose">백오더 닫기</button><button class="b-blue" id="bMake">고른 줄로 새 오더</button></div>' : '') + '</div>';
     $('bBack').onclick = () => Router.go('order');
     document.querySelectorAll('[data-bi]').forEach(el => el.onclick = e => { e.preventDefault(); pick[+el.dataset.bi] = !pick[+el.dataset.bi]; paint(); });

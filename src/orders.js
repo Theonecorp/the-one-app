@@ -16,6 +16,7 @@ import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff } from './invoic
 import * as Fulfill from './fulfill.js';
 
 let S = null;
+const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
 export function register(state) {
   S = state; Router.on('order', pageOrder); Fulfill.register(state);
   /* 인터넷이 다시 되면 · 앱을 다시 열면 보낼 함을 비움 */
@@ -159,7 +160,7 @@ function viewOrder(o, lines, local) {
     const q = $('oFind').value.trim().toUpperCase();
     const rows = q ? lines.filter(l => (l.c + ' ' + l.d).toUpperCase().includes(q)) : lines;
     $('oLines').innerHTML = '<table><tr><th>코드</th><th class="r">수량</th><th class="r">가격</th><th class="r">금액</th></tr>' + rows.slice(0, 2000).map(l =>
-      '<tr><td><b>' + esc(l.c) + '</b> <span class="tag t-g">' + esc(l.t || 'A') + '</span><div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div></td><td class="r"><b>' + l.q + '</b>' + (l.pq != null && l.pq !== l.q ? '<div class="muted">픽 ' + l.pq + '</div>' : '') + '</td><td class="r">' + money(l.p) + (l.lp != null && l.lp !== l.p ? '<div class="muted" style="text-decoration:line-through">' + money(l.lp) + '</div>' : '') + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table>';
+      '<tr><td><b>' + esc(l.c) + '</b> <span class="tag t-g">' + esc(l.t || DT()) + '</span><div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div></td><td class="r"><b>' + l.q + '</b>' + (l.pq != null && l.pq !== l.q ? '<div class="muted">픽 ' + l.pq + '</div>' : '') + '</td><td class="r">' + money(l.p) + (l.lp != null && l.lp !== l.p ? '<div class="muted" style="text-decoration:line-through">' + money(l.lp) + '</div>' : '') + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table>';
   };
   paint(); $('oFind').oninput = debounce(paint, 150);
   $('oBack').onclick = () => Router.go('order');
@@ -257,22 +258,34 @@ function setQty(code, q) {
   const it = catalog().byCode[code], cur = IDX[code];
   if (!q) { if (cur) { O.lines = O.lines.filter(l => l !== cur); delete IDX[code]; } }
   else if (cur) cur.q = q;
-  else if (it) { const l = { c: it.c, d: it.d, q, p: it.p, lp: it.p, t: typeOfItem(S, it) }; O.lines.push(l); IDX[code] = l; }
+  else if (it) {
+    const l = { c: it.c, d: it.d, q, p: it.p, lp: it.p, t: typeOfItem(S, it) };
+    if (it.k) l.kit = it.k.map(x => ({ c: x[0], q: x[1] }));   // 세트: 구성품을 같이 저장 (픽킹 · 재고용)
+    O.lines.push(l); IDX[code] = l;
+  }
   saveWip(); refreshTotals();
   return IDX[code] ? IDX[code].q : 0;
 }
+/** 세트를 풀어서 구성품을 하나씩 담기 */
+function addKitItems(setIt, times) {
+  (setIt.k || []).forEach(x => { const c = catalog().byCode[x[0]]; if (c) setQty(c.c, (IDX[c.c] ? IDX[c.c].q : 0) + x[1] * (times || 1)); });
+}
 
-/* ---- 담기: 검색 · 스캔 · 카테고리 ---- */
+/* ---- 담기: 사진 카드(누르면 1개) · 목록 · 검색 · 스캔 · 카테고리 ---- */
+const VM_KEY = 'theone.order.view';
+let VM = (() => { try { return localStorage.getItem(VM_KEY) || 'grid'; } catch (e) { return 'grid'; } })();
+let PAGE = 60, LAST = [];
 function paintAdd() {
   const T = catalog().tree;
   let node = T; O.path.forEach(p => { node = (node && node.map[p]) || null; });
   if (!node) { O.path = []; node = T; }
-  const crumbs = '<div class="chips" style="margin-top:0"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">전체</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
-  const kids = node.kids.length ? '<div class="chips">' + node.kids.map(k => '<button data-ck="' + esc(k.name) + '">' + esc(k.name) + ' <span class="muted">' + k.n + '</span></button>').join('') + '</div>' : '';
-  $('eBody').innerHTML = '<div class="card"><input id="eQ1" placeholder="코드 · 이름 · 바코드 (스캐너는 여기에)" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '">' +
-    '<div class="muted" style="margin-top:4px">바코드나 코드를 정확히 넣고 엔터 → 1개 담김 (스캐너 그대로 사용)</div>' + crumbs + kids + '<div id="eRes"></div></div>';
+  const crumbs = '<div class="chips" style="margin-top:8px"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">전체</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
+  const kids = node.kids.length ? '<div class="cats">' + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(k.name) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
+  $('eBody').innerHTML = '<div class="card"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 (스캐너는 여기에)" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
+    '<button class="b-ghost b-sm" id="eVM" title="보기 바꾸기" style="font-size:18px">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost b-sm" id="eShow" title="손님 보기" style="font-size:18px">🖼</button></div>' +
+    crumbs + kids + '<div id="eRes"></div></div>';
   const q = $('eQ1');
-  const run = () => { O.q = q.value; paintResults(); };
+  const run = () => { O.q = q.value; PAGE = 60; paintResults(); };
   q.oninput = debounce(run, 160);
   q.onkeydown = e => {
     if (e.key !== 'Enter') return;
@@ -281,26 +294,113 @@ function paintAdd() {
     if (it) { const n = setQty(it.c, (IDX[it.c] ? IDX[it.c].q : 0) + 1); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
     else { run(); toast('정확히 맞는 코드가 없습니다 — 아래에서 고르세요', 'bad'); }
   };
-  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); paintAdd(); });
-  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); paintAdd(); });
+  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); PAGE = 60; paintAdd(); });
+  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); PAGE = 60; paintAdd(); });
+  $('eVM').onclick = () => { VM = VM === 'grid' ? 'list' : 'grid'; try { localStorage.setItem(VM_KEY, VM); } catch (e) {} paintAdd(); };
+  $('eShow').onclick = () => showMode(LAST, 0);
   paintResults();
   if (!('ontouchstart' in window)) q.focus();
 }
 function itemRow(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   return '<div class="pr irow' + (cur ? ' v' : '') + '" data-row="' + esc(it.c) + '">' +
-    (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.ph) + '">' : '<div class="ith"></div>') +
-    '<div class="ct"><b>' + esc(it.c) + '</b><small>' + esc(it.d) + '</small><small>' + money(it.p) + (it.s ? ' · SRP ' + money(it.s) : '') + '</small></div>' +
+    (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
+    '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + money(it.p) + (it.s ? ' · SRP ' + money(it.s) : '') + '</small></div>' +
     qtyBox(it.c, cur) + '</div>';
+}
+/** 사진 카드 — 누르면 1개 담김, 숫자를 누르면 수량 입력, − 로 빼기 */
+function itemCard(it) {
+  const cur = IDX[it.c] ? IDX[it.c].q : 0;
+  return '<div class="gcard' + (cur ? ' on' : '') + '" data-gc="' + esc(it.c) + '">' +
+    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="">' : '<span>' + esc(it.c.substring(0, 6)) + '</span>') + '</div>' +
+    (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') +
+    '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
+    '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(it.d) + '</small><span>' + money(it.p) + '</span></div></div>';
 }
 const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data-d="-1">−</button><input type="number" inputmode="numeric" min="0" data-qi="' + esc(c) + '" value="' + (v || '') + '" placeholder="0"><button data-dq="' + esc(c) + '" data-d="1">＋</button></div>';
 function paintResults() {
   if (!O || !$('eRes')) return;
-  const res = searchItems(O.q, O.path, 80);
-  const total = O.q || O.path.length ? '' : '<div class="muted" style="margin:6px 0">카테고리를 고르거나 검색하세요 (전체 ' + catalog().items.length.toLocaleString() + '개)</div>';
-  $('eRes').innerHTML = total + (res.length ? res.map(itemRow).join('') + (res.length >= 80 ? '<div class="muted" style="text-align:center;padding:8px">80개까지 보여 줍니다 — 더 좁혀 찾으세요</div>' : '') : '<div class="none">찾는 아이템이 없습니다</div>');
-  bindQty($('eRes'));
-  $('eRes').querySelectorAll('[data-big]').forEach(img => img.onclick = () => openModal('<img src="' + esc(thumb(img.dataset.big, 800)) + '" style="width:100%;border-radius:12px"><div class="btns"><button class="b-ghost" onclick="document.getElementById(\'modal\').classList.remove(\'on\')">닫기</button></div>'));
+  const all = searchItems(O.q, O.path, 5000);
+  LAST = all;
+  const res = all.slice(0, PAGE);
+  const head = '<div class="muted" style="margin:6px 0">' + (O.q || O.path.length ? all.length.toLocaleString() + '개' : '전체 ' + catalog().items.length.toLocaleString() + '개 — 카테고리를 고르거나 검색하세요') + '</div>';
+  $('eRes').innerHTML = head + (res.length ? (VM === 'grid' ? '<div class="grid">' + res.map(itemCard).join('') + '</div>' : res.map(itemRow).join('')) +
+    (all.length > res.length ? '<button class="b-ghost" id="eMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') : '<div class="none">찾는 아이템이 없습니다</div>');
+  const root = $('eRes');
+  bindQty(root);
+  if ($('eMore')) $('eMore').onclick = () => { PAGE += 60; paintResults(); };
+  root.querySelectorAll('[data-big]').forEach(el => el.onclick = () => { const i = LAST.findIndex(x => x.c === el.dataset.big); showMode(LAST, Math.max(0, i)); });
+  root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
+  root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); });
+  root.querySelectorAll('[data-gq]').forEach(b => b.onclick = e => { if (!b.textContent) return; e.stopPropagation(); qtyPad(b.dataset.gq); });
+  root.querySelectorAll('[data-gc]').forEach(el => {
+    let t = null, long = false;
+    el.addEventListener('pointerdown', () => { long = false; t = setTimeout(() => { long = true; qtyPad(el.dataset.gc); }, 550); });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
+    el.onclick = () => { if (long) return; const c = el.dataset.gc; setQty(c, (IDX[c] ? IDX[c].q : 0) + 1); refreshCard(c); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); };
+    el.oncontextmenu = e => e.preventDefault();
+  });
+}
+function refreshCard(c) {
+  const el = document.querySelector('[data-gc="' + CSS.escape(c) + '"]'); if (!el) return;
+  const n = IDX[c] ? IDX[c].q : 0;
+  el.classList.toggle('on', !!n);
+  el.querySelector('[data-gq]').textContent = n || '';
+  let m = el.querySelector('[data-gm]');
+  if (n && !m) { m = document.createElement('button'); m.className = 'gm'; m.dataset.gm = c; m.textContent = '−'; m.onclick = e => { e.stopPropagation(); setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); }; el.appendChild(m); }
+  if (!n && m) m.remove();
+}
+/** 수량 직접 입력 */
+function qtyPad(c) {
+  const it = catalog().byCode[c]; if (!it) return;
+  const cur = IDX[c] ? IDX[c].q : 0;
+  openModal('<h2>' + esc(it.c) + '</h2><div class="muted">' + esc(it.d) + ' · ' + money(it.p) + '</div>' +
+    '<div class="qty" style="justify-content:center;margin:14px 0"><button id="qpM" style="width:56px;height:56px">−</button><input id="qpV" type="number" inputmode="numeric" min="0" value="' + cur + '" style="width:110px;font-size:26px"><button id="qpP" style="width:56px;height:56px">＋</button></div>' +
+    '<div class="chips" style="justify-content:center">' + [6, 12, 24, 36, 48, 72, 144].map(n => '<button data-qp="' + n + '">' + n + '</button>').join('') + '</div>' +
+    '<div class="btns"><button class="b-ghost" id="qpX">닫기</button><button class="b-blue" id="qpOk">확인</button></div>');
+  const v = $('qpV'); setTimeout(() => { v.focus(); v.select(); }, 50);
+  $('qpM').onclick = () => { v.value = Math.max(0, (Number(v.value) || 0) - 1); };
+  $('qpP').onclick = () => { v.value = (Number(v.value) || 0) + 1; };
+  document.querySelectorAll('[data-qp]').forEach(b => b.onclick = () => { v.value = b.dataset.qp; });
+  const ok = () => { setQty(c, v.value); closeModal(); if (O.view === 'add') refreshCard(c); else paintCart(); };
+  $('qpOk').onclick = ok; v.onkeydown = e => { if (e.key === 'Enter') ok(); };
+  $('qpX').onclick = closeModal;
+}
+/** 세트 구성 보기 — 세트로 담기 / 풀어서 담기 */
+function kitSheet(it) {
+  if (!it || !it.k) return;
+  const C = catalog();
+  const pcs = it.k.reduce((a, x) => a + x[1], 0);
+  openModal('<h2>🧩 ' + esc(it.c) + '</h2><div class="muted">' + esc(it.d) + ' · ' + money(it.p) + ' · ' + it.k.length + '종 ' + pcs + '개' + (it.old ? ' · 기존 ' + esc(it.old) : '') + '</div>' +
+    '<div class="kitg">' + it.k.map(x => { const c = C.byCode[x[0]]; return '<div><div class="gimg">' + (c && c.ph ? '<img src="' + esc(thumb(c.ph, 200)) + '" loading="lazy">' : '<span>' + esc(x[0]) + '</span>') + '</div><b>' + esc(x[0]) + ' × ' + x[1] + '</b><small>' + esc(c ? c.d : '목록에 없음') + '</small></div>'; }).join('') + '</div>' +
+    '<div class="btns"><button class="b-ghost" id="kAll">풀어서 하나씩 담기</button><button class="b-blue" id="kSet">세트로 1개 담기</button></div>');
+  $('kSet').onclick = () => { setQty(it.c, (IDX[it.c] ? IDX[it.c].q : 0) + 1); closeModal(); if (O.view === 'add') paintResults(); toast(it.c + ' 세트 담음', 'good'); };
+  $('kAll').onclick = () => { addKitItems(it, 1); closeModal(); if (O.view === 'add') paintResults(); toast(it.k.length + '종 담음 — 오더에서 수량을 고칠 수 있습니다', 'good'); };
+}
+/** 🖼 손님 보기 — 사진 크게, 넘기며 보기 (가격 가리기 가능) */
+let SHOW_PRICE = true;
+function showMode(list, i) {
+  list = (list || []).filter(x => x.ph || x.k); if (!list.length) return toast('사진이 있는 아이템이 없습니다', 'bad');
+  i = Math.min(Math.max(0, i || 0), list.length - 1);
+  let v = document.getElementById('viewer'); if (!v) { v = document.createElement('div'); v.id = 'viewer'; document.body.appendChild(v); }
+  const C = catalog();
+  const draw = () => {
+    const it = list[i], cur = IDX[it.c] ? IDX[it.c].q : 0;
+    const ph = it.ph || ((it.k || []).map(x => C.byCode[x[0]]).find(x => x && x.ph) || {}).ph || '';
+    v.innerHTML = '<div class="vtop"><span>' + (i + 1) + ' / ' + list.length + '</span><button id="vP">' + (SHOW_PRICE ? '가격 숨기기' : '가격 보이기') + '</button><button id="vX">✕</button></div>' +
+      '<div class="vimg"><button class="vnav" id="vL">‹</button>' + (ph ? '<img src="' + esc(thumb(ph, 1000)) + '">' : '') + '<button class="vnav" id="vR">›</button></div>' +
+      '<div class="vinfo"><b>' + esc(it.c) + '</b><div>' + esc(it.d) + '</div>' + (SHOW_PRICE ? '<div class="vprice">' + money(it.p) + (it.s ? ' <small>SRP ' + money(it.s) + '</small>' : '') + '</div>' : (it.s ? '<div class="vprice">SRP ' + money(it.s) + '</div>' : '')) +
+      (it.k ? '<div class="vkit">🧩 ' + it.k.length + '종 ' + it.k.reduce((a, x) => a + x[1], 0) + '개</div>' : '') +
+      '<div class="btns"><button class="b-ghost" id="vM">−</button><button class="b-blue" id="vA">담기 ＋1' + (cur ? ' (지금 ' + cur + ')' : '') + '</button></div></div>';
+    $('vX').onclick = () => { v.remove(); if (O && O.view === 'add') paintResults(); };
+    $('vP').onclick = () => { SHOW_PRICE = !SHOW_PRICE; draw(); };
+    $('vL').onclick = () => { i = (i - 1 + list.length) % list.length; draw(); };
+    $('vR').onclick = () => { i = (i + 1) % list.length; draw(); };
+    $('vA').onclick = () => { setQty(it.c, cur + 1); draw(); };
+    $('vM').onclick = () => { setQty(it.c, cur - 1); draw(); };
+  };
+  let sx = 0; v.ontouchstart = e => { sx = e.touches[0].clientX; }; v.ontouchend = e => { const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 50) { i = (i + (dx < 0 ? 1 : -1) + list.length) % list.length; draw(); } };
+  draw();
 }
 function bindQty(root) {
   root.querySelectorAll('[data-dq]').forEach(b => b.onclick = () => {
@@ -323,7 +423,7 @@ function markRow(root, c, n) {
 
 /* ---- 담은 것: 수량 · 가격 · 할인 ---- */
 function paintCart() {
-  const types = invTypes(S), used = {}; O.lines.forEach(l => { used[l.t || 'A'] = 1; });
+  const types = invTypes(S), used = {}; O.lines.forEach(l => { used[l.t || DT()] = 1; });
   const ad = accDiscOf();
   const discRows = types.filter(t => used[t.c] || O.disc[t.c] || ad[t.c]).map(t => {
     const v = O.disc[t.c] || '', base = ad[t.c] || 0, chg = Number(v || 0) !== Number(base);
@@ -338,11 +438,12 @@ function paintCart() {
     const rows = O.lines.slice().reverse().filter(l => !f || (l.c + ' ' + l.d).toUpperCase().includes(f));
     $('eCart').innerHTML = rows.length ? rows.map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001;
-      return '<div class="pr irow v" data-row="' + esc(l.c) + '"><div class="ct"><b>' + esc(l.c) + ' <span class="tag t-g">' + esc(l.t || 'A') + '</span></b><small>' + esc(l.d) + '</small>' +
+      return '<div class="pr irow v" data-row="' + esc(l.c) + '"><div class="ct"><b>' + esc(l.c) + ' <span class="tag t-g">' + esc(l.t || DT()) + '</span>' + (l.kit ? ' <span class="tag t-a" data-kitl="' + esc(l.c) + '">🧩 ' + l.kit.length + '종</span>' : '') + '</b><small>' + esc(l.d) + '</small>' +
         '<small>$ <input class="sm pin' + (chg ? ' chg' : '') + '" type="number" step="0.01" inputmode="decimal" data-pi="' + esc(l.c) + '" value="' + l.p + '">' + (chg ? ' <span class="tag t-c">목록 ' + money(l.lp) + '</span>' : '') + ' · <b class="lamt">' + money(l.q * l.p) + '</b></small></div>' +
         qtyBox(l.c, l.q) + '</div>';
     }).join('') : '<div class="none">아직 담은 아이템이 없습니다 — 🔍 아이템 담기</div>';
     bindQty($('eCart'));
+    $('eCart').querySelectorAll('[data-kitl]').forEach(el => el.onclick = () => { const it = catalog().byCode[el.dataset.kitl]; if (it && it.k) kitSheet(it); else { const l = IDX[el.dataset.kitl]; openModal('<h2>🧩 ' + esc(l.c) + '</h2>' + l.kit.map(x => '<div>' + esc(x.c) + ' × ' + x.q + '</div>').join('') + '<div class="btns"><button class="b-ghost" onclick="document.getElementById(\'modal\').classList.remove(\'on\')">닫기</button></div>'); } });
     $('eCart').querySelectorAll('[data-pi]').forEach(inp => inp.onchange = () => { const l = IDX[inp.dataset.pi]; if (!l) return; l.p = R2(inp.value); inp.value = l.p; saveWip(); refreshTotals(); setTimeout(() => { if (O && $('eCart')) { paintTypes(); paint(); } }, 0); });
     $('eCart').querySelectorAll('[data-qi],[data-dq]').forEach(el => el.addEventListener(el.dataset.qi ? 'change' : 'click', () => setTimeout(paintTypes, 0)));
   };
@@ -377,7 +478,7 @@ async function saveOrder(st) {
   const base = { id: O.id, no: O.no, d: O.d || today(), ym: ym(O.d || today()), sm: O.sm, acct: O.acct || '', store: O.store, st, memo: O.memo || '', updatedAt: now,
     createdBy: O.createdBy || S.user.email, createdAt: O.createdAt || now, catVer: catalog().ver || '' };
   if (st === 'sent') base.sentAt = O.sentAt || now;
-  const lines = O.lines.map(l => { const x = { c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || 'A' }; if (l.pq != null) x.pq = l.pq; if (l.note) x.note = l.note; return x; });
+  const lines = O.lines.map(l => { const x = { c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }; if (l.pq != null) x.pq = l.pq; if (l.note) x.note = l.note; if (l.kit) x.kit = l.kit; return x; });
   /* 매니저가 이미 처리 중인 오더 — 상태 · 픽킹 기록은 그대로 두고 바로 저장 */
   if (isStaff() && O.st !== 'draft' && O.st !== 'sent') {
     busy(true);

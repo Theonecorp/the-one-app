@@ -54,6 +54,8 @@ window.__MOCK_SEED__ = {
   const rows = [];
   for (let i = 0; i < 1200; i++) { const g = G[i % G.length]; const code = (i % 5 === 3 ? 'EB' : i % 5 === 4 ? 'GM' : 'AHG') + String(100 + i); rows.push([code, (g[2] + ' ' + g[3] + ' ITEM ' + i).trim(), 2.5 + (i % 7) * 0.25, 4.99, String(898000000000 + i), g[0], g[1], g[2], g[3], '']); }
   window.__MOCK_SEED__.catalog = [{ id: 'meta', ver: 'T1', count: rows.length, chunks: 1, cats: G.map(g => g.join('\u0001')), updatedAt: '2026-10-15T10:00:00Z', by: 'luke@theonefl.com' }, { id: 'c0', j: JSON.stringify(rows), n: rows.length, ver: 'T1' }];
+  window.__MOCK_SEED__.catalog[0].setsVer = 'S1';
+  window.__MOCK_SEED__.catalog.push({ id: 'sets', ver: 'S1', j: JSON.stringify({ 'FI-TEST01': { n: 'FLOOR INSERT TEST CZ SET', k: [['AHG100', 6], ['AHG105', 6], ['AHG110', 12]], p: 216, old: 'AHG115', st: '확정' }, 'C4-EB01': { n: 'C4 EDGE BOOSTER INSERT', k: [['EB103', 12], ['EB108', 12]] } }) });
   window.__MOCK_SEED__.orders = [{ id: 'O261014-AAAA', no: 'O261014-AAAA', d: '2026-10-14', ym: '2026-10', sm: 'ALEX', acct: '3001', store: 'BEAUTY EXCHANGE ORLANDO', st: 'sent', n: 2, qty: 30, amt: 80, memo: 'UPS 로', createdBy: 'alex@x.com', createdAt: '2026-10-14T15:00:00Z', updatedAt: '2026-10-14T15:00:00Z', sentAt: '2026-10-14T15:00:00Z' }];
   window.__MOCK_SEED__.orderLines = [{ id: 'O261014-AAAA', sm: 'ALEX', lines: [{ c: 'AHG100', d: 'Aluminum Gold ITEM 0', q: 20, p: 2.5 }, { c: 'AHG101', d: 'Aluminum Silver ITEM 1', q: 10, p: 3 }] }];
 })();
