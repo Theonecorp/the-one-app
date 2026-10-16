@@ -372,6 +372,15 @@ function setForm(code, sets) {
  *  🗂 분류 — 레벨 이름 바꾸기 · 순서 · 시작 단계, 그리고 일괄 변경 파일 (SBM 의 레벨 정리 · 디스크립션 · 코드 변경 파일 역할)
  * ============================================================ */
 let TP = [];   // 펼친 경로 (전체 4단계 기준)
+/* SmartBee 분류로 되돌리기 — data/sbm-tree.json (SmartBee LEVEL 1 · 2 · GROUP NAME, 2026-10 내보내기) 을 한 번에 적용 */
+function sbmCard(C) {
+  const L1 = {}; C.items.forEach(x => { if (x.l1) L1[x.l1] = 1; });
+  const sbm = ['EARRING', 'NECKLACE', 'ANKLET', 'NOSE'].filter(k => L1[k]).length >= 3;
+  return '<div class="card" style="border:2px solid ' + (sbm ? '#bbf7d0' : '#fdba74') + '"><h2>🐝 SmartBee 분류 (LEVEL 1 · 2 · GROUP)</h2>' +
+    (sbm ? '<div class="alert a-grn">✅ 지금 SmartBee 분류를 쓰고 있습니다. 순서: "" 맨 앞 → " → 주얼리 ABC → [ 그 외 → &lt; * z 맨 뒤 (+ 📌 고정).</div>' :
+      '<div class="alert a-amb">⚠️ 지금은 THE ONE 카탈로그 분류(Earrings · Hoops … )입니다. 아래 버튼 한 번이면 세일즈맨이 쓰던 SmartBee LEVEL 1 · LEVEL 2 · GROUP 으로 바뀝니다 (7,268개, Group 은 Jewelry · Other · Set &amp; Display = 인보이스 A · P · W).</div>') +
+    '<div class="btns"><button class="' + (sbm ? 'b-ghost' : 'b-blue') + '" id="sbmGo">🐝 SmartBee 분류로 ' + (sbm ? '다시 ' : '') + '바꾸기</button></div></div>';
+}
 function pinOf(name) { const P = pins(), k = String(name).toUpperCase(); if (P.top.some(x => x.toUpperCase() === k)) return 'top'; if (P.bottom.some(x => x.toUpperCase() === k)) return 'bottom'; return ''; }
 /** 아이템별 판매 파일 → [[code, qty]…] 많이 나간 순. 머리글에서 Item/Code 열과 Qty/수량 열을 찾음 (머리글 줄은 위에서 20줄 안) */
 export function parsePop(t) {
@@ -406,6 +415,7 @@ async function treeAdmin() {
       '<button class="b-ghost b-sm' + (pt === 'top' ? ' on' : '') + '" data-tup="' + esc(k.name) + '" title="위에 고정" style="' + (pt === 'top' ? 'background:#fef3c7' : '') + '">📌↑</button><button class="b-ghost b-sm" data-tdn="' + esc(k.name) + '" title="아래에 고정" style="' + (pt === 'bottom' ? 'background:#fef3c7' : '') + '">📍↓</button><button class="b-ghost b-sm" data-tren="' + esc(k.name) + '">✏️</button></div>'; }).join('') + '</div>' +
     '<div class="card"><h2>✨ 자주 나가는 아이템</h2><div class="muted">오더 화면 맨 위 "✨ 자주 나가는" 칸의 순서입니다. 가게가 최근에 산 것이 먼저 나오고, 그 다음 이 목록 순서입니다. SmartBee 의 <b>Sales Report by Item</b>(엑셀) 처럼 <b>Item</b>(코드) 과 <b>Qty</b>(수량) 열이 있는 파일을 올리면 많이 나간 순으로 저장됩니다.' + (popularCodes().length ? ' 지금 <b>' + popularCodes().length + '개</b> 올라와 있음.' : ' 아직 없음.') + '</div>' +
     '<div class="fg" style="margin-top:8px"><input type="file" id="popFile" accept=".xlsx,.csv"></div><div id="popOut"></div></div>' +
+    sbmCard(C) +
     '<div class="card"><h2>📄 일괄 변경 파일</h2><div class="muted">엑셀 첫 줄 머리글로 열을 찾고, <b>있는 열만</b> 바꿉니다 (빈 칸은 그대로). 쓸 수 있는 열: <b>Code</b>(필수) · NewCode(코드 변경) · Description · Price · SRP · Barcode · Group · Level 1 · Level 2 · Level 3 · Photo · Delete(x).<br>' +
     '드라이브의 <b>Tree_업데이트</b> 파일(TreeUpdate 탭)도 그대로 올리면 분류가 바뀝니다. 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
     '<div class="btns"><button class="b-ghost" id="tCsv">⬇️ 지금 아이템 전체 CSV (고쳐서 다시 올리기)</button></div>' +
@@ -450,6 +460,18 @@ async function treeAdmin() {
       out.innerHTML = '<div class="alert a-blu">' + best.length + '개 코드 (목록에 있는 것 ' + known.length + '개). 상위: ' + esc(known.slice(0, 8).map(r => r[0] + ' ' + r[1]).join(', ')) + '</div><div class="btns"><button class="b-blue" id="popGo">저장</button></div>';
       $('popGo').onclick = async () => { busy(true); try { await S.DB.set('catalog', 'pop', { j: JSON.stringify(known.slice(0, 1000)), n: known.length, updatedAt: new Date().toISOString(), by: S.user.email }); await loadCatalog(S, true); toast('✨ 자주 나가는 ' + known.length + '개 저장', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
     } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+  };
+  if ($('sbmGo')) $('sbmGo').onclick = async () => {
+    if (!(await confirmBox('모든 아이템의 분류를 SmartBee 의 LEVEL 1 · LEVEL 2 · GROUP 으로 바꿀까요? (Group 은 Jewelry · Other · Set & Display 로 — 인보이스 A · P · W 와 연결)', '바꾸기'))) return;
+    busy(true);
+    try {
+      const res = await fetch('data/sbm-tree.json?v=' + Date.now()); if (!res.ok) throw new Error('data/sbm-tree.json 을 읽지 못했습니다');
+      const m = await res.json();
+      const patches = Object.keys(m).map(c => ({ code: c, set: { g: m[c][0], l1: m[c][1], l2: m[c][2], l3: m[c][3] } }));
+      const r = await editCatalog(S, (rows, cats, sets) => { cats.length = 0; return applyBulk(rows, cats, sets, patches); });
+      toast('SmartBee 분류로 바꿨습니다 — ' + r.changed + '개 (목록에 없는 코드 ' + r.missing.length + ')', 'good'); TP = []; treeAdmin();
+    } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false);
   };
   $('tCsv').onclick = () => { const blob = new Blob([catalogCsv()], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'the-one-items-' + today() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
   $('tFile').onchange = async () => {
