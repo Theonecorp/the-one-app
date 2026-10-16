@@ -6,7 +6,7 @@ import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer } from './mgr.js';
 import { roleLabel, JOBS, jobLabel } from './main.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl } from './catalog.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName } from './catalog.js';
 import { invTypes, fmtNo, company } from './invoicing.js';
 
 let S = null, TAB = 'users';
@@ -404,6 +404,7 @@ function sbmCard(C) {
       '<div class="alert a-amb">⚠️ 지금은 THE ONE 카탈로그 분류(Earrings · Hoops … )입니다. 아래 버튼 한 번이면 세일즈맨이 쓰던 SmartBee LEVEL 1 · LEVEL 2 · GROUP 으로 바뀝니다 (7,268개, Group 은 Jewelry · Other · Set &amp; Display = 인보이스 A · P · W).</div>') +
     '<div class="btns"><button class="' + (sbm ? 'b-ghost' : 'b-blue') + '" id="sbmGo">🐝 SmartBee 분류로 ' + (sbm ? '다시 ' : '') + '바꾸기</button></div></div>';
 }
+const cleanLbl = n => cleanName(n) + (cleanName(n) !== String(n) ? ' (' + n + ')' : '');
 function pinOf(name) { const P = pins(), k = String(name).toUpperCase(); if (P.top.some(x => x.toUpperCase() === k)) return 'top'; if (P.bottom.some(x => x.toUpperCase() === k)) return 'bottom'; return ''; }
 /** 아이템별 판매 파일 → [[code, qty]…] 많이 나간 순. 머리글에서 Item/Code 열과 Qty/수량 열을 찾음 (머리글 줄은 위에서 20줄 안) */
 export function parsePop(t) {
@@ -435,7 +436,9 @@ async function treeAdmin() {
     '<div class="fg" style="margin-top:8px"><label>오더 화면 시작 단계</label><div class="seg"><button class="' + (start === 'l1' ? 'on' : '') + '" data-cs="l1">Level 1 부터 (ANKLET · EARRING … SBMGo 처럼)</button><button class="' + (start === 'g' ? 'on' : '') + '" data-cs="g">Group 부터 (Jewelry · Beauty …)</button></div></div>' +
     crumbs + '<div class="muted" style="margin:4px 0">' + esc(LV[depth]) + ' · ' + kids.length + '개</div>' +
     kids.map(k => { const pt = pinOf(k.name); return '<div class="pr"><div class="ct tap" data-tin="' + esc(k.name) + '"><b>' + (pt === 'top' ? '📌 ' : pt === 'bottom' ? '📍 ' : '') + esc(k.name) + '</b><small>' + k.n.toLocaleString() + '개' + (k.kids.length ? ' · 하위 ' + k.kids.length : '') + (pt === 'top' ? ' · 위에 고정' : pt === 'bottom' ? ' · 아래에 고정' : '') + '</small></div>' +
-      '<button class="b-ghost b-sm' + (pt === 'top' ? ' on' : '') + '" data-tup="' + esc(k.name) + '" title="위에 고정" style="' + (pt === 'top' ? 'background:#fef3c7' : '') + '">📌↑</button><button class="b-ghost b-sm" data-tdn="' + esc(k.name) + '" title="아래에 고정" style="' + (pt === 'bottom' ? 'background:#fef3c7' : '') + '">📍↓</button><button class="b-ghost b-sm" data-tren="' + esc(k.name) + '">✏️</button></div>'; }).join('') + '</div>' +
+      '<button class="b-ghost b-sm' + (pt === 'top' ? ' on' : '') + '" data-tup="' + esc(k.name) + '" title="위에 고정" style="' + (pt === 'top' ? 'background:#fef3c7' : '') + '">📌↑</button><button class="b-ghost b-sm" data-tdn="' + esc(k.name) + '" title="아래에 고정" style="' + (pt === 'bottom' ? 'background:#fef3c7' : '') + '">📍↓</button><button class="b-ghost b-sm" data-tren="' + esc(k.name) + '" title="이름 바꾸기">✏️</button>' + (depth >= 1 ? '<button class="b-ghost b-sm" data-tmv="' + esc(k.name) + '" title="다른 곳으로 옮기기">➡️</button>' : '') + '</div>'; }).join('') + '</div>' +
+    (depth >= 1 ? '<div class="btns"><button class="b-ghost" id="tItems">📋 이 분류의 아이템 ' + node.n.toLocaleString() + '개 보기 · 하나씩 바꾸기</button></div><div id="tItemList"></div>' : '') + '</div>' +
+    '<div class="card"><h2>🔎 코드로 아이템 분류 바꾸기</h2><div class="muted">아이템 코드(또는 바코드)를 치면 지금 분류가 보이고 Group · Level 1 · 2 · 3 을 바로 고칠 수 있습니다. 아이템을 다른 Level 1 로 옮기거나, 새 Level 이름을 만들 때 쓰세요.</div><div class="fg" style="margin-top:8px"><input id="tCode" placeholder="예: AHG103" autocomplete="off" style="text-transform:uppercase"></div><div id="tCodeOut"></div>' +
     '<div class="card"><h2>✨ 자주 나가는 아이템</h2><div class="muted">오더 화면 맨 위 "✨ 자주 나가는" 칸의 순서입니다. 가게가 최근에 산 것이 먼저 나오고, 그 다음 이 목록 순서입니다. SmartBee 의 <b>Sales Report by Item</b>(엑셀) 처럼 <b>Item</b>(코드) 과 <b>Qty</b>(수량) 열이 있는 파일을 올리면 많이 나간 순으로 저장됩니다.' + (popularCodes().length ? ' 지금 <b>' + popularCodes().length + '개</b> 올라와 있음.' : ' 아직 없음.') + '</div>' +
     '<div class="fg" style="margin-top:8px"><input type="file" id="popFile" accept=".xlsx,.csv"></div><div id="popOut"></div></div>' +
     sbmCard(C) +
@@ -484,6 +487,51 @@ async function treeAdmin() {
       $('popGo').onclick = async () => { busy(true); try { await S.DB.set('catalog', 'pop', { j: JSON.stringify(known.slice(0, 1000)), n: known.length, updatedAt: new Date().toISOString(), by: S.user.email }); await loadCatalog(S, true); toast('✨ 자주 나가는 ' + known.length + '개 저장', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
     } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
   };
+  /* ➡️ 분류 옮기기 — 같은 단계의 다른 상위를 고름 (Level 1 은 Group 으로, Level 2 는 다른 Level 1 로 …) */
+  const parents = (() => { const out = []; const walk = (nd, path) => { if (path.length === depth) { out.push(path); return; } nd.kids.forEach(k => walk(k, path.concat([k.name]))); }; walk(C.tree, []); return out; })();
+  document.querySelectorAll('[data-tmv]').forEach(b => b.onclick = () => {
+    const name = b.dataset.tmv, curKey = under.join(' › ');
+    openModal('<h2>➡️ ' + esc(LV[depth]) + ' 옮기기</h2><div class="muted"><b>' + esc(cleanLbl(name)) + '</b> (' + esc(LV[depth]) + ') 를 어디 아래로 옮길까요? 지금: ' + esc(curKey || '맨 위') + '</div>' +
+      '<div class="fg" style="margin-top:8px"><label>옮길 곳 (' + esc(LV[depth - 1]) + ')</label>' + sel('tmvTo', parents.map(p => [p.join('\u0001'), p.map(cleanLbl).join(' › ')]), under.join('\u0001')) + '</div>' +
+      '<div class="fg"><label>또는 새 ' + esc(LV[depth - 1]) + ' 이름 (위 선택 대신)</label><input id="tmvNew" placeholder="' + (depth === 1 ? 'Jewelry · Other · Set & Display 중 하나' : '새 이름') + '"></div>' +
+      (depth === 1 ? '<div class="alert a-blu">Group 은 인보이스 종류와 연결됩니다: Jewelry → A, Other → P, Set &amp; Display → W</div>' : '') +
+      '<div class="btns"><button class="b-ghost" id="tmvX">닫기</button><button class="b-blue" id="tmvOk">옮기기</button></div>');
+    $('tmvX').onclick = closeModal;
+    $('tmvOk').onclick = async () => {
+      let to = $('tmvTo').value.split('\u0001'); const nw = $('tmvNew').value.trim();
+      if (nw) { to = depth === 1 ? [nw] : under.slice(0, depth - 1); if (depth > 1) to[depth - 2] = nw; }
+      if (to.join('\u0001') === under.join('\u0001')) return toast('같은 곳입니다', 'bad');
+      closeModal(); busy(true);
+      try { const r = await editCatalog(S, (rows, cats) => { ensureCats(rows, cats); return { n: moveCatTo(rows, cats, depth, under, name, to) }; }); toast(r.n + '개 아이템 → ' + to.map(cleanLbl).join(' › '), 'good'); TP = to; treeAdmin(); }
+      catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  });
+  /* 📋 이 분류의 아이템 — 하나씩 바꾸기 */
+  if ($('tItems')) $('tItems').onclick = () => {
+    const list = C.items.filter(x => { const L = [x.g, x.l1, x.l2, x.l3]; return under.every((u, i) => L[i] === u); }).slice(0, 300);
+    $('tItemList').innerHTML = list.map(x => '<div class="pr"><div class="ct"><b>' + esc(x.c) + '</b><small>' + esc(x.d) + ' · ' + esc([x.l1, x.l2, x.l3].filter(Boolean).map(cleanLbl).join(' › ')) + '</small></div><button class="b-ghost b-sm" data-tfix="' + esc(x.c) + '">바꾸기</button></div>').join('') + (node.n > 300 ? '<div class="muted">300개까지만 보입니다 — 나머지는 아래 "코드로 바꾸기"로</div>' : '');
+    $('tItemList').querySelectorAll('[data-tfix]').forEach(bb => bb.onclick = () => itemFix(bb.dataset.tfix));
+  };
+  /* 🔎 코드로 바꾸기 */
+  $('tCode').oninput = () => { const it = exactItem($('tCode').value); $('tCodeOut').innerHTML = it ? '<div class="pr"><div class="ct"><b>' + esc(it.c) + '</b><small>' + esc(it.d) + '</small><small>' + esc([it.g, it.l1, it.l2, it.l3].filter(Boolean).map(cleanLbl).join(' › ')) + '</small></div><button class="b-blue b-sm" id="tCodeGo">분류 바꾸기</button></div>' : ($('tCode').value.trim() ? '<div class="muted">맞는 코드가 없습니다</div>' : ''); if ($('tCodeGo')) $('tCodeGo').onclick = () => itemFix(it.c); };
+  function itemFix(code) {
+    const it = C.byCode[code]; if (!it) return;
+    const names = { g: [], l1: [], l2: [], l3: [] }; C.items.forEach(x => { ['g', 'l1', 'l2', 'l3'].forEach(k => { if (x[k] && !names[k].includes(x[k])) names[k].push(x[k]); }); });
+    const dl = k => '<datalist id="dl_' + k + '">' + names[k].sort().map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>';
+    openModal('<h2>' + esc(it.c) + '</h2><div class="muted">' + esc(it.d) + '</div>' +
+      ['g', 'l1', 'l2', 'l3'].map((k, i) => '<div class="fg"><label>' + LV[i] + (k === 'g' ? ' (Jewelry → A · Other → P · Set & Display → W)' : '') + '</label><input id="tf_' + k + '" list="dl_' + k + '" value="' + esc(it[k] || '') + '" autocomplete="off">' + dl(k) + '</div>').join('') +
+      '<div class="muted">목록에 없는 이름을 적으면 새 분류가 만들어집니다. 비우면 그 단계 없음.</div><div class="btns"><button class="b-ghost" id="tfX">닫기</button><button class="b-blue" id="tfOk">저장</button></div>');
+    $('tfX').onclick = closeModal;
+    $('tfOk').onclick = async () => {
+      const set = { g: $('tf_g').value.trim(), l1: $('tf_l1').value.trim(), l2: $('tf_l2').value.trim(), l3: $('tf_l3').value.trim() };
+      if (!set.l1) return toast('Level 1 은 있어야 합니다', 'bad');
+      closeModal(); busy(true);
+      try { await editCatalog(S, (rows, cats, sets) => applyBulk(rows, cats, sets, [{ code: it.c, set }])); toast(it.c + ' → ' + [set.l1, set.l2, set.l3].filter(Boolean).map(cleanLbl).join(' › '), 'good'); treeAdmin(); }
+      catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  }
   if ($('sbmGo')) $('sbmGo').onclick = async () => {
     if (!(await confirmBox('모든 아이템의 분류를 SmartBee 의 LEVEL 1 · LEVEL 2 · GROUP 으로 바꿀까요? (Group 은 Jewelry · Other · Set & Display 로 — 인보이스 A · P · W 와 연결)', '바꾸기'))) return;
     busy(true);

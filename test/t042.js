@@ -52,6 +52,14 @@ const path = require('path'), fs = require('fs');
   if (!/Chains/.test(after[0])) errs.push('pin top failed: ' + after.join('|'));
   await pg.click('[data-tup="Chains"]'); await pg.waitForTimeout(600);
   log('after unpin:', await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent).join(' | ')));
+  /* ➡️ 분류 옮기기: Jewelry › Chains → Hair 아래로 */
+  await pg.click('[data-tmv="Chains"]'); await pg.waitForSelector('#tmvTo'); await pg.selectOption('#tmvTo', 'Hair'); await pg.click('#tmvOk'); await pg.waitForTimeout(900);
+  log('after move (Hair kids):', await pg.$$eval('[data-tin]', els => els.map(e => e.querySelector('b').textContent).join(' | ')));
+  if (!(await pg.$$eval('[data-tin]', els => els.some(e => /Chains/.test(e.textContent))))) errs.push('moveCatTo failed');
+  /* 🔎 코드로 아이템 분류 바꾸기: GM104 → Level 1 "Wax Premium" */
+  await pg.fill('#tCode', 'GM104'); await pg.waitForTimeout(150); await pg.click('#tCodeGo'); await pg.waitForSelector('#tf_l1'); await pg.fill('#tf_l1', 'Wax Premium'); await pg.click('#tfOk'); await pg.waitForTimeout(900);
+  await pg.fill('#tCode', 'GM104'); await pg.waitForTimeout(150); const fixed = await pg.textContent('#tCodeOut'); log('item fix:', fixed.replace(/\s+/g, ' ').trim());
+  if (!/Wax Premium/.test(fixed)) errs.push('itemFix failed: ' + fixed);
   /* 사진 규칙 — 오더 담기 화면에서 코드별 사진 확인 */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eQ1');
   const phs = [];
