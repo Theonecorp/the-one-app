@@ -83,9 +83,13 @@ nav button.on{color:var(--blue)}
 .hits div{padding:11px 12px;border-bottom:1px solid var(--line);font-size:15px;cursor:pointer}.hits div:last-child{border-bottom:0}.hits div small{display:block;color:var(--muted);font-size:11.5px}
 .hits div.on{background:#eff6ff}
 .payrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#f8fafc;border-radius:10px;padding:8px;margin-bottom:8px;position:relative}
+.payrow.big{border-radius:14px;padding:10px;gap:8px;border:1.5px solid var(--line)}.payrow.big .seg button{flex:1;font-size:14px;padding:11px 6px}.payrow.big details{margin-top:2px}.payrow.big summary{cursor:pointer;font-size:12px}
+.amt{display:flex;align-items:center;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:0 10px}.amt span{font-size:20px;font-weight:800;color:var(--muted)}.amt input{border:0;padding:10px 6px;font-size:24px;font-weight:900;text-align:right;font-variant-numeric:tabular-nums;min-width:0}.amt input:focus{outline:none}.amt:focus-within{border-color:var(--blue)}.amt.sm{padding:0 8px}.amt.sm span{font-size:15px}.amt.sm input{font-size:17px;padding:8px 4px}
+.steps{display:flex;gap:6px;margin:0 0 10px}.steps .st{flex:1;background:#fff;border-radius:12px;padding:8px 6px;text-align:center;border:1.5px solid var(--line);color:var(--muted)}.steps .st b{display:block;font-size:13px;color:var(--ink2)}.steps .st small{font-size:10.5px}.steps .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#e2e8f0;align-items:center;justify-content:center;font-size:12px;font-weight:800;margin-bottom:2px}.steps .st.done .n{background:var(--green);color:#fff}.steps .st.now{border-color:var(--blue);background:#eff6ff}.steps .st.now .n{background:var(--blue);color:#fff}
+.pick.inv{padding:11px 12px;border-radius:12px;margin-bottom:8px}.pick.inv.late{border-color:#fecaca;background:#fff7f7}.pick.inv.on{background:#eff6ff;border-color:var(--blue)}.pick.inv .ck{width:24px;height:24px;flex:0 0 24px;border-radius:8px}.pick.inv .pm b{font-size:15px}
 .payrow .full{grid-column:1/3}
 .payrow .x{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;background:#94a3b8;color:#fff;border:0;font-size:13px;line-height:1;padding:0}
-.invrow{display:grid;grid-template-columns:1fr 110px 28px;gap:6px;align-items:center;margin-bottom:6px}
+.invrow{display:grid;grid-template-columns:1fr 130px 32px;gap:8px;align-items:center;margin-bottom:8px}
 .invrow input{padding:9px 10px;font-size:15px}
 .pick{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;margin-bottom:6px;cursor:pointer;font-size:13.5px}
 .pick.on{border-color:var(--blue);background:#eff6ff}.pick .ck{width:20px;height:20px;border-radius:6px;border:2px solid #cbd5e1;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex:0 0 20px}
