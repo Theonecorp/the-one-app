@@ -2,7 +2,8 @@ export const CSS = `
 :root{--navy:#0f172a;--blue:#1d4ed8;--blue2:#dbeafe;--green:#15803d;--red:#b91c1c;--amber:#b45309;--bg:#f1f5f9;--card:#fff;--ink:#0f172a;--ink2:#334155;--muted:#64748b;--line:#e2e8f0;--r:14px;--sh:0 1px 2px rgba(15,23,42,.06)}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45;padding-bottom:78px;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45;padding-bottom:calc(var(--navh,78px) + 12px);-webkit-tap-highlight-color:transparent}
+button{transition:transform .08s,filter .08s}button:active{transform:scale(.95);filter:brightness(.88)}.pr.tap:active,.htile:active,.gcard:active,.cats button:active,.pick:active{transform:scale(.985);filter:brightness(.94)}.b-blue:active,.b-green:active{box-shadow:inset 0 0 0 99px rgba(0,0,0,.12)}
 header{position:sticky;top:0;z-index:40;background:var(--navy);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
 header h1{font-size:15px;margin:0;font-weight:700}header .hlogo{width:26px;height:26px;border-radius:50%}
 header .hr{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:#94a3b8}
@@ -24,7 +25,7 @@ button{font-family:inherit;cursor:pointer}
 .b-blue{background:var(--blue);color:#fff}.b-green{background:var(--green);color:#fff}.b-red{background:var(--red);color:#fff}.b-navy{background:var(--navy);color:#fff}.b-ghost{background:#e2e8f0;color:var(--ink)}
 .b-sm{width:auto;padding:7px 11px;font-size:12.5px;border-radius:8px}
 .btns{display:flex;gap:8px;margin-top:12px}
-.sticky{position:sticky;bottom:72px;z-index:30;padding:10px 0 0;background:linear-gradient(to top,var(--bg) 70%,transparent)}
+.sticky{position:sticky;bottom:calc(var(--navh,72px) + env(safe-area-inset-bottom,0px));z-index:30;padding:10px 0 0;background:linear-gradient(to top,var(--bg) 70%,transparent)}
 input,select,textarea{width:100%;font-size:16px;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;outline:none;font-family:inherit;background:#fff;color:var(--ink)}
 input:focus,select:focus,textarea:focus{border-color:var(--blue)}
 input.sm{padding:7px 9px;font-size:14px}
@@ -51,7 +52,7 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .alert{border-radius:10px;padding:9px 12px;font-size:12.5px;margin-top:8px;line-height:1.5}
 .a-red{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.a-amb{background:#fff7ed;color:#7c2d12;border:1px solid #fed7aa}.a-blu{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe}.a-grn{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
 .pr{display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--line)}
-.en{font-weight:500;opacity:.72;font-size:.88em;white-space:nowrap}nav button .en{display:block;font-size:9.5px;opacity:.8;font-weight:600}.htile .en{display:block;font-size:12px}h2 .en,.chips .en,.seg .en{font-size:.85em}
+.en{font-weight:500;opacity:.72;font-size:.88em;white-space:nowrap}nav button .en{display:block;font-size:9px;opacity:.75;font-weight:600;line-height:1.1}.htile .en{display:block;font-size:12px}h2 .en,.chips .en,.seg .en{font-size:.85em}
 .kpi.strip div{cursor:pointer}.kpi.strip b{font-size:15px}
 .iday{display:flex;justify-content:space-between;align-items:center;background:#f1f5f9;border-radius:8px;padding:6px 10px;margin:10px 0 2px;font-size:13px}.iday span{color:var(--muted);font-size:12px}
 .pr .ct{flex:1;min-width:0}.pr .ct b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pr .ct small{color:var(--muted);font-size:11.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -64,7 +65,7 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bars .b{flex:1;min-width:3px;background:#cbd5e1;border-radius:3px 3px 0 0;position:relative}.bars .b.on{background:var(--blue)}
 .bars .b:hover::after{content:attr(data-v);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;font-size:11px;padding:3px 7px;border-radius:6px;white-space:nowrap;z-index:5}
 .xlab{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:4px}
-nav{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--line);display:flex;padding:4px 0 env(safe-area-inset-bottom)}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--line);display:flex;padding:3px 0 env(safe-area-inset-bottom)}
 nav button{flex:1;background:none;border:none;color:#94a3b8;font-size:11px;font-weight:700;padding:6px 2px;line-height:1.2}
 nav button .i{display:block;font-size:20px;line-height:1.15}
 nav button.on{color:var(--blue)}
@@ -126,7 +127,7 @@ table.pk td{vertical-align:top}table.pk tr.bo td{background:#fef2f2}
 .htile.blue{background:var(--blue);border-color:var(--blue);color:#fff}.htile.blue small{color:#dbeafe}.htile.green{background:var(--green);border-color:var(--green);color:#fff}.htile.green small{color:#dcfce7}
 .qbar{display:flex;gap:4px;align-items:center;background:var(--navy);border-radius:11px;padding:6px;margin-bottom:8px;overflow:auto}
 .qbar span{flex:1;min-width:0;color:#cbd5e1;font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px}
-.qbar button{flex:0 0 auto;min-width:44px;height:44px;border:0;border-radius:9px;background:rgba(255,255,255,.14);color:#fff;font-size:17px;font-weight:800}.qbar button:last-child{background:#b91c1c}
+.qbar button{flex:0 0 auto;min-width:46px;height:46px;border:0;border-radius:9px;background:rgba(255,255,255,.14);color:#fff;font-size:18px;font-weight:800}.qbar button:last-child{background:#b91c1c;min-width:40px;font-size:15px}.qbar button.on{background:#f59e0b;color:#1e1b4b;box-shadow:0 0 0 2px #fde68a inset}
 .irow.foc{outline:2px solid var(--blue);outline-offset:-2px;border-radius:10px}
 .hist{color:#1d4ed8!important;font-weight:700}
 #hNet{width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block;box-shadow:0 0 0 2px rgba(255,255,255,.15)}#hNet.off{background:#ef4444}
