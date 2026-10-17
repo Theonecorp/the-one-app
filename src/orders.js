@@ -335,18 +335,27 @@ function paintEditor() {
     q.oninput = () => {
       if (!q.value.trim()) { box.style.display = 'none'; return; }
       const mine = isStaff() ? S.accounts : S.accounts;
-      const hits = searchAccounts(mine, q.value, 12);
-      box.innerHTML = hits.map(a => '<div data-ac="' + esc(a.acct) + '" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(accountLabel(a)) + '</b><small>' + esc(a.acct + ' · ' + [a.addr, a.city].filter(Boolean).join(', ') + (a.sm ? ' · ' + a.sm : '')) + '</small></div><button class="b-ghost b-sm" data-ai="' + esc(a.acct) + '">📋</button></div>').join('') || '<div class="muted">찾는 가게가 없습니다</div>';
-      box.style.display = 'block';
+      const hits = searchAccounts(mine, q.value, 150);
+      box.innerHTML = (hits.total ? '<div class="muted" style="padding:6px 11px;font-size:12px;border-bottom:1px solid var(--line)">' + hits.total + '곳 · ' + (hits.total > hits.length ? hits.length + '곳까지 표시 — 더 자세히 치세요' : '가게를 누르세요 · tap a store') + '</div>' : '') + hits.map(a => '<div data-ac="' + esc(a.acct) + '" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(accountLabel(a)) + '</b><small>' + esc(a.acct + ' · ' + [a.addr, a.city].filter(Boolean).join(', ') + (a.sm ? ' · ' + a.sm : '')) + '</small></div><button class="b-ghost b-sm" data-ai="' + esc(a.acct) + '">📋</button></div>').join('') || '<div class="muted">찾는 가게가 없습니다</div>';
+      box.style.display = 'block'; if (!hits.length) box.innerHTML = '<div class="muted" style="padding:10px">맞는 가게가 없습니다 · no match</div>';
       box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => pickStore(el.dataset.ac));
-      box.querySelectorAll('[data-ai]').forEach(el => el.onclick = e => { e.stopPropagation(); Store.storeSheet(el.dataset.ai, pickStore); });
+      box.querySelectorAll('[data-ai]').forEach(el => el.onclick = e => { e.stopPropagation(); Store.storeSheet(el.dataset.ai, c => pickStore(c, true)); });
     };
   }
-  function pickStore(code) {
+  async function pickStore(code, seen) {
         const a = S.accounts.byCode[code]; if (!a) return; O.acct = a.acct; O.store = a.store;
         if (isStaff() && !O.sm && a.sm) O.sm = String(a.sm).toUpperCase();
         O.disc = acctDisc(a);   // 가게 기본 할인으로 시작
         saveWip(); paintEditor();
+        if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
+        toast('✓ ' + a.store + ' 선택 · selected', 'good');
+        /* 고르자마자 가게 기록 — 받을 돈이 있으면 창으로 보여 주고, 없으면 그냥 넘어감 */
+        try {
+          const info = await Store.storeInfo(a.acct);
+          if (!O || O.acct !== a.acct || seen) return;   // 가게 창에서 "이 가게로 오더" 를 눌러 온 경우는 이미 봤으니 다시 안 띄움
+          const over = info.bk[3] + info.bk[4];
+          if (info.bal > 0.005) { await Store.storeSheet(a.acct); toast((over > 0.005 ? '⚠️ 60일 넘은 미수 ' + money(over) + ' · ' : '') + '미수금 ' + money(info.bal) + ' — 수금도 챙겨 주세요', over > 0.005 ? 'bad' : ''); }
+        } catch (e) {}
   }
   if ($('eSm')) $('eSm').onchange = () => { O.sm = $('eSm').value; saveWip(); };
   document.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => { O.view = b.dataset.ev; saveWip(); paintEditor(); });
@@ -428,7 +437,7 @@ function paintAdd() {
   const T = treeFor(S);
   let node = T; O.path.forEach(p => { node = (node && node.map[p]) || null; });
   if (!node) { O.path = []; node = T; }
-  const crumbs = '<div class="chips" style="margin-top:8px"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">' + bi('전체', 'All') + '</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
+  const crumbs = '<div class="chips crumbs"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">' + bi('전체', 'All') + '</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
   const popN = popularItems(O.path, catStart(S), INFO && INFO.hist, 300).length;
   const popTile = popN ? '<button class="pop' + (O.pop ? ' on' : '') + '" data-pop="1"><b>✨ 자주 나가는 <span class="en">Popular</span></b><span>' + (INFO && Object.keys(INFO.hist).length ? '이 가게 최근 구매 + 많이 나가는 순 · recent + best sellers' : '많이 나가는 순 · best sellers') + ' · ' + popN + '</span></button>' : '';
   const kids = node.kids.length || popTile ? '<div class="cats">' + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
@@ -676,5 +685,5 @@ async function saveOrder(st) {
   busy(true); const r = await syncOutbox(true); busy(false);
   const left = !!readOut()[id];
   toast(left ? '📱 폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다' : (st === 'sent' ? '보냈습니다 📤' : '저장했습니다 — 수정 · 추가는 보내기 전까지 자유, 하루 치는 "보낼 오더"에서 한 번에 보냅니다'), left ? '' : 'good');
-  goOrder(id);
+  if (isStaff() || st === 'sent') goOrder(id); else Router.go('order');   // 세일즈맨은 저장 뒤 오더 목록으로 (보낼 오더 카드가 거기 있음)
 }

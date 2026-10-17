@@ -22,7 +22,7 @@ const path = require('path'), fs = require('fs');
   });
   await pg.goto('http://127.0.0.1:8768/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#oNew'); await pg.click('#oNew'); await pg.waitForSelector('#eStoreQ');
-  await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200);
+  await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200); await pg.waitForTimeout(700); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(150); }
   for (const c of ['AHG100', 'AHG101', 'GM104', 'EB103']) { await pg.fill('#eQ1', c); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(60); }
   await pg.click('[data-ev="cart"]'); await pg.waitForTimeout(150);
   await pg.fill('[data-qi="AHG100"]', '10'); await pg.dispatchEvent('[data-qi="AHG100"]', 'change');
@@ -72,7 +72,7 @@ const path = require('path'), fs = require('fs');
   log('inv list:', (await pg.textContent('#iList .kpi')).replace(/\s+/g, ' ')); await shot(pg, 'p8_invlist');
   /* 큰 오더: 1,100줄 (매니저가 만들기) */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
-  await pg.fill('#eStoreQ', '1271'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200);
+  await pg.fill('#eStoreQ', '1271'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200); await pg.waitForTimeout(700); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(150); }
   let t0 = Date.now();
   await pg.evaluate(() => { const inp = document.getElementById('eQ1'); for (let i = 0; i < 1100; i++) { inp.value = String(898000000000 + i); inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } });
   log('1100 scans ms:', Date.now() - t0, 'N:', await pg.textContent('#eN'));
