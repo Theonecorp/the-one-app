@@ -405,6 +405,32 @@ function sbmCard(C) {
     '<div class="btns"><button class="' + (sbm ? 'b-ghost' : 'b-blue') + '" id="sbmGo">🐝 SmartBee 분류로 ' + (sbm ? '다시 ' : '') + '바꾸기</button></div></div>';
 }
 const cleanLbl = n => cleanName(n) + (cleanName(n) !== String(n) ? ' (' + n + ')' : '');
+/** 오타 · 잘린 이름 · 따옴표만 다른 분류 찾기 — 같은 상위 안에서 (예: INDUSTRIA / INDUSTRIAL / INDUSTRIAL") */
+function findDupes(C) {
+  const nz = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const out = [];
+  [['l1', ['g']], ['l2', ['g', 'l1']], ['l3', ['g', 'l1', 'l2']]].forEach(([lv, par]) => {
+    const groups = {};
+    C.items.forEach(x => { if (!x[lv]) return; const key = par.map(k => x[k] || '').join('\u0001'); const g = groups[key] = groups[key] || { under: par.map(k => x[k] || ''), cnt: {} }; g.cnt[x[lv]] = (g.cnt[x[lv]] || 0) + 1; });
+    Object.values(groups).forEach(g => {
+      const names = Object.keys(g.cnt).sort((a, b) => g.cnt[b] - g.cnt[a] || b.length - a.length);
+      const done = {};
+      names.forEach(a => names.forEach(b => {
+        if (a === b || done[b] || done[a]) return;
+        const na = nz(a), nb = nz(b); if (!na || !nb) return;
+        const same = na === nb, quote = b.replace(/"/g, '') === a.replace(/"/g, '') && !/""$/.test(a) && !/""$/.test(b);
+        const trunc = (nb.length === 9 || nb.length === 10) && na.length > nb.length && na.startsWith(nb) && b.length <= 10;   // SmartBee 10자 잘림
+        if (same || quote || trunc) { out.push({ lv, under: g.under, keep: a, drop: b, nk: g.cnt[a], nd: g.cnt[b], why: same ? '기호만 다름' : quote ? '따옴표' : '잘린 이름' }); done[b] = 1; }
+      }));
+    });
+  });
+  return out;
+}
+function dupeCard(C) {
+  const d = findDupes(C);
+  return '<div class="card"><h2>🧹 비슷한 이름 합치기</h2><div class="muted">같은 상위 안에서 오타 · 잘린 이름(SmartBee 10자) · 따옴표만 다른 분류를 찾았습니다. "합치기"를 누르면 아이템이 많은 쪽 이름으로 합쳐집니다.</div>' +
+    (d.length ? d.map((x, i) => '<div class="pr"><div class="ct"><b>' + esc(x.drop) + ' <span class="muted">(' + x.nd + ')</span> → ' + esc(x.keep) + ' <span class="muted">(' + x.nk + ')</span></b><small>' + esc(x.under.filter(Boolean).map(cleanLbl).join(' › ')) + ' · ' + x.why + '</small></div><button class="b-blue b-sm" data-dupe="' + i + '">합치기</button></div>').join('') + (d.length > 1 ? '<div class="btns"><button class="b-ghost" id="dupeAll">모두 합치기 (' + d.length + ')</button></div>' : '') : '<div class="none">지금은 비슷한 이름이 없습니다 ✅</div>') + '</div>';
+}
 function pinOf(name) { const P = pins(), k = String(name).toUpperCase(); if (P.top.some(x => x.toUpperCase() === k)) return 'top'; if (P.bottom.some(x => x.toUpperCase() === k)) return 'bottom'; return ''; }
 /** 아이템별 판매 파일 → [[code, qty]…] 많이 나간 순. 머리글에서 Item/Code 열과 Qty/수량 열을 찾음 (머리글 줄은 위에서 20줄 안) */
 export function parsePop(t) {
@@ -441,7 +467,7 @@ async function treeAdmin() {
     '<div class="card"><h2>🔎 코드로 아이템 분류 바꾸기</h2><div class="muted">아이템 코드(또는 바코드)를 치면 지금 분류가 보이고 Group · Level 1 · 2 · 3 을 바로 고칠 수 있습니다. 아이템을 다른 Level 1 로 옮기거나, 새 Level 이름을 만들 때 쓰세요.</div><div class="fg" style="margin-top:8px"><input id="tCode" placeholder="예: AHG103" autocomplete="off" style="text-transform:uppercase"></div><div id="tCodeOut"></div>' +
     '<div class="card"><h2>✨ 자주 나가는 아이템</h2><div class="muted">오더 화면 맨 위 "✨ 자주 나가는" 칸의 순서입니다. 가게가 최근에 산 것이 먼저 나오고, 그 다음 이 목록 순서입니다. SmartBee 의 <b>Sales Report by Item</b>(엑셀) 처럼 <b>Item</b>(코드) 과 <b>Qty</b>(수량) 열이 있는 파일을 올리면 많이 나간 순으로 저장됩니다.' + (popularCodes().length ? ' 지금 <b>' + popularCodes().length + '개</b> 올라와 있음.' : ' 아직 없음.') + '</div>' +
     '<div class="fg" style="margin-top:8px"><input type="file" id="popFile" accept=".xlsx,.csv"></div><div id="popOut"></div></div>' +
-    sbmCard(C) +
+    sbmCard(C) + dupeCard(C) +
     '<div class="card"><h2>📄 일괄 변경 파일 — SmartBee 편의 파일 그대로</h2><div class="muted">SmartBee 에서 쓰던 <b>LEVEL_1_AND_2</b> (ITEM CODE · LEVEL 1 · LEVEL 2) 와 <b>GROUP_NAME_CHANGE</b> (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) 파일을 그대로 올리면 됩니다. 아래에서 지금 상태를 같은 모양으로 받아 엑셀에서 고친 뒤 다시 올리세요. SmartBee 내보내기에서 칸이 깨진 줄(줄바꿈 · 탭)도 알아서 살려 읽습니다.<br>' +
     'LEVEL 파일은 Level 1 이름의 앞글자로 Group(인보이스 A · P · W)이 정해집니다: 보통 이름 → Jewelry(A), [ ] → Other(P), "" → Set &amp; Display(W). GROUP NAME 은 Level 3 으로 들어갑니다 (NEW 가 비어 있으면 CURRENT 그대로).<br>' +
     '그 밖의 열도 됩니다 (<b>있는 열만</b> 바꾸고 빈 칸은 그대로): Code(필수) · NewCode · Description · Price · SRP · Barcode · Group · Level 1 · 2 · 3 · Photo · Delete(x). 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
@@ -533,6 +559,15 @@ async function treeAdmin() {
       busy(false);
     };
   }
+  const DUP = findDupes(C);
+  const mergeDupes = async (list) => {
+    busy(true);
+    try { const r = await editCatalog(S, (rows, cats) => { let n = 0; list.forEach(x => { n += renameCat(rows, cats, x.lv, x.under, x.drop, x.keep); }); return { n }; }); toast(list.length + '개 이름 합침 · 아이템 ' + r.n + '개', 'good'); treeAdmin(); }
+    catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+  document.querySelectorAll('[data-dupe]').forEach(b => b.onclick = async () => { const x = DUP[+b.dataset.dupe]; if (await confirmBox(x.drop + ' → ' + x.keep + ' 으로 합칠까요? (' + x.nd + '개 아이템)', '합치기')) mergeDupes([x]); });
+  if ($('dupeAll')) $('dupeAll').onclick = async () => { if (await confirmBox(DUP.length + '개를 모두 합칠까요?', '모두 합치기')) mergeDupes(DUP); };
   if ($('sbmGo')) $('sbmGo').onclick = async () => {
     if (!(await confirmBox('모든 아이템의 분류를 SmartBee 의 LEVEL 1 · LEVEL 2 · GROUP 으로 바꿀까요? (Group 은 Jewelry · Other · Set & Display 로 — 인보이스 A · P · W 와 연결)', '바꾸기'))) return;
     busy(true);

@@ -101,6 +101,7 @@ async function pageOrder(arg) {
   if (!isStaff() && !mySm()) { $('page').innerHTML = '<div class="card"><div class="none">이 계정에 세일즈맨 코드가 연결돼 있지 않습니다.</div></div>'; return; }
   O = null;
   if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(); if (j === 'invoice') LF.st = 'pick'; else if (j === 'acct') LF.st = 'inv'; }
+  if (isStaff() && !LF.list) return staffHome();
   if (isStaff() && !chipsFor().some(c => c[0] === LF.st)) LF.st = chipsFor()[0][0];
   if (isStaff() && (LF.st === 'bo' || LF.st === 'inv')) return Fulfill.pageLists(LF, listHead());
   $('page').innerHTML = listHead() + '<div class="load">오더 읽는 중…</div>';
@@ -166,15 +167,44 @@ export async function fillStrip() {
     el.querySelectorAll('div').forEach((d, i) => { d.onclick = () => { LF.st = ['sent', 'pick', 'inv', 'bo'][i]; if (i === 2) LF.ip = 'today'; pageOrder(''); }; d.classList.add('tap'); });
   } catch (e) { el.querySelectorAll('b').forEach(x => { x.textContent = '—'; }); }
 }
+/* 담당자 · 관리자의 오더 첫 화면 — 세일즈맨 홈처럼 큰 버튼 (건수는 읽은 뒤 채움) */
+async function staffHome() {
+  const j = jobOf();
+  const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + icon + '</span><b>' + label + '</b><small id="ht-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
+  const T = [];
+  if (j !== 'pick' && j !== 'acct') T.push(tile('new', '🛒', bi('새 오더', 'New order'), '가게 고르고 담기', 'blue'));
+  if (j !== 'acct') T.push(tile('sent', '📥', bi('들어온 오더', 'New orders'), '읽는 중…', j === 'pick' ? 'blue' : ''), tile('pick', '📦', bi('픽킹 중', 'Picking'), '읽는 중…'));
+  if (j !== 'pick') T.push(tile('inv', '📄', bi('인보이스 찾기', 'Find invoice'), '가게 · 날짜 · 번호'));
+  if (j !== 'acct') T.push(tile('bo', '⏳', bi('백오더', 'Backorders'), '읽는 중…'));
+  if (j !== 'pick') T.push(tile('done', '🧾', bi('인보이스 완료', 'Invoiced'), '최근 2달'));
+  T.push(tile('stores', '🏬', bi('거래처', 'Stores'), '가게 창 · AR'));
+  if (j !== 'pick') T.push(tile('verify', '✅', bi('수금 확인', 'Verify payments'), '세일즈맨 수금'));
+  T.push(tile('all', '📋', bi('전체 오더', 'All orders'), '최근 2달'));
+  $('page').innerHTML = '<div class="hgrid">' + T.join('') + '</div>';
+  document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
+    const k = b.dataset.hg;
+    if (k === 'new') { if (readWip() && !confirm('작성 중인 오더가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
+    if (k === 'stores' || k === 'verify') return Router.go(k);
+    LF.st = k; LF.list = true; pageOrder('');
+  });
+  try {
+    const [live, bo] = await Promise.all([S.DB.list('orders', { where: [['st', 'in', ['sent', 'pick', 'ok']]] }), S.DB.list('backorders', { where: [['st', '==', 'open']] })]);
+    const sent = live.filter(o => o.st === 'sent'), pk = live.filter(o => o.st !== 'sent');
+    const put = (id, v) => { const el = $('ht-' + id); if (el) el.textContent = v; };
+    put('sent', sent.length ? sent.length + '건 · ' + money(sent.reduce((a, o) => a + (o.amt || 0), 0)) : '없음 · none');
+    put('pick', pk.length ? pk.length + '건 · ' + money(pk.reduce((a, o) => a + (o.amt || 0), 0)) : '없음 · none');
+    put('bo', bo.length ? bo.length + '건' : '없음 · none');
+  } catch (e) {}
+}
 function listHead() {
   if (!isStaff()) return '<button class="b-blue" id="oNew" style="margin-bottom:12px;padding:15px">＋ ' + bi('새 오더', 'New order') + '</button>';
   const j = jobOf();
-  return statusStrip() + '<div class="chips">' + chipsFor().map(c => '<button class="' + (LF.st === c[0] ? 'on' : '') + '" data-lf="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
+  return statusStrip() + '<div class="chips"><button data-lf="home">🏠 ' + bi('홈', 'Home') + '</button>' + chipsFor().map(c => '<button class="' + (LF.st === c[0] ? 'on' : '') + '" data-lf="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
     '<div class="two" style="margin-bottom:10px">' + sel('lfSm', [['', bt('세일즈맨 전체', 'All salesmen')]].concat(S.sms.map(s => [s.code, s.code])), LF.sm) + (j === 'pick' ? '<span></span>' : '<button class="b-blue" id="oNew">＋ ' + bi('오더 만들기', 'New order') + '</button>') + '</div>';
 }
 function bindHead() {
   if ($('oNew')) $('oNew').onclick = () => { if (readWip() && !confirm('작성 중인 오더가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); Router.go('order', 'new'); };
-  document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { LF.st = b.dataset.lf; pageOrder(''); });
+  document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') { LF.list = false; return pageOrder(''); } LF.st = b.dataset.lf; pageOrder(''); });
   if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageOrder(''); };
 }
 /** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */
@@ -286,7 +316,7 @@ function paintEditor() {
   else h += '<input id="eStoreQ" placeholder="가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div>';
   if (isStaff()) h += '<div class="fg" style="margin-top:8px"><label>세일즈맨 <span class="en">Salesman</span></label>' + sel('eSm', [['', '— 선택 — select —']].concat(S.sms.map(s => [s.code, s.code])), O.sm) + '</div>';
   h += '</div>';
-  h += '<div class="seg"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🔍 ' + bi('아이템 담기', 'Add items') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">🧾 ' + bi('오더', 'Order') + ' <span id="eCnt">' + t.n + '</span></button></div>';
+  h += '<div class="seg big"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + (O.memo ? ' <span class="cnt">1</span>' : '') + '</button></div>';
   h += '<div id="eBody"></div>';
   const isSentEdit = O.st && O.st !== 'draft';
   /* 아래 고정 바: 가게 이름 · 지금까지 금액(크게) · 종류별(A/P/W) 소계 · 저장
@@ -297,7 +327,7 @@ function paintEditor() {
     (!isSentEdit ? (isStaff() ? '<button class="b-ghost" id="eDraft">💾 ' + bi('저장', 'Save') + '</button><button class="b-green" id="eSend">📤 ' + bi('보내기', 'Send') + '</button>' : '<button class="b-ghost" id="eClose" style="flex:0 0 96px">' + bi('닫기', 'Close') + '</button><button class="b-green" id="eDraft" style="flex:1 1 auto;min-width:0">💾 ' + bi('저장', 'Save') + '</button>') :
       '<button class="b-ghost" id="eQuit">' + bi('닫기', 'Close') + '</button><button class="b-green" id="eSave">💾 ' + bi('저장', 'Save') + '</button>') + '</div></div>';
   $('page').innerHTML = h;
-  if ($('eStoreX')) $('eStoreX').onclick = () => { O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
+  if ($('eStoreX')) $('eStoreX').onclick = async () => { if (O.lines.length && !(await confirmBox('가게를 바꿀까요? 담은 아이템 ' + O.lines.length + '줄은 그대로 두고 가게만 바뀝니다 (할인은 새 가게 기본으로). / Change store?', '바꾸기'))) return; O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
   if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct);
   if (O.acct) loadInfo(O.acct);
   if ($('eStoreQ')) {
@@ -321,11 +351,22 @@ function paintEditor() {
   if ($('eSm')) $('eSm').onchange = () => { O.sm = $('eSm').value; saveWip(); };
   document.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => { O.view = b.dataset.ev; saveWip(); paintEditor(); });
   if ($('eDraft')) $('eDraft').onclick = () => saveOrder('draft');
-  if ($('eClose')) $('eClose').onclick = () => { saveWip(); Router.go('order'); toast('작성 중인 오더는 폰에 남아 있습니다 — 오더 목록에서 이어서', ''); };
+  if ($('eClose')) $('eClose').onclick = async () => { if (!(await confirmBox('저장하지 않고 닫을까요? 작성 중인 내용은 폰에 남아 있어 오더 목록에서 이어서 할 수 있습니다. / Close without saving?', '닫기 Close'))) return; saveWip(); Router.go('order'); };
   if ($('eSend')) $('eSend').onclick = () => saveOrder('sent');
   if ($('eSave')) $('eSave').onclick = () => saveOrder(O.st);
   if ($('eQuit')) $('eQuit').onclick = async () => { if (await confirmBox('저장하지 않고 닫을까요?', '닫기')) { const id = O.id; O = null; clearWip(); if (id) goOrder(id); else Router.go('order'); } };
-  if (O.view === 'add') paintAdd(); else paintCart();
+  if (O.view === 'add') paintAdd(); else if (O.view === 'memo') paintMemo(); else paintCart();
+}
+/* 📝 메모 탭 — 배송 · 특이사항 · 할인 요청 + 주문 요약 */
+function paintMemo() {
+  const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
+  $('eBody').innerHTML = '<div class="card"><h2>📝 ' + bi('메모', 'Memo') + '</h2><div class="muted">배송 방법 · 특이사항 · 할인 요청 등 사무실에 전할 말 <span class="en">Shipping, special requests, discount asks</span></div>' +
+    '<textarea id="eMemo" rows="4" placeholder="예: UPS 로 보내 주세요 / 금요일 전 도착 / 디스플레이 같이" style="margin-top:8px">' + esc(O.memo || '') + '</textarea>' +
+    '<div class="chips" style="margin-top:8px">' + ['UPS 배송', '픽업 (가게에서 가져감)', '세일즈맨 직접 배달', '급함 — 먼저 처리', '디스플레이 같이 보내기'].map(x => '<button data-mq="' + esc(x) + '">+ ' + esc(x) + '</button>').join('') + '</div></div>' +
+    '<div class="card"><h2>' + bi('주문 요약', 'Summary') + '</h2><div class="pr"><div class="ct"><b>' + esc(O.store || '가게 미선택') + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : '') + '</small></div></div>' +
+    '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div><b>' + esc(O.sm || '-') + '</b><span>세일즈맨</span></div></div>' + typeSummary(t.by) + '</div>';
+  const ta = $('eMemo'); ta.oninput = () => { O.memo = ta.value; saveWip(); };
+  document.querySelectorAll('[data-mq]').forEach(b => b.onclick = () => { const v = b.dataset.mq; if ((O.memo || '').includes(v)) return; O.memo = (O.memo ? O.memo.trim() + ' / ' : '') + v; ta.value = O.memo; saveWip(); });
 }
 function typeMini(by) { const g = Object.values(by || {}); return g.length ? g.map(x => x.t + ' ' + money(x.total)).join(' · ') : ''; }
 function refreshTotals() {
@@ -405,8 +446,8 @@ function paintAdd() {
     if (it) { const n = setQty(it.c, tapQty(it.c)); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
     else { run(); toast('정확히 맞는 코드가 없습니다 — 아래에서 고르세요', 'bad'); }
   };
-  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.pop = false; PAGE = 60; paintAdd(); });
-  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); O.pop = false; PAGE = 60; paintAdd(); });
+  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.pop = false; O.all = false; PAGE = 60; paintAdd(); });
+  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); O.pop = false; O.all = false; PAGE = 60; paintAdd(); });
   const pt = document.querySelector('[data-pop]'); if (pt) pt.onclick = () => { O.pop = !O.pop; PAGE = 60; paintAdd(); };
   $('eVM').onclick = () => { VM = VM === 'grid' ? 'list' : 'grid'; try { localStorage.setItem(VM_KEY, VM); } catch (e) {} paintAdd(); };
   $('eShow').onclick = () => showMode(LAST, 0);
@@ -445,6 +486,15 @@ const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data
 function paintResults() {
   if (!O || !$('eRes')) return;
   const pop = O.pop && !O.q;
+  /* 분류를 끝까지(하위가 없을 때까지) 누르기 전에는 아이템을 펼치지 않음 — 검색 · ✨ · "모두 보기" 는 예외 */
+  const T = treeFor(S); let nd = T; O.path.forEach(p => { nd = (nd && nd.map[p]) || null; });
+  const branch = nd && nd.kids.length > 0;
+  if (!pop && !O.q && branch && !O.all) {
+    $('eRes').innerHTML = '<div class="muted" style="margin:8px 0;text-align:center">' + (O.path.length ? '분류를 하나 더 고르거나 <button class="b-ghost b-sm" id="eAll">이 분류 전체 ' + nd.n.toLocaleString() + '개 보기</button>' : '위에서 분류를 고르거나 코드 · 이름으로 검색하세요 <span class="en">Pick a category or search</span>') + '</div>';
+    if ($('eAll')) $('eAll').onclick = () => { O.all = true; paintResults(); };
+    LAST = [];
+    return;
+  }
   const all = pop ? popularItems(O.path, catStart(S), INFO && INFO.hist, 300) : searchItems(O.q, O.path, 5000, catStart(S));
   LAST = all;
   const res = all.slice(0, PAGE);
@@ -455,7 +505,8 @@ function paintResults() {
   bindQty(root);
   if ($('eMore')) $('eMore').onclick = () => { PAGE += 60; paintResults(); };
   root.querySelectorAll('[data-big]').forEach(el => el.onclick = () => { const i = LAST.findIndex(x => x.c === el.dataset.big); showMode(LAST, Math.max(0, i)); });
-  root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { const r = el.closest('[data-frow]'); root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); setFocus(r.dataset.frow); });
+  /* 목록 보기에서 줄(이름 · 사진)을 누르면 카드처럼 담김 (프리셋 적용) */
+  root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = setQty(c, tapQty(c)); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
   root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
   root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); });
   root.querySelectorAll('[data-gq]').forEach(b => b.onclick = e => { if (!b.textContent) return; e.stopPropagation(); qtyPad(b.dataset.gq); });
@@ -482,7 +533,7 @@ function qtyPad(c) {
   const cur = IDX[c] ? IDX[c].q : 0;
   openModal('<h2>' + esc(it.c) + '</h2><div class="muted">' + esc(it.d) + ' · ' + money(it.p) + '</div>' +
     '<div class="qty" style="justify-content:center;margin:14px 0"><button id="qpM" style="width:56px;height:56px">−</button><input id="qpV" type="number" inputmode="numeric" min="0" value="' + cur + '" style="width:110px;font-size:26px"><button id="qpP" style="width:56px;height:56px">＋</button></div>' +
-    '<div class="chips" style="justify-content:center">' + [6, 12, 24, 36, 48, 72, 144].map(n => '<button data-qp="' + n + '">' + n + '</button>').join('') + '</div>' +
+    '<div class="chips" style="justify-content:center">' + [1, 2, 3, 6, 12, 24].map(n => '<button data-qp="' + n + '" style="min-width:48px;font-size:15px">' + n + '</button>').join('') + '</div><div class="muted" style="text-align:center">그 밖의 수량은 위 칸에 직접 입력 · or type a quantity</div>' +
     '<div class="btns"><button class="b-ghost" id="qpX">닫기</button><button class="b-blue" id="qpOk">확인</button></div>');
   const v = $('qpV'); setTimeout(() => { v.focus(); v.select(); }, 50);
   $('qpM').onclick = () => { v.value = Math.max(0, (Number(v.value) || 0) - 1); };
@@ -531,8 +582,10 @@ function showMode(list, i) {
 function bindQty(root) {
   root.querySelectorAll('[data-dq]').forEach(b => b.onclick = () => {
     const c = b.dataset.dq, inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]');
-    const n = setQty(c, (IDX[c] ? IDX[c].q : 0) + Number(b.dataset.d));
-    if (inp) inp.value = n || ''; markRow(root, c, n);
+    const d = Number(b.dataset.d), cur = IDX[c] ? IDX[c].q : 0;
+    const n = setQty(c, d > 0 ? tapQty(c) : cur - 1);   // ＋ 는 프리셋(있으면) 만큼, − 는 1개
+    if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {}
+    if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c);
   });
   root.querySelectorAll('[data-qi]').forEach(inp => {
     inp.onchange = () => { const n = setQty(inp.dataset.qi, inp.value); inp.value = n || ''; markRow(root, inp.dataset.qi, n); };
@@ -557,7 +610,7 @@ function paintCart() {
   }).join('');
   $('eBody').innerHTML = '<div class="card">' + (discRows ? '<h2>할인</h2><div class="two">' + discRows + '</div><div class="muted" style="margin:6px 0 10px">가게 기본 할인이 먼저 들어갑니다. 바꾸면 매니저가 확인할 때 표시됩니다.</div>' : '') +
     '<div class="muted" style="margin-top:8px">🧾 ' + bi('인보이스 미리보기 — 픽킹이 끝난 뒤 확정할 때 종류(A · P · W)별로 따로 번호가 납니다', 'Invoice preview — split into A / P / W after picking') + '</div><div id="eTypes"></div>' + (O.lines.length > 15 ? '<input id="eF" placeholder="오더 안에서 찾기" autocomplete="off" style="margin:8px 0 6px">' : '') + '<div id="eCart"></div>' +
-    '<div class="fg" style="margin-top:10px"><label>메모 (배송 · 특이사항 · 할인 요청)</label><textarea id="eMemo" rows="2">' + esc(O.memo || '') + '</textarea></div></div>';
+    (O.memo ? '<div class="alert a-blu" style="margin-top:10px">📝 ' + esc(O.memo) + '</div>' : '') + '</div>';
   const paintTypes = () => { if (O && $('eTypes')) $('eTypes').innerHTML = typeSummary(totals().by); };
   const paint = () => {
     const f = $('eF') ? $('eF').value.trim().toUpperCase() : '';
@@ -576,7 +629,7 @@ function paintCart() {
   paint(); paintTypes();
   if ($('eF')) $('eF').oninput = debounce(paint, 150);
   document.querySelectorAll('[data-disc]').forEach(inp => inp.onchange = () => { const v = Math.max(0, Math.min(100, Number(inp.value) || 0)); if (v) O.disc[inp.dataset.disc] = v; else delete O.disc[inp.dataset.disc]; saveWip(); refreshTotals(); setTimeout(() => { if (O && O.view === 'cart' && $('eCart')) paintCart(); }, 0); });
-  $('eMemo').oninput = () => { O.memo = $('eMemo').value; saveWip(); };
+  if ($('eMemo')) $('eMemo').oninput = () => { O.memo = $('eMemo').value; saveWip(); };
 }
 
 /** 오더 문서 만들기 (목록용 요약 포함) */
@@ -598,7 +651,8 @@ async function saveOrder(st) {
   if (!O.sm) return toast('세일즈맨을 고르세요', 'bad');
   if (!O.lines.length) return toast('아이템을 담으세요', 'bad');
   const t = totals();
-  if (st === 'sent' && O.st === 'draft' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + money(t.amt) + ' 오더를 보낼까요?', '보내기'))) return;
+  if (st === 'sent' && O.st === 'draft' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + money(t.amt) + ' 오더를 보낼까요? / Send this order?', '보내기 Send'))) return;
+  if (st !== 'sent' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + t.qty + '개 · ' + money(t.amt) + '\n저장할까요? (보내기는 오더 목록의 "보낼 오더"에서) / Save this order?', '저장 Save'))) return;
   const now = new Date().toISOString();
   if (!O.id) { O.no = newNo(); O.id = O.no; }
   const base = { id: O.id, no: O.no, d: O.d || today(), ym: ym(O.d || today()), sm: O.sm, acct: O.acct || '', store: O.store, st, memo: O.memo || '', updatedAt: now,
