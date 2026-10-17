@@ -88,8 +88,47 @@ function paintHome() {
   h += '<div class="two-col"><div class="card tap" data-go="p99"><h2>🧾 1099 지급 — ' + YEAR + '</h2><div class="hero" style="font-size:26px">' + money(p99.grand) + '</div><div class="heroSub">' + p99.rows.length + '건 · 세일즈맨 · 컨트랙터 · 월 고정</div></div>' +
     '<div class="card tap" data-go="bon"><h2>🎁 오피스 보너스 적립금</h2><div class="hero" style="font-size:26px">' + money(bo.avail) + '</div><div class="heroSub">적립 ' + money(bo.pool) + ' − 지급 ' + money(bo.paid) + ' · ' + D.acc.length + '건</div></div></div>';
   h += '<div class="card tap" data-go="sales"><h2>📈 회사 매출 (The One sales amount)</h2>' + (sl && sl.rows ? (() => { const T = sl.rows.find(r => r.label === 'TOTAL SALES'); const lastM = T ? T.m.map((v, i) => v ? i : -1).filter(i => i >= 0).pop() : -1; const ytd = T ? sum(T.m) : 0; return lastM >= 0 ? '<div class="hero" style="font-size:26px">' + money(T.m[lastM]) + '<span style="font-size:13px;color:#64748b;font-weight:600;margin-left:8px">' + YEAR + '년 ' + MON_KO[lastM] + ' TOTAL SALES</span></div><div class="heroSub">YTD ' + money(ytd) + '</div>' : '<div class="none">아직 입력된 달이 없습니다</div>'; })() : '<div class="none">아직 입력된 달이 없습니다 — 📈 매출 탭에서 월별 숫자 입력</div>') + '</div>';
+  const seeded = D.inv.filter(x => x.seed).length + D.pay.filter(x => x.seed).length + D.p99.filter(x => x.seed).length + D.acc.filter(x => x.seed).length;
+  h += '<div class="card"><h2>📥 과거 데이터 가져오기 (엑셀 → 앱)</h2><div class="heroSub">옛 대시보드 SEED_DATA 파일(공장 인보이스·송금, 1099 지급, 보너스 적립, 배분표, 대상 구분)을 탭에 넣습니다. 같은 파일을 다시 넣어도 두 번 쌓이지 않습니다.' + (seeded ? ' · <b>이미 ' + seeded + '줄 가져옴</b>' : '') + '</div><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></div>';
   $('mgBody').innerHTML = h;
   document.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { TAB = el.dataset.go; page(); });
+  $('seedPick').onclick = () => $('seedFile').click();
+  $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedPreview(r.result); r.readAsText(f); };
+  $('seedPaste').onclick = () => { openModal('<h2>📋 SEED_DATA 붙여넣기</h2><div class="heroSub">파일 내용 전체를 붙여 넣으세요 (var SEED_DATA = {...}; 그대로 됩니다)</div><textarea id="seedTxt" style="width:100%;height:200px;font-size:11px"></textarea><div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sOk">읽기</button></div>'); $('sX').onclick = closeModal; $('sOk').onclick = () => seedPreview($('seedTxt').value); };
+}
+
+/* ============================================================
+ *  📥 과거 데이터 가져오기 — 옛 대시보드 SEED_DATA (엑셀 변환) → Firestore
+ *    같은 줄은 항상 같은 id(SD…) 로 들어가서 다시 넣어도 덮어쓰기만 됨
+ * ============================================================ */
+function seedParse(txt) {
+  const a = txt.indexOf('{'), b = txt.lastIndexOf('}'); if (a < 0 || b < a) throw new Error('데이터 모양이 아닙니다');
+  const o = JSON.parse(txt.substring(a, b + 1)); if (!o || (!o.inv && !o.p1099 && !o.pay)) throw new Error('SEED_DATA 가 아닙니다 (inv · pay · p1099 가 없음)');
+  return o;
+}
+function seedOps(o) {
+  const now = new Date().toISOString(), ops = [], pad = n => String(n).padStart(4, '0'), cnt = { fac: 0, inv: 0, pay: 0, p99: 0, bonus: 0, payees: 0, split: 0 };
+  (o.fac || []).forEach(f => { const code = String(f.code || '').toUpperCase(); if (!code) return; const ex = D.fac.find(x => x.code === code); ops.push({ op: 'set', col: 'factories', id: code, data: Object.assign({ id: code, code, name: f.name || code, active: true, createdAt: now }, ex || {}, { name: (ex && ex.name) || f.name || code }) }); cnt.fac++; });
+  (o.inv || []).forEach((x, i) => { const id = 'SDI' + pad(i + 1); ops.push({ op: 'set', col: 'factoryInvoices', id, data: { id, f: x.f, d: x.d, type: x.type || '인보이스', item: R2(num(x.item)), frt: R2(num(x.frt)), amt: R2(num(x.amt)), note: x.note || '', seed: true, src: x.src || '', createdAt: now, updatedAt: now } }); cnt.inv++; });
+  (o.pay || []).forEach((x, i) => { const id = 'SDP' + pad(i + 1); ops.push({ op: 'set', col: 'factoryPayments', id, data: { id, f: x.f, d: x.d, amt: R2(num(x.amt)), note: x.note || '', seed: true, src: x.src || '', createdAt: now } }); cnt.pay++; });
+  (o.p1099 || []).forEach((x, i) => { const id = 'SDN' + pad(i + 1), who = String(x.who || '').toUpperCase(); ops.push({ op: 'set', col: 'pay1099', id, data: { id, d: x.d, who, co: x.co || '', amt: R2(num(x.amt)), gross: R2(num(x.amt)), acc: 0, note: x.note || '', ref: '', seed: true, src: x.src || '', createdAt: now } }); cnt.p99++; });
+  (o.bonus || []).forEach((x, i) => { const id = 'SDB' + pad(i + 1); ops.push({ op: 'set', col: 'bonusAcc', id, data: { id, d: x.d, sm: String(x.sm || '').toUpperCase(), amt: R2(num(x.amt)), src: '엑셀 이월', note: x.note || '', ref: '', seed: true } }); cnt.bonus++; });
+  const names = Object.assign({}, o.payees || {}); Object.keys(o.payeeKinds || {}).forEach(w => { if (!(w in names)) names[w] = ''; });
+  Object.keys(names).forEach(w => { const who = w.toUpperCase(), kd = (o.payeeKinds || {})[w] || {}, ex = D.payees.find(p => p.who === who) || {};
+    ops.push({ op: 'set', col: 'payees', id: who, data: Object.assign({ id: who, who, co: names[w] || '', kind: kd.kind || '고정', cycle: kd.cycle || '', officePct: num(kd.officePct), active: kd.active !== false }, ex, { co: ex.co || names[w] || '' }) }); cnt.payees++; });
+  if ((o.split || []).length && !(D.split.rows || []).filter(r => r.who).length) { ops.push({ op: 'set', col: 'bonusSplit', id: 'main', data: { id: 'main', rows: o.split.map(r => ({ grp: r.grp || 'A', who: String(r.name || r.who || '').toUpperCase(), pct: num(r.pct), share: num(r.share) || 100 })), updatedAt: now } }); cnt.split = o.split.length; }
+  return { ops, cnt };
+}
+function seedPreview(txt) {
+  let o; try { o = seedParse(txt); } catch (e) { return toast('읽을 수 없습니다: ' + e.message, 'bad'); }
+  const { ops, cnt } = seedOps(o), has = D.inv.some(x => x.seed) || D.p99.some(x => x.seed);
+  const yrs = (o.inv || []).concat(o.p1099 || []).map(x => String(x.d || '').substring(0, 4)).filter(Boolean).sort(); const span = yrs.length ? yrs[0] + ' ~ ' + yrs[yrs.length - 1] : '';
+  openModal('<h2>📥 가져올 내용</h2><div class="heroSub">' + span + '</div><table style="margin-top:8px"><tr><td>🏭 공장</td><td class="r"><b>' + cnt.fac + '</b></td></tr><tr><td>공장 인보이스 (물품+운임)</td><td class="r"><b>' + cnt.inv + '</b> 줄 · ' + money(sum(o.inv || [], x => num(x.amt))) + '</td></tr><tr><td>공장 송금</td><td class="r"><b>' + cnt.pay + '</b> 줄 · ' + money(sum(o.pay || [], x => num(x.amt))) + '</td></tr><tr><td>🧾 1099 지급</td><td class="r"><b>' + cnt.p99 + '</b> 줄 · ' + money(sum(o.p1099 || [], x => num(x.amt))) + '</td></tr><tr><td>🎁 보너스 적립</td><td class="r"><b>' + cnt.bonus + '</b> 줄 · ' + money(sum(o.bonus || [], x => num(x.amt))) + '</td></tr><tr><td>👤 1099 대상 (이름·회사·구분)</td><td class="r"><b>' + cnt.payees + '</b> 명</td></tr><tr><td>배분표</td><td class="r">' + (cnt.split ? '<b>' + cnt.split + '</b> 줄' : '<span class="muted">이미 있어 건너뜀</span>') + '</td></tr></table>' +
+    (has ? '<div class="alert a-amb" style="margin-top:8px">이미 가져온 적이 있습니다 — 같은 줄은 덮어쓰고, 새 줄만 추가됩니다. 앱에서 직접 입력한 줄은 건드리지 않습니다.</div>' : '') +
+    '<div class="hint">⚠️ 표시가 붙은 줄(날짜 없음·금액 불일치 등)은 메모에 그대로 남겨 두니 나중에 장부에서 고쳐 주세요.</div>' +
+    '<div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sGo">' + ops.length + '건 넣기</button></div>');
+  $('sX').onclick = closeModal;
+  $('sGo').onclick = async () => { busy(true); try { await S.DB.batch(ops); closeModal(); toast('가져왔습니다 — ' + ops.length + '건', 'good'); await refresh(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ============================================================
