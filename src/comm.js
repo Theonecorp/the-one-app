@@ -74,7 +74,15 @@ export function lineOfOther(o) {
 export function checkLine(L) {
   const got = R2(L.e + L.f);
   const out = { got, alloc: 0, wFix: R2(L.W), mismatch: false, derived: false, blocked: false, why: '' };
-  if (!L.hasAlloc) { out.wFix = Math.max(0, Math.min(R2(got - (L.A + L.P + L.CM)), got)); return out; }
+  if (!L.hasAlloc) {
+    /* 금액이 하나도 안 적힌 줄 — 인보이스 종류로 판단 (옛 대시보드 규칙): W 만 → 전부 W · P 만 → 전부 P · A 하나(또는 번호 없음) → A · 여러 종류 → 나눌 수 없어 제외 */
+    const kinds = Object.keys(L.no).filter(k => L.no[k]);
+    if (kinds.length === 1 && kinds[0] === 'W') { out.wFix = got; return out; }
+    if (kinds.length === 1 && kinds[0] === 'P') { L.P = got; out.wFix = 0; return out; }
+    if (kinds.length <= 1) { out.wFix = 0; return out; }
+    out.mismatch = true; out.blocked = true; out.wFix = 0; out.why = '인보이스가 ' + kinds.join('·') + ' 여러 종류인데 금액이 비어 있어 나눌 수 없습니다 — 인보이스별 금액을 적어 주세요';
+    return out;
+  }
   const alloc = R2(L.A + L.P + L.W + L.CM); out.alloc = alloc;
   if (Math.abs(alloc - got) <= 0.01) { out.wFix = Math.max(0, Math.min(R2(got - (L.A + L.P + L.CM)), got)); return out; }
   out.mismatch = true;
