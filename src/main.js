@@ -13,7 +13,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.7.4';
+export const VER = 'v0.7.5';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -109,11 +109,15 @@ function switchRole(r) {
   paintNav();
   Router.go(navFor(r)[0][0]);
 }
+/* 아래 메뉴의 실제 높이를 CSS 변수로 — 고정 바(.sticky) 와 본문 여백이 메뉴에 가리지 않게 */
+function navH() { const n = $('nav'); const h = n && getComputedStyle(n).position === 'fixed' ? n.offsetHeight : 0; document.documentElement.style.setProperty('--navh', h + 'px'); }
+window.addEventListener('resize', () => setTimeout(navH, 50));
 function paintNav() {
   const items = navFor(S.role);
   Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '<span class="en">' + (x[3] || '') + '</span></button>').join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => Router.go(b.dataset.go));
+  navH();
   $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? jobLabel(jobOf()).split(' ')[0] : roleLabel(S.role).split(' ')[0]);
 }
 

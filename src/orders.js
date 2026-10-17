@@ -360,13 +360,20 @@ async function loadInfo(acct) {
 }
 /* 빠른 수량 — 마지막에 만진 아이템에 1 · 2 · 3 · 6 · 12 · 24 · 36 · 0 */
 let FOCUS = '';
-const QUICK = [1, 2, 3, 6, 12, 24, 36, 0];
-function quickBar() { return '<div class="qbar" id="qbar"><span id="qbarWho">' + (FOCUS ? esc(FOCUS) : '아이템을 고르고 수량을 누르세요') + '</span>' + QUICK.map(n => '<button data-qk="' + n + '">' + n + '</button>').join('') + '</div>'; }
+const QUICK = [1, 2, 3, 6, 12, 0];
+/* 프리셋(PRE): 수량 버튼을 누르면 켜진 채로 남아, 그 다음부터 카드를 누를 때마다 그 수량이 들어감 (처음 누르면 = 프리셋, 다시 누르면 + 프리셋). 같은 버튼을 다시 누르면 끔. 0 = 고른 아이템 지우기 */
+let PRE = (() => { try { return Number(localStorage.getItem('theone.order.pre')) || 0; } catch (e) { return 0; } })();
+function setPre(n) { PRE = n; try { localStorage.setItem('theone.order.pre', String(n)); } catch (e) {} document.querySelectorAll('[data-qk]').forEach(b => b.classList.toggle('on', Number(b.dataset.qk) === PRE && PRE > 0)); const w = $('qbarWho'); if (w && !FOCUS) w.textContent = PRE ? '프리셋 ' + PRE + '개 — 카드를 누르면 ' + PRE + '개씩' : '수량 버튼을 누르면 프리셋'; }
+function tapQty(c) { const cur = IDX[c] ? IDX[c].q : 0; return PRE > 0 ? (cur ? cur + PRE : PRE) : cur + 1; }
+function quickBar() { return '<div class="qbar" id="qbar"><span id="qbarWho">' + (FOCUS ? esc(FOCUS) : PRE ? '프리셋 ' + PRE + '개 — 카드를 누르면 ' + PRE + '개씩' : '수량 버튼을 누르면 프리셋') + '</span>' + QUICK.map(n => '<button data-qk="' + n + '" class="' + (n && n === PRE ? 'on' : '') + '">' + (n ? n : '✕') + '</button>').join('') + '</div>'; }
 function setFocus(c) { FOCUS = c; const w = $('qbarWho'); if (w) w.textContent = c + (IDX[c] ? ' · ' + IDX[c].q + '개' : ''); }
 function bindQuick(root) {
   root.querySelectorAll('[data-qk]').forEach(b => b.onclick = () => {
-    if (!FOCUS) return toast('먼저 아이템을 누르세요', 'bad');
-    const n = setQty(FOCUS, Number(b.dataset.qk)); setFocus(FOCUS);
+    const k = Number(b.dataset.qk);
+    if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {}
+    if (k > 0) { setPre(k === PRE ? 0 : k); if (!FOCUS) return; }
+    else if (!FOCUS) return setPre(0);
+    const n = setQty(FOCUS, k); setFocus(FOCUS);
     const inp = document.querySelector('[data-qi="' + CSS.escape(FOCUS) + '"]'); if (inp) { inp.value = n || ''; markRow($('eRes') || $('eCart'), FOCUS, n); }
     refreshCard(FOCUS);
   });
@@ -395,7 +402,7 @@ function paintAdd() {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     const it = exactItem(q.value);
-    if (it) { const n = setQty(it.c, (IDX[it.c] ? IDX[it.c].q : 0) + 1); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
+    if (it) { const n = setQty(it.c, tapQty(it.c)); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
     else { run(); toast('정확히 맞는 코드가 없습니다 — 아래에서 고르세요', 'bad'); }
   };
   document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.pop = false; PAGE = 60; paintAdd(); });
@@ -456,7 +463,7 @@ function paintResults() {
     let t = null, long = false;
     el.addEventListener('pointerdown', () => { long = false; t = setTimeout(() => { long = true; qtyPad(el.dataset.gc); }, 550); });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
-    el.onclick = () => { if (long) return; const c = el.dataset.gc; setQty(c, (IDX[c] ? IDX[c].q : 0) + 1); refreshCard(c); setFocus(c); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); };
+    el.onclick = () => { if (long) return; const c = el.dataset.gc; setQty(c, tapQty(c)); refreshCard(c); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); };
     el.oncontextmenu = e => e.preventDefault();
   });
 }
