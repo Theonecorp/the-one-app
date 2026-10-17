@@ -55,6 +55,7 @@ function verifyDetail(r) {
     '<table style="margin-top:8px">' + (r.pays || []).map(p => '<tr><td>' + ({ CHECK: '체크 #' + esc(p.ref), CASH: '캐쉬', ZELLE: 'Zelle ' + esc(p.ref) })[p.m] + (p.dep ? ' <span class="muted">' + md(p.dep) + '</span>' : '') + (p.mob ? ' 📱' : '') + '</td><td class="r"><b>' + money(p.amt) + '</b></td></tr>').join('') + '</table>' +
     ((r.invs || []).length ? '<table style="margin-top:6px">' + r.invs.map(v => '<tr><td>' + esc(v.no) + (v.store ? ' <span class="muted">🏬 ' + esc(v.store) + '</span>' : '') + '</td><td class="r">' + money(v.amt) + '</td></tr>').join('') + '</table>' : '<div class="muted">인보이스 없음</div>') +
     (r.mismatch ? '<div class="alert a-red">' + esc(r.mismatch) + '</div>' : '') + (r.memo ? '<div class="muted" style="margin-top:6px">세일즈맨 메모: ' + esc(r.memo) + '</div>' : '') +
+    (r.repId ? '<div class="muted" style="margin-top:6px">📧 Daily Report ' + esc(md(String(r.repAt || '').substring(0, 10))) + ' 전송됨 <button type="button" class="b-ghost b-sm" id="vRep">📷 체크 사진 보기</button></div><div id="vRepBox"></div>' : r.rep === false ? '<div class="muted" style="margin-top:6px">⏳ 세일즈맨이 아직 Daily Report 를 보내지 않았습니다</div>' : '') +
     '<div style="margin-top:12px"><label class="pick ' + (r.sb ? 'on' : '') + '" id="pkSb"><div class="ck">✓</div><div class="pm"><b>① SmartBee 입력했음</b><small>이메일/앱 보고 SmartBee 에 넣은 뒤 ✓</small></div></label>' +
     (hasPhysical ? '<label class="pick ' + (r.rc ? 'on' : '') + '" id="pkRc"><div class="ck">✓</div><div class="pm"><b>② 체크 수령 / 입금 확인</b><small>실물 체크가 도착했거나 캐쉬·Zelle 입금 확인</small></div></label>' : '') + '</div>' +
     '<div class="two"><div class="fg"><label>디스카운트 %</label><input id="vDisc" inputmode="decimal" value="' + esc(r.disc == null ? '' : r.disc) + '" placeholder="예: 25"></div><div class="fg"><label>담당자 메모</label><input id="vNote" value="' + esc(r.vn || '') + '"></div></div>' +
@@ -68,6 +69,7 @@ function verifyDetail(r) {
     busy(true); try { await S.DB.update('entries', r.id, patch); closeModal(); toast('저장'); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
   };
   $('vEdit').onclick = () => { closeModal(); Router.go('entry', r.id); };
+  if ($('vRep')) $('vRep').onclick = async () => { const b = $('vRepBox'); b.innerHTML = '<div class="load">읽는 중…</div>'; try { const rp = await S.DB.get('reports', r.repId); const ph = (rp && rp.photos) || []; b.innerHTML = ph.length ? '<div class="phgrid">' + ph.map(d => '<a class="ph" href="' + d + '" target="_blank"><img src="' + d + '"></a>').join('') + '</div><div class="muted">' + (rp.n || '') + '건 · ' + money(rp.total || 0) + ' · ' + esc(rp.sentAt || '') + '</div>' : '<div class="muted">이 리포트에는 사진이 없습니다</div>'; } catch (e) { b.innerHTML = '<div class="muted">리포트를 읽지 못했습니다: ' + esc(e.code || e.message) + '</div>'; } };
   $('vVoid').onclick = async () => { if (!(await confirmBox('이 수금을 취소(VOID)할까요?', '취소하기'))) return; busy(true); try { await S.DB.update('entries', r.id, { void: true, updatedAt: new Date().toISOString() }); closeModal(); toast('취소했습니다'); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 

@@ -5,6 +5,7 @@ import { connect, MOCK, newId } from './db.js';
 import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today } from './ui.js';
 import { CSS } from './style.js';
 import * as Sales from './sales.js';
+import * as Collect from './collect.js';
 import * as Mgr from './mgr.js';
 import * as Boss from './boss.js';
 import * as Admin from './admin.js';
@@ -13,7 +14,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.4';
+export const VER = 'v0.8.5';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -146,7 +147,7 @@ async function afterLogin(user) {
   } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   busy(false);
   paintNav();
-  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0;
+  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0;
   if (!valid) location.hash = '#/' + navFor(S.role)[0][0];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
 }
@@ -156,7 +157,7 @@ async function boot() {
   shell();
   const { DB, AUTH } = await connect();
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); Mgr.register(S); Boss.register(S); Admin.register(S); Orders.register(S);
+  Sales.register(S); Collect.register(S); Mgr.register(S); Boss.register(S); Admin.register(S); Orders.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
