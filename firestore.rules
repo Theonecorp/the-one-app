@@ -95,6 +95,8 @@ service cloud.firestore {
     match /bonusAcc/{id} { allow read, write: if isAdmin(); }
     match /bonusDist/{id} { allow read, write: if isAdmin(); }
     match /bonusSplit/{id} { allow read, write: if isAdmin(); }
+    match /deductions/{id} { allow read: if isStaff() || (registered() && resource.data.sm == mySm()); allow write: if isAdmin(); }   // 6개월 초과 디덕션
+    match /sales/{id} { allow read, write: if isAdmin(); }                                                                            // 회사 매출 (월별)
 
     match /{document=**} { allow read, write: if false; }
   }
