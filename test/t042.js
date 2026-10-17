@@ -25,7 +25,7 @@ const path = require('path'), fs = require('fs');
   await pg.goto('http://127.0.0.1:8770/test/demo.html'); await pg.waitForSelector('#nav button');
   /* 1. 오더 화면 분류 순서 */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
-  await pg.fill('#eStoreQ', 'beauty ex'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(400);
+  await pg.fill('#eStoreQ', 'beauty ex'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(400); await pg.waitForTimeout(700); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(150); }
   await shot('h0_cats');
   const tiles = await pg.$$eval('.cats button', els => els.map(e => e.querySelector('b').textContent.trim()));
   log('L1 tiles:', tiles.join(' | '));
