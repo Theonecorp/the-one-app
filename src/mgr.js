@@ -117,6 +117,10 @@ function codForm(r) {
     if (!sm) return toast('세일즈맨을 고르세요', 'bad'); if (!store) return toast('가게를 넣으세요', 'bad'); if (!amt) return toast('금액을 넣으세요', 'bad');
     const invList = []; document.querySelectorAll('[data-cno]').forEach(el => { const i = el.dataset.cno, a = document.querySelector('[data-camt="' + i + '"]'); const no = el.value.trim().toUpperCase(); if (no || num(a.value)) invList.push({ no, t: no ? invType(no) : '', amt: R2(num(a.value)) }); });
     if (invList.some(v => !v.no)) return toast('인보이스 번호가 빈 줄이 있습니다', 'bad');
+    if (method === 'ACH' && !r.id && !r.achId) {
+      /* 옛 규칙(ACH_COMM_SOURCE): ACH 커미션은 한쪽에서만. 🏦 ACH 허브에 같은 가게·금액 건이 있으면 겹치니 막습니다 */
+      try { const achs = (await S.DB.list('ach', { where: [['acct', '==', $('cAcct').value || r.acct || '']] })).filter(a => !a.void && Math.abs(num(a.amt) - amt) < 0.01); if (achs.length) { const a = achs[0]; if (a.codId) return toast('이 ACH 는 🏦 ACH 에서 이미 인출 완료 처리되어 COD·ACH 목록에 들어와 있습니다 (' + a.drawOn + '). 중복 입력입니다.', 'bad'); if (!(await confirmBox('🏦 ACH 에 같은 가게 · 같은 금액 건이 있습니다 (인출 예정 ' + a.drawOn + ', ' + (a.setup ? '예약됨' : '셋업 전') + ').\n인출 완료는 ACH 탭에서 처리하면 자동으로 여기 들어옵니다. 그래도 직접 넣을까요?', '그래도 저장'))) return; } } catch (e) {}
+    }
     const id = r.id || newId('C');
     const doc = { id, d, ym: ym(d), sm, acct: $('cAcct').value || r.acct || '', store, method, ref: $('cRef').value.trim(), amt, invs: invList, disc: $('cDisc').value.trim() === '' ? '' : num($('cDisc').value), note: $('cNote').value.trim(), updatedAt: new Date().toISOString() };
     busy(true);

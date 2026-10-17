@@ -9,13 +9,13 @@
  * ============================================================ */
 import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz } from './ui.js';
 import { newId } from './db.js';
-import { lineOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS } from './comm.js';
+import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
 import { settlementHtml } from './sales.js';
 import { searchAccounts } from './accounts.js';
 
 let S = null, C = { ents: null, cod: null, at: 0 };
 export function register(state) {
-  S = state;
+  S = state; setStoreLookup(code => { const a = S.accounts && S.accounts.byCode && S.accounts.byCode[code]; return a ? a.store : ''; });
   Router.on('now', pageNow); Router.on('pay', pagePay); Router.on('bossar', pageAR); Router.on('find', a => pageFind(a ? decodeURIComponent(a) : ''));
 }
 const SRC_TAG = { FIELD: ['현장', 't-f'], COD: ['COD', 't-c'], ACH: ['ACH', 't-a'], CARD: ['카드', 't-k'] };
@@ -89,7 +89,7 @@ function overview(from, to) {
   const inR = r => r.d >= from && r.d <= to;
   const live = C.ents.filter(e => !e.settled && !e.repl && inR(e)), cods = C.cod.filter(c => !c.settled && inR(c));
   const sms = Object.keys(groupBy(live.concat(cods), x => x.sm)).sort();
-  const list = sms.map(sm => { const a = live.filter(e => e.sm === sm), b = cods.filter(c => c.sm === sm); const ready = a.filter(e => e.rc && e.sb); const ok = ready.filter(e => e.v).map(lineOfEntry).concat(b.filter(c => c.v).map(lineOfOther)); const c = computeComm(ok, ratesOf(S.smByCode[sm]), commSettings(S.settings)); return { sm, total: c.totals.total, pay: c.pay, pend: ready.filter(e => !e.v).length + b.filter(x => !x.v).length, wait: a.filter(e => !e.rc).length, bad: c.skipped.length, n: ready.length + b.length, done: ok.length, amt: sum(ready, e => e.total) + sum(b, x => x.amt), c }; });
+  const list = sms.map(sm => { const a = live.filter(e => e.sm === sm), b = cods.filter(c => c.sm === sm); const ready = a.filter(e => e.rc && e.sb); const ok = [].concat(...ready.filter(e => e.v).map(linesOfEntry)).concat(b.filter(c => c.v).map(lineOfOther)); const c = computeComm(ok, ratesOf(S.smByCode[sm]), commSettings(S.settings)); return { sm, total: c.totals.total, pay: c.pay, pend: ready.filter(e => !e.v).length + b.filter(x => !x.v).length, wait: a.filter(e => !e.rc).length, bad: c.skipped.length, n: ready.length + b.length, done: ok.length, amt: sum(ready, e => e.total) + sum(b, x => x.amt), c }; });
   return { from, to, list: sortBy(list, x => x.pay, true), tot: { pay: sum(list, x => x.pay), total: sum(list, x => x.total), pend: list.reduce((a, x) => a + x.pend, 0), wait: list.reduce((a, x) => a + x.wait, 0), bad: list.reduce((a, x) => a + x.bad, 0) } };
 }
 function paintEstimate() {
@@ -153,7 +153,7 @@ function smRows() {
   return { mine, field, wait, cods, merged, why };
 }
 function calc(rows) {
-  const ok = rows.field.filter(e => e.v).map(lineOfEntry).concat(rows.cods.filter(c => c.v).map(lineOfOther));
+  const ok = [].concat(...rows.field.filter(e => e.v).map(linesOfEntry)).concat(rows.cods.filter(c => c.v).map(lineOfOther));
   const c = computeComm(ok, ratesOf(S.smByCode[P.sm]), commSettings(S.settings));
   const sm = S.smByCode[P.sm] || {};
   const dl = (DED && DED.sm === P.sm ? DED.active : []).map(d => { const rem = R2(d.total - (d.used || 0)); const v = DOVER.hasOwnProperty(d.id) ? num(DOVER[d.id]) : Math.min(d.per || rem, rem); return { id: d.id, acct: d.acct, store: d.store, why: d.why, total: d.total, used: d.used || 0, per: d.per, remaining: rem, apply: v, start: d.start, invs: d.invs }; });
