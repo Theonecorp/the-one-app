@@ -11,6 +11,8 @@ export const k = n => { n = Number(n) || 0; const a = Math.abs(n), s = n < 0 ? '
 export const num = v => { const n = Number(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
 export const R2 = x => Math.round((Number(x) || 0) * 100) / 100;
 export const nz = s => String(s || '').toUpperCase().replace(/[^A-Z0-9가-힣]/g, '');
+/** 키워드 검색 — 띄어쓴 단어가 모두 들어 있으면 맞음 (순서 · 대소문자 · 기호 무시). 'beauty miami' → BEAUTY EXCHANGE, MIAMI */
+export const hasWords = (text, q) => { const w = String(q || '').split(/\s+/).map(nz).filter(Boolean); if (!w.length) return true; const t = nz(text); return w.every(x => t.includes(x)); };
 export const pad4 = v => { const s = String(v == null ? '' : v).trim(); return /^\d{1,3}$/.test(s) ? s.padStart(4, '0') : s; };
 export function today() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 export const ym = d => String(d || '').substring(0, 7);

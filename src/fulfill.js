@@ -6,7 +6,7 @@
  *    ④ 백오더는 매니저가 골라서 새 오더로 만들거나 닫음
  *  backorders/{orderId} = { id, order, acct, store, sm, d, lines:[{c,d,q,p,lp,t}], qty, amt, st:'open'|'used'|'closed', newOrders:[], createdAt }
  * ============================================================ */
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords } from './ui.js';
 import { jobOf } from './main.js';
 import { loadCatalog, catalog, exactItem } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead } from './invoicing.js';
@@ -81,7 +81,7 @@ export function manage(o, lines) {
   const paint = () => {
     const q = $('mFind').value.trim().toUpperCase();
     let rows = lines.map((l, i) => Object.assign({ _i: i }, l));
-    if (q) rows = rows.filter(l => (l.c + ' ' + l.d).toUpperCase().includes(q));
+    if (q) rows = rows.filter(l => hasWords(l.c + ' ' + l.d, q));
     if (MF === 'bo') rows = rows.filter(l => (l.pq || 0) < l.q);
     if (MF === 'p') rows = rows.filter(l => l.lp != null && Math.abs(l.lp - l.p) > 0.0001);
     $('mLines').innerHTML = '<table class="pk"><tr><th>코드</th><th class="r">주문</th>' + (picking ? '<th class="r">픽</th>' : '') + '<th class="r">가격</th><th class="r">금액</th></tr>' + rows.slice(0, 2500).map(l => {

@@ -7,7 +7,7 @@
  *    찾기: 가게 → 12개월 · 수금 내역 (현장 · COD · ACH · 카드)
  *  자료: entries · cod · ar/_all · settlements · deductions · salesmen(rates · cashKeep) · bonusAcc · pay1099 · payees
  * ============================================================ */
-import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz } from './ui.js';
+import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords } from './ui.js';
 import { newId } from './db.js';
 import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
 import { settlementHtml } from './sales.js';
@@ -517,7 +517,7 @@ async function pageFind(q) {
   if (hits.length > 1) $('fHits').innerHTML = '<div class="chips" style="margin-top:8px">' + hits.map(x => '<button class="' + (a && x.acct === a.acct ? 'on' : '') + '" data-fh="' + esc(x.acct) + '">' + esc(x.store) + ' ' + esc(x.acct) + '</button>').join('') + '</div>';
   document.querySelectorAll('[data-fh]').forEach(b => b.onclick = () => Router.go('find', encodeURIComponent(b.dataset.fh)));
   if (a) { acct = a.acct; store = a.store; }
-  const items = sortBy(rows.filter(r => acct ? r.acct === acct : nz(r.store).includes(nz(q))), r => r.d, true);
+  const items = sortBy(rows.filter(r => acct ? r.acct === acct : hasWords(r.store, q)), r => r.d, true);
   if (!items.length && !a) { $('fOut').innerHTML = '<div class="card"><div class="none">"' + esc(q) + '" — 가게도 수금 기록도 없습니다</div></div>'; return; }
   const months = recentYms(12).reverse().map(m => ({ ym: m, amt: sum(items.filter(r => r.ym === m), r => r.amt) })), mx = Math.max(1, ...months.map(x => x.amt));
   const ar = await S.DB.get('ar', '_all').catch(() => null); const ars = ar && ar.stores ? ar.stores.find(s => s.acct === acct) : null;
