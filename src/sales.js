@@ -132,9 +132,9 @@ function paintSum() {
 }
 function storeSearch(q) {
   const box = $('storeHits'), nb = $('newStoreBox');
-  const hits = searchAccounts(S.accounts, q, 12);
+  const hits = searchAccounts(S.accounts, q, 150);
   box.style.display = hits.length ? '' : 'none';
-  box.innerHTML = hits.map(a => '<div data-acct="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b> <span class="muted">' + esc(a.acct) + '</span><small>' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + '</small></div>').join('');
+  box.innerHTML = (hits.total ? '<div class="muted" style="padding:6px 11px;font-size:12px;border-bottom:1px solid var(--line)">' + hits.total + '곳' + (hits.total > hits.length ? ' · ' + hits.length + '곳까지 표시 — 더 자세히 치세요' : '') + '</div>' : '') + hits.map(a => '<div data-acct="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b> <span class="muted">' + esc(a.acct) + '</span><small>' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + '</small></div>').join('');
   box.querySelectorAll('[data-acct]').forEach(d => d.onclick = () => pickStore(d.dataset.acct));
   nb.style.display = (q.trim().length >= 3 && !hits.length) ? '' : 'none';
 }
@@ -204,7 +204,7 @@ async function otherStoreDialog() {
   openModal('<h2>🏬 다른 가게 인보이스</h2><p class="muted">한 체크로 다른 가게 인보이스까지 받았을 때. 그 가게를 찾아 인보이스를 고르거나 직접 적으세요.</p>' +
     '<input id="oq" placeholder="가게 이름 · 계정코드" autocomplete="off"><div class="hits" id="ohits" style="display:none"></div><div id="oinv"></div>');
   const q = $('oq'); q.focus();
-  q.oninput = () => { const hits = searchAccounts(S.accounts, q.value, 10), box = $('ohits'); box.style.display = hits.length ? '' : 'none';
+  q.oninput = () => { const hits = searchAccounts(S.accounts, q.value, 100), box = $('ohits'); box.style.display = hits.length ? '' : 'none';
     box.innerHTML = hits.map(a => '<div data-oa="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b> <span class="muted">' + esc(a.acct) + '</span></div>').join('');
     box.querySelectorAll('[data-oa]').forEach(d => d.onclick = () => otherPick(d.dataset.oa)); };
 }
