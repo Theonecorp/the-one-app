@@ -116,11 +116,12 @@ async function settings() {
  *   · THE ONE 커미션.xlsx → 세일즈맨 요율 · 정산 기록(settled)
  * ============================================================ */
 async function importer() {
-  $('adminBody').innerHTML = '<div class="card"><h2>📥 옛 시트에서 가져오기</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
+  $('adminBody').innerHTML = exportCard() + '<div class="card"><h2>📥 옛 시트에서 가져오기</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
     '<div class="fg" style="margin-top:10px"><label>① The One 수금 입력 (2026).xlsx — 거래처 · 세일즈맨 · 수금</label><input type="file" id="f1" accept=".xlsx"></div>' +
     '<div class="fg"><label>② THE ONE 수금 (SALES).xlsx — COD 입력 · 세일즈맨 탭의 확인 표시</label><input type="file" id="f2" accept=".xlsx"></div>' +
     '<div class="fg"><label>③ THE ONE 커미션.xlsx — 요율 · 정산 기록</label><input type="file" id="f3" accept=".xlsx"></div>' +
     '<div id="impOut"></div></div>';
+  bindExport();
   $('f1').onchange = () => importMain($('f1').files[0]); $('f2').onchange = () => importSales($('f2').files[0]); $('f3').onchange = () => importComm($('f3').files[0]);
 }
 async function loadXlsx() { if (window.XLSX) return window.XLSX; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); return window.XLSX; }
@@ -270,6 +271,36 @@ async function catalogAdmin() {
   };
 }
 
+/* ---- 📤 자료 내려받기 — 앱에 쌓인 자료(오더 · 인보이스 · 수금 · 거래처 · 아이템)를 달 단위 엑셀로 (보관 · 회계 · 시트 분석용) ---- */
+function exportCard() {
+  const d = new Date(), yms = []; for (let i = 0; i < 24; i++) { yms.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); }
+  return '<div class="card"><h2>📤 자료 내려받기 (백업 · 보관)</h2><div class="muted">앱 자료는 Firebase(Firestore) 에 쌓입니다. 달을 골라 받으면 그 달의 <b>오더 · 오더 줄 · 인보이스 · 수금 · 백오더</b> 와 지금의 <b>거래처 · 아이템</b> 이 탭별로 든 엑셀 한 파일이 됩니다. 달마다 한 번 받아 드라이브 "THE ONE 데이터 보관/연도" 폴더에 넣어 두면 회계 · 분석 · 백업이 됩니다.</div>' +
+    '<div class="two" style="margin-top:8px">' + sel('exYm', yms.map(y => [y, y])) + '<button class="b-blue" id="exGo">⬇️ 이 달 엑셀 받기</button></div><div id="exOut"></div></div>';
+}
+function bindExport() {
+  if (!$('exGo')) return;
+  $('exGo').onclick = async () => {
+    const ym = $('exYm').value, out = $('exOut'); out.innerHTML = '<div class="load">모으는 중…</div>'; busy(true);
+    try {
+      const XLSX = await loadXlsx();
+      const [orders, invs, entries, bos, accts] = await Promise.all([S.DB.list('orders', { where: [['ym', '==', ym]] }), S.DB.list('invoices', { where: [['ym', '==', ym]] }), S.DB.list('entries', { where: [['ym', '==', ym]] }), S.DB.list('backorders'), S.DB.list('accounts')]);
+      const lines = []; for (const o of orders) { const L = await S.DB.get('orderLines', o.id).catch(() => null); (L && L.lines || []).forEach(l => lines.push([o.no, o.d, o.sm, o.acct, o.store, o.st, l.c, l.d, l.q, l.pq == null ? '' : l.pq, l.p, l.lp == null ? '' : l.lp, l.t || '', l.note || ''])); }
+      const wb = XLSX.utils.book_new();
+      const add = (name, rows) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name);
+      add('Orders', [['No', 'Date', 'SalesRep', 'Acct', 'Store', 'Status', 'Lines', 'Qty', 'Amount', 'Memo', 'Invoices', 'SentAt', 'DoneAt']].concat(orders.map(o => [o.no, o.d, o.sm, o.acct, o.store, o.st, o.n, o.qty, o.amt, o.memo || '', (o.invs || []).join(' '), o.sentAt || '', o.doneAt || ''])));
+      add('OrderLines', [['OrderNo', 'Date', 'SalesRep', 'Acct', 'Store', 'Status', 'Code', 'Description', 'Qty', 'Picked', 'Price', 'ListPrice', 'Type', 'Note']].concat(lines));
+      add('Invoices', [['Invoice', 'Type', 'Date', 'Acct', 'Store', 'SalesRep', 'Terms', 'Order', 'Qty', 'Sub', 'Disc%', 'Total', 'Balance', 'Status', 'Memo']].concat(invs.map(x => [x.no, x.t, x.d, x.acct, x.store, x.sm, x.terms || '', x.order, x.qty, x.sub, x.disc || 0, x.total, x.bal == null ? x.total : x.bal, x.st === 'x' ? 'VOID' : x.st, x.memo || ''])));
+      add('InvoiceLines', [['Invoice', 'Date', 'Acct', 'Store', 'Code', 'Description', 'Qty', 'Price', 'Amount', 'Level1']].concat(invs.flatMap(x => (x.lines || []).map(l => [x.no, x.d, x.acct, x.store, l.c, l.d, l.q, l.p, R2(l.q * l.p), l.g || '']))));
+      add('Payments', [['ID', 'Date', 'SalesRep', 'Acct', 'Store', 'Total', 'Methods', 'Invoices', 'Memo', 'Void', 'Verified']].concat(entries.map(e => [e.id, e.d, e.sm, e.acct, e.store, e.total, (e.pays || []).map(p => p.m + (p.ref ? '#' + p.ref : '') + ':' + p.amt).join(' '), (e.invs || []).map(v => v.no + ':' + v.amt).join(' '), e.memo || '', e.void ? 'Y' : '', e.v ? 'Y' : ''])));
+      add('Backorders', [['OrderId', 'Order', 'Date', 'Acct', 'Store', 'SalesRep', 'Status', 'Code', 'Qty', 'Price']].concat(bos.flatMap(b => (b.lines || []).map(l => [b.id, b.order, b.d, b.acct, b.store, b.sm, b.st, l.c, l.q, l.p]))));
+      add('Accounts', [['Acct', 'Store', 'Address', 'City', 'State', 'Zip', 'Tel', 'SalesRep', 'Terms', 'Note', 'Disc']].concat(accts.map(a => [a.acct, a.store, a.addr || '', a.city || '', a.state || '', a.zip || '', a.tel || '', a.sm || '', a.terms || '', a.note || '', JSON.stringify(a.disc || {})])));
+      const C = catalog(); if (C) add('Items', [['Code', 'Description', 'Price', 'SRP', 'Barcode', 'Group', 'Level 1', 'Level 2', 'Level 3', 'Photo']].concat(C.rows));
+      XLSX.writeFile(wb, 'THE_ONE_' + ym + '.xlsx');
+      out.innerHTML = '<div class="alert a-grn">' + ym + ' — 오더 ' + orders.length + ' · 줄 ' + lines.length + ' · 인보이스 ' + invs.length + ' · 수금 ' + entries.length + ' · 백오더 ' + bos.length + ' · 거래처 ' + accts.length + '</div>';
+    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; }
+    busy(false);
+  };
+}
 /* ---- 사진 규칙 ---- */
 function photoCard() {
   const C = catalog(), st = (C && C.photoStat) || { dropped: 0, drive: 0 }, px = photoIndex();

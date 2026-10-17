@@ -272,9 +272,8 @@ export function typeSummary(by) {
   const g = Object.values(by); if (!g.length) return '';
   const names = {}; invTypes(S).forEach(t => { names[t.c] = t.n; });
   const tot = g.reduce((a, x) => a + x.total, 0);
-  return '<table style="margin-top:10px"><tr><th>종류</th><th class="r">수량</th><th class="r">금액</th><th class="r">할인</th><th class="r">합계</th></tr>' +
-    g.map(x => '<tr><td><b>' + esc(x.t) + '</b> <span class="muted">' + esc(names[x.t] || '') + '</span></td><td class="r">' + x.qty + '</td><td class="r">' + money(x.sub) + '</td><td class="r">' + (x.disc ? x.disc + '%' : '—') + '</td><td class="r"><b>' + money(x.total) + '</b></td></tr>').join('') +
-    (g.length > 1 ? '<tr><td colspan="4"><b>합계</b></td><td class="r"><b>' + money(tot) + '</b></td></tr>' : '') + '</table>';
+  return '<div style="margin-top:8px">' + g.map(x => '<div class="trow"><span class="tb ' + esc(x.t) + '">' + esc(x.t) + '</span><div class="tx"><b>' + esc(names[x.t] || x.t) + '</b><small>' + x.qty + '개 · ' + money(x.sub) + (x.disc ? ' · 할인 ' + x.disc + '% (−' + money(x.sub - x.total) + ')' : '') + '</small></div><span class="ta">' + money(x.total) + '</span></div>').join('') +
+    (g.length > 1 ? '<div class="trow sum"><div class="tx"><b>합계 Total</b><small>' + g.reduce((a, x) => a + x.qty, 0) + '개 · 인보이스 ' + g.length + '장</small></div><span class="ta">' + money(tot) + '</span></div>' : '') + '</div>';
 }
 
 /* ============================================================

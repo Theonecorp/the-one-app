@@ -13,7 +13,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.2';
+export const VER = 'v0.8.3';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -110,7 +110,7 @@ function switchRole(r) {
   Router.go(navFor(r)[0][0]);
 }
 /* 아래 메뉴의 실제 높이를 CSS 변수로 — 고정 바(.sticky) 와 본문 여백이 메뉴에 가리지 않게 */
-function navH() { const n = $('nav'); const h = n && getComputedStyle(n).position === 'fixed' ? n.offsetHeight : 0; document.documentElement.style.setProperty('--navh', h + 'px'); }
+function navH() { const n = $('nav'); const h = n && getComputedStyle(n).position === 'fixed' ? n.offsetHeight : 0; document.documentElement.style.setProperty('--navh', h + 'px'); const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
 window.addEventListener('resize', () => setTimeout(navH, 50));
 function paintNav() {
   const items = navFor(S.role);
