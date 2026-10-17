@@ -27,7 +27,34 @@ export function invType(no) {
   if (/^CM/.test(s)) return 'CM'; if (/^P/.test(s)) return 'P'; if (/^W/.test(s)) return 'W'; return 'A';
 }
 
-/** 방문(entry) → 정산 줄 */
+let STORE_OF = null;
+/** 다른 가게 코드 → 가게 이름 찾기 (boss.js 가 S.accounts 로 등록) */
+export function setStoreLookup(fn) { STORE_OF = fn; }
+/**
+ * 방문(entry) → 정산 줄 여러 개.
+ * 옛 앱(smRowsForPay_)과 같은 규칙: 체크에 🏬 다른 가게 인보이스가 섞여 있으면 그 가게마다 자기 줄(ID@계정코드)로 빼고,
+ * 수금한 가게(홈) 줄 금액 = 받은 돈 − 다른 가게 인보이스 합. 체크 총액은 그대로입니다.
+ * (EXCHANGE 같은 가게 이름 기준 요율이 가게마다 따로 적용됩니다)
+ */
+export function linesOfEntry(e) {
+  const others = (e.invs || []).filter(i => i.acct && i.acct !== e.acct);
+  if (!others.length) return [lineOfEntry(e)];
+  const groups = {}; others.forEach(i => { (groups[i.acct] = groups[i.acct] || []).push(i); });
+  const otherTot = R2(others.reduce((a, i) => a + num(i.amt), 0));
+  const home = lineOfEntry(Object.assign({}, e, { invs: (e.invs || []).filter(i => !i.acct || i.acct === e.acct) }));
+  /* 홈 줄의 받은 돈을 줄임 — 캐쉬 먼저 남기고 체크에서 뺌 (옛 앱: 금액 한 덩어리) */
+  let cut = otherTot; const ce = Math.min(home.e, cut); home.e = R2(home.e - ce); cut = R2(cut - ce); home.f = R2(Math.max(0, home.f - cut));
+  home.multi = true;
+  const out = [home];
+  Object.keys(groups).forEach(acct => {
+    const L = lineOfEntry(Object.assign({}, e, { id: e.id + '@' + acct, acct, store: (groups[acct][0].store) || (STORE_OF && STORE_OF(acct)) || ('계정 ' + acct), invs: groups[acct], disc: '' }));
+    const amt = R2(groups[acct].reduce((a, i) => a + num(i.amt), 0));
+    L.e = amt; L.f = 0; L.key = e.id; L.ids = [e.id]; L.other = true; L.memo = '↳ ' + (e.store || '') + ' 에서 수금 · collected at ' + (e.store || '');
+    out.push(L);
+  });
+  return out;
+}
+/** 방문(entry) → 정산 줄 (한 줄) */
 export function lineOfEntry(e) {
   const pays = e.pays || [], invs = e.invs || [];
   const L = { key: e.id, ids: [e.id], src: 'FIELD', d: e.d, store: e.store, acct: e.acct, disc: e.disc == null || e.disc === '' ? '' : Number(e.disc),
