@@ -40,10 +40,11 @@ function presets() {
   const t = today(), y = Number(t.substring(0, 4)), m = Number(t.substring(5, 7)), d = Number(t.substring(8, 10));
   const mk = (yy, mm) => { const last = new Date(yy, mm, 0).getDate(); const p = yy + '-' + String(mm).padStart(2, '0'); return [{ k: p + 'a', label: mm + '월 1~15', from: p + '-01', to: p + '-15' }, { k: p + 'b', label: mm + '월 16~' + last, from: p + '-16', to: p + '-' + last }]; };
   const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
-  const list = mk(py, pm).concat(mk(y, m));
+  const list = mk(py, pm).concat(mk(y, m)).concat([{ k: 'r45', label: '최근 45일', from: addDays(t, -45), to: t }]);
   return { list, cur: (d <= 15 ? y + '-' + String(m).padStart(2, '0') + 'a' : y + '-' + String(m).padStart(2, '0') + 'b') };
 }
 const lineState = x => x.v ? 'ok' : x.vbad ? 'bad' : 'pend';
+const carryTag = x => x.deferred ? ' · <span style="color:#7c3aed">↩ ' + esc(x.deferredAt || '') + ' 정산에서 넘어옴</span>' : '';
 
 /* ============================================================
  *  ① 현황
@@ -54,7 +55,7 @@ async function pageNow() {
   const rows = allRows(), t = today(), tm = ym(t), prevM = recentYms(2)[1];
   const cur = rows.filter(r => r.ym === tm), prev = rows.filter(r => r.ym === prevM), tod = rows.filter(r => r.d === t);
   const dayN = Number(t.substring(8, 10)), prevSame = prev.filter(r => Number(r.d.substring(8, 10)) <= dayN);
-  const wkStart = addDays(t, -new Date(t + 'T12:00:00').getDay()), week = rows.filter(r => r.d >= wkStart && r.d <= t);
+  const wkStart = addDays(t, -((new Date(t + 'T12:00:00').getDay() + 6) % 7)), week = rows.filter(r => r.d >= wkStart && r.d <= t);
   const bySm = groupBy(cur, r => r.sm), prevBySm = groupBy(prev, r => r.sm);
   const smList = sortBy(Object.keys(bySm).map(s => ({ sm: s, amt: sum(bySm[s], r => r.amt), n: bySm[s].length, prev: sum(prevBySm[s] || [], r => r.amt) })), x => x.amt, true);
   const smMax = Math.max(1, ...smList.map(x => x.amt));
@@ -87,7 +88,7 @@ async function pageNow() {
 }
 function overview(from, to) {
   const inR = r => r.d >= from && r.d <= to;
-  const live = C.ents.filter(e => !e.settled && !e.repl && inR(e)), cods = C.cod.filter(c => !c.settled && inR(c));
+  const live = C.ents.filter(e => !e.settled && !e.repl && (inR(e) || (e.deferred && e.d < from && e.d <= to))), cods = C.cod.filter(c => !c.settled && (inR(c) || (c.deferred && c.d < from && c.d <= to)));
   const sms = Object.keys(groupBy(live.concat(cods), x => x.sm)).sort();
   const list = sms.map(sm => { const a = live.filter(e => e.sm === sm), b = cods.filter(c => c.sm === sm); const ready = a.filter(e => e.rc && e.sb); const ok = [].concat(...ready.filter(e => e.v).map(linesOfEntry)).concat(b.filter(c => c.v).map(lineOfOther)); const c = computeComm(ok, ratesOf(S.smByCode[sm]), commSettings(S.settings)); return { sm, total: c.totals.total, pay: c.pay, pend: ready.filter(e => !e.v).length + b.filter(x => !x.v).length, wait: a.filter(e => !e.rc).length, bad: c.skipped.length, n: ready.length + b.length, done: ok.length, amt: sum(ready, e => e.total) + sum(b, x => x.amt), c }; });
   return { from, to, list: sortBy(list, x => x.pay, true), tot: { pay: sum(list, x => x.pay), total: sum(list, x => x.total), pend: list.reduce((a, x) => a + x.pend, 0), wait: list.reduce((a, x) => a + x.wait, 0), bad: list.reduce((a, x) => a + x.bad, 0) } };
@@ -144,12 +145,12 @@ function paintCards(o) {
 }
 /* ---- 세일즈맨 한 명 ---- */
 function smRows() {
-  const inR = r => r.d >= P.from && r.d <= P.to;
-  const mine = C.ents.filter(e => e.sm === P.sm && !e.settled && !e.repl && inR(e)), cods = C.cod.filter(c => c.sm === P.sm && !c.settled && inR(c));
+  const inR = r => r.d >= P.from && r.d <= P.to, carried = r => !!r.deferred && r.d < P.from && r.d <= P.to;   /* 지난 정산에서 ✓ 안 돼 넘어온 줄 */
+  const mine = C.ents.filter(e => e.sm === P.sm && !e.settled && !e.repl && (inR(e) || carried(e))), cods = C.cod.filter(c => c.sm === P.sm && !c.settled && (inR(c) || carried(c)));
   const field = mine.filter(e => e.rc && (!P.sbOnly || e.sb)), wait = mine.filter(e => !e.rc && (!P.sbOnly || e.sb));
   const merged = sortBy(field.map(e => ({ k: 'f', x: e })).concat(cods.map(c => ({ k: 'o', x: c }))), r => r.x.d + (r.k === 'f' ? '0' : '1') + (r.x.createdAt || ''));
   const all = C.ents.filter(e => e.sm === P.sm && !e.repl);
-  const why = { early: all.filter(e => e.d < P.from && !e.settled).length, late: all.filter(e => e.d > P.to && !e.settled).length, closed: all.filter(e => inR(e) && e.settled).length, min: all.length ? all.map(e => e.d).sort()[0] : '', max: all.length ? all.map(e => e.d).sort().pop() : '' };
+  const why = { early: all.filter(e => e.d < P.from && !e.settled && !carried(e)).length, late: all.filter(e => e.d > P.to && !e.settled).length, closed: all.filter(e => inR(e) && e.settled).length, min: all.length ? all.map(e => e.d).sort()[0] : '', max: all.length ? all.map(e => e.d).sort().pop() : '' };
   return { mine, field, wait, cods, merged, why };
 }
 function calc(rows) {
@@ -185,9 +186,9 @@ async function paintSm(o) {
     html += '<div class="daygrp"><div class="dayhd"><span>' + dlabel(d) + '</span><span>' + G.length + '건 · ' + money(sum(G, r => r.k === 'f' ? r.x.total : r.x.amt)) + '</span></div>';
     G.forEach(r => { seq++; const x = r.x, st = lineState(x), info = secOfRow(r), b = info.bad;
       const badLine = b ? (b.blocked ? '<div class="pw">🔴 인보이스 배분 ' + money(b.alloc) + ' ≠ 받은 돈 ' + money(b.got) + ' — ' + esc(b.why) + ' · <u>이번 정산 제외</u></div>' : '<div class="pw" style="color:#b45309">⚠️ W 금액 오타 (' + money(b.W) + ') → ' + money(b.fixed) + ' 로 계산 — 원본도 고쳐 주세요</div>') : '';
-      if (r.k === 'o') html += '<div class="pr tap pl ' + st + '" data-pl="o|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · <span class="tag ' + SRC_TAG[srcOf(x)][1] + '">' + esc(x.method) + '</span>' + (x.ref ? ' ' + esc(x.ref) : '') + (x.achId ? ' · 🏦 ACH 인출' : '') + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.amt) + '</b><small>' + (st === 'ok' ? '확인됨' : '탭해서 ✓') + '</small></div></div>';
+      if (r.k === 'o') html += '<div class="pr tap pl ' + st + '" data-pl="o|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · <span class="tag ' + SRC_TAG[srcOf(x)][1] + '">' + esc(x.method) + '</span>' + (x.ref ? ' ' + esc(x.ref) : '') + (x.achId ? ' · 🏦 ACH 인출' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.amt) + '</b><small>' + (st === 'ok' ? '확인됨' : '탭해서 ✓') + '</small></div></div>';
       else { const pay = (x.pays || []).map(p => p.m === 'CHECK' ? 'CHECK #' + esc(p.ref || '') : p.m).join(' · '), dep = (x.pays || []).find(p => p.dep && p.dep !== x.d);
-        html += '<div class="pr tap pl ' + st + '" data-pl="f|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · ' + pay + (dep ? ' · 입금 ' + esc(dep.dep.substring(5)) : '') + (x.rep ? '' : x.rep === false ? ' · <span class="warn">리포트 미전송</span>' : '') + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (x.mismatch && !b ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.total) + '</b>' + (x.sb ? '<small>SmartBee ✓</small>' : '<small style="color:#b45309">SmartBee 미입력</small>') + '</div></div>'; }
+        html += '<div class="pr tap pl ' + st + '" data-pl="f|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · ' + pay + (dep ? ' · 입금 ' + esc(dep.dep.substring(5)) : '') + (x.rep ? '' : x.rep === false ? ' · <span class="warn">리포트 미전송</span>' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (x.mismatch && !b ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.total) + '</b>' + (x.sb ? '<small>SmartBee ✓</small>' : '<small style="color:#b45309">SmartBee 미입력</small>') + '</div></div>'; }
     });
     html += '</div>';
   });
@@ -292,10 +293,12 @@ async function confirmGo(rows, c, deferred) {
     const ops = [{ op: 'set', col: 'settlements', id, data: { id, sm: P.sm, day, from: P.from, to: P.to, n: keys.size, pay: c.pay, finalPay: c.finalPay, cashKeep: c.cashKeep, ded: c.ded.amt, net: c.net, office: c.office.amt, dp: c.dp.amt, total: c.totals.total, deferred, skipped: c.skipped.length, comm, createdBy: S.user.email, createdAt: now } }];
     ents.forEach(e => ops.push({ op: 'update', col: 'entries', id: e.id, data: { settled: id, settledAt: day } }));
     cods.forEach(x => ops.push({ op: 'update', col: 'cod', id: x.id, data: { settled: id, settledAt: day } }));
+    /* ✓ 안 된 줄은 다음 정산으로 넘김 — 표시만 남겨 다음 기간에서도 보이게 (옛 대시보드 '정산 미룸') */
+    rows.merged.filter(r => !keys.has(r.x.id)).forEach(r => ops.push({ op: 'update', col: r.k === 'f' ? 'entries' : 'cod', id: r.x.id, data: { deferred: id, deferredAt: day } }));
     c.ded.list.forEach(d => { if (!(d.apply > 0)) return; const src = DED.active.find(a => a.id === d.id); if (!src) return; const used = R2((src.used || 0) + d.apply), hist = (src.hist || []).concat([{ d: day, amt: d.apply, ref: id }]); ops.push({ op: 'update', col: 'deductions', id: d.id, data: { used, hist, st: used >= src.total - 0.005 ? '완료' : src.st || '', updatedAt: now } }); });
     if (c.office.amt > 0) ops.push({ op: 'set', col: 'bonusAcc', id: 'B' + id, data: { id: 'B' + id, d: day, sm: P.sm, amt: c.office.amt, src: '정산 확정', note: '정산 ' + P.sm + ' ' + day, ref: id } });
     let payee = null; try { payee = await S.DB.get('payees', P.sm); } catch (e) {}
-    if (payee && payee.kind === '커미션' && c.finalPay > 0) ops.push({ op: 'set', col: 'pay1099', id: 'N' + id, data: { id: 'N' + id, d: day, who: P.sm, co: payee.co || '', amt: c.finalPay, gross: c.finalPay, acc: 0, note: '정산 확정', ref: id } });
+    if (payee && payee.kind === '커미션' && c.pay > 0) ops.push({ op: 'set', col: 'pay1099', id: 'N' + id, data: { id: 'N' + id, d: day, who: P.sm, co: payee.co || '', amt: c.pay, gross: c.pay, acc: 0, note: '정산 확정', ref: id } });
     await S.DB.batch(ops);
     toast('확정 완료 — ' + keys.size + '건' + (deferred ? ' · 다음 정산으로 ' + deferred + '건' : '') + (c.skipped.length ? ' (금액 오류 ' + c.skipped.length + '건 제외)' : ''), 'good');
     HIST = null; C.at = 0; DED = null; DOVER = {};
@@ -454,6 +457,7 @@ async function pageAR() {
   if (AV_SM) stores = stores.filter(s => (s.sm || '(없음)') === AV_SM);
   const total = sum(stores, s => s.net), bk = [0, 1, 2, 3, 4].map(i => sum(stores, s => s.b[i])), pct90 = Math.round(bk[4] / Math.max(1, total) * 100);
   const bySm = groupBy(stores, s => s.sm || '(없음)');
+  const trend = AV_SM ? [] : await arTrend(asOf, total, bk);
   const smRows = sortBy(Object.keys(bySm).map(sm => ({ sm, total: sum(bySm[sm], s => s.net), n: bySm[sm].length, b: [0, 1, 2, 3, 4].map(i => sum(bySm[sm], s => s.b[i])), dorm: bySm[sm].filter(s => s.dormant).length })), x => x.total, true);
   const top = sortBy(stores.filter(s => s.maxPdd > 60), s => s.net, true).slice(0, 40), stale = sortBy(stores.filter(s => !s.lastPaid || daysBetween(s.lastPaid, t) > 60), s => s.net, true).slice(0, 40), moved = sortBy(stores.filter(s => s.moved), s => s.net, true);
   const LB = ['기한 전', '1-30', '31-60', '61-90', '90+'];
@@ -465,7 +469,7 @@ async function pageAR() {
     '<div class="kpi" style="grid-template-columns:repeat(5,1fr)">' + LB.map((l, i) => '<div class="k' + i + '"><b style="font-size:11.5px">' + k(bk[i]) + '</b><span>' + l + '</span></div>').join('') + '</div>' +
     '<div class="chips">' + views.map(v => '<button class="' + (AV === v[0] ? 'on' : '') + '" data-av="' + v[0] + '">' + v[1] + '</button>').join('') + '</div></div>';
   const storeRow = (s, extra) => '<div class="pr tap" data-fs="' + esc(s.acct) + '"><div class="ct"><b>' + esc(s.store) + '</b><small>' + esc(s.acct) + ' · ' + esc(s.sm || '담당 없음') + (s.moved ? ' <span style="color:#6b21a8">← SmartBee ' + esc(s.moved) + '</span>' : '') + (s.lastPaid ? ' · 마지막 수금 ' + md(s.lastPaid) : ' · 수금 기록 없음') + (s.dormant ? ' · 💤' : '') + '</small></div>' + (extra || '') + '<div class="pa"><b>' + money(s.net) + '</b></div></div>';
-  if (AV === 'sum') h += '<div class="card"><h2>세일즈맨별 미수금 · 90일+ 비율</h2><table><tr><th>이름</th><th class="r">미수금</th><th class="r">90일+</th></tr>' + smRows.map(x => '<tr class="tap" data-avsm="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b><small style="display:block;color:#94a3b8;font-size:11px">' + x.n + '곳' + (x.dorm ? ' · 💤 ' + x.dorm : '') + '</small>' + stack(x.b, x.total) + '</td><td class="r"><b>' + money(x.total) + '</b></td><td class="r ' + (x.b[4] / Math.max(1, x.total) >= 0.3 ? 'warn' : '') + '">' + Math.round(x.b[4] / Math.max(1, x.total) * 100) + '%</td></tr>').join('') + '</table><div class="hint" style="text-align:center">이름을 누르면 그 담당만 · 막대 = 기한전/1-30/31-60/61-90/90+</div></div>';
+  if (AV === 'sum') h += trendBox(trend) + '<div class="card"><h2>세일즈맨별 미수금 · 90일+ 비율</h2><table><tr><th>이름</th><th class="r">미수금</th><th class="r">90일+</th></tr>' + smRows.map(x => '<tr class="tap" data-avsm="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b><small style="display:block;color:#94a3b8;font-size:11px">' + x.n + '곳' + (x.dorm ? ' · 💤 ' + x.dorm : '') + '</small>' + stack(x.b, x.total) + '</td><td class="r"><b>' + money(x.total) + '</b></td><td class="r ' + (x.b[4] / Math.max(1, x.total) >= 0.3 ? 'warn' : '') + '">' + Math.round(x.b[4] / Math.max(1, x.total) * 100) + '%</td></tr>').join('') + '</table><div class="hint" style="text-align:center">이름을 누르면 그 담당만 · 막대 = 기한전/1-30/31-60/61-90/90+</div></div>';
   else if (AV === 'top') h += '<div class="card"><h2>연체 큰 순 (61일 이상)</h2>' + (top.map(s => storeRow(s, '<span class="agebadge ' + (s.maxPdd > 90 ? 'a4' : 'a3') + '">' + s.maxPdd + '일</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'stale') h += '<div class="card"><h2>잔액은 있는데 60일 넘게 수금 없음</h2>' + (stale.map(s => storeRow(s, '<span class="agebadge a3">' + (s.lastPaid ? daysBetween(s.lastPaid, t) + '일' : '없음') + '</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'moved') h += '<div class="card"><h2>SmartBee 담당과 실제 수금 담당이 다른 가게</h2><div class="alert a-blu">앱은 최근 1년 실제 수금한 사람을 담당으로 봅니다. SmartBee 쪽 담당을 고치면 사라집니다.</div>' + (moved.map(s => storeRow(s)).join('') || '<div class="none">없음</div>') + '</div>';
@@ -476,9 +480,22 @@ async function pageAR() {
   document.querySelectorAll('[data-fs]').forEach(el => el.onclick = () => Router.go('find', encodeURIComponent(el.dataset.fs)));
   if (AV === 'old') paintOld();
 }
+/* ---- AR 추이 — AR 을 올릴 때마다 기준일별 합계를 ar/_trend 에 쌓아 둠 (옛 대시보드 AR TREND) ---- */
+async function arTrend(asOf, total, bk) {
+  let doc = null; try { doc = await S.DB.get('ar', '_trend'); } catch (e) {}
+  const pts = (doc && doc.pts) || [];
+  if (asOf && !pts.some(p => p.asOf === asOf)) { pts.push({ asOf, total: R2(total), b90: R2(bk[4]), b61: R2(bk[3]) }); pts.sort((a, b) => a.asOf < b.asOf ? -1 : 1); while (pts.length > 60) pts.shift(); try { await S.DB.set('ar', '_trend', { pts, updatedAt: new Date().toISOString() }); } catch (e) {} }
+  return pts;
+}
+function trendBox(pts) {
+  if (!pts || pts.length < 2) return '';
+  const P2 = pts.slice(-16), mx = Math.max(1, ...P2.map(p => p.total)), first = P2[0], last = P2[P2.length - 1], diff = R2(last.total - first.total);
+  return '<div class="card"><h2>📈 미수금 추이 (AR 올린 기준일마다)</h2><div class="heroSub">' + esc(first.asOf) + ' → ' + esc(last.asOf) + ' · <b class="' + (diff > 0 ? 'warn' : 'ok') + '">' + (diff > 0 ? '+' : '') + money(diff) + '</b></div>' +
+    '<div class="trend">' + P2.map(p => '<div title="' + esc(p.asOf) + ' ' + money(p.total) + '"><i style="height:' + Math.max(3, Math.round(p.total / mx * 70)) + 'px"><b style="height:' + Math.round(p.b90 / Math.max(1, p.total) * 100) + '%"></b></i><span>' + esc(p.asOf.substring(5)) + '</span></div>').join('') + '</div><div class="hint" style="text-align:center">막대 = 미수금 합계 · 빨간 부분 = 90일+</div></div>';
+}
 function paintOld() {
   const el = $('oldBox'); if (!el) return;
-  const t = today(), old = Number(S.settings.oldDays) || 90, last = {};
+  const t = today(), old = Number(S.settings.oldDays) || 45, last = {};
   C.ents.forEach(e => { if (e.acct && (!last[e.acct] || e.d > last[e.acct])) last[e.acct] = e.d; });
   const list = sortBy(S.accounts.filter(a => !AV_SM || (a.sm || '') === AV_SM).map(a => ({ store: a.store, acct: a.acct, sm: a.sm, last: last[a.acct] || '', days: last[a.acct] ? daysBetween(last[a.acct], t) : '' })), x => x.days === '' ? 99999 : x.days, true);
   const overdue = list.filter(x => x.days === '' || x.days > old).length;
