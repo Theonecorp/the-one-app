@@ -16,7 +16,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.12';
+export const VER = 'v0.8.13';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -26,10 +26,10 @@ const ADMIN_EMAILS = ['luke@theonefl.com'];
  *   admin     관리자: 전부 */
 const NAV = {
   salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '오더', 'Orders'], ['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
-  office:   [['order', '🛒', '오더', 'Orders'], ['verify', '✅', '수금 확인', 'Verify'], ['cod', '💳', 'COD·ACH', 'COD'], ['stores', '🏬', '거래처', 'Stores'], ['arup', '📤', 'AR 올리기', 'AR Upload'], ['ach', '🏦', 'ACH', 'ACH']],
+  office:   [['order', '🛒', '오더', 'Orders'], ['verify', '✅', '수금 확인', 'Verify'], ['cod', '💳', 'COD·카드', 'COD/Card'], ['stores', '🏬', '거래처', 'Stores'], ['arup', '📤', 'AR 올리기', 'AR Upload'], ['ach', '🏦', 'ACH', 'ACH']],
   invoice:  [['order', '🧾', '인보이스', 'Invoicing'], ['stores', '🏬', '거래처', 'Stores'], ['verify', '✅', '수금 확인', 'Verify']],
   pick:     [['order', '📦', '픽킹', 'Picking'], ['stores', '🏬', '거래처', 'Stores']],
-  acct:     [['verify', '✅', '수금 확인', 'Verify'], ['order', '🧾', '인보이스', 'Invoices'], ['cod', '💳', 'COD·ACH', 'COD'], ['ach', '🏦', 'ACH', 'ACH'], ['arup', '📤', 'AR 올리기', 'AR Upload'], ['stores', '🏬', '거래처', 'Stores']],
+  acct:     [['verify', '✅', '수금 확인', 'Verify'], ['order', '🧾', '인보이스', 'Invoices'], ['cod', '💳', 'COD·카드', 'COD/Card'], ['ach', '🏦', 'ACH', 'ACH'], ['arup', '📤', 'AR 올리기', 'AR Upload'], ['stores', '🏬', '거래처', 'Stores']],
   admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '오더', 'Orders'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
 };
 NAV.manager = NAV.office;

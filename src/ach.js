@@ -9,7 +9,7 @@
  *  자료: ach/{id} (건) · achBank/{acct} (은행 정보 — achAccess 있는 사람만) · accounts/{acct}.ach* (상태 표시용)
  *  인출 완료(수동 · 자동: 예정일 + 3영업일) → cod 컬렉션에 method 'ACH' 로 넣어 수금 확인 · 정산으로 흐름
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, md, addDays, daysBetween, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, pad4, nz, sel } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, addDays, daysBetween, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, pad4, nz, sel, hasWords } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts } from './accounts.js';
 import { invType } from './comm.js';
@@ -185,7 +185,7 @@ async function paintJobs() {
   $('jq').oninput = () => { JF.q = $('jq').value; paintJobList(rows); };
   paintJobList(rows);
 }
-function applyFilter(list) { const q = JF.q.trim().toUpperCase(); return list.filter(o => (!JF.sm || String(o.sm || '').toUpperCase() === JF.sm) && (!q || (String(o.store || '') + ' ' + o.acct + ' ' + String(o.inv || '')).toUpperCase().includes(q))); }
+function applyFilter(list) { const q = JF.q.trim().toUpperCase(); return list.filter(o => (!JF.sm || String(o.sm || '').toUpperCase() === JF.sm) && (!q || hasWords(String(o.store || '') + ' ' + o.acct + ' ' + String(o.inv || '') + ' ' + String(o.sm || ''), q))); }
 async function paintJobList(rows) {
   const box = $('jobList'); if (!box) return;
   if (SEG === 'done') return paintDone(box);

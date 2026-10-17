@@ -2,7 +2,7 @@
  *  담당자(회계) 화면 — 확인(SmartBee ✓ · 체크 수령 ✓) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
  * ============================================================ */
 import { invTypes } from './invoicing.js';
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, dropAccountCache } from './accounts.js';
 import { invType } from './comm.js';
@@ -28,7 +28,7 @@ async function pageVerify() {
   const todo = rows.filter(r => !r.sb), wait = rows.filter(r => r.sb && !r.rc), bad = rows.filter(r => r.mismatch && !r.v);
   let list = VF.f === 'todo' ? todo : VF.f === 'wait' ? wait : VF.f === 'bad' ? bad : rows;
   if (VF.sm) list = list.filter(r => r.sm === VF.sm);
-  if (VF.q) { const q = nz(VF.q); list = list.filter(r => nz(r.store).includes(q) || (r.pays || []).some(p => String(p.ref).includes(VF.q)) || String(r.acct).includes(VF.q)); }
+  if (VF.q) { list = list.filter(r => hasWords(r.store + ' ' + r.acct + ' ' + (r.sm || ''), VF.q) || (r.pays || []).some(p => String(p.ref).includes(VF.q.trim()))); }
   list = sortBy(list, r => r.d + (r.createdAt || ''), true);
   const by = groupBy(list, r => r.d), days = Object.keys(by).sort().reverse();
   const tdy = rows.filter(r => r.d === today());
@@ -76,7 +76,7 @@ function verifyDetail(r) {
 /* ============================================================
  *  ② COD · 카드 · ACH 입력  (cod/{id})
  * ============================================================ */
-const METHODS = ['COD', 'CREDIT CARD', 'ACH'];
+const METHODS = ['COD', 'CREDIT CARD'];   /* ACH 는 🏦 ACH 에서 인출 완료하면 자동으로 들어옴 — 여기서 직접 입력하지 않음 */
 let CF = { q: '', m: 'all' };
 async function pageCod() {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
@@ -84,7 +84,7 @@ async function pageCod() {
   rows = sortBy(rows, r => r.d + (r.createdAt || ''), true);
   if (CF.m !== 'all') rows = rows.filter(r => r.method === CF.m);
   const by = groupBy(rows, r => r.d), days = Object.keys(by).sort().reverse();
-  let h = '<div class="card"><h2>💳 COD · 카드 · ACH 입력</h2><div class="muted">체크 없이 들어온 돈. 여기 넣으면 루크 정산에 바로 뜹니다.</div>' +
+  let h = '<div class="card"><h2>💳 COD · 카드 입력</h2><div class="muted">우편 체크 · COD · 카드로 들어온 돈. 세일즈맨을 골라 넣으면 루크 정산에 바로 뜹니다.<br><span style="color:#1e40af">🏦 ACH 는 여기서 입력하지 않습니다 — <u data-goach>ACH 메뉴</u>에서 인출 완료하면 자동으로 이 목록에 들어옵니다.</span></div>' +
     '<div class="chips">' + [['all', '전체'], ['COD', 'COD'], ['CREDIT CARD', '카드'], ['ACH', 'ACH']].map(c => '<button class="' + (CF.m === c[0] ? 'on' : '') + '" data-cm="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' +
     '<button class="b-blue" id="btnCodNew" style="margin-top:8px">＋ 입력</button></div>';
   if (!days.length) h += '<div class="card"><div class="none">최근 2개월 기록 없음</div></div>';
@@ -93,15 +93,16 @@ async function pageCod() {
   $('page').innerHTML = h;
   document.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { CF.m = b.dataset.cm; pageCod(); });
   $('btnCodNew').onclick = () => codForm(null);
+  document.querySelectorAll('[data-goach]').forEach(u => { u.style.cursor = 'pointer'; u.onclick = () => Router.go('ach'); });
   document.querySelectorAll('[data-cid]').forEach(el => el.onclick = () => codForm(rows.find(x => x.id === el.dataset.cid)));
 }
 function codForm(r) {
   r = r || {};
   const invs = (r.invs || []).concat([{ no: '', amt: '' }]);
-  openModal('<h2>' + (r.id ? '수정' : '＋ COD · 카드 · ACH') + '</h2>' +
+  openModal('<h2>' + (r.id ? '수정' + (r.method === 'ACH' ? ' (ACH · 🏦 ACH 에서 들어옴)' : '') : '＋ COD · 카드') + '</h2>' +
     '<div class="two"><div class="fg"><label>세일즈맨</label>' + sel('cSm', smOptions(null, true), r.sm || '') + '</div><div class="fg"><label>날짜</label>' + inputDate('cD', r.d) + '</div></div>' +
     '<div class="fg"><label>가게</label><input id="cStore" value="' + esc(r.store || '') + '" placeholder="가게 이름 · 계정코드" autocomplete="off"><div class="hits" id="cHits" style="display:none"></div><input type="hidden" id="cAcct" value="' + esc(r.acct || '') + '"></div>' +
-    '<div class="seg" id="cM">' + METHODS.map(m => '<button class="' + ((r.method || 'COD') === m ? 'on' : '') + '" data-m="' + m + '">' + (m === 'CREDIT CARD' ? '카드' : m) + '</button>').join('') + '</div>' +
+    '<div class="seg" id="cM">' + (r.method === 'ACH' ? ['ACH'] : METHODS).map(m => '<button class="' + ((r.method || 'COD') === m ? 'on' : '') + '" data-m="' + m + '">' + (m === 'CREDIT CARD' ? '카드' : m) + '</button>').join('') + '</div>' +
     '<div class="two"><div class="fg"><label>참조 # (선택)</label><input id="cRef" value="' + esc(r.ref || '') + '"></div><div class="fg"><label>금액 $</label><input id="cAmt" inputmode="decimal" value="' + esc(r.amt || '') + '" style="font-weight:800;text-align:right"></div></div>' +
     '<div class="fg"><label>인보이스 (번호 · 금액)</label><div id="cInvs">' + invs.map((v, i) => '<div class="invrow"><input data-cno="' + i + '" value="' + esc(v.no) + '" placeholder="A12345" style="text-transform:uppercase"><input data-camt="' + i + '" value="' + esc(v.amt) + '" inputmode="decimal" style="text-align:right"><span></span></div>').join('') + '</div><button class="b-ghost b-sm" id="cMore">＋ 줄</button></div>' +
     '<div class="two"><div class="fg"><label>디스카운트 %</label><input id="cDisc" inputmode="decimal" value="' + esc(r.disc == null ? '' : r.disc) + '"></div><div class="fg"><label>메모</label><input id="cNote" value="' + esc(r.note || '') + '"></div></div>' +
