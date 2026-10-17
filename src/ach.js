@@ -90,7 +90,7 @@ async function paintNew() {
   if (!F.acct) h += '<div class="fg" style="position:relative"><label>가게 · 계정코드 <span class="en">Store / Acct #</span></label><input id="aQ" placeholder="1234 또는 가게 이름" autocomplete="off"><div class="hits" id="aHits" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:30"></div></div>';
   else {
     h += '<div class="info"><div class="nm">' + esc(F.store) + '<span class="code">' + esc(F.acct) + '</span></div><div class="kv"><b>상태</b><span>' + achTag(a) + '</span></div>' + (a && a.sm ? '<div class="kv"><b>담당</b><span>' + esc(a.sm) + (a.city ? ' · ' + esc(a.city) + (a.state ? ', ' + esc(a.state) : '') : '') + '</span></div>' : '') +
-      (a && a.ach && !a.achEm ? '<div class="kv"><b>⚠️</b><span>고객 이메일 없음 — 안내 메일이 안 나갑니다</span></div>' : '') +
+      (a && a.ach ? '<div class="kv"><b>📧 메일</b><span>' + (a.achEm ? esc(a.achEm) : '<span style="color:#fde68a">고객 이메일 없음 — 안내 메일이 안 나갑니다</span>') + (a.achRepEm ? ' · ' + esc(a.achRepEm) : '') + ' <button type="button" id="aEm" style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:2px 8px;font-size:11.5px">고치기</button></span></div>' : '') +
       '<div class="tools"><button type="button" id="aUnpick">다른 가게 · Change</button>' + (!a || !a.ach || !a.achReady ? '<button type="button" id="aReg">🏦 은행 정보 등록 · Register</button>' : '<button type="button" id="aHist">📜 ACH 이력 · History</button>') + '</div></div>';
     if (!a || !a.ach) h += '<div class="alert a-amb">거래처에 ACH 등록이 안 된 가게입니다. 지금 입력은 그대로 저장해도 되고, Cash Pro 에 올리려면 Application(은행 정보)이 필요합니다.</div>';
   }
@@ -120,6 +120,7 @@ function bindNew() {
   if ($('aUnpick')) $('aUnpick').onclick = () => { collectNew(); F.acct = ''; F.store = ''; F.sm = ''; paintNew(); };
   if ($('aReg')) $('aReg').onclick = () => { collectNew(); REG_BACK = F.acct; AQ = F.acct; Router.go('ach', 'acct'); };
   if ($('aHist')) $('aHist').onclick = () => acctHist(F.acct, F.store);
+  if ($('aEm')) $('aEm').onclick = () => { const a = acctInfo(F.acct) || {}; openModal('<h2>안내 메일 받는 곳 — ' + esc(F.store) + '</h2><div class="hint">여기서 고치면 거래처에도 저장됩니다.</div><div class="fg"><label>고객 이메일</label><input id="emC" type="email" value="' + esc(a.achEm || '') + '"></div><div class="fg"><label>담당자 이메일 (선택)</label><input id="emR" type="email" value="' + esc(a.achRepEm || '') + '"></div><div class="btns"><button class="b-ghost" id="mX">취소</button><button class="b-blue" id="mOk">저장</button></div>'); $('mX').onclick = closeModal; $('mOk').onclick = async () => { const c = $('emC').value.trim(), r = $('emR').value.trim(); if (!c) return toast('고객 이메일을 넣어 주세요', 'bad'); busy(true); try { await S.DB.update('accounts', F.acct, { achEm: c, achRepEm: r, updatedAt: new Date().toISOString() }); const { bumpAccountsVer } = await import('./mgr.js'); await bumpAccountsVer(); closeModal(); toast('저장했습니다', 'good'); collectNew(); paintNew(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); }; };
   $('aInvD').onchange = () => { collectNew(); F.touched = false; paintNew(); };
   $('aTerms').onchange = () => { collectNew(); F.touched = false; paintNew(); };
   $('aDraw').onchange = () => { collectNew(); F.touched = true; F.drawOn = $('aDraw').value; paintNew(); };
@@ -139,6 +140,7 @@ async function saveNew(force) {
   for (const v of lines) { if (!v.no) return toast('인보이스 번호가 빈 줄이 있습니다', 'bad'); if (!num(v.amt)) return toast('[' + v.no + '] 금액이 없습니다', 'bad'); }
   if (!F.invDate) return toast('인보이스 날짜를 넣어 주세요', 'bad');
   if (!F.drawOn) return toast('인출 예정일이 없습니다', 'bad');
+  lines.forEach(v => { if (invType(v.no) === 'CM' && num(v.amt) > 0) v.amt = String(-Math.abs(num(v.amt))); });   /* 크레딧 메모는 마이너스로 */
   const amt = sum(lines, v => num(v.amt));
   /* 중복: 같은 가게 · 같은 인보이스 번호가 미완료 건에 있으면 */
   if (!force) {
@@ -148,7 +150,7 @@ async function saveNew(force) {
     else if (!(await confirmBox(F.store + ' · ' + money(amt) + ' · 인출 ' + F.drawOn + '\n' + nos.join(', ') + '\n저장할까요? · Save?', '저장 Save'))) return;
   }
   const id = newId('H'), now = new Date().toISOString();
-  const doc = { id, acct: F.acct, store: F.store, sm: F.sm || '', lines: lines.map(v => ({ no: v.no, t: invType(v.no), amt: R2(num(v.amt)) })), inv: lines.map(v => v.no).join(', '), amt, invDate: F.invDate, terms: F.terms, drawOn: F.drawOn, drawYm: ym(F.drawOn), moved: !!F.moved && !F.touched,
+  const doc = { id, acct: F.acct, store: F.store, sm: F.sm || '', lines: lines.map(v => ({ no: v.no, t: invType(v.no), amt: R2(num(v.amt)) })), inv: lines.map(v => v.no).join(', '), amt, invDate: F.invDate, terms: F.terms, drawOn: F.drawOn, drawYm: ym(F.drawOn), moved: !!F.moved && !F.touched, fixed: !!F.touched,
     setup: false, setupBy: '', setupAt: '', mail: '', st: '', open: true, done: false, doneOn: '', doneYm: '', doneAmt: 0, auto: false, codId: '', note: F.note.trim(), void: false, createdBy: S.user.email, createdAt: now, updatedAt: now };
   busy(true);
   try { await S.DB.set('ach', id, doc); drop(); toast('저장했습니다 · ' + money(amt) + ' · 인출 예정 ' + F.drawOn, 'good'); resetF(); paintNew(); }
@@ -200,7 +202,7 @@ async function paintJobList(rows) {
 function jobCard(o) {
   if (o.done) return '<div class="job set"><div class="tap" data-det="' + o.id + '"><div class="t"><span class="st">' + esc(o.store || o.acct) + '</span><span class="am">' + money(o.doneAmt || o.amt) + '</span></div><div class="m"><span>' + esc(o.inv) + '</span><span>✅ 완료 ' + esc(o.doneOn) + (o.auto ? ' (자동)' : '') + '</span>' + (o.codId ? '<span>💳 COD·ACH 반영</span>' : '') + '</div></div></div>';
   const b = bucket(o), cls = b === 'late' || b === 'nsf' ? 'late' : b === 'hold' ? 'hold' : isSoon(o) ? 'soon' : o.setup ? 'set' : 'wait';
-  const meta = []; if (o.drawOn) meta.push('인출 ' + o.drawOn); if (o.terms) meta.push(o.terms); if (o.sm) meta.push(o.sm); if (o.mail) meta.push('📧 보냄'); else if (mailDue(o)) meta.push('📧 안내 메일 보낼 때'); if (o.st === 'HOLD') meta.push('⏸ 보류'); if (o.redrawOf) meta.push('🔁 재인출');
+  const meta = []; if (o.drawOn) meta.push('인출 ' + o.drawOn); if (o.terms) meta.push(o.terms); if (o.sm) meta.push(o.sm); if (o.mail) meta.push('📧 보냄'); else if (mailDue(o)) meta.push('📧 안내 메일 보낼 때'); if (o.st === 'HOLD') meta.push('⏸ 보류'); if (o.fixed) meta.push('📌 날짜 고정'); if (o.redrawOf) meta.push('🔁 재인출');
   return '<div class="job ' + cls + '"><div class="tap" data-det="' + o.id + '"><div class="t"><span class="st">' + esc(o.store || o.acct) + '</span><span class="am">' + money(o.amt) + '</span></div><div class="m"><span>' + esc(o.inv) + '</span>' + meta.map(x => '<span>' + esc(x) + '</span>').join('') + '<span class="open">🏦 Cash Pro 정보 ›</span></div></div>' +
     '<div class="acts">' + (o.setup ? '<button class="b-ghost" data-setup="' + o.id + '|0">셋업 취소</button>' : '<button class="b-blue" data-setup="' + o.id + '|1">Cash Pro 셋업 ☑</button>') + '<button class="' + (o.mail ? 'b-ghost' : 'b-amb') + '" data-mail="' + o.id + '">📧 안내 메일' + (o.mail ? ' (보냄)' : '') + '</button></div>' +
     (o.setup && o.st !== 'NSF' ? '<div class="acts"><button class="b-ghost b-sm" data-nsf="' + o.id + '">⚠️ 인출이 안 됐어요 — 반송 (NSF)</button><button class="b-ghost b-sm" data-done="' + o.id + '">✅ 인출 완료 (지금)</button></div>' : '') +
@@ -228,7 +230,7 @@ async function byId(id) { const o = (OPEN || []).find(x => x.id === id); return 
 async function markDone(o, amt, auto) {
   const d = auto ? o.drawOn : today(), now = new Date().toISOString(), codId = o.codId || newId('C');
   if (!o.codId) await S.DB.set('cod', codId, { id: codId, d, ym: ym(d), sm: o.sm || (acctInfo(o.acct) || {}).sm || '', acct: o.acct, store: o.store, method: 'ACH', ref: 'ACH ' + o.drawOn, amt: R2(amt), invs: (o.lines || []).map(l => ({ no: l.no, t: l.t || invType(l.no), amt: l.amt })), disc: '', note: (auto ? '자동 완료 · ' : '') + (o.note || ''), achId: o.id, v: false, vn: '', settled: '', void: false, createdBy: S.user.email, createdAt: now });
-  await S.DB.update('ach', o.id, { done: true, doneOn: d, doneYm: ym(d), doneAmt: R2(amt), auto: !!auto, open: false, codId, st: 'done', updatedAt: now });
+  await S.DB.update('ach', o.id, { done: true, setup: true, doneOn: d, doneYm: ym(d), doneAmt: R2(amt), auto: !!auto, open: false, codId, st: 'done', updatedAt: now });
   drop();
 }
 function doneAsk(id) {
@@ -265,8 +267,18 @@ async function paintDone(box) {
   let rows = []; try { rows = (await S.DB.list('ach', { where: [['doneYm', 'in', [m0, m1]]] })).filter(o => o.done && !o.void); } catch (e) { box.innerHTML = '<div class="none">' + esc(e.code || e.message) + '</div>'; return; }
   rows = applyFilter(sortBy(rows, o => o.doneOn + (o.updatedAt || ''), true));
   box.innerHTML = '<div class="card" style="padding:12px"><div class="hint" style="margin:0">ACH 는 Cash Pro 에 올려 두면 예정일에 그대로 빠지므로, <b>인출 예정일 + 3영업일</b>이 지나면 자동으로 완료되고 💳 COD·ACH 목록에 들어갑니다.<br>은행에서 <b>반송(NSF) 통지</b>가 오면 그 건만 되돌리세요.</div></div>' +
-    (rows.length ? rows.map(o => '<div class="job set"><div class="t"><span class="st">' + esc(o.store) + '</span><span class="am">' + money(o.doneAmt || o.amt) + '</span></div><div class="m"><span>' + esc(o.inv) + '</span><span>완료 ' + esc(o.doneOn) + '</span>' + (o.auto ? '<span>자동</span>' : '') + (o.codId ? '<span>💳 COD·ACH 반영</span>' : '') + '</div><div class="acts"><button class="b-ghost b-sm" data-nsf="' + o.id + '">반송 (NSF) 로 되돌리기</button></div></div>').join('') : '<div class="none">최근 두 달 완료된 건이 없습니다</div>');
+    (rows.length ? rows.map(o => '<div class="job set"><div class="t"><span class="st">' + esc(o.store) + '</span><span class="am">' + money(o.doneAmt || o.amt) + '</span></div><div class="m"><span>' + esc(o.inv) + '</span><span>완료 ' + esc(o.doneOn) + '</span>' + (o.auto ? '<span>자동</span>' : '') + (o.codId ? '<span>💳 COD·ACH 반영</span>' : '') + '</div><div class="acts"><button class="b-ghost b-sm" data-nsf="' + o.id + '">반송 (NSF) 로 되돌리기</button><button class="b-ghost b-sm" data-undo="' + o.id + '">↩ 완료 취소 (다시 대기)</button></div></div>').join('') : '<div class="none">최근 두 달 완료된 건이 없습니다</div>');
   box.querySelectorAll('[data-nsf]').forEach(b => b.onclick = () => nsfAsk(b.dataset.nsf));
+  box.querySelectorAll('[data-undo]').forEach(b => b.onclick = () => undoDone(b.dataset.undo));
+}
+/** 완료 되돌리기 — 잘못 자동 완료된 건을 다시 예약 상태로. COD·ACH 줄은 취소 */
+async function undoDone(id) {
+  const o = await byId(id); if (!o) return;
+  if (!(await confirmBox(o.store + ' · ' + money(o.doneAmt || o.amt) + ' 의 완료를 취소할까요? 다시 [예약됨] 으로 돌아가고 💳 COD·ACH 의 그 줄은 취소됩니다.', '완료 취소'))) return;
+  busy(true);
+  try { if (o.codId) { try { await S.DB.update('cod', o.codId, { void: true, note: '완료 취소 ' + today() }); } catch (e) {} } await S.DB.update('ach', o.id, { done: false, open: true, st: '', doneOn: '', doneYm: '', doneAmt: 0, auto: false, codId: '', undoneAt: today(), updatedAt: new Date().toISOString() }); drop(); toast('완료를 취소했습니다 — [예약됨] 에 있습니다', 'good'); }
+  catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+  busy(false); SEG = 'wait'; refresh();
 }
 /* ---- 상세 (Cash Pro 입력용) ---- */
 async function detail(id) {
@@ -389,7 +401,7 @@ function calDay(L) {
  * ============================================================ */
 async function paintStats() {
   const rows = await openRows(true), t = today();
-  const wkEnd = addDays(t, 6 - new Date(t + 'T12:00:00').getDay()), m0 = ym(t);
+  const wkEnd = addDays(t, 7), m0 = ym(t);
   let doneM = []; try { doneM = (await S.DB.list('ach', { where: [['doneYm', '==', m0]] })).filter(o => o.done && !o.void); } catch (e) {}
   const g = { late: rows.filter(o => bucket(o) === 'late'), need: rows.filter(o => bucket(o) === 'need'), soon: rows.filter(isSoon), week: rows.filter(o => o.open && o.st !== 'NSF' && o.drawOn >= t && o.drawOn <= wkEnd), nsf: rows.filter(o => o.st === 'NSF'), hold: rows.filter(o => o.st === 'HOLD'), mail: rows.filter(mailDue), newApp: rows.filter(o => { const a = acctInfo(o.acct); return !a || !a.ach; }) };
   const audit = auditRows(rows);
