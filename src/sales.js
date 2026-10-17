@@ -5,9 +5,10 @@
  *    total, invTotal, mismatch, memo, repl, orig, disc,
  *    sb, rc, v, vn, settled, void, createdBy, createdAt, updatedAt }
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, accountLabel } from './accounts.js';
+import * as Store from './store.js';
 import { lineOfEntry, lineOfOther, computeComm, ratesOf, commSettings, invType, SEC_LABEL } from './comm.js';
 
 let S = null, ME = '', CACHE = { entries: null, ar: null, arAt: 0 };
@@ -51,63 +52,81 @@ function loadIntoForm(e) {
 }
 function paintEntry() {
   const acc = F.acct ? S.accounts.byCode[F.acct] : null;
-  let h = '<div class="card">' + (F.editing ? '<div class="alert a-amb" style="margin:0 0 10px">✏️ 수정 중 — ' + esc(F.editing) + ' <button class="b-ghost b-sm" style="float:right" id="btnCancelEdit">취소</button></div>' : '') +
-    '<h2>가게</h2>';
+  const got = payTotal(), inv = invTotal();
+  const step = !F.store ? 1 : !got ? 2 : (!F.invs.length ? 3 : 4);
+  /* 단계 표시 — 세일즈맨이 어디까지 했는지 한눈에 */
+  const steps = [['가게', 'Store', !!F.store], ['받은 돈', 'Payment', got > 0], ['인보이스', 'Invoice', F.invs.length > 0], ['저장', 'Save', false]];
+  let h = '<div class="steps">' + steps.map((x, i) => '<div class="st' + (x[2] ? ' done' : '') + (i + 1 === step ? ' now' : '') + '"><span class="n">' + (x[2] ? '✓' : i + 1) + '</span><b>' + x[0] + '</b><small>' + x[1] + '</small></div>').join('') + '</div>';
+  h += '<div class="card">' + (F.editing ? '<div class="alert a-amb" style="margin:0 0 10px">✏️ 수정 중 — ' + esc(F.editing) + ' <button class="b-ghost b-sm" style="float:right" id="btnCancelEdit">취소</button></div>' : '') +
+    '<h2>🏬 ' + bi('가게', 'Store') + '</h2>';
   if (F.store) {
-    h += '<div class="pick on" id="storeCard"><div class="pm"><b>' + esc(F.store) + '</b>' + (F.newStore ? ' <span class="tag t-c">신규</span>' : '') + '<small>' + (acc ? esc(acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ')) : esc(F.addr || '계정 없음')) + '</small></div><button class="b-ghost b-sm" id="btnStoreX">바꾸기</button></div>';
+    h += '<div class="pick on" id="storeCard" style="padding:12px"><div class="pm"><b style="font-size:17px">' + esc(F.store) + '</b>' + (F.newStore ? ' <span class="tag t-c">신규 new</span>' : '') + '<small>' + (acc ? esc(acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ')) : esc(F.addr || '계정 없음')) + '</small><small id="eBal"></small></div>' + (F.acct ? '<button class="b-ghost b-sm" id="btnStoreI">📋 ' + bi('기록', 'Record') + '</button>' : '') + '<button class="b-ghost b-sm" id="btnStoreX">' + bi('바꾸기', 'Change') + '</button></div>';
   } else {
-    h += '<input id="storeQ" placeholder="가게 이름 · 계정코드 · 도시" autocomplete="off"><div class="hits" id="storeHits" style="display:none"></div>' +
-         '<div id="newStoreBox" style="display:none;margin-top:8px"><div class="alert a-amb">목록에 없는 가게 — 신규 거래처로 입력합니다</div><div class="fg"><label>주소 (선택)</label><input id="newAddr" placeholder="주소, 도시, 주"></div><button class="b-blue" id="btnNewStore">이 이름으로 신규 입력</button></div>';
+    h += '<input id="storeQ" placeholder="가게 이름 · 계정코드 · 도시 / Store · Acct · City" autocomplete="off"><div class="hits" id="storeHits" style="display:none"></div>' +
+         '<div id="newStoreBox" style="display:none;margin-top:8px"><div class="alert a-amb">목록에 없는 가게 — 신규 거래처로 입력합니다 <span class="en">Not in list — enter as new store</span></div><div class="fg"><label>주소 (선택) Address</label><input id="newAddr" placeholder="주소, 도시, 주"></div><button class="b-blue" id="btnNewStore">' + bi('이 이름으로 신규 입력', 'Add as new store') + '</button></div>';
   }
-  h += '<div class="fg" style="margin-top:10px"><label>받은 날짜</label>' + inputDate('fD', F.d) + '</div></div>';
+  h += '<div class="two" style="margin-top:10px;align-items:end"><div class="fg" style="margin:0"><label>' + bi('받은 날짜', 'Date received') + '</label>' + inputDate('fD', F.d) + '</div><div class="muted" style="padding-bottom:10px">' + (F.d === today() ? '오늘 today' : dlabel(F.d)) + '</div></div></div>';
 
-  /* 결제 */
-  h += '<div class="card"><h2>받은 돈</h2><div id="pays">' + F.pays.map((p, i) => payRow(p, i)).join('') + '</div>' +
-    '<div class="btns" style="margin-top:4px"><button class="b-ghost b-sm" id="btnAddPay">＋ 결제 추가 (체크 여러 장 등)</button>' +
-    '<button class="b-ghost b-sm ' + (F.repl ? 'on' : '') + '" id="btnRepl" style="' + (F.repl ? 'background:#fee2e2;color:#991b1b' : '') + '">🔁 대체 체크' + (F.repl ? ' (바운스 대체분)' : '') + '</button></div>' +
-    (F.repl ? '<div class="fg" style="margin-top:8px"><label>바운스된 원래 체크 번호</label><input id="fOrig" value="' + esc(F.orig) + '" placeholder="원래 체크 #"><div class="muted">대체 체크는 커미션 계산에서 빠집니다 (이미 한 번 계산된 돈)</div></div>' : '') +
+  /* 받은 돈 — 방법 크게, 금액 크게 */
+  h += '<div class="card"><h2>💵 ' + bi('받은 돈', 'Payment received') + (got ? ' <span class="tag t-g" style="font-size:13px">' + money(got) + '</span>' : '') + '</h2><div id="pays">' + F.pays.map((p, i) => payRow(p, i)).join('') + '</div>' +
+    '<div class="btns" style="margin-top:4px;flex-wrap:wrap"><button class="b-ghost b-sm" id="btnAddPay">＋ ' + bi('체크 한 장 더', 'Add another') + '</button>' +
+    '<button class="b-ghost b-sm" id="btnRepl" style="' + (F.repl ? 'background:#fee2e2;color:#991b1b' : '') + '">🔁 ' + bi('대체 체크', 'Replacement') + (F.repl ? ' ✓' : '') + '</button></div>' +
+    (F.repl ? '<div class="fg" style="margin-top:8px"><label>바운스된 원래 체크 번호 · original bounced check #</label><input id="fOrig" value="' + esc(F.orig) + '" placeholder="원래 체크 #"><div class="muted">대체 체크는 커미션 계산에서 빠집니다 (이미 한 번 계산된 돈)</div></div>' : '') +
     '</div>';
 
-  /* 인보이스 */
-  h += '<div class="card"><h2>인보이스 (어느 인보이스 돈인지)</h2><div id="arPick"></div><div id="invLines">' + F.invs.map((v, i) => invRow(v, i)).join('') + '</div>' +
-    '<div class="btns" style="margin-top:4px"><button class="b-ghost b-sm" id="btnAddInv">＋ 직접 입력</button><button class="b-ghost b-sm" id="btnAddOther">🏬 다른 가게 인보이스</button></div>' +
-    '<div class="sumbox" id="sumBox"></div>' +
-    '<div class="fg"><label>메모</label><input id="fMemo" value="' + esc(F.memo || '') + '" placeholder="특이사항"></div></div>';
-  h += '<div class="sticky"><button class="b-green" id="btnSave" style="padding:15px">' + (F.editing ? '수정 저장' : '저장') + '</button></div>';
+  /* 인보이스 — 탭해서 고르기 */
+  h += '<div class="card"><h2>🧾 ' + bi('어느 인보이스 돈인지', 'Apply to invoices') + '</h2><div id="arPick"></div><div id="invLines">' + F.invs.map((v, i) => invRow(v, i)).join('') + '</div>' +
+    '<div class="btns" style="margin-top:4px"><button class="b-ghost b-sm" id="btnAddInv">＋ ' + bi('번호 직접 입력', 'Type invoice #') + '</button><button class="b-ghost b-sm" id="btnAddOther">🏬 ' + bi('다른 가게 인보이스', 'Other store') + '</button></div>' +
+    '<div id="sumBox" style="margin-top:8px"></div>' +
+    '<div class="fg" style="margin-top:10px"><label>📝 ' + bi('메모', 'Memo') + '</label><input id="fMemo" value="' + esc(F.memo || '') + '" placeholder="특이사항 · 할인 요청 · notes"></div></div>';
+  /* 아래 고정 바 — 오더처럼: 가게 · 받은 돈(크게) · 맞는지 */
+  h += '<div class="sticky"><div class="tbar"><div class="tl"><b>' + esc(F.store || '가게를 고르세요 · pick a store') + '</b><small id="tbSub">' + tbarSub() + '</small></div><div class="ta" id="tbAmt">' + money(got) + '</div></div>' +
+    '<div class="btns" style="margin-top:6px">' + (F.editing ? '<button class="b-ghost" id="btnCancelEdit2" style="flex:0 0 96px">' + bi('취소', 'Cancel') + '</button>' : '') + '<button class="b-green" id="btnSave">💾 ' + bi(F.editing ? '수정 저장' : '저장', 'Save') + '</button></div></div>';
   $('page').innerHTML = h;
 
   if (!F.store) {
     const q = $('storeQ');
     q.oninput = () => storeSearch(q.value);
-    q.focus();
+    if (!('ontouchstart' in window)) q.focus();
     $('btnNewStore').onclick = () => { F.store = q.value.trim().toUpperCase(); F.newStore = true; F.acct = null; F.addr = $('newAddr').value.trim(); paintEntry(); };
-  } else { $('btnStoreX').onclick = () => { F.store = ''; F.acct = null; F.newStore = false; F.picked = []; F.invs = F.invs.filter(v => v.other); paintEntry(); }; }
-  if ($('btnCancelEdit')) $('btnCancelEdit').onclick = () => { resetForm(); Router.go(S.role === 'salesman' ? 'mine' : 'verify'); };
+  } else {
+    $('btnStoreX').onclick = async () => { if ((payTotal() || F.invs.length) && !(await confirmBox('가게를 바꿀까요? 고른 인보이스는 지워집니다. / Change store?', '바꾸기'))) return; F.store = ''; F.acct = null; F.newStore = false; F.picked = []; F.invs = F.invs.filter(v => v.other); paintEntry(); };
+    if ($('btnStoreI')) $('btnStoreI').onclick = () => Store.storeSheet(F.acct);
+    if (F.acct) Store.storeInfo(F.acct).then(info => { const el = $('eBal'); if (!el || !F.acct) return; const over = info.bk[3] + info.bk[4]; el.innerHTML = info.asOf || info.invs.length ? '미수금 due <b class="' + (info.bal > 0.005 ? 'warn' : 'ok') + '">' + money(info.bal) + '</b>' + (over > 0.005 ? ' · 60일+ <b class="warn">' + money(over) + '</b>' : '') : ''; }).catch(() => {});
+  }
+  const cancelEdit = () => { resetForm(); Router.go(S.role === 'salesman' ? 'mine' : 'verify'); };
+  if ($('btnCancelEdit')) $('btnCancelEdit').onclick = cancelEdit; if ($('btnCancelEdit2')) $('btnCancelEdit2').onclick = cancelEdit;
   $('fD').onchange = () => { F.d = $('fD').value; };
-  $('btnAddPay').onclick = () => { collectForm(); F.pays.push({ m: 'CHECK', ref: '', amt: '', dep: '', mob: false }); paintEntry(); };
+  $('btnAddPay').onclick = () => { collectForm(); F.pays.push({ m: 'CHECK', ref: '', amt: '', dep: '', mob: false }); paintEntry(); setTimeout(() => { const els = document.querySelectorAll('[data-pref]'); const el = els[els.length - 1]; if (el) el.focus(); }, 0); };
   $('btnRepl').onclick = () => { collectForm(); F.repl = !F.repl; paintEntry(); };
   $('btnAddInv').onclick = () => { collectForm(); F.invs.push({ no: '', amt: '', manual: true }); paintEntry(); setTimeout(() => { const el = document.querySelector('#invLines .invrow:last-child input'); if (el) el.focus(); }, 0); };
   $('btnAddOther').onclick = () => { collectForm(); otherStoreDialog(); };
   $('btnSave').onclick = saveEntry;
   bindPays(); bindInvs(); paintArPick(); paintSum();
 }
+function tbarSub() {
+  const got = payTotal(), inv = invTotal(), diff = R2(got - inv);
+  const ways = F.pays.filter(p => num(p.amt)).map(p => p.m === 'CHECK' ? '체크' + (p.ref ? ' #' + p.ref : '') : p.m === 'CASH' ? '캐쉬' : 'Zelle').join(' · ');
+  return (ways || '받은 돈을 넣으세요 · enter payment') + (F.invs.length ? (Math.abs(diff) > 0.009 ? ' · ⚠️ 차액 ' + money(diff) : ' · ✓ 인보이스 맞음') : '');
+}
 function payRow(p, i) {
-  const seg = ['CHECK', 'CASH', 'ZELLE'].map(m => '<button class="' + (p.m === m ? 'on' : '') + '" data-pm="' + i + '|' + m + '">' + ({ CHECK: '체크', CASH: '캐쉬', ZELLE: 'Zelle' })[m] + '</button>').join('');
-  return '<div class="payrow" data-pi="' + i + '">' + (F.pays.length > 1 ? '<button class="x" data-px="' + i + '">×</button>' : '') +
+  const seg = ['CHECK', 'CASH', 'ZELLE'].map(m => '<button class="' + (p.m === m ? 'on' : '') + '" data-pm="' + i + '|' + m + '">' + ({ CHECK: '🧾 체크 Check', CASH: '💵 캐쉬 Cash', ZELLE: '📲 Zelle' })[m] + '</button>').join('');
+  return '<div class="payrow big" data-pi="' + i + '">' + (F.pays.length > 1 ? '<button class="x" data-px="' + i + '">×</button>' : '') +
     '<div class="full seg" style="margin:0">' + seg + '</div>' +
-    (p.m === 'CHECK' ? '<input class="sm" placeholder="체크 번호" data-pref="' + i + '" value="' + esc(p.ref) + '" inputmode="numeric">' : p.m === 'ZELLE' ? '<input class="sm" placeholder="Zelle 참조 (선택)" data-pref="' + i + '" value="' + esc(p.ref) + '">' : '<div></div>') +
-    '<input class="sm" placeholder="금액 $" data-pamt="' + i + '" value="' + esc(p.amt) + '" inputmode="decimal" style="text-align:right;font-weight:800">' +
-    (p.m === 'CHECK' ? '<div><label class="muted">체크 날짜 (선일자면)</label><input class="sm" type="date" data-pdep="' + i + '" value="' + esc(p.dep || '') + '"></div><label class="muted" style="display:flex;align-items:center;gap:6px;padding-top:18px"><input type="checkbox" class="ck-big" data-pmob="' + i + '" ' + (p.mob ? 'checked' : '') + ' style="width:20px;height:20px"> 📱 모바일 디파짓</label>' : '') + '</div>';
+    (p.m === 'CHECK' ? '<input class="sm" placeholder="체크 번호 · check #" data-pref="' + i + '" value="' + esc(p.ref) + '" inputmode="numeric">' : p.m === 'ZELLE' ? '<input class="sm" placeholder="Zelle 참조 (선택)" data-pref="' + i + '" value="' + esc(p.ref) + '">' : '<div class="muted" style="align-self:center">현금 · cash</div>') +
+    '<div class="amt"><span>$</span><input placeholder="0.00" data-pamt="' + i + '" value="' + esc(p.amt) + '" inputmode="decimal"></div>' +
+    (p.m === 'CHECK' ? '<details class="full"><summary class="muted">선일자 체크 · 모바일 디파짓 (옵션) <span class="en">post-dated / mobile deposit</span></summary><div class="two" style="margin-top:6px"><div><label class="muted">체크 날짜 (선일자면)</label><input class="sm" type="date" data-pdep="' + i + '" value="' + esc(p.dep || '') + '"></div><label class="muted" style="display:flex;align-items:center;gap:6px;padding-top:18px"><input type="checkbox" class="ck-big" data-pmob="' + i + '" ' + (p.mob ? 'checked' : '') + ' style="width:20px;height:20px"> 📱 모바일 디파짓</label></div></details>' : '') + '</div>';
 }
 function bindPays() {
   document.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { collectForm(); const [i, m] = b.dataset.pm.split('|'); F.pays[+i].m = m; paintEntry(); });
   document.querySelectorAll('[data-px]').forEach(b => b.onclick = () => { collectForm(); F.pays.splice(+b.dataset.px, 1); paintEntry(); });
-  document.querySelectorAll('[data-pamt]').forEach(el => el.oninput = () => { collectForm(); arAlloc(); paintSum(); });
+  document.querySelectorAll('[data-pamt]').forEach(el => { el.oninput = () => { collectForm(); arAlloc(); paintSum(); }; el.onfocus = () => el.select(); });
 }
 function invRow(v, i) {
   const other = v.other ? '<small class="muted" style="display:block">🏬 ' + esc(v.store || v.acct) + '</small>' : '';
-  if (v.ar) return '<div class="invrow" data-ii="' + i + '"><div><b>' + esc(v.no) + '</b> <span class="tag t-b">AR</span>' + (v.partial ? ' <span class="tag t-c">일부</span>' : '') + other + '<small class="muted">잔액 ' + money(v.bal) + '</small></div><input data-iamt="' + i + '" value="' + esc(v.amt) + '" inputmode="decimal" style="text-align:right"><button class="x" style="position:static;width:26px;height:26px;border-radius:50%;background:#94a3b8;color:#fff;border:0" data-ix="' + i + '">×</button></div>';
-  return '<div class="invrow" data-ii="' + i + '"><div><input data-ino="' + i + '" value="' + esc(v.no) + '" placeholder="인보이스 # (A/P/W/CM…)" style="text-transform:uppercase">' + other + '</div><input data-iamt="' + i + '" value="' + esc(v.amt) + '" placeholder="금액" inputmode="decimal" style="text-align:right"><button class="x" style="position:static;width:26px;height:26px;border-radius:50%;background:#94a3b8;color:#fff;border:0" data-ix="' + i + '">×</button></div>';
+  const x = '<button class="x" data-ix="' + i + '" style="position:static;width:30px;height:30px;border-radius:50%;background:#e2e8f0;color:#475569;border:0;font-size:16px">×</button>';
+  if (v.ar) return '<div class="invrow" data-ii="' + i + '"><div><b style="font-size:15px">' + esc(v.no) + '</b> <span class="tag t-b">' + (v.app ? '앱' : 'AR') + '</span>' + (v.partial ? ' <span class="tag t-c">일부 partial</span>' : '') + other + '<small class="muted">잔액 due ' + money(v.bal) + '</small></div><div class="amt sm"><span>$</span><input data-iamt="' + i + '" value="' + esc(v.amt) + '" inputmode="decimal"></div>' + x + '</div>';
+  return '<div class="invrow" data-ii="' + i + '"><div><input data-ino="' + i + '" value="' + esc(v.no) + '" placeholder="인보이스 # (A43107 …)" style="text-transform:uppercase">' + other + '</div><div class="amt sm"><span>$</span><input data-iamt="' + i + '" value="' + esc(v.amt) + '" placeholder="0.00" inputmode="decimal"></div>' + x + '</div>';
 }
 function bindInvs() {
   document.querySelectorAll('[data-ix]').forEach(b => b.onclick = () => { collectForm(); const v = F.invs[+b.dataset.ix]; if (v && v.ar) F.picked = F.picked.filter(k => k !== v.no); F.invs.splice(+b.dataset.ix, 1); paintEntry(); });
@@ -124,11 +143,11 @@ function collectForm() {
 function payTotal() { return R2(F.pays.reduce((a, p) => a + num(p.amt), 0)); }
 function invTotal() { return R2(F.invs.reduce((a, v) => a + num(v.amt), 0)); }
 function paintSum() {
-  const got = payTotal(), inv = invTotal(), diff = R2(got - inv), box = $('sumBox'); if (!box) return;
-  let h = '받은 돈 <b>' + money(got) + '</b> · 인보이스 합 <b>' + money(inv) + '</b>';
-  if (F.invs.length && Math.abs(diff) > 0.009) h += '<div class="warn" style="margin-top:4px">⚠️ 차액 ' + money(diff) + (diff > 0 ? ' — 인보이스를 덜 골랐거나 금액이 다릅니다' : ' — 인보이스가 받은 돈보다 많습니다') + '</div>';
-  else if (F.invs.length) h += ' <span class="ok">✓ 맞음</span>';
-  box.innerHTML = h;
+  const got = payTotal(), inv = invTotal(), diff = R2(got - inv), box = $('sumBox');
+  if ($('tbAmt')) $('tbAmt').textContent = money(got); if ($('tbSub')) $('tbSub').textContent = tbarSub();
+  if (!box) return;
+  if (!F.invs.length) { box.innerHTML = got ? '<div class="alert a-amb">인보이스를 고르거나 번호를 적어 주세요 — 어느 인보이스 돈인지 알아야 정산이 됩니다 <span class="en">Pick the invoices this payment covers</span></div>' : ''; return; }
+  box.innerHTML = '<div class="trow sum" style="margin:0"><div class="tx"><b>받은 돈 ' + money(got) + ' · 인보이스 ' + money(inv) + '</b><small>' + (Math.abs(diff) > 0.009 ? '⚠️ 차액 ' + money(diff) + (diff > 0 ? ' — 인보이스를 덜 골랐거나 금액이 다릅니다' : ' — 인보이스가 받은 돈보다 많습니다') : '✓ 맞음 · matches') + '</small></div><span class="ta ' + (Math.abs(diff) > 0.009 ? 'warn' : 'ok') + '">' + (Math.abs(diff) > 0.009 ? money(diff) : '✓') + '</span></div>';
 }
 function storeSearch(q) {
   const box = $('storeHits'), nb = $('newStoreBox');
@@ -143,6 +162,9 @@ function pickStore(acct) {
   F.acct = a.acct; F.store = a.store; F.newStore = false; F.addr = [a.addr, a.city, a.state, a.zip].filter(Boolean).join(', '); F.state = a.state || '';
   F.picked = []; F.invs = F.invs.filter(v => v.other);
   paintEntry();
+  if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
+  toast('✓ ' + a.store + ' 선택 · selected', 'good');
+  setTimeout(() => { const el = document.querySelector('[data-pamt]'); if (el && !('ontouchstart' in window)) el.focus(); }, 50);
 }
 
 /* ---- AR 인보이스 고르기 ---- */
@@ -178,10 +200,11 @@ async function paintArPick() {
   box.innerHTML = '<div class="muted">미결 인보이스 읽는 중…</div>';
   const r = await openInvoices(F.acct);
   if (!$('arPick')) return;
-  if (!r.list.length) { box.innerHTML = '<div class="muted">AR 에 미결 인보이스가 없습니다 (기준일 ' + esc(r.asOf || '—') + '). 아래에 직접 적어 주세요.</div>'; return; }
+  if (!r.list.length) { box.innerHTML = '<div class="muted">미결 인보이스가 없습니다 (AR 기준일 ' + esc(r.asOf || '—') + '). 아래 "번호 직접 입력"으로 적어 주세요. <span class="en">No open invoices on file — type the number below.</span></div>'; return; }
   F.arList = r.list;
-  box.innerHTML = '<div class="muted" style="margin-bottom:4px">미결 인보이스 — 탭해서 고르면 금액이 자동으로 채워집니다 (기준일 ' + esc(r.asOf) + ')</div>' +
-    r.list.map(v => '<div class="pick ' + (F.picked.includes(v.no) ? 'on' : '') + '" data-pk="' + esc(v.no) + '"><div class="ck">✓</div><div class="pm"><b>' + esc(v.no) + '</b> <span class="muted">' + md(v.d) + (v.pdd > 0 ? ' · ' + v.pdd + '일 연체' : '') + '</span><small>' + money(v.amt) + (v.paid ? ' (받은 ' + money(v.paid) + ')' : '') + '</small></div><b>' + money(v.bal) + '</b></div>').join('');
+  const openSum = r.list.reduce((a, v) => a + (v.bal > 0 ? v.bal : 0), 0);
+  box.innerHTML = '<div class="muted" style="margin-bottom:6px">미결 ' + r.list.length + '장 · ' + money(openSum) + ' — 탭해서 고르면 받은 돈이 순서대로 채워집니다 <span class="en">Tap to apply</span>' + (r.asOf ? ' · AR ' + esc(r.asOf) : '') + '</div>' +
+    r.list.map(v => '<div class="pick inv ' + (F.picked.includes(v.no) ? 'on' : '') + (v.bk >= 3 ? ' late' : '') + '" data-pk="' + esc(v.no) + '"><div class="ck">✓</div><div class="pm"><b>' + esc(v.no) + (v.app ? ' <span class="tag t-b">앱</span>' : '') + '</b><small>' + md(v.d) + (v.pdd > 0 ? ' · <span class="warn">' + v.pdd + '일 지남 overdue</span>' : ' · 기한 전') + ' · ' + money(v.amt) + (v.paid ? ' (받은 ' + money(v.paid) + ')' : '') + '</small></div><b style="font-size:16px">' + money(v.bal) + '</b></div>').join('');
   box.querySelectorAll('[data-pk]').forEach(d => d.onclick = () => togglePick(d.dataset.pk));
 }
 function togglePick(no) {
@@ -229,6 +252,7 @@ async function saveEntry() {
   const total = sum(pays, p => p.amt), invTot = sum(invs, v => v.amt);
   const mismatch = invs.length && Math.abs(total - invTot) > 0.009 ? '⚠️ 인보이스 합 ' + money(invTot) + ' ≠ 받은 돈 ' + money(total) + ' (차액 ' + money(R2(total - invTot)) + ')' : '';
   if (F.repl && !F.orig) return toast('대체 체크면 원래 체크 번호를 넣어 주세요', 'bad');
+  if (!(await confirmBox(F.store + ' — ' + money(total) + ' (' + pays.map(p => p.m === 'CHECK' ? '체크 #' + p.ref : p.m === 'CASH' ? '캐쉬' : 'Zelle').join(', ') + ')' + (invs.length ? ' → ' + invs.map(v => v.no).join(', ') : ' · 인보이스 없음') + (mismatch ? '\n' + mismatch : '') + '\n저장할까요? / Save this payment?', '저장 Save'))) return;
   const id = F.editing || newId('E');
   const doc = { id, d: F.d, ym: ym(F.d), sm: me(), acct: F.acct || '', store: F.store, addr: F.addr || '', state: F.state || '', newStore: !!F.newStore,
     pays, invs, total, invTotal: invTot, mismatch, memo: F.memo || '', repl: !!F.repl, orig: F.orig || '', disc: '',

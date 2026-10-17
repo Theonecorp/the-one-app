@@ -31,10 +31,11 @@ async function pageVerify() {
   if (VF.q) { const q = nz(VF.q); list = list.filter(r => nz(r.store).includes(q) || (r.pays || []).some(p => String(p.ref).includes(VF.q)) || String(r.acct).includes(VF.q)); }
   list = sortBy(list, r => r.d + (r.createdAt || ''), true);
   const by = groupBy(list, r => r.d), days = Object.keys(by).sort().reverse();
-  let h = '<div class="card"><h2>✅ 수금 확인</h2>' +
-    '<div class="chips">' + [['todo', '① SmartBee 미입력 ' + todo.length], ['wait', '② 체크 수령 대기 ' + wait.length], ['bad', '⚠️ 차액 ' + bad.length], ['all', '최근 전체 ' + rows.length]].map(c => '<button class="' + (VF.f === c[0] ? 'on' : '') + '" data-vf="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' +
-    '<div class="two" style="margin-top:6px">' + sel('vfSm', [['', '전체 세일즈맨']].concat(smOptions()), VF.sm) + '<input id="vfQ" placeholder="가게 · 체크번호" value="' + esc(VF.q) + '"></div>' +
-    '<div class="muted" style="margin-top:6px">줄을 탭하면 ✓ 처리 · 금액 수정 · 메모. 체크 없는 COD·카드·ACH 는 💳 탭에서 직접 입력합니다.</div></div>';
+  const tdy = rows.filter(r => r.d === today());
+  let h = '<div class="kpi" style="margin:0 0 10px">' + [['todo', '① SmartBee 미입력', todo.length, 'To enter'], ['wait', '② 체크 수령 대기', wait.length, 'Awaiting check'], ['bad', '⚠️ 차액', bad.length, 'Mismatch'], ['all', '오늘 수금', money(sum(tdy, r => r.total)), 'Today ' + tdy.length]].map(c => '<div class="tap' + (VF.f === c[0] ? ' on' : '') + '" data-vf="' + c[0] + '" style="' + (VF.f === c[0] ? 'background:var(--blue2);outline:2px solid var(--blue)' : '') + '"><b>' + c[2] + '</b><span>' + c[1] + '<br><i class="en">' + c[3] + '</i></span></div>').join('') + '</div>' +
+    '<div class="card"><h2>✅ 수금 확인 <span class="en">Verify payments</span></h2>' +
+    '<div class="two">' + sel('vfSm', [['', '전체 세일즈맨 · all']].concat(smOptions()), VF.sm) + '<input id="vfQ" placeholder="가게 · 체크번호 / store · check #" value="' + esc(VF.q) + '"></div>' +
+    '<div class="muted" style="margin-top:6px">줄을 누르면 ✓ 처리 · 금액 수정 · 메모. 체크 없는 COD · 카드 · ACH 는 💳 탭에서 직접 입력합니다. <span class="en">Tap a row to mark entered / received.</span></div></div>';
   if (!days.length) h += '<div class="card"><div class="none">없음</div></div>';
   days.forEach(d => {
     const L = by[d];
