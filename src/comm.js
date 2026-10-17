@@ -69,6 +69,22 @@ export function secOf(L, cs) {
  * 정산서 계산. lines = 줄 목록(이미 조건 필터된 것), rate = ratesOf(sm), cs = commSettings()
  * 반환: { lines(표시용, W 분리), totals, buckets, net, dp, office, pay, bad, skipped }
  */
+/**
+ * 공제(디덕션) · 캐쉬 보관 적용 — 옛 대시보드와 같은 순서: NET − 공제 = NET PAYMENT → DP · OFFICE 는 NET PAYMENT 기준 → TOTAL → − CASH(보관) = FINAL PAY
+ *  ded = [{ id, acct, store, why, total, used, per, remaining, apply, start, invs }], cashKeep = true/false
+ */
+export function applyDed(c, ded, cashKeep) {
+  const list = (ded || []).map(d => Object.assign({}, d, { apply: R2(Math.max(0, Math.min(Number(d.apply) || 0, d.remaining))) }));
+  let amt = R2(list.reduce((a, d) => a + d.apply, 0));
+  if (amt > c.net) { /* NET 을 넘지 않게 — 앞에서부터 줄임 */ let over = R2(amt - Math.max(0, c.net)); for (let i = list.length - 1; i >= 0 && over > 0; i--) { const cut = Math.min(list[i].apply, over); list[i].apply = R2(list[i].apply - cut); over = R2(over - cut); } amt = R2(list.reduce((a, d) => a + d.apply, 0)); }
+  c.ded = { list, amt };
+  c.netPay = R2(c.net - amt);
+  c.dp.amt = R2(c.netPay * c.dp.rate); c.office.amt = R2(c.netPay * c.office.rate);
+  c.pay = R2(c.netPay - c.dp.amt - c.office.amt);
+  c.cashKeep = cashKeep ? R2(c.totals.cash) : 0;
+  c.finalPay = R2(c.pay - c.cashKeep);
+  return c;
+}
 export function computeComm(linesIn, rate, cs) {
   const disp = [], bad = [], skipped = [];
   linesIn.forEach(L0 => {
@@ -105,7 +121,7 @@ export function computeComm(linesIn, rate, cs) {
   let net = 0; buckets.forEach(b => { b.amt = R2(b.base * b.rate); net += b.amt; }); net = R2(net);
   const dp = R2(net * rate.dp), office = R2(net * rate.office);
   disp.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
-  return { lines: disp, totals: { check: R2(tot.e), cash: R2(tot.f), total: gTotal }, buckets, net, dp: { rate: rate.dp, amt: dp }, office: { rate: rate.office, amt: office },
-           pay: R2(net - dp - office), bad, skipped, skippedAmt: R2(skipped.reduce((a, s) => a + s.got, 0)) };
+  return { lines: disp, totals: { check: R2(tot.e), cash: R2(tot.f), total: gTotal }, buckets, net, netPay: net, ded: { list: [], amt: 0 }, dp: { rate: rate.dp, amt: dp }, office: { rate: rate.office, amt: office },
+           pay: R2(net - dp - office), cashKeep: 0, finalPay: R2(net - dp - office), bad, skipped, skippedAmt: R2(skipped.reduce((a, s) => a + s.got, 0)) };
 }
 export const SEC_LABEL = { REG: 'A', SPECIAL: 'EX', DISC: 'DISC', NEWDP: 'NEW DP' };
