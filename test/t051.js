@@ -7,6 +7,7 @@ const path = require('path'), fs = require('fs');
   const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); const errs = [], log = (...a) => console.log(...a);
   pg.on('pageerror', e => errs.push(e.message + ' @ ' + String(e.stack).split('\n')[1])); pg.on('dialog', d => d.accept());
+  const txt = async sel => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: '회계' }; window.open = () => null; });
   await pg.goto('http://127.0.0.1:8774/test/demo.html'); await pg.waitForSelector('#nav button');
@@ -16,7 +17,9 @@ const path = require('path'), fs = require('fs');
   await pg.fill('#nRt', '063100277'); await pg.dispatchEvent('#nRt', 'input'); log('rt check:', await pg.textContent('#rtMsg'));
   await pg.fill('#nAn', '123456789012'); await pg.fill('#nEm', 'ali@store.com'); await shot('a0_reg');
   await pg.click('#nSave'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(800);
-  log('toast:', await pg.textContent('#toast')); const tag = await pg.$eval('[data-ah="1111"]', e => e.textContent.replace(/\s+/g, ' ')); log('acct row:', tag); if (!/준비됨/.test(tag)) errs.push('acct not ready');
+  log('toast:', await pg.textContent('#toast')); let tag = await pg.$eval('[data-ah="1111"]', e => e.textContent.replace(/\s+/g, ' ')); log('acct row:', tag); if (!/Cash Pro 등록 대기/.test(tag)) errs.push('acct should wait for Cash Pro');
+  /* 두 단계: 거래처 이력에서 Cash Pro 등록 ☑ → 준비됨 */
+  await pg.click('[data-ah="1111"]'); await pg.waitForSelector('#hCp'); await pg.click('#hCp'); await pg.waitForTimeout(700); tag = await pg.$eval('[data-ah="1111"]', e => e.textContent.replace(/\s+/g, ' ')); log('after cashpro:', tag); if (!/준비됨/.test(tag)) errs.push('acct not ready after Cash Pro ☑');
   /* 2. 입력 — 인출일 자동 (ACH 30 → +30일 다음 영업일) */
   await pg.click('[data-at="new"]'); await pg.waitForSelector('#aQ'); await pg.fill('#aQ', '1111'); await pg.waitForTimeout(150); await pg.click('#aHits [data-a]'); await pg.waitForSelector('[data-lno]');
   const invD = '2026-10-01'; await pg.fill('#aInvD', invD); await pg.dispatchEvent('#aInvD', 'change'); await pg.waitForTimeout(200);

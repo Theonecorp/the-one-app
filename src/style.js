@@ -203,7 +203,7 @@ input.past{border-color:var(--amber);background:#fffbeb}input.later{border-color
 /* ---------- ACH 허브 (ach.js) ---------- */
 .ctabs.five button{padding:9px 2px;font-size:13.5px}.ctabs.five button .en{font-size:10px}@media (max-width:460px){.ctabs.five button{font-size:12.5px}}
 .b-amb{border:0;border-radius:13px;padding:13px 14px;font-size:15px;font-weight:800;background:#fef3c7;color:#92400e}
-.job{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:12px 14px;margin-bottom:8px;border-left:5px solid #cbd5e1}.job.set{border-left-color:var(--blue)}.job.soon{border-left-color:var(--amber)}.job.late{border-left-color:var(--red)}
+.job{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:12px 14px;margin-bottom:8px;border-left:5px solid #cbd5e1}.job.set{border-left-color:var(--blue)}.job.soon{border-left-color:var(--amber)}.job.late{border-left-color:var(--red)}.job.hold{border-left-color:#94a3b8;opacity:.75}
 .job .t{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.job .st{font-weight:800;font-size:15.5px;min-width:0}.job .am{font-weight:800;font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .job .m{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12.5px;color:#475569;margin-top:3px}.job .m .open{color:var(--blue);font-weight:700;margin-left:auto}.job .tap{cursor:pointer}
 .job .acts{display:flex;gap:6px;margin-top:8px}.job .acts button{flex:1;min-width:0;padding:10px 6px;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.job .acts .b-sm{padding:8px 6px;font-size:12.5px}
