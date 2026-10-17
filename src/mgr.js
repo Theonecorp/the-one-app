@@ -11,7 +11,7 @@ import { stageText } from './sales.js';
 let S = null;
 export function register(state) {
   S = state;
-  Router.on('verify', pageVerify); Router.on('cod', pageCod); Router.on('ach', pageAch); Router.on('stores', pageStores); Router.on('arup', pageArUp);
+  Router.on('verify', pageVerify); Router.on('cod', pageCod); Router.on('stores', pageStores); Router.on('arup', pageArUp);
 }
 function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
 function smOptions(v, allowBlank) { return (allowBlank ? [['', '— 세일즈맨 —']] : []).concat(S.sms.filter(x => x.active !== false).map(x => [x.code, x.code])); }
@@ -126,12 +126,7 @@ function codForm(r) {
   if ($('cDel')) $('cDel').onclick = async () => { if (!(await confirmBox('지울까요?', '삭제'))) return; busy(true); try { await S.DB.update('cod', r.id, { void: true }); closeModal(); pageCod(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
-/* ============================================================
- *  ③ ACH — 다음 단계에서 옮깁니다
- * ============================================================ */
-async function pageAch() {
-  $('page').innerHTML = '<div class="card"><h2>🏦 ACH</h2><div class="none">ACH 목록 · Cash Pro 셋업 · 인출 · 반송 · 달력은 다음 단계에서 이 자리에 들어옵니다.<br>그때까지는 ACH 구글 시트를 그대로 쓰고, 인출 완료된 건은 💳 탭에 ACH 로 넣어 주세요.</div></div>';
-}
+/* ③ ACH 는 ach.js (ACH 허브) 가 맡음 */
 
 /* ============================================================
  *  ④ 거래처

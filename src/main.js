@@ -6,6 +6,7 @@ import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today }
 import { CSS } from './style.js';
 import * as Sales from './sales.js';
 import * as Collect from './collect.js';
+import * as Ach from './ach.js';
 import * as Mgr from './mgr.js';
 import * as Boss from './boss.js';
 import * as Admin from './admin.js';
@@ -14,7 +15,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.5';
+export const VER = 'v0.8.6';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -157,7 +158,7 @@ async function boot() {
   shell();
   const { DB, AUTH } = await connect();
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); Collect.register(S); Mgr.register(S); Boss.register(S); Admin.register(S); Orders.register(S);
+  Sales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Admin.register(S); Orders.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
