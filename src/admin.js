@@ -472,6 +472,9 @@ async function treeAdmin() {
     'LEVEL 파일은 Level 1 이름의 앞글자로 Group(인보이스 A · P · W)이 정해집니다: 보통 이름 → Jewelry(A), [ ] → Other(P), "" → Set &amp; Display(W). GROUP NAME 은 Level 3 으로 들어갑니다 (NEW 가 비어 있으면 CURRENT 그대로).<br>' +
     '그 밖의 열도 됩니다 (<b>있는 열만</b> 바꾸고 빈 칸은 그대로): Code(필수) · NewCode · Description · Price · SRP · Barcode · Group · Level 1 · 2 · 3 · Photo · Delete(x). 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
     '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="tDlLevel">⬇️ LEVEL_1_AND_2.xlsx</button><button class="b-ghost" id="tDlGroup">⬇️ GROUP_NAME_CHANGE.xlsx</button><button class="b-ghost" id="tCsv">⬇️ 전체 CSV</button></div>' +
+    '<div class="sumbox" style="margin-top:10px"><b>📊 구글 시트에서 바로 반영</b><div class="muted">편의 파일들을 구글 시트 탭(LEVEL_1_AND_2 · GROUP_NAME_CHANGE · POPULAR)으로 두고 거기서 고친 뒤, 여기서 탭을 누르면 읽어 와서 미리보기 → 적용합니다. 시트는 <b>공유 → 일반 액세스 → 링크가 있는 모든 사용자 · 뷰어</b> 여야 합니다.</div>' +
+    '<div style="display:flex;gap:6px;margin-top:6px"><input id="gsUrl" placeholder="구글 시트 주소 붙여넣기" value="' + esc(S.settings.catSheet || '') + '" style="flex:1"><button class="b-ghost b-sm" id="gsSave">연결</button></div>' +
+    (S.settings.catSheet ? '<div class="btns" style="flex-wrap:wrap;margin-top:8px"><button class="b-blue b-sm" data-gs="LEVEL_1_AND_2">📥 LEVEL_1_AND_2 반영</button><button class="b-blue b-sm" data-gs="GROUP_NAME_CHANGE">📥 GROUP_NAME_CHANGE 반영</button><button class="b-ghost b-sm" data-gs="POPULAR">✨ POPULAR 반영</button></div><div style="display:flex;gap:6px;margin-top:6px"><input id="gsTab" placeholder="다른 탭 이름 (예: TreeUpdate)" style="flex:1"><button class="b-ghost b-sm" data-gs="_">📥 이 탭 반영</button></div><a class="muted" href="https://docs.google.com/spreadsheets/d/' + esc(S.settings.catSheet) + '" target="_blank" rel="noopener">시트 열기 ↗</a>' : '') + '</div>' +
     '<div class="fg" style="margin-top:8px"><input type="file" id="tFile" accept=".xlsx,.csv"></div><div id="tOut"></div></div>';
   document.querySelectorAll('[data-cs]').forEach(b => b.onclick = async () => { busy(true); try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.catStart = b.dataset.cs; await S.DB.set('settings', 'app', cur); S.settings.catStart = b.dataset.cs; toast('저장'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
   document.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { TP = TP.slice(0, +b.dataset.tp); treeAdmin(); });
@@ -590,18 +593,63 @@ async function treeAdmin() {
     try {
       const { XLSX, wb } = await readBook(file);
       const name = wb.SheetNames.find(n => /treeupdate|items|아이템|변경/i.test(n)) || wb.SheetNames[0];
-      const r = parseBulkSheet(aoa(XLSX, wb, name));
-      /* 미리 적용해 보고 요약만 보여 줌 */
-      const rows = catalog().rows.map(x => x.slice()), cats = catalog().cats.map(x => x.slice()), sets = JSON.parse(JSON.stringify(catalog().sets || {}));
-      const sum = applyBulk(rows, cats, sets, r.patches);
-      const lab = { nc: '코드 변경', d: 'Description', p: 'Price', s: 'SRP', b: 'Barcode', g: 'Group', l1: 'Level 1', l2: 'Level 2', l3: 'Level 3', ph: 'Photo', del: '삭제' };
-      out.innerHTML = '<div class="alert a-blu">탭 <b>' + esc(name) + '</b> · ' + r.patches.length.toLocaleString() + '줄 · 바꾸는 열: ' + r.cols.map(k => lab[k]).join(', ') + '<br>바뀌는 아이템 <b>' + sum.changed.toLocaleString() + '</b> · 코드 변경 ' + sum.renamed + ' · 새 아이템 ' + sum.added + ' · 삭제 ' + sum.deleted + '</div>' +
-        (r.fixed && r.fixed.length ? '<div class="alert a-grn">SmartBee 내보내기에서 깨진 줄 ' + r.fixed.length + '개를 살려 읽었습니다</div>' : '') +
-        (r.broken && r.broken.length ? '<div class="alert a-amb">칸이 깨진 줄 ' + r.broken.length + '개 건너뜀 (줄바꿈 · 탭이 섞임): ' + esc(r.broken.slice(0, 8).join(', ')) + '</div>' : '') +
-        (sum.missing.length ? '<div class="alert a-amb">목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 10).join(', ')) + '</div>' : '') +
-        (sum.dupNew.length ? '<div class="alert a-red">새 코드가 이미 있어 바꾸지 못함 ' + sum.dupNew.length + '개: ' + esc(sum.dupNew.slice(0, 10).join(', ')) + '</div>' : '') +
-        '<button class="b-blue" id="tGo" style="margin-top:8px">이대로 적용</button>';
-      $('tGo').onclick = async () => { busy(true); try { await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches)); toast('적용했습니다 — 모든 폰이 새 목록을 받습니다', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+      previewBulk(aoa(XLSX, wb, name), name, out);
     } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
   };
+  /* 📊 구글 시트에서 바로 읽기 */
+  const sheetIdOf = v => { const m = String(v || '').match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/) || String(v || '').match(/^([A-Za-z0-9_-]{20,})$/); return m ? m[1] : ''; };
+  $('gsSave').onclick = async () => {
+    const id = sheetIdOf($('gsUrl').value); if (!id) return toast('구글 시트 주소(또는 ID)를 확인하세요', 'bad');
+    busy(true); try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.catSheet = id; await S.DB.set('settings', 'app', cur); S.settings.catSheet = id; toast('시트 연결 저장', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
+  };
+  document.querySelectorAll('[data-gs]').forEach(b => b.onclick = async () => {
+    const id = S.settings.catSheet; const tab = b.dataset.gs === '_' ? $('gsTab').value.trim() : b.dataset.gs; if (!id || !tab) return toast('시트와 탭 이름을 확인하세요', 'bad');
+    const out = $('tOut'); out.innerHTML = '<div class="load">구글 시트 "' + esc(tab) + '" 읽는 중…</div>';
+    try {
+      const t = await readSheetTab(id, tab);
+      if (tab.toUpperCase() === 'POPULAR' || /popular|자주/i.test(tab)) {
+        const r = parsePop(t); if (!r || !r.length) throw new Error('POPULAR 탭에 ITEM · QTY 가 없습니다');
+        const C = catalog(), known = r.filter(x => C.byCode[x[0]]);
+        out.innerHTML = '<div class="alert a-blu">✨ ' + known.length + '개 (목록에 있는 것) · 상위: ' + esc(known.slice(0, 6).map(x => x[0] + ' ' + x[1]).join(', ')) + '</div><div class="btns"><button class="b-blue" id="tGo">저장</button></div>';
+        $('tGo').onclick = async () => { busy(true); try { await S.DB.set('catalog', 'pop', { j: JSON.stringify(known.slice(0, 1000)), n: known.length, updatedAt: new Date().toISOString(), by: S.user.email }); await loadCatalog(S, true); toast('✨ 자주 나가는 ' + known.length + '개 저장', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+        return;
+      }
+      previewBulk(t, tab, out);
+    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '<br><span class="muted">시트가 "링크가 있는 모든 사용자 · 뷰어" 로 공유돼 있는지, 탭 이름이 맞는지 확인하세요.</span></div>'; }
+  });
+}
+/** 일괄 변경 미리보기 → 적용 (파일 · 구글 시트 공용) */
+function previewBulk(t, name, out) {
+  const r = parseBulkSheet(t);
+  const rows = catalog().rows.map(x => x.slice()), cats = catalog().cats.map(x => x.slice()), sets = JSON.parse(JSON.stringify(catalog().sets || {}));
+  const sum = applyBulk(rows, cats, sets, r.patches);
+  const lab = { nc: '코드 변경', d: 'Description', p: 'Price', s: 'SRP', b: 'Barcode', g: 'Group', l1: 'Level 1', l2: 'Level 2', l3: 'Level 3', ph: 'Photo', del: '삭제' };
+  out.innerHTML = '<div class="alert a-blu">탭 <b>' + esc(name) + '</b> · ' + r.patches.length.toLocaleString() + '줄 · 바꾸는 열: ' + r.cols.map(k => lab[k]).join(', ') + '<br>바뀌는 아이템 <b>' + sum.changed.toLocaleString() + '</b> · 코드 변경 ' + sum.renamed + ' · 새 아이템 ' + sum.added + ' · 삭제 ' + sum.deleted + '</div>' +
+    (r.fixed && r.fixed.length ? '<div class="alert a-grn">SmartBee 내보내기에서 깨진 줄 ' + r.fixed.length + '개를 살려 읽었습니다</div>' : '') +
+    (r.broken && r.broken.length ? '<div class="alert a-amb">칸이 깨진 줄 ' + r.broken.length + '개 건너뜀 (줄바꿈 · 탭이 섞임): ' + esc(r.broken.slice(0, 8).join(', ')) + '</div>' : '') +
+    (sum.missing.length ? '<div class="alert a-amb">목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 10).join(', ')) + '</div>' : '') +
+    (sum.dupNew.length ? '<div class="alert a-red">새 코드가 이미 있어 바꾸지 못함 ' + sum.dupNew.length + '개: ' + esc(sum.dupNew.slice(0, 10).join(', ')) + '</div>' : '') +
+    (sum.changed ? '<button class="b-blue" id="tGo" style="margin-top:8px">이대로 적용 (' + sum.changed.toLocaleString() + '개)</button>' : '<div class="none">바뀌는 것이 없습니다</div>');
+  if ($('tGo')) $('tGo').onclick = async () => { if (!(await confirmBox(sum.changed.toLocaleString() + '개 아이템을 바꿀까요? 모든 폰이 새 목록을 받습니다.', '적용'))) return; busy(true); try { await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches)); toast('적용했습니다 — 모든 폰이 새 목록을 받습니다', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+}
+/** 공개(링크 공유) 구글 시트의 탭을 CSV 로 읽어 2차원 배열로 */
+async function readSheetTab(id, tab) {
+  const url = 'https://docs.google.com/spreadsheets/d/' + encodeURIComponent(id) + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tab) + '&t=' + Date.now();
+  const res = await fetch(url); if (!res.ok) throw new Error('시트를 읽지 못했습니다 (' + res.status + ')');
+  const text = await res.text();
+  if (/<html/i.test(text.substring(0, 200))) throw new Error('시트가 공개돼 있지 않거나 탭 이름이 다릅니다');
+  return parseCsv(text);
+}
+export function parseCsv(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(v => String(v).trim() !== ''));
 }
