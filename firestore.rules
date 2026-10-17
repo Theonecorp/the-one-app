@@ -35,6 +35,12 @@ service cloud.firestore {
                                      && request.resource.data.v == resource.data.v && request.resource.data.settled == resource.data.settled);
       allow delete: if isAdmin();
     }
+    // ---------- Daily Report (세일즈맨 하루 수금 보고 · 체크 사진) ----------
+    match /reports/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create, update: if isStaff() || (registered() && request.resource.data.sm == mySm());
+      allow delete: if isAdmin();
+    }
     // ---------- COD · 카드 · ACH ----------
     match /cod/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());

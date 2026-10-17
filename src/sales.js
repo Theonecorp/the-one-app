@@ -14,9 +14,10 @@ import { lineOfEntry, lineOfOther, computeComm, ratesOf, commSettings, invType, 
 let S = null, ME = '', CACHE = { entries: null, ar: null, arAt: 0 };
 export function register(state) {
   S = state;
-  Router.on('entry', pageEntry); Router.on('mine', pageMine); Router.on('ar', pageAR); Router.on('mycomm', pageMyComm);
+  Router.on('mycomm', pageMyComm);   /* entry · mine · ar 는 collect.js (수금 허브) 가 맡음 */
 }
 function me() { ME = F.sm || ((S.me && S.me.sm) ? String(S.me.sm).toUpperCase() : ''); return ME; }
+export function clearEntryCache() { CACHE.entries = null; CACHE.ar = null; }
 export function setFormSm(sm) { F.sm = sm ? String(sm).toUpperCase() : ''; }
 function noSm() { $('page').innerHTML = '<div class="card"><div class="none">이 계정에 세일즈맨 코드가 연결돼 있지 않습니다.<br>루크가 관리 → 사용자에서 세일즈맨을 지정해야 합니다.</div></div>'; }
 
