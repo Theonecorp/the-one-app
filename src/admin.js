@@ -223,7 +223,8 @@ async function catalogAdmin() {
   $('adminBody').innerHTML = '<div class="card"><h2>📦 아이템 목록 (오더용)</h2>' +
     (meta ? '<div class="sumbox">지금: <b>' + (meta.count || 0).toLocaleString() + '개</b> · ' + esc(String(meta.updatedAt || '').substring(0, 16).replace('T', ' ')) + ' · ' + esc(meta.by || '') + '</div>' : '<div class="alert a-amb">아직 올린 아이템 목록이 없습니다</div>') +
     '<div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽고, Hide 에 x 표시된 것은 뺍니다. 시트가 바뀔 때마다 다시 올리면 됩니다.</div>' +
-    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' +
+    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div>' +
+    '<div class="btns" style="justify-content:flex-start"><button class="b-ghost" onclick="location.hash=\'#/items\'">🏷 아이템 하나씩 등록 · 수정 · 삭제</button></div><div class="hint">새로 들어온 아이템 몇 개는 여기서 바로 등록하면 됩니다 (담당자도 가능). 엑셀은 대량 변경용.</div></div>' +
     '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
     photoCard() +
     '<div class="card"><h2>🛒 오더 탭</h2><label class="pick ' + (S.settings.ordersOn ? 'on' : '') + '" id="ordOn"><span class="ck">✓</span><span class="pm"><b>세일즈맨 · 담당자에게 오더 탭 보이기</b><small>끄면 관리자만 봅니다 (시험용)</small></span></label></div>';
