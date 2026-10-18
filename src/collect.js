@@ -324,12 +324,12 @@ async function saveEntry() {
   if (!(await confirmBox(F.store + ' — ' + money(total) + ' (' + pays.map(p => p.m === 'CHECK' ? '체크 #' + p.ref : p.m).join(', ') + ')' + (invs.length ? ' → ' + invs.map(v => v.no).join(', ') : replAll ? ' · 대체 체크' : ' · 인보이스 없음') + (mismatch ? '\n' + mismatch + ' — 저장되지만 담당자 확인 표시가 붙습니다' : '') + '\n저장할까요? / Save this payment?', '저장 Save'))) return;
   const id = F.editing || newId('E');
   const doc = { id, d: F.d, ym: ym(F.d), sm: me(), acct: F.acct || '', store: F.store, addr: F.addr || '', newStore: !!F.newStore,
-    pays, invs, total, invTotal: invTot, mismatch, memo: [F.memo, partialMemo].filter(Boolean).join(' · '), repl: replAll, orig: replAll ? pays[0].orig : '', disc: '', createdBy: S.user.email, updatedAt: new Date().toISOString() };
+    pays, invs, refs: pays.filter(p => p.m === 'CHECK' && p.ref).map(p => String(p.ref).replace(/^#/, '')), total, invTotal: invTot, mismatch, memo: [F.memo, partialMemo].filter(Boolean).join(' · '), repl: replAll, orig: replAll ? pays[0].orig : '', disc: '', createdBy: S.user.email, updatedAt: new Date().toISOString() };
   busy(true);
   try {
     if (F.editing) {
       const old = await S.DB.get('entries', id);
-      if (old && old.sb && isSales()) { busy(false); return toast('담당자가 이미 SmartBee 처리한 건은 수정할 수 없습니다 — 담당자에게 말씀하세요', 'bad'); }
+      if (old && old.sb && isSales()) { busy(false); return toast('담당자가 이미 확인한 건은 수정할 수 없습니다 — 담당자에게 말씀하세요', 'bad'); }
       if (old && old.rep && isSales()) { busy(false); return toast('이미 리포트로 전송된 건은 수정할 수 없습니다 · Already reported — ask the office.', 'bad'); }
       await S.DB.update('entries', id, doc);
     } else {

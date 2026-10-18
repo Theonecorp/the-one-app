@@ -1,5 +1,5 @@
 /* ============================================================
- *  담당자(회계) 화면 — 확인(SmartBee ✓ · 체크 수령 ✓) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
+ *  담당자(회계) 화면 — 수금 확인(① 접수 확인 · ② 체크 수령) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
  * ============================================================ */
 import { invTypes } from './invoicing.js';
 import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords } from './ui.js';
@@ -20,33 +20,91 @@ function methodTag(p) { return p.m === 'CHECK' ? '#' + esc(p.ref) : p.m === 'CAS
 /* ============================================================
  *  ① 확인 — 세일즈맨이 넣은 수금을 보며 SmartBee 입력 ✓, 실물 체크 오면 수령 ✓
  * ============================================================ */
-let VF = { f: 'todo', sm: '', q: '' };
+let VF = { f: 'todo', sm: '', q: '', grp: 'sm', acct: '' };
+/* ---- 앱 인보이스에 입금 반영 (SmartBee 입력을 대신함) ----
+ *  invoices/{no}.pays = { [수금 id]: 금액 } · bal = total − Σpays  — 같은 수금을 두 번 넣어도 한 번만 잡힘, 취소하면 되돌아옴 */
+export async function applyToInvoices(key, invs, on) {
+  let n = 0;
+  for (const v of (invs || [])) {
+    const no = String(v.no || '').trim().toUpperCase(); if (!no) continue;
+    let inv = null; try { inv = await S.DB.get('invoices', no); } catch (e) {}
+    if (!inv || inv.st === 'x') continue;
+    const pays = Object.assign({}, inv.pays || {});
+    if (on) pays[key] = R2(num(v.amt)); else delete pays[key];
+    const paid = R2(Object.values(pays).reduce((a, x) => a + (Number(x) || 0), 0));
+    try { await S.DB.update('invoices', no, { pays, paid, bal: R2(Math.max(0, (inv.total || 0) - paid)), paidAt: on ? today() : inv.paidAt || '' }); n++; } catch (e) {}
+  }
+  return n;
+}
 async function pageVerify() {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
   let rows = await S.DB.list('entries', { where: [['ym', 'in', recentYms(3)]] });
-  rows = rows.filter(r => !r.void && !r.settled);
-  const todo = rows.filter(r => !r.sb), wait = rows.filter(r => r.sb && !r.rc), bad = rows.filter(r => r.mismatch && !r.v);
-  let list = VF.f === 'todo' ? todo : VF.f === 'wait' ? wait : VF.f === 'bad' ? bad : rows;
+  rows = rows.filter(r => !r.void);
+  const open = rows.filter(r => !r.settled);
+  const todo = open.filter(r => !r.sb), wait = open.filter(r => r.sb && !r.rc), bad = open.filter(r => r.mismatch && !r.v), done = rows.filter(r => r.settled);
+  let list = VF.f === 'todo' ? todo : VF.f === 'wait' ? wait : VF.f === 'bad' ? bad : VF.f === 'done' ? done : open;
   if (VF.sm) list = list.filter(r => r.sm === VF.sm);
   if (VF.q) { list = list.filter(r => hasWords(r.store + ' ' + r.acct + ' ' + (r.sm || ''), VF.q) || (r.pays || []).some(p => String(p.ref).includes(VF.q.trim()))); }
   list = sortBy(list, r => r.d + (r.createdAt || ''), true);
-  const by = groupBy(list, r => r.d), days = Object.keys(by).sort().reverse();
   const tdy = rows.filter(r => r.d === today());
-  let h = '<div class="kpi" style="margin:0 0 10px">' + [['todo', '① SmartBee 미입력', todo.length, 'To enter'], ['wait', '② 체크 수령 대기', wait.length, 'Awaiting check'], ['bad', '⚠️ 차액', bad.length, 'Mismatch'], ['all', '오늘 수금', money(sum(tdy, r => r.total)), 'Today ' + tdy.length]].map(c => '<div class="tap' + (VF.f === c[0] ? ' on' : '') + '" data-vf="' + c[0] + '" style="' + (VF.f === c[0] ? 'background:var(--blue2);outline:2px solid var(--blue)' : '') + '"><b>' + c[2] + '</b><span>' + c[1] + '<br><i class="en">' + c[3] + '</i></span></div>').join('') + '</div>' +
-    '<div class="card"><h2>✅ 수금 확인 <span class="en">Verify payments</span></h2>' +
-    '<div class="two">' + sel('vfSm', [['', '전체 세일즈맨 · all']].concat(smOptions()), VF.sm) + '<input id="vfQ" placeholder="가게 · 체크번호 / store · check #" value="' + esc(VF.q) + '"></div>' +
-    '<div class="muted" style="margin-top:6px">줄을 누르면 ✓ 처리 · 금액 수정 · 메모. 체크 없는 COD · 카드 · ACH 는 💳 탭에서 직접 입력합니다. <span class="en">Tap a row to mark entered / received.</span></div></div>';
-  if (!days.length) h += '<div class="card"><div class="none">없음</div></div>';
-  days.forEach(d => {
-    const L = by[d];
-    h += '<div class="card"><div class="dayhd"><span>' + dlabel(d) + '</span><span>' + money(sum(L, r => r.total)) + ' · ' + L.length + '건</span></div>' +
-      L.map(r => '<div class="pr tap ' + (r.v ? 'v' : r.rc ? 'rc' : r.sb ? 'sb' : '') + (r.mismatch && !r.v ? ' bad' : '') + '" data-vid="' + r.id + '"><div class="mk">' + (r.sb ? '✓' : '·') + '</div><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + (r.repl ? ' <span class="tag t-r">대체</span>' : '') + (r.newStore ? ' <span class="tag t-c">신규</span>' : '') + '</b><small>' + (r.pays || []).map(p => methodTag(p) + ' ' + money(p.amt)).join(' · ') + (r.invs && r.invs.length ? ' · ' + r.invs.map(v => v.no).join(',') : '') + (r.mismatch ? ' · ⚠️' : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + stageText(r) + '</small></div></div>').join('') + '</div>';
-  });
+  const accs = VF.q && !/^\d{5,}$/.test(VF.q.trim()) ? searchAccounts(S.accounts, VF.q, 6) : [];
+  let h = '<div class="kpi" style="margin:0 0 10px">' + [['todo', '① 접수 확인 대기', todo.length, 'To review'], ['wait', '② 체크 수령 대기', wait.length, 'Awaiting check'], ['bad', '⚠️ 차액', bad.length, 'Mismatch'], ['all', '오늘 수금', money(sum(tdy, r => r.total)), 'Today ' + tdy.length]].map(c => '<div class="tap' + (VF.f === c[0] ? ' on' : '') + '" data-vf="' + c[0] + '" style="' + (VF.f === c[0] ? 'background:var(--blue2);outline:2px solid var(--blue)' : '') + '"><b>' + c[2] + '</b><span>' + c[1] + '<br><i class="en">' + c[3] + '</i></span></div>').join('') + '</div>' +
+    '<div class="card"><h2>💵 수금 확인 <span class="en">Payment review</span></h2>' +
+    '<div class="muted">세일즈맨이 넣은 수금을 보고 <b>① 접수 확인</b>(내용이 맞고 앱 인보이스에 입금 반영) → 실물 체크가 오면 <b>② 체크 수령</b> → 루크가 ③ 정산. COD · 카드는 💳 탭. <span class="en">Review → check received → settled by Luke.</span></div>' +
+    '<div class="two" style="margin-top:8px">' + sel('vfSm', [['', '전체 세일즈맨 · All salesmen']].concat(smOptions()), VF.sm) + '<input id="vfQ" placeholder="가게 · 계정 · 체크번호 / Store · Acct · Check #" value="' + esc(VF.q) + '" autocomplete="off"></div>' +
+    (accs.length ? '<div class="chips">' + accs.map(a => '<button data-vacc="' + esc(a.acct) + '">📚 ' + esc(a.store) + ' ' + esc(a.acct) + ' 전체 기록</button>').join('') + '</div>' : '') +
+    '<div class="chips" style="margin-top:4px"><button class="' + (VF.grp === 'sm' ? 'on' : '') + '" data-vg="sm">👤 세일즈맨별 · By salesman</button><button class="' + (VF.grp === 'day' ? 'on' : '') + '" data-vg="day">📅 날짜별 · By day</button><button class="' + (VF.f === 'done' ? 'on' : '') + '" data-vf="done">📁 정산 완료 · Settled</button></div></div>' +
+    /* 📬 체크 맞추기 — 우편으로 온 체크 번호를 치면 그 수금을 찾아 수령 ✓ */
+    '<div class="card" style="border:2px solid #bfdbfe"><h2>📬 들어온 체크 맞추기 <span class="en">Match incoming checks</span></h2><div class="muted">봉투에서 꺼낸 체크 번호를 치고 엔터 — 세일즈맨이 입력한 수금을 찾아 바로 <b>② 체크 수령 ✓</b>. 금액이 다르면 알려 줍니다. <span class="en">Type the check number + Enter.</span></div>' +
+    '<div class="two" style="margin-top:8px;grid-template-columns:1fr auto"><input id="ckNo" inputmode="numeric" placeholder="체크 번호 · check #" autocomplete="off"><input id="ckAmt" inputmode="decimal" placeholder="금액 (선택)" style="width:120px"></div><div id="ckOut"></div></div>';
+  const row = r => '<div class="pr tap ' + (r.v ? 'v' : r.rc ? 'rc' : r.sb ? 'sb' : '') + (r.mismatch && !r.v ? ' bad' : '') + '" data-vid="' + r.id + '"><div class="mk">' + (r.rc ? '✓' : r.sb ? '①' : '·') + '</div><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + (r.repl ? ' <span class="tag t-r">대체</span>' : '') + (r.newStore ? ' <span class="tag t-c">신규</span>' : '') + '</b><small>' + md(r.d) + ' · ' + (r.pays || []).map(p => methodTag(p) + ' ' + money(p.amt)).join(' · ') + (r.invs && r.invs.length ? ' · ' + r.invs.map(v => v.no).join(',') : '') + (r.mismatch ? ' · ⚠️' : '') + (r.settled ? ' · 📁 ' + esc(r.settled) : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + stageText(r) + '</small></div></div>';
+  if (!list.length) h += '<div class="card"><div class="none">없음 · none</div></div>';
+  else if (VF.grp === 'sm' && VF.f !== 'done') {
+    const by = groupBy(list, r => r.sm || '—');
+    Object.keys(by).sort().forEach(sm => { const L = by[sm], t = L.filter(r => !r.sb).length, w = L.filter(r => r.sb && !r.rc).length;
+      h += '<div class="card smgrp"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff;margin-top:0"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(sum(L, r => r.total)) + (t ? ' · <span class="warn">접수 확인 ' + t + '</span>' : '') + (w ? ' · 체크 대기 ' + w : '') + ' ▾</span></div><div class="smbody">' + (t ? '<button class="b-ghost b-sm" data-sball="' + esc(sm) + '" style="margin:6px 0">✓ ' + esc(sm) + ' 접수 확인 대기 ' + t + '건 모두 확인 · Review all</button>' : '') + L.map(row).join('') + '</div></div>'; });
+  } else {
+    const by = groupBy(list, r => r.d), days = Object.keys(by).sort().reverse();
+    days.forEach(d => { const L = by[d]; h += '<div class="card"><div class="dayhd"><span>' + dlabel(d) + '</span><span>' + money(sum(L, r => r.total)) + ' · ' + L.length + '건</span></div>' + L.map(row).join('') + '</div>'; });
+  }
   $('page').innerHTML = h;
   document.querySelectorAll('[data-vf]').forEach(b => b.onclick = () => { VF.f = b.dataset.vf; pageVerify(); });
+  document.querySelectorAll('[data-vg]').forEach(b => b.onclick = () => { VF.grp = b.dataset.vg; pageVerify(); });
+  document.querySelectorAll('[data-smhd]').forEach(el => el.onclick = () => el.parentElement.classList.toggle('fold'));
+  document.querySelectorAll('[data-vacc]').forEach(b => b.onclick = () => storeHistory(b.dataset.vacc));
   $('vfSm').onchange = () => { VF.sm = $('vfSm').value; pageVerify(); };
   $('vfQ').oninput = debounce(() => { VF.q = $('vfQ').value.trim(); pageVerify(); }, 400);
   document.querySelectorAll('[data-vid]').forEach(el => el.onclick = () => verifyDetail(rows.find(x => x.id === el.dataset.vid)));
+  document.querySelectorAll('[data-sball]').forEach(b => b.onclick = async () => {
+    const sm = b.dataset.sball, L = todo.filter(r => r.sm === sm && (!VF.sm || r.sm === VF.sm));
+    if (!(await confirmBox(sm + ' 의 접수 확인 대기 ' + L.length + '건을 모두 ① 확인 처리할까요? 인보이스 번호가 있는 건은 앱 인보이스에 입금이 반영됩니다.', '모두 확인'))) return;
+    busy(true); try { for (const r of L) { await S.DB.update('entries', r.id, { sb: true, sbAt: today(), rc: (r.pays || []).some(p => p.m === 'CHECK' || p.m === 'CASH' || p.m === 'ZELLE') ? !!r.rc : true, updatedAt: new Date().toISOString() }); await applyToInvoices(r.id, r.invs, true); } toast(L.length + '건 확인', 'good'); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); pageVerify();
+  });
+  /* 체크 맞추기 */
+  const ck = $('ckNo'), out = $('ckOut');
+  const find = async () => {
+    const no = ck.value.trim().replace(/^#/, ''); if (!no) { out.innerHTML = ''; return; }
+    let hits = rows.filter(r => (r.pays || []).some(p => p.m === 'CHECK' && String(p.ref || '').replace(/^#/, '') === no));
+    if (!hits.length) { try { hits = (await S.DB.list('entries', { where: [['refs', 'array-contains', no]] })).filter(r => !r.void); } catch (e) {} }
+    if (!hits.length) { out.innerHTML = '<div class="alert a-amb" style="margin-top:8px">체크 #' + esc(no) + ' 으로 입력된 수금이 없습니다 — 세일즈맨이 아직 안 넣었거나 번호가 다릅니다. 우편 체크면 💳 COD·카드에 넣으세요.</div>'; return; }
+    const amt = num($('ckAmt').value);
+    out.innerHTML = hits.map(r => { const p = (r.pays || []).find(p => String(p.ref || '').replace(/^#/, '') === no), diff = amt && p ? Math.abs(num(p.amt) - amt) > 0.005 : false;
+      return '<div class="pr" style="margin-top:6px"><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + '</b><small>' + md(r.d) + ' · 체크 #' + esc(no) + ' ' + money(p ? p.amt : 0) + (diff ? ' <span class="warn">⚠️ 들어온 금액 ' + money(amt) + ' 과 다름</span>' : '') + ' · ' + stageText(r) + '</small></div><div class="pa">' + (r.rc ? '<span class="tag t-k">수령됨</span>' : '<button class="b-blue b-sm" data-ckrc="' + r.id + '">② 수령 ✓</button>') + '</div></div>'; }).join('');
+    out.querySelectorAll('[data-ckrc]').forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.ckrc) || hits.find(x => x.id === b.dataset.ckrc); busy(true); try { const patch = { rc: true, rcAt: today(), updatedAt: new Date().toISOString() }; if (!r.sb) { patch.sb = true; patch.sbAt = today(); await applyToInvoices(r.id, r.invs, true); } await S.DB.update('entries', r.id, patch); toast('✓ 체크 #' + no + ' 수령', 'good'); ck.value = ''; $('ckAmt').value = ''; out.innerHTML = ''; ck.focus(); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); });
+    if (hits.length === 1 && !hits[0].rc) { const btn = out.querySelector('[data-ckrc]'); if (btn && !amt) btn.focus(); }
+  };
+  ck.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); find(); } }; $('ckAmt').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); find(); } };
+}
+/** 📚 가게 수금 기록 — 기간 상관없이 전부 (정산 완료 포함) */
+async function storeHistory(acct) {
+  const a = S.accounts.byCode[acct]; openModal('<h2>📚 ' + esc(a ? a.store : acct) + ' <span class="muted">' + esc(acct) + '</span></h2><div class="load">읽는 중…</div>');
+  let rows = [], cods = [];
+  try { [rows, cods] = await Promise.all([S.DB.list('entries', { where: [['acct', '==', acct]] }), S.DB.list('cod', { where: [['acct', '==', acct]] })]); } catch (e) {}
+  const all = sortBy(rows.filter(r => !r.void).map(r => ({ d: r.d, sm: r.sm, amt: r.total, how: (r.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(' · '), invs: (r.invs || []).map(v => v.no).join(','), st: stageText(r), id: r.id, kind: 'e' })).concat(cods.filter(c => !c.void).map(c => ({ d: c.d, sm: c.sm, amt: c.amt, how: c.method + (c.ref ? ' ' + c.ref : ''), invs: (c.invs || []).map(v => v.no).join(','), st: c.settled ? '정산 완료' : c.v ? '정산 확인' : '입력됨', id: c.id, kind: 'c' }))), x => x.d, true);
+  $('mbox').innerHTML = '<h2>📚 ' + esc(a ? a.store : acct) + ' <span class="muted">' + esc(acct) + '</span></h2><div class="heroSub">' + all.length + '건 · ' + money(sum(all, x => x.amt)) + ' · 최근 ' + (all[0] ? md(all[0].d) : '—') + '</div>' +
+    '<div style="max-height:60vh;overflow:auto;margin-top:8px">' + (all.length ? all.map(x => '<div class="pr"><div class="ct"><b>' + md(x.d) + ' · ' + esc(x.sm) + '</b><small>' + esc(x.how) + (x.invs ? ' · ' + esc(x.invs) : '') + '</small></div><div class="pa"><b>' + money(x.amt) + '</b><small>' + esc(x.st) + '</small></div></div>').join('') : '<div class="none">기록 없음</div>') + '</div>' +
+    '<div class="btns"><button class="b-ghost" id="shX">닫기</button></div>';
+  $('shX').onclick = closeModal;
 }
 function verifyDetail(r) {
   if (!r) return;
@@ -56,8 +114,8 @@ function verifyDetail(r) {
     ((r.invs || []).length ? '<table style="margin-top:6px">' + r.invs.map(v => '<tr><td>' + esc(v.no) + (v.store ? ' <span class="muted">🏬 ' + esc(v.store) + '</span>' : '') + '</td><td class="r">' + money(v.amt) + '</td></tr>').join('') + '</table>' : '<div class="muted">인보이스 없음</div>') +
     (r.mismatch ? '<div class="alert a-red">' + esc(r.mismatch) + '</div>' : '') + (r.memo ? '<div class="muted" style="margin-top:6px">세일즈맨 메모: ' + esc(r.memo) + '</div>' : '') +
     (r.repId ? '<div class="muted" style="margin-top:6px">📧 Daily Report ' + esc(md(String(r.repAt || '').substring(0, 10))) + ' 전송됨 <button type="button" class="b-ghost b-sm" id="vRep">📷 체크 사진 보기</button></div><div id="vRepBox"></div>' : r.rep === false ? '<div class="muted" style="margin-top:6px">⏳ 세일즈맨이 아직 Daily Report 를 보내지 않았습니다</div>' : '') +
-    '<div style="margin-top:12px"><label class="pick ' + (r.sb ? 'on' : '') + '" id="pkSb"><div class="ck">✓</div><div class="pm"><b>① SmartBee 입력했음</b><small>이메일/앱 보고 SmartBee 에 넣은 뒤 ✓</small></div></label>' +
-    (hasPhysical ? '<label class="pick ' + (r.rc ? 'on' : '') + '" id="pkRc"><div class="ck">✓</div><div class="pm"><b>② 체크 수령 / 입금 확인</b><small>실물 체크가 도착했거나 캐쉬·Zelle 입금 확인</small></div></label>' : '') + '</div>' +
+    '<div style="margin-top:12px"><label class="pick ' + (r.sb ? 'on' : '') + '" id="pkSb"><div class="ck">✓</div><div class="pm"><b>① 접수 확인 <span class="en">Reviewed</span></b><small>리포트 · 사진과 내용이 맞음. 인보이스 번호가 있으면 앱 인보이스에 입금이 반영됩니다</small></div></label>' +
+    (hasPhysical ? '<label class="pick ' + (r.rc ? 'on' : '') + '" id="pkRc"><div class="ck">✓</div><div class="pm"><b>② 체크 수령 / 입금 확인 <span class="en">Received</span></b><small>실물 체크가 도착했거나 캐쉬 · Zelle 입금 확인</small></div></label>' : '') + '</div>' +
     '<div class="two"><div class="fg"><label>디스카운트 %</label><input id="vDisc" inputmode="decimal" value="' + esc(r.disc == null ? '' : r.disc) + '" placeholder="예: 25"></div><div class="fg"><label>담당자 메모</label><input id="vNote" value="' + esc(r.vn || '') + '"></div></div>' +
     '<div class="btns"><button class="b-ghost" id="vEdit">금액·인보이스 수정</button><button class="b-ghost" id="vVoid">취소</button><button class="b-blue" id="vSave">저장</button></div>');
   let sb = !!r.sb, rc = !!r.rc;
@@ -66,11 +124,11 @@ function verifyDetail(r) {
   $('vSave').onclick = async () => {
     const patch = { sb, rc: hasPhysical ? rc : sb, vn: $('vNote').value.trim(), disc: $('vDisc').value.trim() === '' ? '' : num($('vDisc').value), updatedAt: new Date().toISOString() };
     if (sb && !r.sbAt) patch.sbAt = today(); if (patch.rc && !r.rcAt) patch.rcAt = today();
-    busy(true); try { await S.DB.update('entries', r.id, patch); closeModal(); toast('저장'); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
+    busy(true); try { await S.DB.update('entries', r.id, patch); if (sb !== !!r.sb) await applyToInvoices(r.id, r.invs, sb); closeModal(); toast('저장'); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
   };
   $('vEdit').onclick = () => { closeModal(); Router.go('entry', r.id); };
   if ($('vRep')) $('vRep').onclick = async () => { const b = $('vRepBox'); b.innerHTML = '<div class="load">읽는 중…</div>'; try { const rp = await S.DB.get('reports', r.repId); const ph = (rp && rp.photos) || []; b.innerHTML = ph.length ? '<div class="phgrid">' + ph.map(d => '<a class="ph" href="' + d + '" target="_blank"><img src="' + d + '"></a>').join('') + '</div><div class="muted">' + (rp.n || '') + '건 · ' + money(rp.total || 0) + ' · ' + esc(rp.sentAt || '') + '</div>' : '<div class="muted">이 리포트에는 사진이 없습니다</div>'; } catch (e) { b.innerHTML = '<div class="muted">리포트를 읽지 못했습니다: ' + esc(e.code || e.message) + '</div>'; } };
-  $('vVoid').onclick = async () => { if (!(await confirmBox('이 수금을 취소(VOID)할까요?', '취소하기'))) return; busy(true); try { await S.DB.update('entries', r.id, { void: true, updatedAt: new Date().toISOString() }); closeModal(); toast('취소했습니다'); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  $('vVoid').onclick = async () => { if (!(await confirmBox('이 수금을 취소(VOID)할까요?', '취소하기'))) return; busy(true); try { await S.DB.update('entries', r.id, { void: true, updatedAt: new Date().toISOString() }); if (r.sb) await applyToInvoices(r.id, r.invs, false); closeModal(); toast('취소했습니다'); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ============================================================
@@ -125,10 +183,10 @@ function codForm(r) {
     const id = r.id || newId('C');
     const doc = { id, d, ym: ym(d), sm, acct: $('cAcct').value || r.acct || '', store, method, ref: $('cRef').value.trim(), amt, invs: invList, disc: $('cDisc').value.trim() === '' ? '' : num($('cDisc').value), note: $('cNote').value.trim(), updatedAt: new Date().toISOString() };
     busy(true);
-    try { if (r.id) await S.DB.update('cod', id, doc); else await S.DB.set('cod', id, Object.assign(doc, { v: false, vn: '', settled: '', void: false, createdBy: S.user.email, createdAt: new Date().toISOString() })); closeModal(); toast('저장'); pageCod(); }
+    try { if (r.id) await S.DB.update('cod', id, doc); else await S.DB.set('cod', id, Object.assign(doc, { v: false, vn: '', settled: '', void: false, createdBy: S.user.email, createdAt: new Date().toISOString() })); if (r.id && r.invs) await applyToInvoices(id, r.invs, false); await applyToInvoices(id, invList, true); closeModal(); toast('저장'); pageCod(); }
     catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
   };
-  if ($('cDel')) $('cDel').onclick = async () => { if (!(await confirmBox('지울까요?', '삭제'))) return; busy(true); try { await S.DB.update('cod', r.id, { void: true }); closeModal(); pageCod(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  if ($('cDel')) $('cDel').onclick = async () => { if (!(await confirmBox('지울까요?', '삭제'))) return; busy(true); try { await S.DB.update('cod', r.id, { void: true }); await applyToInvoices(r.id, r.invs, false); closeModal(); pageCod(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ③ ACH 는 ach.js (ACH 허브) 가 맡음 */
