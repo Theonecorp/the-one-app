@@ -3,7 +3,8 @@
  *    미수금(AR) · 에이징 · 지난 오더 · 수금 기록, 그리고 아이템별 "이 가게가 최근에 산 기록"
  *  세일즈맨은 자기 가게(자기 sm 의 AR · 수금)만, 담당자는 가게 담당 세일즈맨 기준으로 봅니다
  * ============================================================ */
-import { $, esc, money, R2, num, md, toast, openModal, closeModal, sortBy, daysBetween, today, bi, bt } from './ui.js';
+import { $, esc, money, R2, num, md, toast, openModal, closeModal, sortBy, daysBetween, today, bi, bt, printOpen } from './ui.js';
+import { company, docHead, termDays } from './invoicing.js';
 import { recentYms, stTag } from './orders.js';
 
 let S = null;
@@ -59,6 +60,29 @@ export async function storeInfo(acct, force) {
   CACHE[acct] = out;
   return out;
 }
+/* ============================================================
+ *  손님용 스테이트먼트 — 미결 인보이스 · 크레딧 · 에이징 · 최근 입금 · 총 미수 (세일즈맨 · 담당자 모두 인쇄 가능)
+ * ============================================================ */
+const n2 = v => { v = Number(v) || 0; const s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < 0 ? '-' : '') + s; };
+const fD = d => { d = String(d || ''); return d.length >= 10 ? d.substring(5, 7) + '/' + d.substring(8, 10) + '/' + d.substring(2, 4) : d; };
+export function statementHtml(acct, info) {
+  const a = S.accounts.byCode ? S.accounts.byCode[acct] : null, co = company(S), t = today();
+  const open = info.invs.filter(v => Math.abs(v.bal) > 0.005).slice().sort((x, y) => x.d < y.d ? -1 : 1);
+  const terms = (a && a.terms) || 'N30', td = termDays(terms);
+  const addr = a ? [a.addr, [a.city, a.state].filter(Boolean).join(', ') + (a.zip ? ' ' + a.zip : '')].filter(Boolean) : [];
+  const pays = (info.pays || []).slice(0, 12);
+  return '<div class="iv">' + docHead(co, 'STATEMENT', [['Date', fD(t)], ['Acct. No.', acct]]) +
+    '<div class="ivparties"><div class="ivp"><b>TO :</b><div>' + esc(a ? a.store : acct) + '</div>' + addr.map(x => '<div>' + esc(x) + '</div>').join('') + (a && a.tel ? '<div>Phone : ' + esc(a.tel) + '</div>' : '') + '</div>' +
+    '<div class="ivp" style="text-align:right"><b>Terms :</b> ' + esc(terms) + '<br><b>Rep. :</b> ' + esc(info.sm || (a && a.sm) || '') + (info.asOf ? '<br><span style="font-size:10px;color:#555">Balances as of ' + esc(fD(info.asOf)) + ' plus payments received since</span>' : '') + '</div></div>' +
+    '<table class="ivlines"><thead><tr><th>Date</th><th>Invoice</th><th>Due</th><th class="r">Amount</th><th class="r">Paid</th><th class="r">Balance</th><th class="r">Days past due</th></tr></thead><tbody>' +
+    (open.length ? open.map(v => { const due = v.d ? new Date(new Date(v.d + 'T12:00:00').getTime() + td * 86400000) : null, dueS = due ? due.getFullYear() + '-' + String(due.getMonth() + 1).padStart(2, '0') + '-' + String(due.getDate()).padStart(2, '0') : ''; const pdd = v.pdd || (dueS ? Math.max(0, daysBetween(dueS, t)) : 0);
+      return '<tr' + (v.bal < 0 ? ' style="color:#15803d"' : pdd > 60 ? ' style="font-weight:700"' : '') + '><td>' + esc(fD(v.d)) + '</td><td><b>' + esc(v.no) + '</b></td><td>' + esc(fD(dueS)) + '</td><td class="r">' + n2(v.amt) + '</td><td class="r">' + n2(v.paid || 0) + '</td><td class="r">' + n2(v.bal) + '</td><td class="r">' + (v.bal < 0 ? 'CREDIT' : pdd > 0 ? pdd : '') + '</td></tr>'; }).join('') : '<tr><td colspan="7" style="text-align:center;padding:14px">No open balance — thank you!</td></tr>') +
+    '</tbody></table>' +
+    '<div class="ivar"><div class="ivart">Aging Summary</div><table><tr><th>Current</th><th>1-30</th><th>31-60</th><th>61-90</th><th>Over 90</th><th>Total Due</th></tr><tr>' + info.bk.map(v => '<td>' + n2(v) + '</td>').join('') + '<td><b>' + n2(info.bal) + '</b></td></tr></table></div>' +
+    (pays.length ? '<div style="margin-top:12px"><div class="ivart">Recent payments received</div><table class="ivlines"><thead><tr><th>Date</th><th>Method</th><th>Applied to</th><th class="r">Amount</th></tr></thead><tbody>' + pays.map(e => '<tr><td>' + esc(fD(e.d)) + '</td><td>' + esc((e.pays || []).map(p => p.m === 'CHECK' ? 'Check #' + p.ref : p.m).join(', ') || e.method || '') + '</td><td>' + esc((e.invs || []).map(v => v.no).filter(Boolean).join(', ')) + '</td><td class="r">' + n2(e.total != null ? e.total : e.amt) + '</td></tr>').join('') + '</tbody></table></div>' : '') +
+    '<div class="ivfoot" style="margin-top:14px"><div class="ivthx">Please remit payment to:<br><b>' + esc(co.name) + '</b><br>' + esc(co.addr1) + '<br>' + esc(co.addr2) + '<br>Phone. ' + esc(co.tel) + '<br><br>' + esc(co.thanks || '') + '</div><table class="ivtot"><tr><td>Open invoices</td><td class="r">' + open.filter(v => v.bal > 0).length + '</td></tr><tr><td>Credits</td><td class="r">' + n2(open.filter(v => v.bal < 0).reduce((s, v) => s + v.bal, 0)) + '</td></tr><tr class="ivT"><td>TOTAL DUE</td><td class="r">' + n2(info.bal) + '</td></tr></table></div>' +
+    '<div class="ivpg">Statement · ' + esc(acct) + ' · printed ' + esc(new Date().toLocaleString('en-US')) + '</div></div>';
+}
 /** "10/07(3) 07/28(3)" — 최근 3번 */
 export function histText(info, code) { const h = info && info.hist[code]; if (!h || !h.length) return ''; return h.slice(0, 3).map(x => md(x[0]) + '(' + x[1] + ')').join(' '); }
 export function lastPrice(info, code) { const h = info && info.hist[code]; return h && h.length ? h[0][2] : null; }
@@ -83,8 +107,9 @@ export async function storeSheet(acct, onPick) {
       (info.err ? '<div class="alert a-amb">일부를 읽지 못했습니다 (' + esc(info.err) + ')</div>' : '') +
       '<div class="seg">' + [['inv', bi('미결 인보이스', 'Open inv') + ' ' + live.length], ['ord', bi('오더', 'Orders') + ' ' + info.orders.length], ['pay', bi('수금', 'Payments') + ' ' + info.pays.length]].map(t => '<button class="' + (tab === t[0] ? 'on' : '') + '" data-ss="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
       '<div style="max-height:45vh;overflow:auto">' + body + '</div>' +
-      (onPick ? '<div class="btns"><button class="b-blue" id="ssPick">' + bi('이 가게로 오더', 'Order for this store') + '</button></div>' : '');
+      '<div class="btns"><button class="b-ghost" id="ssStmt">🖨 ' + bi('손님용 스테이트먼트', 'Customer statement') + '</button>' + (onPick ? '<button class="b-blue" id="ssPick">' + bi('이 가게로 오더', 'Order for this store') + '</button>' : '') + '</div>';
     $('ssX').onclick = closeModal;
+    $('ssStmt').onclick = () => printOpen(statementHtml(acct, info));
     document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { tab = b.dataset.ss; paint(); });
     document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); location.hash = '#/order/' + encodeURIComponent(el.dataset.so); });
     if ($('ssPick')) $('ssPick').onclick = () => { closeModal(); onPick(acct); };
