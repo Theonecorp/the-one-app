@@ -31,7 +31,7 @@ export async function myEntries(force) {
 }
 function stageClass(e) { return e.v ? 'v' : e.rc ? 'rc' : e.sb ? 'sb' : ''; }
 function stageDots(e) { return '<span class="stage"><i class="' + (e.sb ? 'sb' : '') + '"></i><i class="' + (e.rc ? 'rc' : '') + '"></i><i class="' + (e.v ? 'v' : '') + '"></i></span>'; }
-export function stageText(e) { return e.settled ? '정산 완료' : e.v ? '③ 정산 확인' : e.rc ? '② 체크 수령' : e.sb ? '① SmartBee' : '입력됨'; }
+export function stageText(e) { return e.settled ? '정산 완료 · Settled' : e.v ? '③ 정산 확인 · Verified' : e.rc ? '② 체크 수령 · Received' : e.sb ? '① 접수 확인 · Reviewed' : '입력됨 · Entered'; }
 
 /* ============================================================
  *  ① 수금 입력
@@ -262,7 +262,7 @@ async function saveEntry() {
   try {
     if (F.editing) {
       const old = (await myEntries()).find(x => x.id === id);
-      if (old && old.sb && S.role === 'salesman') { busy(false); return toast('담당자가 이미 SmartBee 처리한 건은 수정할 수 없습니다 — 담당자에게 말씀하세요', 'bad'); }
+      if (old && old.sb && S.role === 'salesman') { busy(false); return toast('담당자가 이미 확인한 건은 수정할 수 없습니다 — 담당자에게 말씀하세요', 'bad'); }
       await S.DB.update('entries', id, doc);
     } else {
       Object.assign(doc, { sb: false, rc: false, v: false, vn: '', settled: '', void: false, createdAt: new Date().toISOString() });
@@ -286,7 +286,7 @@ async function pageMine() {
   const todayAmt = sum(rows.filter(r => r.d === t), r => r.total), monAmt = sum(rows.filter(r => r.ym === tm), r => r.total);
   const by = groupBy(rows, r => r.d), days = Object.keys(by).sort().reverse();
   let h = '<div class="card"><h2>' + esc(me()) + ' — 수금</h2><div class="kpi" style="grid-template-columns:1fr 1fr"><div><b>' + money(todayAmt) + '</b><span>오늘 ' + rows.filter(r => r.d === t).length + '건</span></div><div><b>' + money(monAmt) + '</b><span>이번 달 ' + rows.filter(r => r.ym === tm).length + '건</span></div></div>' +
-    '<div class="muted" style="margin-top:8px"><span class="stage"><i class="sb"></i></span> SmartBee 입력 · <span class="stage"><i class="rc"></i></span> 체크 수령 · <span class="stage"><i class="v"></i></span> 정산 확인 — 담당자·루크가 처리하면 색이 바뀝니다</div>' +
+    '<div class="muted" style="margin-top:8px"><span class="stage"><i class="sb"></i></span> 접수 확인 · <span class="stage"><i class="rc"></i></span> 체크 수령 · <span class="stage"><i class="v"></i></span> 정산 확인 — 담당자·루크가 처리하면 색이 바뀝니다</div>' +
     '<button class="b-blue" id="btnNew" style="margin-top:12px">＋ 새 수금 입력</button></div>';
   if (!days.length) h += '<div class="card"><div class="none">최근 3개월 기록이 없습니다</div></div>';
   days.forEach(d => {
@@ -308,7 +308,7 @@ async function entryDetail(id) {
     '<table style="margin-top:8px">' + (r.pays || []).map(p => '<tr><td>' + ({ CHECK: '체크 #' + esc(p.ref), CASH: '캐쉬', ZELLE: 'Zelle ' + esc(p.ref) })[p.m] + (p.dep ? ' <span class="muted">' + md(p.dep) + '</span>' : '') + (p.mob ? ' 📱' : '') + '</td><td class="r"><b>' + money(p.amt) + '</b></td></tr>').join('') + '</table>' +
     ((r.invs || []).length ? '<table style="margin-top:8px">' + r.invs.map(v => '<tr><td>' + esc(v.no) + (v.store ? ' <span class="muted">🏬 ' + esc(v.store) + '</span>' : '') + (v.partial ? ' <span class="tag t-c">일부</span>' : '') + '</td><td class="r">' + money(v.amt) + '</td></tr>').join('') + '</table>' : '') +
     (r.mismatch ? '<div class="alert a-red">' + esc(r.mismatch) + '</div>' : '') + (r.memo ? '<div class="muted" style="margin-top:6px">메모: ' + esc(r.memo) + '</div>' : '') + (r.vn ? '<div class="alert a-amb">담당자/루크 메모: ' + esc(r.vn) + '</div>' : '') +
-    '<div class="btns">' + (r.sb ? '<div class="muted">담당자가 처리한 건이라 수정할 수 없습니다. 틀렸으면 담당자에게 말씀하세요.</div>' : '<button class="b-ghost" id="dVoid">취소(VOID)</button><button class="b-blue" id="dEdit">수정</button>') + '</div>');
+    '<div class="btns">' + (r.sb ? '<div class="muted">담당자가 이미 확인한 건이라 수정할 수 없습니다. 틀렸으면 담당자에게 말씀하세요.</div>' : '<button class="b-ghost" id="dVoid">취소(VOID)</button><button class="b-blue" id="dEdit">수정</button>') + '</div>');
   if ($('dEdit')) $('dEdit').onclick = () => { closeModal(); Router.go('entry', id); };
   if ($('dVoid')) $('dVoid').onclick = async () => { if (!(await confirmBox('이 수금을 취소할까요? 리스트에서 빠집니다.', '취소하기'))) return; busy(true); try { await S.DB.update('entries', id, { void: true, updatedAt: new Date().toISOString() }); CACHE.entries = null; toast('취소했습니다'); pageMine(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }

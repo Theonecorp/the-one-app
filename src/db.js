@@ -40,6 +40,7 @@ function makeMemoryDB(seed) {
   const store = {};
   Object.keys(seed || {}).forEach(col => { store[col] = {}; (seed[col] || []).forEach(d => { store[col][d.id] = JSON.parse(JSON.stringify(d)); }); });
   const col = c => (store[c] = store[c] || {});
+  if (typeof window !== 'undefined') window.__MOCK_STORE__ = store;   // 시험용 — 메모리 DB 들여다보기
   const clone = d => d == null ? null : JSON.parse(JSON.stringify(d));
   return {
     kind: 'memory',
