@@ -12,6 +12,8 @@ import { newId } from './db.js';
 import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
 import { settlementHtml } from './sales.js';
 import { searchAccounts } from './accounts.js';
+import { PERIODS, periodRange, addMonths, monthEnd } from './fulfill.js';
+import { invTypes } from './invoicing.js';
 
 let S = null, C = { ents: null, cod: null, at: 0 };
 export function register(state) {
@@ -49,38 +51,69 @@ const carryTag = x => x.deferred ? ' · <span style="color:#7c3aed">↩ ' + esc(
 /* ============================================================
  *  ① 현황
  * ============================================================ */
+/* 현황 기간 (오늘 · 이번 주 · 이번 달 · 분기 · 1년 · 직접) */
+let NP = { p: 'month', from: '', to: '' };
 async function pageNow() {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
   await loadAll();
-  const rows = allRows(), t = today(), tm = ym(t), prevM = recentYms(2)[1];
-  const cur = rows.filter(r => r.ym === tm), prev = rows.filter(r => r.ym === prevM), tod = rows.filter(r => r.d === t);
-  const dayN = Number(t.substring(8, 10)), prevSame = prev.filter(r => Number(r.d.substring(8, 10)) <= dayN);
-  const wkStart = addDays(t, -((new Date(t + 'T12:00:00').getDay() + 6) % 7)), week = rows.filter(r => r.d >= wkStart && r.d <= t);
-  const bySm = groupBy(cur, r => r.sm), prevBySm = groupBy(prev, r => r.sm);
-  const smList = sortBy(Object.keys(bySm).map(s => ({ sm: s, amt: sum(bySm[s], r => r.amt), n: bySm[s].length, prev: sum(prevBySm[s] || [], r => r.amt) })), x => x.amt, true);
-  const smMax = Math.max(1, ...smList.map(x => x.amt));
+  const t = today(), [from, to] = periodRange(NP.p, NP.from, NP.to), days = daysBetween(from, to) + 1, pf = addDays(from, -days), pt = addDays(from, -1);
+  const pl = PERIODS.find(x => x[0] === NP.p), ptxt = NP.p === 'custom' || !pl ? md(from) + ' ~ ' + md(to) : pl[1] + (days > 1 ? ' (' + md(from) + ' ~ ' + md(to) + ')' : ' ' + md(from));
+  const MAIN = ['today', 'week', 'month', 'quarter', 'year'];
+  /* 매출(인보이스) · 오더 · 미수금은 따로 읽음 — 수금(entries · cod)은 loadAll 의 13개월 */
+  let inv = [], pinv = [], live = [], arAll = null, bo = [];
+  try { [inv, pinv, live, arAll, bo] = await Promise.all([
+    S.DB.list('invoices', { where: [['d', '>=', from], ['d', '<=', to]] }), days <= 92 ? S.DB.list('invoices', { where: [['d', '>=', pf], ['d', '<=', pt]] }) : Promise.resolve([]),
+    S.DB.list('orders', { where: [['st', 'in', ['sent', 'pick', 'ok', 'picked', 'done']]] }), S.DB.get('ar', '_all').catch(() => null), S.DB.list('backorders', { where: [['st', '==', 'open']] }).catch(() => [])]); } catch (e) { toast('일부를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
+  inv = inv.filter(x => x.st !== 'x'); pinv = pinv.filter(x => x.st !== 'x');
+  const rows = allRows(), cur = rows.filter(r => r.d >= from && r.d <= to), prev = rows.filter(r => r.d >= pf && r.d <= pt);
+  const sales = sum(inv, x => x.total || 0), psales = sum(pinv, x => x.total || 0), coll = sum(cur, r => r.amt), pcoll = sum(prev, r => r.amt);
+  const types = invTypes(S), isJ = tt => { const x = types.find(z => z.c === tt); return x ? x.comm === 'A' : tt === 'A'; };
+  const jew = sum(inv.filter(x => isJ(x.t)), x => x.total || 0), oth = R2(sales - jew);
+  /* 세일즈맨별 매출 · 수금 나란히 */
+  const smS = groupBy(inv, x => x.sm || '—'), smC = groupBy(cur, r => r.sm || '—');
+  const smList = sortBy(Array.from(new Set(Object.keys(smS).concat(Object.keys(smC)))).map(sm => ({ sm, sales: sum(smS[sm] || [], x => x.total || 0), n: (smS[sm] || []).length, coll: sum(smC[sm] || [], r => r.amt), cn: (smC[sm] || []).length })), x => x.sales + x.coll, true);
+  const smMax = Math.max(1, ...smList.map(x => Math.max(x.sales, x.coll)));
+  /* 막대 — 하루/월 단위 매출(파랑) · 수금(초록) */
+  let bars = '';
+  if (days > 1) { const byM = days > 62, kf = d => byM ? d.substring(0, 7) : d, keys = []; for (let d = from; d <= to; d = addDays(d, 1)) { const kk = kf(d); if (keys[keys.length - 1] !== kk) keys.push(kk); }
+    const mi = groupBy(inv, x => kf(x.d)), mc = groupBy(cur, r => kf(r.d)), vs = keys.map(kk => sum(mi[kk] || [], x => x.total || 0)), vc = keys.map(kk => sum(mc[kk] || [], r => r.amt)), bm = Math.max(1, ...vs, ...vc);
+    bars = '<div class="bars" style="height:76px">' + keys.map((kk, i) => '<div style="flex:1;display:flex;gap:1px;align-items:flex-end;height:100%"><div class="b" style="flex:1;background:#3b82f6;height:' + Math.max(2, Math.round(vs[i] / bm * 100)) + '%" data-v="' + esc(kk + ' 매출 ' + money(vs[i])) + '"></div><div class="b" style="flex:1;background:#22c55e;height:' + Math.max(2, Math.round(vc[i] / bm * 100)) + '%" data-v="' + esc(kk + ' 수금 ' + money(vc[i])) + '"></div></div>').join('') + '</div><div class="xlab"><span>' + esc(keys[0]) + '</span><span style="color:#3b82f6">■ 매출</span><span style="color:#22c55e">■ 수금</span><span>' + esc(keys[keys.length - 1]) + '</span></div>'; }
+  /* 수금 수단 · 대기 */
   const bySrc = groupBy(cur, r => r.src);
-  const series = recentYms(13).reverse().map(m => ({ ym: m, amt: sum(rows.filter(r => r.ym === m), r => r.amt) }));
-  const max = Math.max(1, ...series.map(x => x.amt));
-  const wait = C.ents.filter(e => !e.settled && e.sb && !e.rc && !e.repl), pend = C.ents.filter(e => !e.settled && e.rc && !e.v && !e.repl), bad = C.ents.filter(e => e.mismatch && !e.settled);
-  /* 📵 입력 없는 세일즈맨 · 📅 입금 예정 · ↩️ 바운스 */
+  const wait = C.ents.filter(e => !e.settled && e.sb && !e.rc && !e.repl), todo = C.ents.filter(e => !e.settled && !e.sb && !e.repl), pend = C.ents.filter(e => !e.settled && e.rc && e.sb && !e.v && !e.repl), bad = C.ents.filter(e => e.mismatch && !e.settled && !e.v);
   const quiet = S.sms.filter(s => s.active !== false).map(s => { const last = sortBy(C.ents.filter(e => e.sm === s.code), e => e.d, true)[0]; return { sm: s.code, last: last ? last.d : '', days: last ? daysBetween(last.d, t) : 999 }; }).filter(x => x.days >= 3).sort((a, b) => b.days - a.days);
   const upItems = []; C.ents.forEach(e => (e.pays || []).forEach(p => { if (p.m === 'CHECK' && p.dep && p.dep > t) upItems.push({ d: p.dep, store: e.store, sm: e.sm, check: p.ref, amt: num(p.amt) }); }));
   const upBy = groupBy(upItems, x => x.d), up = Object.keys(upBy).sort().map(d => ({ d, n: upBy[d].length, amt: sum(upBy[d], x => x.amt), items: upBy[d] }));
-  const d90 = addDays(t, -90), bo = C.ents.filter(e => e.repl && e.d >= d90), boBy = groupBy(bo, e => e.sm);
-  let h = '<div class="card"><h2>이번 달 ' + tm + '</h2><div class="hero">' + money(sum(cur, r => r.amt)) + '</div><div class="heroSub">' + cur.length + '건 · 지난달 같은 날짜까지 ' + money(sum(prevSame, r => r.amt)) + ' ' + pct(sum(cur, r => r.amt), sum(prevSame, r => r.amt)) + '</div>' +
-    '<div class="kpi"><div><b>' + money(sum(tod, r => r.amt)) + '</b><span>오늘 ' + tod.length + '건</span></div><div><b>' + money(sum(week, r => r.amt)) + '</b><span>이번 주</span></div><div><b>' + money(sum(prev, r => r.amt)) + '</b><span>지난달 전체</span></div><div><b>' + pend.length + '</b><span>정산 확인 대기</span></div></div>' +
+  const d90 = addDays(t, -90), bounce = C.ents.filter(e => e.repl && e.d >= d90);
+  /* 오더 흐름 · 미수금 */
+  const oc = st => live.filter(o => st.includes(o.st)), oAmt = L => money(sum(L, o => o.amt || 0));
+  let arTot = 0, ar90 = 0, arN = 0; if (arAll && arAll.stores) { arAll.stores.forEach(st => { let net = 0; (st.invs || []).forEach(v => { net += v.bal; if (v.bal > 0 && (v.bk || 0) >= 4) ar90 += v.bal; }); if (net > 0.005) { arTot += net; arN++; } }); }
+  const cmp = (a, b) => b ? ' <b class="' + (a >= b ? 'ok' : 'warn') + '">' + ((a - b) / b * 100 >= 0 ? '+' : '') + Math.round((a - b) / b * 100) + '%</b>' : '';
+  let h = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📈 현황 — ' + esc(ptxt) + '</h2><div class="chips" style="margin:0 0 8px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (NP.p === c[0] ? 'on' : '') + '" data-np="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (MAIN.includes(NP.p) ? '' : 'on') + '" id="npCal">📅 날짜 선택</button></div>' +
+    '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="npPrev">◀</button><div style="text-align:center;font-weight:800">' + esc(ptxt) + '</div><button class="b-ghost b-sm" id="npNext">▶</button></div></div>';
+  /* ① 큰 숫자 넷 */
+  h += '<div class="kpi" style="margin:0 0 10px;grid-template-columns:1fr 1fr"><div class="tap" data-go="pay" style="text-align:left;padding:12px"><span>💰 매출 · Sales (인보이스)</span><b style="font-size:22px;display:block;margin-top:4px">' + money(sales) + '</b><span>' + inv.length + '건' + (days <= 92 ? ' · 앞 기간 ' + money(psales) + cmp(sales, psales) : '') + '</span></div>' +
+    '<div class="tap" data-go="payc" style="text-align:left;padding:12px"><span>💵 수금 · Collected</span><b style="font-size:22px;display:block;margin-top:4px">' + money(coll) + '</b><span>' + cur.length + '건 · 앞 기간 ' + money(pcoll) + cmp(coll, pcoll) + '</span></div>' +
+    '<div class="tap" data-go="bossar" style="text-align:left;padding:12px"><span>📄 미수금 · A/R</span><b style="font-size:22px;display:block;margin-top:4px">' + money(arTot) + '</b><span>' + arN + '곳 · 90일+ <b class="' + (arTot && ar90 / arTot >= 0.3 ? 'warn' : '') + '">' + money(ar90) + '</b>' + (arAll && arAll.asOf ? ' · 기준 ' + md(arAll.asOf) : '') + '</span></div>' +
+    '<div class="tap" data-go="orders" style="text-align:left;padding:12px"><span>📦 오더 · Orders (지금)</span><b style="font-size:22px;display:block;margin-top:4px">' + live.length + '건 · ' + oAmt(live) + '</b><span>접수 ' + oc(['sent']).length + ' · 픽킹 ' + oc(['pick', 'ok']).length + ' · 확인 대기 ' + oc(['picked']).length + ' · 포장 대기 ' + oc(['done']).length + (bo.length ? ' · 백오더 ' + bo.length : '') + '</span></div></div>';
+  /* ② 매출 · 수금 묶음 */
+  h += '<div class="card"><h2>매출 · 수금 — ' + esc(ptxt) + '</h2><div class="kpi" style="grid-template-columns:repeat(4,1fr)"><div><b>' + money(jew) + '</b><span>💍 주얼리</span></div><div><b>' + money(oth) + '</b><span>🧴 그 외 제품</span></div>' + [['FIELD', '현장 수금'], ['COD', 'COD'], ['CARD', '카드'], ['ACH', 'ACH']].filter(x => bySrc[x[0]]).slice(0, 2).map(x => '<div><b>' + money(sum(bySrc[x[0]], r => r.amt)) + '</b><span>' + x[1] + '</span></div>').join('') + '</div>' + bars +
+    '<table style="margin-top:8px"><tr><th>세일즈맨</th><th class="r">매출</th><th class="r">수금</th><th class="r">수금/매출</th></tr>' + (smList.map(x => '<tr class="tap" data-smv="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b><div class="paybar" style="margin-top:3px;height:6px"><i style="width:' + Math.round(x.sales / smMax * 100) + '%;background:#3b82f6;height:6px"></i></div><div class="paybar" style="margin-top:2px;height:6px"><i style="width:' + Math.round(x.coll / smMax * 100) + '%;background:#22c55e;height:6px"></i></div></td><td class="r"><b>' + money(x.sales) + '</b><div class="muted" style="font-size:11px">' + x.n + '건</div></td><td class="r"><b>' + money(x.coll) + '</b><div class="muted" style="font-size:11px">' + x.cn + '건</div></td><td class="r">' + (x.sales ? Math.round(x.coll / x.sales * 100) + '%' : '—') + '</td></tr>').join('') || '<tr><td colspan="4" class="none">이 기간 자료 없음</td></tr>') + '</table><div class="hint" style="text-align:center">이름을 누르면 수금 가게별 내역 · 자세한 표는 경영 → 📊 리포트</div></div>';
+  /* ③ 처리 대기 — 내가 할 일 · 담당자가 할 일 */
+  h += '<div class="card"><h2>⏳ 처리 대기 · To do</h2><div class="kpi" style="grid-template-columns:repeat(4,1fr)"><div class="tap" data-go="pay"><b>' + pend.length + '</b><span>③ 정산 확인 (루크)</span></div><div><b>' + todo.length + '</b><span>① 접수 확인 (담당자)</span></div><div><b>' + wait.length + '</b><span>② 체크 수령 대기</span></div><div' + (bad.length ? ' style="background:#fef2f2"' : '') + '><b>' + bad.length + '</b><span>⚠️ 차액</span></div></div>' +
+    (quiet.length ? '<div class="alert a-amb" style="margin-top:8px">📵 3일 이상 수금 입력 없음: ' + quiet.map(q => '<b>' + esc(q.sm) + '</b> ' + (q.days >= 999 ? '기록 없음' : q.days + '일')).join(' · ') + '</div>' : '') +
+    (bounce.length ? '<div class="alert a-red">↩️ 최근 90일 바운스 · 대체 체크 ' + bounce.length + '건 · ' + money(sum(bounce, e => e.total)) + '</div>' : '') +
     '<div class="two" style="margin-top:8px"><input id="nowQ" placeholder="🔎 가게 찾기 · 코드 / 이름" autocomplete="off"><button class="b-ghost" id="nowGo">찾기</button></div></div>';
-  if (quiet.length || bad.length || wait.length) h += '<div class="card"><h2>신경 쓸 것</h2>' + (bad.length ? '<div class="alert a-red">⚠️ 인보이스 차액 ' + bad.length + '건 — 정산 전에 담당자가 고쳐야 합니다 (수금 확인)</div>' : '') + (wait.length ? '<div class="alert a-blu">📥 체크 수령 대기 ' + wait.length + '건 ' + money(sum(wait, e => e.total)) + ' — 담당자가 ② 를 누르면 정산에 올라옵니다</div>' : '') + '</div>';
-  h += '<div class="two-col"><div class="card"><h2>세일즈맨 · 이번 달 (' + smList.length + '명)</h2><table><tr><th>이름</th><th class="r">금액</th><th class="r">건</th><th class="r">전월비</th></tr>' + (smList.map((x, i) => '<tr class="tap" data-smv="' + esc(x.sm) + '"><td><span class="rank">' + (i + 1) + '</span><b>' + esc(x.sm) + '</b><div class="minibar"><div style="width:' + Math.round(x.amt / smMax * 100) + '%"></div></div></td><td class="r"><b>' + money(x.amt) + '</b></td><td class="r muted">' + x.n + '</td><td class="r">' + pct(x.amt, x.prev) + '</td></tr>').join('') || '<tr><td colspan="4" class="none">아직 없음</td></tr>') + '</table><div class="hint" style="text-align:center">이름을 누르면 가게별 내역</div></div>' +
-    '<div class="card"><h2>오늘 들어온 수금 · ' + dlabel(t) + '</h2>' + (tod.length ? '<table><tr><th>가게</th><th>담당</th><th class="r">금액</th></tr>' + sortBy(tod, r => r.amt, true).map(r => '<tr><td class="nm">' + esc(r.store || r.acct) + ' <span class="tag ' + SRC_TAG[r.src][1] + '">' + SRC_TAG[r.src][0] + '</span></td><td class="muted" style="font-size:12px">' + esc(r.sm) + '</td><td class="r"><b>' + money(r.amt) + '</b></td></tr>').join('') + '</table>' : '<div class="none">아직 없습니다</div>') + '</div></div>';
-  h += '<div class="two-col"><div class="card"><h2>월별 수금 (13개월)</h2><div class="bars">' + series.map((x, i) => '<div class="b' + (i === series.length - 1 ? ' on' : '') + '" style="height:' + Math.max(2, Math.round(x.amt / max * 78)) + 'px" data-v="' + x.ym.substring(5) + '월 ' + k(x.amt) + '"></div>').join('') + '</div><div class="xlab"><span>' + series[0].ym + '</span><span>' + tm + '</span></div></div>' +
-    '<div class="card"><h2>수단별 (이번 달)</h2><table>' + [['FIELD'], ['COD'], ['ACH'], ['CARD']].filter(x => bySrc[x[0]]).map(x => '<tr><td><span class="tag ' + SRC_TAG[x[0]][1] + '">' + SRC_TAG[x[0]][0] + '</span></td><td class="r"><b>' + money(sum(bySrc[x[0]], r => r.amt)) + '</b></td><td class="r muted">' + Math.round(sum(bySrc[x[0]], r => r.amt) / Math.max(1, sum(cur, r => r.amt)) * 100) + '%</td></tr>').join('') + '</table></div></div>';
-  h += '<div class="two-col"><div class="card"><h2>📵 입력 없는 세일즈맨 (3일 이상)</h2>' + (quiet.length ? '<table><tr><th>이름</th><th class="r">마지막 입력</th><th class="r">경과</th></tr>' + quiet.map(q => '<tr class="tap" data-smv="' + esc(q.sm) + '"><td><b>' + esc(q.sm) + '</b></td><td class="r muted" style="font-size:12px">' + (q.last || '기록 없음') + '</td><td class="r ' + (q.days >= 7 ? 'warn' : '') + '">' + (q.days >= 999 ? '—' : q.days + '일') + '</td></tr>').join('') + '</table>' : '<div class="alert a-grn">전원 최근 3일 안에 입력했습니다 ✓</div>') + '</div>' +
-    '<div class="card"><h2>📅 입금 예정 체크 (post-dated) · ' + money(sum(upItems, x => x.amt)) + ' · ' + upItems.length + '장</h2>' + (up.length ? '<table><tr><th>입금일</th><th class="r">장</th><th class="r">금액</th></tr>' + up.slice(0, 14).map(d => '<tr class="tap" data-up="' + d.d + '"><td>' + dlabel(d.d) + '</td><td class="r muted">' + d.n + '장</td><td class="r"><b>' + money(d.amt) + '</b></td></tr>').join('') + '</table><div class="hint" style="text-align:center">날짜를 누르면 그날 체크 목록</div>' : '<div class="none">입금 예정 체크가 없습니다</div>') + '</div></div>';
-  h += '<div class="two-col"><div class="card"><h2>↩️ 바운스 · 대체 체크 (최근 90일) · ' + bo.length + '건 · ' + money(sum(bo, e => e.total)) + '</h2>' + (bo.length ? '<table><tr><th>세일즈맨</th><th class="r">건</th><th class="r">금액</th></tr>' + Object.keys(boBy).map(s => '<tr><td><b>' + esc(s) + '</b></td><td class="r muted">' + boBy[s].length + '건</td><td class="r"><b>' + money(sum(boBy[s], e => e.total)) + '</b></td></tr>').join('') + '</table>' : '<div class="alert a-grn">바운스 없음 ✓</div>') + '</div>' +
+  /* ④ 입금 예정 · 커미션 예상 */
+  h += '<div class="two-col"><div class="card"><h2>📅 입금 예정 체크 (post-dated) · ' + money(sum(upItems, x => x.amt)) + ' · ' + upItems.length + '장</h2>' + (up.length ? '<table><tr><th>입금일</th><th class="r">장</th><th class="r">금액</th></tr>' + up.slice(0, 10).map(d => '<tr class="tap" data-up="' + d.d + '"><td>' + dlabel(d.d) + '</td><td class="r muted">' + d.n + '장</td><td class="r"><b>' + money(d.amt) + '</b></td></tr>').join('') + '</table>' : '<div class="none">입금 예정 체크가 없습니다</div>') + '</div>' +
     '<div class="card"><h2>💵 이번 정산기간 커미션 예상</h2><div id="estBox"></div></div></div>';
   $('page').innerHTML = h;
+  document.querySelectorAll('[data-np]').forEach(b => b.onclick = () => { NP.p = b.dataset.np; pageNow(); });
+  const shift = dir => { if (NP.p === 'month' || NP.p === 'lastm' || (NP.p === 'custom' && from.endsWith('-01') && to === monthEnd(from))) { const f = addMonths(from, dir); NP.from = f; NP.to = monthEnd(f); } else { NP.from = addDays(from, dir * days); NP.to = addDays(to, dir * days); } NP.p = 'custom'; pageNow(); };
+  $('npPrev').onclick = () => shift(-1); $('npNext').onclick = () => shift(1);
+  $('npCal').onclick = () => { openModal('<h2>📅 기간 고르기</h2><div class="chips">' + PERIODS.filter(c => c[0] !== 'custom').map(c => '<button data-npm="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div><div class="two" style="margin-top:8px"><div class="fg"><label>부터</label><input type="date" id="npF" value="' + esc(from) + '"></div><div class="fg"><label>까지</label><input type="date" id="npT" value="' + esc(to) + '"></div></div><div class="btns"><button class="b-ghost" id="npX">취소</button><button class="b-blue" id="npOk">보기</button></div>');
+    document.querySelectorAll('[data-npm]').forEach(b => b.onclick = () => { closeModal(); NP.p = b.dataset.npm; pageNow(); }); $('npX').onclick = closeModal; $('npOk').onclick = () => { const f = $('npF').value, tt = $('npT').value; if (!f || !tt || f > tt) return toast('날짜를 확인하세요', 'bad'); closeModal(); NP.p = 'custom'; NP.from = f; NP.to = tt; pageNow(); }; };
+  document.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { const g = el.dataset.go; if (g === 'orders') Router.go('order'); else if (g === 'payc') Router.go('find'); else Router.go(g); });
   document.querySelectorAll('[data-smv]').forEach(el => el.onclick = () => smDetail(el.dataset.smv));
   document.querySelectorAll('[data-up]').forEach(el => el.onclick = () => { const d = up.find(x => x.d === el.dataset.up); openModal('<h2>' + dlabel(d.d) + ' 입금 예정 · ' + money(d.amt) + '</h2><table>' + d.items.map(i => '<tr><td class="nm">' + esc(i.store) + '</td><td class="muted" style="font-size:12px">' + esc(i.sm) + ' #' + esc(i.check) + '</td><td class="r"><b>' + money(i.amt) + '</b></td></tr>').join('') + '</table><div class="btns"><button class="b-ghost" id="mX">닫기</button></div>'); $('mX').onclick = closeModal; });
   $('nowGo').onclick = () => Router.go('find', encodeURIComponent($('nowQ').value.trim())); $('nowQ').onkeydown = e => { if (e.key === 'Enter') $('nowGo').click(); };
