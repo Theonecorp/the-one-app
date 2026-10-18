@@ -9,7 +9,7 @@
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords } from './ui.js';
 import { jobOf } from './main.js';
 import { loadCatalog, catalog, exactItem } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer } from './mgr.js';
@@ -24,7 +24,15 @@ const acctOf = a => (S.accounts.byCode ? S.accounts.byCode[a] : null);
 async function printInvoices(invs, acc) {
   let ar = null; try { const i = await storeInfo(invs[0].acct, true); ar = i && i.asOf ? { asOf: i.asOf, bk: i.bk, bal: i.bal } : null; } catch (e) {}
   try { await loadCatalog(S); } catch (e) {}
-  printOpen(invs.map(x => invoiceHtml(x, acc, { co: company(S), ar })).join(''));
+  const v = invView(S);
+  const paint = () => {
+    const bar = '<div class="noprint ivopts"><span>' + bi('정렬', 'Sort') + '</span>' + [['group', '분류별 묶음', 'By line'], ['abc', '코드 ABC', 'Code A→Z'], ['order', '주문 순서', 'Order entry']].map(x => '<button class="' + (v.sort === x[0] ? 'on' : '') + '" data-ivs="' + x[0] + '">' + x[1] + ' <span class="en">' + x[2] + '</span></button>').join('') +
+      '<span>' + bi('세트', 'Sets') + '</span>' + [['open', '구성품 펼침', 'Show contents'], ['closed', '세트 한 줄', 'One line']].map(x => '<button class="' + (v.kits === x[0] ? 'on' : '') + '" data-ivk="' + x[0] + '">' + x[1] + ' <span class="en">' + x[2] + '</span></button>').join('') + '</div>';
+    printOpen(bar + invs.map(x => invoiceHtml(x, acc, { co: company(S), ar, view: v })).join(''));
+    document.querySelectorAll('[data-ivs]').forEach(b => b.onclick = () => { v.sort = b.dataset.ivs; setInvView(v); paint(); });
+    document.querySelectorAll('[data-ivk]').forEach(b => b.onclick = () => { v.kits = b.dataset.ivk; setInvView(v); paint(); });
+  };
+  paint();
 }
 const typeName = c => { const t = invTypes(S).find(x => x.c === c); return t ? t.n : c; };
 
@@ -56,6 +64,7 @@ export function manage(o, lines) {
   /* 픽킹·팩킹 담당은 픽킹까지만 — 인보이스 확정 · 오더 취소 · 할인 저장은 인보이스 · 오피스 담당이 */
   const J = jobOf(), canInv = J !== 'pick';
   const B = [];
+  if (o.st === 'draft') B.push('<button class="b-green" id="mSend">📤 ' + bi('들어온 오더로 보내기', 'Send to picking') + '</button>');
   if (o.st === 'sent') B.push('<button class="b-blue" id="mPick">🖨 ' + bi('픽킹 인보이스 인쇄 · 픽킹 시작', 'Print picking list · Start') + '</button>');
   if (picking) B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('픽킹 저장', 'Save picking') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 확정', 'Confirm invoice') + '</button>' : '<span class="muted" style="align-self:center">인보이스 확정은 인보이스 담당이 합니다 · invoicing staff confirms</span>'));
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
@@ -141,6 +150,7 @@ export function manage(o, lines) {
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
+  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 오더를 들어온 오더로 보낼까요?', '보내기'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'sent', sentAt: now, updatedAt: now }); toast('보냈습니다 📤', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mPickPrint')) $('mPickPrint').onclick = () => printPicking(o, lines);
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 오더로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
@@ -244,13 +254,19 @@ export async function pageLists(LF, head) {
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 function dayLabel(d) { if (!d || d.length < 10) return d || ''; const x = new Date(d + 'T12:00:00'); const t = today(); return (d === t ? '오늘 Today · ' : d === addD(t, -1) ? '어제 Yesterday · ' : '') + Number(d.substring(5, 7)) + '월 ' + Number(d.substring(8, 10)) + '일 (' + WD[x.getDay()] + ')'; }
 function addD(s, n) { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-function periodRange(p, from, to) {
-  const t = today();
+export const PERIODS = [['today', '오늘', 'Today'], ['yday', '어제', 'Yesterday'], ['week', '이번 주', 'This week'], ['lastw', '지난 주', 'Last week'], ['month', '이번 달', 'This month'], ['lastm', '지난 달', 'Last month'], ['quarter', '이번 분기', 'Quarter'], ['year', '올해', 'This year'], ['lasty', '작년', 'Last year'], ['custom', '기간 직접', 'Custom']];
+export function periodRange(p, from, to) {
+  const t = today(), y = Number(t.substring(0, 4)), m = Number(t.substring(5, 7));
+  const mon = (yy, mm) => yy + '-' + String(mm).padStart(2, '0'), wd = (new Date(t + 'T12:00:00').getDay() + 6) % 7;   // 월요일 시작
   if (p === 'today') return [t, t];
   if (p === 'yday') return [addD(t, -1), addD(t, -1)];
-  if (p === 'week') { const x = new Date(t + 'T12:00:00'); return [addD(t, -x.getDay()), t]; }
+  if (p === 'week') return [addD(t, -wd), t];
+  if (p === 'lastw') return [addD(t, -wd - 7), addD(t, -wd - 1)];
   if (p === 'month') return [t.substring(0, 8) + '01', t];
   if (p === 'lastm') { const f = addD(t.substring(0, 8) + '01', -1); return [f.substring(0, 8) + '01', f]; }
+  if (p === 'quarter') { const qm = Math.floor((m - 1) / 3) * 3 + 1; return [mon(y, qm) + '-01', t]; }
+  if (p === 'year') return [y + '-01-01', t];
+  if (p === 'lasty') return [(y - 1) + '-01-01', (y - 1) + '-12-31'];
   if (p === '2m') return [addD(t, -60), t];
   return [from || addD(t, -7), to || t];
 }
@@ -265,7 +281,7 @@ export async function invBrowser(LF, head) {
   const [from, to] = periodRange(LF.ip, LF.ifrom, LF.ito);
   const top = '<div class="card" style="padding-bottom:8px"><div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 오더 # / Store · Acct · Invoice · Order" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>' +
     (accs.length > 1 && !acc ? '<div class="chips">' + accs.map(a => '<button data-iqa="' + esc(a.acct) + '">' + esc(a.acct) + ' ' + esc(a.store) + '</button>').join('') + '</div>' : '') +
-    (acc ? '' : '<div class="chips">' + [['today', '오늘', 'Today'], ['yday', '어제', 'Yesterday'], ['week', '이번 주', 'This week'], ['month', '이번 달', 'This month'], ['lastm', '지난 달', 'Last month'], ['2m', '최근 2달', '2 months'], ['custom', '기간 직접', 'Custom']].map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
+    (acc ? '' : '<div class="chips">' + PERIODS.map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
       (LF.ip === 'custom' ? '<div class="two" style="margin:6px 0"><input type="date" id="iFrom" value="' + esc(from) + '"><input type="date" id="iTo" value="' + esc(to) + '"></div>' : '')) +
     '<div class="chips" style="margin-top:4px"><button class="' + (LF.it ? '' : 'on') + '" data-it="">' + bi('종류 전체', 'All types') + '</button>' + types.map(t => '<button class="' + (LF.it === t.c ? 'on' : '') + '" data-it="' + esc(t.c) + '">' + esc(t.c) + ' ' + esc(t.n) + '</button>').join('') + '<button class="' + (LF.ivoid ? 'on' : '') + '" data-ivoid="1">VOID ' + bi('포함', 'incl.') + '</button></div></div>';
   $('page').innerHTML = head + top + '<div id="iList"><div class="load">읽는 중…</div></div>';

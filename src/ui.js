@@ -10,6 +10,8 @@ export const money = n => { n = Number(n) || 0; return (n < 0 ? '−$' : '$') + 
 export const k = n => { n = Number(n) || 0; const a = Math.abs(n), s = n < 0 ? '−' : ''; if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(2) + 'M'; if (a >= 1e3) return s + '$' + Math.round(a / 1e3) + 'K'; return s + '$' + Math.round(a); };
 export const num = v => { const n = Number(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
 export const R2 = x => Math.round((Number(x) || 0) * 100) / 100;
+/** ISO 시각 → 그 폰의 날짜 (YYYY-MM-DD) */
+export const localDay = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return String(iso).substring(0, 10); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 export const nz = s => String(s || '').toUpperCase().replace(/[^A-Z0-9가-힣]/g, '');
 /** 키워드 검색 — 띄어쓴 단어가 모두 들어 있으면 맞음 (순서 · 대소문자 · 기호 무시). 'beauty miami' → BEAUTY EXCHANGE, MIAMI */
 export const hasWords = (text, q) => { const w = String(q || '').split(/\s+/).map(nz).filter(Boolean); if (!w.length) return true; const t = nz(text); return w.every(x => t.includes(x)); };
@@ -65,18 +67,25 @@ export const Router = {
     const v = document.getElementById('viewer'); if (v) { v.remove(); return; }
     const p = $('prt'); if (p && p.classList.contains('on')) { printClose(); return; }
     const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
+    /* 우리 기록(stack)대로 바로 전 화면으로 — 브라우저 history 에 기대지 않음 (iOS PWA · 역할 바꿈 · 새로고침 뒤에도 같게) */
+    if (this.stack.length > 1) {
+      this.stack.pop();
+      const prev = this.stack[this.stack.length - 1];
+      if (prev && prev !== h) { this._back = true; location.replace(location.href.split('#')[0] + '#/' + prev); return; }   // 같은 문서 안에서 해시만 바꿈 (기록은 안 늘어남)
+    }
     if (!arg && this.home && name === this.home) return;   // 홈에서는 더 갈 곳이 없음
-    if (this.stack.length > 1) { this._back = true; this.stack.pop(); history.back(); return; }
     if (arg) this.go(name); else if (this.home && name !== this.home) this.go(this.home);
   },
   start() {
     const run = () => {
       const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
       this.cur = name || '';
-      if (this._back) this._back = false; else if (this.stack[this.stack.length - 1] !== h) { this.stack.push(h); if (this.stack.length > 60) this.stack.shift(); }
+      if (this._back) this._back = false;
+      else if (this.stack.length > 1 && this.stack[this.stack.length - 2] === h) this.stack.pop();   // 브라우저(안드로이드) 뒤로 — 우리 기록도 한 칸 뒤로
+      else if (this.stack[this.stack.length - 1] !== h) { this.stack.push(h); if (this.stack.length > 60) this.stack.shift(); }
       const fn = this.routes[name] || this.routes['']; if (fn) fn(arg ? decodeURIComponent(arg) : '');
       document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === name));
-      const bk = $('hBack'); if (bk) bk.classList.toggle('show', !!arg || !!(this.home && name !== this.home));
+      const bk = $('hBack'); if (bk) bk.classList.toggle('show', !!arg || this.stack.length > 1 || !!(this.home && name !== this.home));
       window.scrollTo(0, 0);
     };
     if (!this._bound) { this._bound = true; window.addEventListener('hashchange', run); }

@@ -37,8 +37,13 @@ const path = require('path'), fs = require('fs');
   await pg.click('#eShow'); await pg.waitForSelector('#viewer'); await pg.click('#vR'); await pg.click('#vA'); await pg.click('#vP'); await shot('g3_show'); await pg.click('#vX');
   await pg.click('[data-ev="cart"]'); await pg.waitForTimeout(200); await shot('g4_cart');
   log('types:', (await pg.textContent('#eTypes')).replace(/\s+/g, ' '));
-  await pg.click('#eSend'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(800);
-  await pg.click('#mPick'); await pg.waitForTimeout(500); await pg.screenshot({ path: path.resolve(__dirname, 'out', 'g5_pickprint.png'), fullPage: true }); await pg.click('#prtClose'); await pg.waitForTimeout(300);
+  /* v0.8.14: 편집 화면은 저장만 → 주문 확인(보낼 오더)에서 보내기 → 들어온 오더 열기 */
+  await pg.click('#eDraft'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(900);
+  log('review card (staff):', !!(await pg.$('#oSendAll')));
+  await pg.click('#oSendAll'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(900);
+  await pg.click('[data-lf="sent"]'); await pg.waitForTimeout(600); log('sent oids:', await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid + '|' + x.className)), await pg.evaluate(() => location.hash), (await pg.textContent('#page')).replace(/\s+/g, ' ').slice(0, 200)); await pg.click('#page [data-oid]'); await pg.waitForSelector('#mPick');
+  log('before pick:', await pg.evaluate(() => location.hash), 'errs so far:', errs);
+  await pg.click('#mPick'); await pg.waitForTimeout(1500); log('prt:', await pg.evaluate(() => document.getElementById('prt').className), 'errs:', errs, (await pg.textContent('#page')).replace(/\s+/g, ' ').slice(0, 100)); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(400); await pg.screenshot({ path: path.resolve(__dirname, 'out', 'g5_pickprint.png'), fullPage: true }); await pg.click('#prtClose'); await pg.waitForTimeout(300);
   await pg.click('#mInv'); await pg.waitForTimeout(200); await pg.click('#ivOk'); await pg.waitForTimeout(1200); await pg.setViewportSize({ width: 820, height: 1100 }); await pg.screenshot({ path: path.resolve(__dirname, 'out', 'g6_inv.png'), fullPage: true }); await pg.setViewportSize({ width: 430, height: 1000 }); await pg.click('#prtClose'); await pg.waitForTimeout(300);
   log('invoices:', (await pg.textContent('#page .sumbox')).replace(/\s+/g, ' '));
   /* 번호 단계 넘김 */

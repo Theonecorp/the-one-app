@@ -55,9 +55,23 @@ export function splitByType(lines, disc, useQ) {
     const g = by[t] = by[t] || { t, lines: [], sub: 0, list: 0, qty: 0 };
     g.lines.push(Object.assign({}, l, { q })); g.sub += q * l.p; g.list += q * (l.lp != null ? l.lp : l.p); g.qty += q;
   });
-  Object.values(by).forEach(g => { g.sub = R2(g.sub); g.list = R2(g.list); g.disc = Number((disc || {})[g.t]) || 0; g.discAmt = R2(g.sub * g.disc / 100); g.total = R2(g.sub - g.discAmt); });
+  /* 합계는 인쇄되는 줄 금액(할인가를 센트로 반올림 × 수량)의 합 — 그래야 인보이스의 줄 합과 Total 이 1센트도 안 틀림 */
+  Object.values(by).forEach(g => { g.sub = R2(g.sub); g.list = R2(g.list); g.disc = Number((disc || {})[g.t]) || 0; g.total = R2(g.lines.reduce((a, l) => a + lineTotal(l.q, l.p, g.disc), 0)); g.discAmt = R2(g.sub - g.total); });
   return by;
 }
+/** 줄 하나의 할인가 · 금액 — 인보이스 인쇄와 합계 계산이 같은 식을 씀 */
+export function dcPrice(p, dc) { return R2(Number(p) * (1 - (Number(dc) || 0) / 100)); }
+export function lineTotal(q, p, dc) { return R2((Number(q) || 0) * dcPrice(p, dc)); }
+/* ---------- 인보이스 보기 방식 (설정 기본값 + 인쇄할 때 바꿀 수 있음) ----------
+ *  sort: 'group' 분류별로 묶고 소계 (기본) · 'abc' 코드 ABC 순 · 'order' 주문에 담은 순서
+ *  kits: 'open' 세트 구성품을 아래에 풀어서 (기본 — 손님이 상자 열고 하나씩 맞춰 보기 좋음) · 'closed' 세트 한 줄만 */
+export const INV_VIEW_DEFAULT = { sort: 'group', kits: 'open' };
+export function invView(S) {
+  let v = Object.assign({}, INV_VIEW_DEFAULT, (S && S.settings && S.settings.invView) || {});
+  try { const l = JSON.parse(localStorage.getItem('theone.invView') || 'null'); if (l) v = Object.assign(v, l); } catch (e) {}
+  return v;
+}
+export function setInvView(v) { try { localStorage.setItem('theone.invView', JSON.stringify(v)); } catch (e) {} }
 /** 가격 바뀐 정도 (목록가 대비) */
 export function priceDiff(lines, useQ) {
   let list = 0, real = 0, n = 0;
@@ -78,7 +92,7 @@ export function company(S) { return Object.assign({}, CO_DEFAULT, (S && S.settin
 /** 조건에서 일수 — N30 → 30 · ACH60 → 60 · COD → 0 · 없으면 30 */
 export function termDays(terms) { const t = String(terms || '').toUpperCase(); if (/COD|CASH/.test(t)) return 0; const m = t.match(/(\d{1,3})/); return m ? Number(m[1]) : 30; }
 const fmtD = d => { d = String(d || ''); return d.length >= 10 ? d.substring(5, 7) + '/' + d.substring(8, 10) + '/' + d.substring(2, 4) : d; };
-const n2 = v => { v = Number(v) || 0; const s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < 0 ? '-' : '') + (Math.abs(v) < 1 ? s.replace(/^0/, '') : s); };
+const n2 = v => { v = Number(v) || 0; const s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < 0 ? '-' : '') + (Math.abs(v) < 1 && Math.abs(v) > 0 ? s.replace(/^0/, '') : s); };
 
 /** 문서 머리 — 회사 · 제목 · 날짜/번호 상자 (인보이스 · 픽킹 공용) */
 export function docHead(co, title, boxes) {
@@ -91,33 +105,39 @@ export function docHead(co, title, boxes) {
  */
 export function invoiceHtml(inv, acc, opt) {
   opt = opt || {}; const co = opt.co || CO_DEFAULT;
-  const C = catalog();
+  const C = catalog(), view = Object.assign({}, INV_VIEW_DEFAULT, opt.view || {});
   const grpOf = l => { if (l.g) return l.g; const it = C && C.byCode[l.c]; return it ? (it.l1 || it.g || '') : ''; };
-  const rows = inv.lines.slice().sort((a, b) => (grpOf(a) + a.c) < (grpOf(b) + b.c) ? -1 : 1);
-  const dc = Number(inv.disc) || 0, f = 1 - dc / 100;
+  const byGroup = view.sort === 'group';
+  const rows = view.sort === 'order' ? inv.lines.slice() : view.sort === 'abc' ? inv.lines.slice().sort((a, b) => a.c < b.c ? -1 : a.c > b.c ? 1 : 0) : inv.lines.slice().sort((a, b) => (grpOf(a) + '\u0001' + a.c) < (grpOf(b) + '\u0001' + b.c) ? -1 : 1);
+  const dc = Number(inv.disc) || 0;
   const addr = acc ? [acc.addr, [acc.city, acc.state].filter(Boolean).join(', ') + (acc.zip ? ' ' + acc.zip : '')].filter(Boolean) : [];
   const party = (t) => '<div class="ivp"><b>' + t + ' :</b><div>' + esc(inv.store) + '</div>' + addr.map(x => '<div>' + esc(x) + '</div>').join('') + (t === 'BILL TO' ? '<div>Phone : ' + esc((acc && acc.tel) || '') + '</div>' : '') + '</div>';
   const terms = inv.terms || (acc && acc.terms) || 'N30';
   const due = addDays(inv.d, termDays(terms));
   /* 품목 — 분류별 소계 */
   let body = '', cur = null, gq = 0, gl = 0, gd = 0, gt = 0, tq = 0;
-  const flush = () => { if (cur === null) return; body += '<tr class="ivsub"><td colspan="4" class="r">' + esc(cur || '기타') + ' Sub Total:</td><td class="r">' + n2(gl) + '</td><td></td><td class="r">' + n2(gt - gl) + '</td><td class="r">' + n2(gt) + '</td></tr>'; gq = gl = gd = gt = 0; };
+  const flush = () => { if (cur === null || !byGroup) return; body += '<tr class="ivsub"><td colspan="4" class="r">' + esc(cur || '기타') + ' Sub Total:</td><td class="r">' + n2(gl) + '</td><td></td><td class="r">' + n2(gt - gl) + '</td><td class="r">' + n2(gt) + '</td></tr>'; gq = gl = gd = gt = 0; };
+  let sumT = 0;
   rows.forEach(l => {
-    const g = grpOf(l); if (g !== cur) { flush(); cur = g; }
-    const dp = R2(l.p * f), lt = R2(l.q * dp); gq += l.q; gl += l.q * l.p; gt += lt; tq += l.q;
-    body += '<tr><td><b>' + esc(l.c) + '</b></td><td class="r">' + l.q + '</td><td>' + esc(l.d) + (l.kit ? '<div class="ivkit">' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + '</div>' : '') + '</td><td class="r">' + n2(l.p) + '</td><td class="r">' + (dc ? dc + '%' : '%') + '</td><td class="r">' + n2(dp) + '</td><td class="r">' + n2(lt) + '</td></tr>';
+    const g = grpOf(l); if (byGroup && g !== cur) { flush(); cur = g; }
+    const dp = dcPrice(l.p, dc), lt = lineTotal(l.q, l.p, dc); gq += l.q; gl += l.q * l.p; gt += lt; tq += l.q; sumT += lt;
+    const kitOpen = l.kit && l.kit.length && view.kits !== 'closed';
+    body += '<tr' + (kitOpen ? ' class="ivset"' : '') + '><td><b>' + esc(l.c) + '</b></td><td class="r">' + l.q + '</td><td>' + esc(l.d) + (l.kit && !kitOpen ? '<div class="ivkit">SET: ' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + '</div>' : '') + '</td><td class="r">' + n2(l.p) + '</td><td class="r">' + (dc ? dc + '%' : '%') + '</td><td class="r">' + n2(dp) + '</td><td class="r">' + n2(lt) + '</td></tr>';
+    if (kitOpen) l.kit.forEach(k => { const it = C && C.byCode[k.c]; body += '<tr class="ivkitrow"><td>&nbsp;&nbsp;↳ ' + esc(k.c) + '</td><td class="r">' + (k.q * l.q) + '</td><td>' + esc(it ? it.d : '') + '</td><td class="r"></td><td></td><td class="r"></td><td class="r">incl.</td></tr>'; });
   });
   flush();
+  sumT = R2(sumT);
   const ar = opt.ar;
   const arBox = ar && ar.asOf ? '<div class="ivar"><div class="ivart">AR balance Aging As Of ' + esc(fmtD(ar.asOf)) + '</div><table><tr><th>0-30</th><th>31-60</th><th>61-90</th><th>Over 90</th><th>Total</th></tr><tr><td>' + n2(ar.bk[0] + ar.bk[1]) + '</td><td>' + n2(ar.bk[2]) + '</td><td>' + n2(ar.bk[3]) + '</td><td>' + n2(ar.bk[4]) + '</td><td><b>' + n2(ar.bal) + '</b></td></tr></table></div>' : '';
-  const discAmt = R2(inv.sub - inv.total);
+  /* 합계는 인쇄된 줄의 합 — 저장된 total 과 1센트라도 다르면(옛 인보이스) 줄 합을 믿음 */
+  const net = Math.abs(sumT - inv.total) > 0.005 ? sumT : inv.total, discAmt = R2(inv.sub - net);
   return '<div class="iv">' + docHead(co, 'INVOICE', [['Date', fmtD(inv.d)], ['Invoice No.', inv.no]]) +
     '<div class="ivparties">' + party('BILL TO') + party('SHIP TO') + '</div>' +
     '<table class="ivinfo"><tr><th>Acct. No.</th><th>Terms</th><th>Rep.</th><th>Ship</th><th>Ship Via</th><th>S.O. No.</th><th>Due Date</th></tr>' +
     '<tr><td>' + esc(inv.acct || '') + '</td><td>' + esc(terms) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS') + '</td><td>' + esc(inv.order || '') + '</td><td>' + esc(fmtD(due)) + '</td></tr></table>' +
     '<table class="ivlines"><thead><tr><th>Item</th><th class="r">Qty</th><th>Description</th><th class="r">Price</th><th class="r">DC %</th><th class="r">DC Price</th><th class="r">Total</th></tr></thead><tbody>' + body + '</tbody></table>' +
     arBox +
-    '<div class="ivfoot"><div class="ivthx">' + esc(co.thanks || '') + (inv.memo ? '<br>' + esc(inv.memo) : '') + '<div class="ivpcs">' + rows.length + ' lines · ' + tq + ' pcs</div></div>' +
-    '<table class="ivtot"><tr><td>Sub Total</td><td class="r">' + n2(inv.sub) + '</td></tr><tr><td>Discount' + (dc ? ' ' + dc + '%' : '') + '</td><td class="r">' + n2(-discAmt) + '</td></tr><tr><td>S &amp; H</td><td class="r">' + n2(inv.ship || 0) + '</td></tr><tr class="ivT"><td>Total</td><td class="r">' + n2(inv.total + (Number(inv.ship) || 0)) + '</td></tr></table></div>' +
+    '<div class="ivfoot"><div class="ivthx">' + esc(co.thanks || '') + (inv.memo ? '<br>' + esc(inv.memo) : '') + '<div class="ivpcs">' + rows.length + ' lines · ' + tq + ' pcs' + (view.kits !== 'closed' && rows.some(l => l.kit && l.kit.length) ? ' · set contents listed under each set (incl.)' : '') + '</div></div>' +
+    '<table class="ivtot"><tr><td>Sub Total</td><td class="r">' + n2(inv.sub) + '</td></tr><tr><td>Discount' + (dc ? ' ' + dc + '%' : '') + '</td><td class="r">' + n2(-discAmt) + '</td></tr><tr><td>S &amp; H</td><td class="r">' + n2(inv.ship || 0) + '</td></tr><tr class="ivT"><td>Total</td><td class="r">' + n2(net + (Number(inv.ship) || 0)) + '</td></tr></table></div>' +
     '<div class="ivpg">' + esc(inv.no) + ' · printed ' + esc(new Date().toLocaleString('en-US')) + '</div></div>';
 }
