@@ -17,7 +17,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.14';
+export const VER = 'v0.8.15';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -27,14 +27,14 @@ const ADMIN_EMAILS = ['luke@theonefl.com'];
  *   admin     관리자: 전부 */
 const NAV = {
   salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '오더', 'Orders'], ['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
-  office:   [['order', '🛒', '오더', 'Orders'], ['verify', '✅', '수금 확인', 'Verify'], ['cod', '💳', 'COD·카드', 'COD/Card'], ['stores', '🏬', '거래처', 'Stores'], ['arup', '📤', 'AR 올리기', 'AR Upload'], ['ach', '🏦', 'ACH', 'ACH']],
-  invoice:  [['order', '🧾', '인보이스', 'Invoicing'], ['stores', '🏬', '거래처', 'Stores'], ['verify', '✅', '수금 확인', 'Verify']],
-  pick:     [['order', '📦', '픽킹', 'Picking'], ['stores', '🏬', '거래처', 'Stores']],
-  acct:     [['verify', '✅', '수금 확인', 'Verify'], ['order', '🧾', '인보이스', 'Invoices'], ['cod', '💳', 'COD·카드', 'COD/Card'], ['ach', '🏦', 'ACH', 'ACH'], ['arup', '📤', 'AR 올리기', 'AR Upload'], ['stores', '🏬', '거래처', 'Stores']],
+  office:   [['order', '🛒', '오더', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['stores', '🏬', '거래처', 'Customers'], ['arup', '📤', '미수금 올리기', 'AR upload'], ['ach', '🏦', 'ACH', 'ACH']],
+  invoice:  [['order', '🧾', '오더·인보이스', 'Orders'], ['stores', '🏬', '거래처', 'Customers'], ['verify', '💵', '수금 확인', 'Payments']],
+  pick:     [['order', '📦', '픽킹', 'Picking'], ['stores', '🏬', '거래처', 'Customers']],
+  acct:     [['verify', '💵', '수금 확인', 'Payments'], ['order', '🧾', '인보이스', 'Invoices'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['arup', '📤', '미수금 올리기', 'AR upload'], ['stores', '🏬', '거래처', 'Customers']],
   admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '오더', 'Orders'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
 };
 NAV.manager = NAV.office;
-export const JOBS = [['office', '오피스', 'Office'], ['invoice', '인보이스', 'Invoicing'], ['pick', '픽킹 · 팩킹', 'Picking & Packing'], ['acct', '어카운팅', 'Accounting']];
+export const JOBS = [['office', '오피스', 'Office'], ['invoice', '인보이스', 'Invoicing'], ['pick', '픽킹 · 포장', 'Picking & Packing'], ['acct', '회계', 'Accounting']];
 /** 지금 화면의 일 — 담당자는 사용자 기록의 job (없으면 office), 그 외는 역할 그대로 */
 export function jobOf() { if (S.role !== 'manager') return S.role; const j = S.me && S.me.job; return JOBS.some(x => x[0] === j) ? j : 'office'; }
 export function jobLabel(j) { const x = JOBS.find(k => k[0] === j); return x ? x[1] + ' ' + x[2] : j; }

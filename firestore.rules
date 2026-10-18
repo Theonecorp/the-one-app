@@ -67,7 +67,8 @@ service cloud.firestore {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
       allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email() && okSt(request.resource.data.st));
       allow update: if isStaff() || (registered() && resource.data.sm == mySm() && okSt(resource.data.st)
-                                     && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st));
+                                     && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st))
+                    || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cfOk', 'cfAt', 'cfBy']));   // 세일즈맨 "맞습니다" 확인
       allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.st == 'draft');
     }
     match /orderLines/{id} {

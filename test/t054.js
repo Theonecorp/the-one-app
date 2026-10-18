@@ -53,11 +53,11 @@ const path = require('path'), fs = require('fs');
   await pg.close();
 
   /* ---------- 2. 담당자: 기간 대시보드 · 인보이스 보기 · 아이템 등록 ---------- */
-  pg = await mkPage('acct@theonefl.com');
+  pg = await mkPage('luke@theonefl.com');
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('.htile'); await pg.waitForTimeout(1200);
   log('dash sales:', (await txt(pg, '#hSales')).slice(0, 200));
   log('tiles:', await pg.$$eval('.htile', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 40))));
-  const st = await txt(pg, '#hSales'); if (!/\$150\.00|\$172\.56/.test(st)) errs.push('today sales total wrong: ' + st.slice(0, 80));
+  const st = await txt(pg, '#hSales'); if (!/\$172\.56/.test(st)) errs.push('today sales total wrong: ' + st.slice(0, 80));
   await pg.click('[data-hp="week"]'); await pg.waitForTimeout(1200); log('week:', (await txt(pg, '#hSales')).slice(0, 120));
   await pg.click('[data-hp="year"]'); await pg.waitForTimeout(1200); const yr = await txt(pg, '#hSales'); log('year:', yr.slice(0, 120)); if (!/\$252\.56/.test(yr)) errs.push('year total wrong');
   await shot(pg, 'd1_dash');
@@ -72,6 +72,27 @@ const path = require('path'), fs = require('fs');
   log('opts bar:', await pg.$$eval('.ivopts button', b => b.map(x => x.className + ':' + x.textContent.trim().split(' ')[0])));
   await pg.click('[data-ivs="abc"]'); await pg.waitForTimeout(300); log('abc subtotal rows:', await pg.$$eval('#prtbody .ivsub', e => e.length));
   await shot(pg, 'd2_inv'); await pg.click('#prtClose');
+  /* 픽킹 할당 → 픽킹 완료 → 인보이스 발행 → 출고 · 세일즈맨 확인 요청 */
+  const home = async () => { await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(600); if (await pg.$('[data-lf="home"]')) await pg.click('[data-lf="home"]'); await pg.waitForSelector('.htile'); await pg.waitForTimeout(600); };
+  await home();
+  await pg.click('[data-hg="sent"]'); await pg.waitForSelector('[data-ck]'); log('sent list groups:', await pg.$$eval('.smgrp', e => e.length), 'rows:', await pg.$$eval('[data-ck]', e => e.length));
+  await pg.click('[data-ckall="1"]'); await pg.click('#bkCf'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(800);
+  log('cf tags:', await pg.$$eval('.tag', e => e.map(x => x.textContent).filter(t => /확인/.test(t))));
+  await pg.click('[data-ckall="1"]'); await pg.click('#bkAssign'); await pg.waitForSelector('#pkOk'); log('picker opts:', await pg.$$eval('[data-pk]', e => e.map(x => x.textContent.trim())));
+  await pg.evaluate(() => { document.getElementById('pkPrint').checked = false; }); await pg.click('#pkOk'); await pg.waitForTimeout(900);
+  await pg.click('[data-lf="pick"]'); await pg.waitForTimeout(700); const pk = await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid)); log('picking list:', pk);
+  await pg.evaluate(id => { location.hash = '#/order/' + id; }, pk[0]); await pg.waitForSelector('#mPickDone');
+  await pg.fill('[data-pq="1"]', '0'); await pg.dispatchEvent('[data-pq="1"]', 'change');
+  await pg.click('#mPickDone'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(900);
+  log('after pick done:', (await txt(pg, '#page h2')).slice(0, 60), 'btns:', await pg.$$eval('#page .btns button', b => b.map(x => x.id).filter(Boolean)));
+  if (!(await pg.$('#mInv'))) errs.push('picked state should offer invoice');
+  await pg.click('#mInv'); await pg.waitForSelector('#ivOk'); await pg.click('#ivOk'); await pg.waitForTimeout(1500); if (await pg.$('#prt.on')) await pg.click('#prtClose');
+  log('after invoice:', (await txt(pg, '#page h2')).slice(0, 60), 'ship btn:', !!(await pg.$('#mShip')));
+  await pg.click('#mShip'); await pg.waitForSelector('#shOk'); await pg.fill('#shTrack', '1Z999TEST'); await pg.click('#shOk'); await pg.waitForTimeout(900);
+  log('after ship:', (await txt(pg, '#page h2')).slice(0, 60), (await txt(pg, '#page .muted')).slice(0, 160));
+  if (!/출고 완료/.test(await txt(pg, '#page h2'))) errs.push('ship state not applied');
+  await home(); await pg.waitForTimeout(800); log('tiles after flow:', await pg.$$eval('.htile', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 44))));
+  await shot(pg, 'd4_dash2');
   /* 아이템 등록 */
   await pg.evaluate(() => { location.hash = '#/items'; }); await pg.waitForSelector('#itNew');
   await pg.fill('#itQ', 'NEWX1'); await pg.waitForTimeout(300); log('no match:', (await txt(pg, '#itList')).slice(0, 80));
@@ -89,6 +110,10 @@ const path = require('path'), fs = require('fs');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(200); }
   await pg.fill('#eQ1', 'NEWX1'); await pg.waitForTimeout(400); log('order search NEWX1:', (await txt(pg, '#eRes')).slice(0, 80));
   if (!/NEWX1/.test(await txt(pg, '#eRes'))) errs.push('new item not searchable in order');
+  await pg.close();
+  /* 세일즈맨(ALEX 의 오더는 ALEX 에게) — seed 오더 O261014-AAAA 는 ALEX: alex 계정 없으면 brandon 으로 cf 요청된 자기 오더 확인 */
+  pg = await mkPage('brandon@x.com'); await pg.waitForTimeout(800);
+  log('salesman home cf tile:', (await txt(pg, '#hs-order')).slice(0, 60), await pg.$$eval('.htile', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 30))));
   await pg.close();
   log('errors:', errs.length ? errs : 'none'); await br.close(); srv.kill(); process.exit(errs.length ? 1 : 0);
 })();

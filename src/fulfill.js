@@ -11,7 +11,7 @@ import { jobOf } from './main.js';
 import { loadCatalog, catalog, exactItem } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView } from './invoicing.js';
 import { storeInfo } from './store.js';
-import { stTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
+import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer } from './mgr.js';
 import { storeSheet } from './store.js';
 import { searchAccounts } from './accounts.js';
@@ -41,14 +41,14 @@ const typeName = c => { const t = invTypes(S).find(x => x.c === c); return t ? t
  * ============================================================ */
 export function manage(o, lines) {
   lines = lines.map(l => Object.assign({}, l));
-  const picking = o.st === 'pick' || o.st === 'ok';
+  const picking = o.st === 'pick' || o.st === 'ok' || o.st === 'picked';   // 픽킹 수량을 만질 수 있는 상태 (픽킹 완료 뒤에도 사무실이 고칠 수 있음)
   if (picking) lines.forEach(l => { if (l.pq == null) l.pq = l.q; });
   const acc = acctOf(o.acct), ad = acctDisc(acc);
   const pd = priceDiff(lines, 'q');
   let h = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">' + esc(o.no) + ' ' + stTag(o.st) + '</h2>' +
     '<div style="font-size:18px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div>' +
     '<div class="muted">' + esc([o.acct, acc ? [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : ''].filter(Boolean).join(' · ')) + (acc && acc.terms ? ' · ' + esc(acc.terms) : '') + '</div>' +
-    '<div class="muted">' + esc(o.sm) + ' · ' + esc(o.d) + (o.sentAt ? ' · 들어옴 ' + esc(o.sentAt.substring(5, 16).replace('T', ' ')) : '') + (o.pickAt ? ' · 픽킹 ' + esc(o.pickAt.substring(5, 16).replace('T', ' ')) : '') + '</div></div>' +
+    '<div class="muted">' + esc(o.sm) + ' · ' + esc(o.d) + (o.sentAt ? ' · 들어옴 ' + esc(o.sentAt.substring(5, 16).replace('T', ' ')) : '') + (o.pickAt ? ' · 픽킹 ' + esc(o.pickAt.substring(5, 16).replace('T', ' ')) + (o.pickerName ? ' 👷 ' + esc(o.pickerName) : '') : '') + (o.pickDoneAt ? ' · 픽킹 완료 ' + esc(o.pickDoneAt.substring(5, 16).replace('T', ' ')) : '') + (o.shipAt ? ' · 출고 ' + esc(o.shipAt.substring(5, 16).replace('T', ' ')) + (o.track ? ' 🚚 ' + esc(o.track) : '') : '') + '</div>' + cfTag(o) + '</div>' +
     '<button class="b-ghost b-sm" id="mBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     (acc && acc.note ? '<div class="alert a-blu">🏬 ' + esc(acc.note) + '</div>' : '') +
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
@@ -64,19 +64,25 @@ export function manage(o, lines) {
   /* 픽킹·팩킹 담당은 픽킹까지만 — 인보이스 확정 · 오더 취소 · 할인 저장은 인보이스 · 오피스 담당이 */
   const J = jobOf(), canInv = J !== 'pick';
   const B = [];
-  if (o.st === 'draft') B.push('<button class="b-green" id="mSend">📤 ' + bi('들어온 오더로 보내기', 'Send to picking') + '</button>');
-  if (o.st === 'sent') B.push('<button class="b-blue" id="mPick">🖨 ' + bi('픽킹 인보이스 인쇄 · 픽킹 시작', 'Print picking list · Start') + '</button>');
-  if (picking) B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('픽킹 저장', 'Save picking') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 확정', 'Confirm invoice') + '</button>' : '<span class="muted" style="align-self:center">인보이스 확정은 인보이스 담당이 합니다 · invoicing staff confirms</span>'));
+  const isPicker = o.picker === S.user.email;
+  if (o.st === 'draft') B.push('<button class="b-green" id="mSend">📤 ' + bi('접수로 보내기', 'Submit order') + '</button>');
+  if (o.st === 'sent') B.push('<button class="b-blue" id="mAssign">👷 ' + bi('픽킹 할당', 'Assign picking') + '</button><button class="b-ghost" id="mPick">🖨 ' + bi('내가 픽킹 시작', 'I pick this') + '</button>');
+  if (o.st === 'pick' || o.st === 'ok') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('픽킹 저장', 'Save') + '</button><button class="b-green" id="mPickDone">✅ ' + bi('픽킹 완료', 'Picking done') + '</button>');
+  if (o.st === 'picked') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('수량 저장', 'Save') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 발행', 'Issue invoice') + '</button>' : '<span class="muted" style="align-self:center">' + bi('인보이스 발행은 사무실에서 합니다', 'Office issues the invoice') + '</span>'));
+  if (o.st === 'done') B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · 출고 완료', 'Packed & shipped') + '</button>');
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
     (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 ' + bi('가게 기록', 'Store') + '</button>' : '') +
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('오더 수정', 'Edit') + '</button>' : '') +
-    (picking ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('들어온 오더로', 'Back to new') + '</button>' : '') +
-    (o.st === 'done' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 ' + bi('인보이스 인쇄', 'Print invoice') + '</button>' : '') +
+    (o.st === 'pick' || o.st === 'ok' ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('접수로 되돌리기', 'Back to received') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('담당 바꾸기', 'Reassign') + '</button>' : '') +
+    (o.st === 'picked' ? '<button class="b-ghost b-sm" id="mRepick">↩️ ' + bi('다시 픽킹으로', 'Back to picking') + '</button>' : '') +
+    (o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('출고 취소', 'Undo shipping') + '</button>' : '') +
+    ((o.st === 'sent' || o.st === 'pick' || o.st === 'ok') && !o.cfOk ? '<button class="b-ghost b-sm" id="mCfReq">❓ ' + bi(o.cfReq ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman') + '</button>' : '') +
+    (o.st === 'done' || o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 ' + bi('인보이스 인쇄', 'Print invoice') + '</button>' : '') +
     '<button class="b-ghost b-sm" id="mCsv">⬇️ CSV</button>' +
-    (o.st !== 'done' && o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mCancel" style="color:#991b1b">✕ ' + bi('오더 취소', 'Cancel order') + '</button>' : '') +
+    (o.st !== 'done' && o.st !== 'shipped' && o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mCancel" style="color:#991b1b">✕ ' + bi('오더 취소', 'Cancel order') + '</button>' : '') +
     '</div>' + (B.length ? '<div class="btns">' + B.join('') + '</div>' : '') +
-    (o.st === 'done' ? '<div class="sumbox">🧾 인보이스: ' + (o.invs || []).map(n => '<a href="#/order/inv:' + esc(n) + '"><b>' + esc(n) + '</b></a>').join(' · ') + (o.bo ? ' · ⏳ <a href="#/order/bo:' + esc(o.bo) + '">백오더 있음</a>' : '') + '</div>' : '') + '</div>';
+    (o.st === 'done' || o.st === 'shipped' ? '<div class="sumbox">🧾 인보이스: ' + (o.invs || []).map(n => '<a href="#/order/inv:' + esc(n) + '"><b>' + esc(n) + '</b></a>').join(' · ') + (o.bo ? ' · ⏳ <a href="#/order/bo:' + esc(o.bo) + '">백오더 있음</a>' : '') + '</div>' : '') + '</div>';
   /* 줄 */
   h += '<div class="card"><h2>' + (picking ? '📦 ' + bi('픽킹 결과 — 실제로 담은 수량', 'Picked qty') : bi('아이템', 'Items')) + ' ' + lines.length + '</h2>' +
     (picking ? '<div class="muted">픽 칸에 실제 담은 수량을 넣으세요. 주문보다 적으면 백오더가 됩니다. <span class="en">Enter the quantity actually picked; less than ordered becomes a backorder.</span></div><div class="btns" style="flex-wrap:wrap"><button class="b-ghost b-sm" id="mAllQ">' + bi('모두 주문 수량으로', 'All as ordered') + '</button><button class="b-ghost b-sm" id="mAllZ">' + bi('모두 0 으로', 'All zero') + '</button><button class="b-ghost b-sm" id="mAdd">＋ ' + bi('아이템 추가', 'Add item') + '</button></div>' : '') +
@@ -146,11 +152,28 @@ export function manage(o, lines) {
   };
   if ($('mPick')) $('mPick').onclick = async () => {
     busy(true);
-    try { await S.DB.update('orders', o.id, { st: 'pick', pickAt: new Date().toISOString(), pickBy: S.user.email, updatedAt: new Date().toISOString() }); o.st = 'pick'; o.pickAt = new Date().toISOString(); manage(o, lines); printPicking(o, lines); }
+    try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'pick', picker: S.user.email, pickerName: S.user.name || S.user.email.split('@')[0], pickAt: now, pickBy: S.user.email, updatedAt: now }); o.st = 'pick'; o.pickAt = now; o.picker = S.user.email; o.pickerName = S.user.name || ''; manage(o, lines); printPicking(o, lines); }
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
   if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 오더를 들어온 오더로 보낼까요?', '보내기'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'sent', sentAt: now, updatedAt: now }); toast('보냈습니다 📤', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mAssign')) $('mAssign').onclick = () => assignPicker([o], () => goOrder(o.id));
+  if ($('mReassign')) $('mReassign').onclick = () => assignPicker([o], () => goOrder(o.id));
+  if ($('mPickDone')) $('mPickDone').onclick = async () => {
+    const b = lines.filter(l => (l.pq || 0) < l.q), n = b.reduce((a, l) => a + l.q - (l.pq || 0), 0);
+    if (!(await confirmBox('픽킹 완료로 넘길까요?' + (b.length ? '\n⏳ 부족(백오더) ' + b.length + '줄 · ' + n + '개는 사무실이 확인 뒤 백오더로 남깁니다.' : '\n✓ 전부 픽킹됨') + '\n사무실 확인 → 인보이스 발행으로 넘어갑니다.', '픽킹 완료'))) return;
+    busy(true); try { await saveLines({ st: 'picked', pickDoneAt: new Date().toISOString(), pickDoneBy: S.user.email }); dirty = false; toast('✅ 픽킹 완료 — 사무실 확인 대기', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
+  };
+  if ($('mRepick')) $('mRepick').onclick = async () => { busy(true); try { await saveLines({ st: 'pick' }); toast('다시 픽킹 중'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mCfReq')) $('mCfReq').onclick = async () => { if (!(await confirmBox(o.sm + ' 에게 이 오더 내용 확인을 요청할까요? 세일즈맨 앱 홈에 "확인 요청" 으로 뜹니다.', '요청'))) return; busy(true); try { await S.DB.update('orders', o.id, { cfReq: true, cfReqAt: new Date().toISOString(), cfReqBy: S.user.email, cfOk: false }); toast('확인 요청 보냄', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mShip')) $('mShip').onclick = () => {
+    openModal('<h2>🚚 ' + bi('포장 · 출고 완료', 'Packed & shipped') + '</h2><div class="muted">' + esc(o.store) + ' · ' + (o.invs || []).join(', ') + '</div><div class="two" style="margin-top:8px"><div class="fg"><label>' + bi('운송', 'Carrier') + '</label>' + sel('shVia', [['UPS', 'UPS'], ['FEDEX', 'FedEx'], ['USPS', 'USPS'], ['PICKUP', '픽업 · Pickup'], ['DELIVERY', '직접 배달 · Delivery']], o.shipVia || 'UPS') + '</div><div class="fg"><label>' + bi('박스 수', 'Boxes') + '</label><input id="shBox" type="number" inputmode="numeric" value="' + (o.boxes || 1) + '"></div></div>' +
+      '<div class="fg"><label>' + bi('추적 번호 (UPS 라벨에서 · 선택)', 'Tracking # (optional)') + '</label><input id="shTrack" value="' + esc(o.track || '') + '" autocomplete="off"></div>' +
+      '<div class="btns"><button class="b-ghost" id="shX">취소</button><button class="b-green" id="shOk">출고 완료</button></div>');
+    $('shX').onclick = closeModal;
+    $('shOk').onclick = async () => { const d = { st: 'shipped', shipAt: new Date().toISOString(), shipBy: S.user.email, shipVia: $('shVia').value, boxes: Math.max(1, Number($('shBox').value) || 1), track: $('shTrack').value.trim(), updatedAt: new Date().toISOString() }; closeModal(); busy(true); try { await S.DB.update('orders', o.id, d); toast('🚚 출고 완료', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  };
+  if ($('mUnship')) $('mUnship').onclick = async () => { if (!(await confirmBox('출고 완료를 취소할까요? (포장 대기로 돌아감)', '취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'done', updatedAt: new Date().toISOString() }); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mPickPrint')) $('mPickPrint').onclick = () => printPicking(o, lines);
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 오더로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
@@ -164,11 +187,14 @@ export function manage(o, lines) {
 
 async function printPicking(o, lines) {
   if (lines.some(l => l.kit)) { try { await loadCatalog(S); } catch (e) {} }
+  printOpen(pickingHtml(o, lines));
+}
+export function pickingHtml(o, lines) {
   const acc = acctOf(o.acct);
   const rows = sortBy(lines, l => l.c);
-  printOpen('<div class="iv" style="min-height:0">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
+  return ('<div class="iv" style="min-height:0">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
     '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (acc ? ' · ' + esc([acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ')) : '') +
-    '<br>Rep. ' + esc(o.sm) + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + '</div></div>' +
+    '<br>Rep. ' + esc(o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + '</div></div>' +
     '<table><tr><th>#</th><th>CODE</th><th>DESCRIPTION</th><th>TYPE</th><th class="r">ORDER</th><th class="r">PICKED</th><th>NOTE</th></tr>' +
     rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>' +
       (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
@@ -254,6 +280,38 @@ export async function pageLists(LF, head) {
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 function dayLabel(d) { if (!d || d.length < 10) return d || ''; const x = new Date(d + 'T12:00:00'); const t = today(); return (d === t ? '오늘 Today · ' : d === addD(t, -1) ? '어제 Yesterday · ' : '') + Number(d.substring(5, 7)) + '월 ' + Number(d.substring(8, 10)) + '일 (' + WD[x.getDay()] + ')'; }
 function addD(s, n) { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+export function addMonths(d, n) { const x = new Date(d.substring(0, 7) + '-01T12:00:00'); x.setMonth(x.getMonth() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-01'; }
+export function monthEnd(d) { const y = Number(d.substring(0, 4)), m = Number(d.substring(5, 7)); return d.substring(0, 7) + '-' + String(new Date(y, m, 0).getDate()).padStart(2, '0'); }
+/** 픽킹 담당 직원 — 사용자 중 일(job)이 픽킹인 사람 (관리 → 사용자에서 등록) */
+let PICKERS = null;
+export async function pickers() {
+  if (PICKERS) return PICKERS;
+  try { PICKERS = (await S.DB.list('users', {})).filter(u => u.active !== false && (u.job === 'pick' || u.role === 'manager')).map(u => ({ email: u.email || u.id, name: u.name || (u.email || u.id).split('@')[0], pick: u.job === 'pick' })).sort((a, b) => (a.pick === b.pick ? 0 : a.pick ? -1 : 1)); }
+  catch (e) { PICKERS = []; }
+  return PICKERS;
+}
+/** 오더들을 픽킹 직원에게 할당 (접수 → 픽킹 중). 직원을 고르면 그 직원 앱의 "내 픽킹" 에 뜸. 픽킹 인보이스 인쇄는 선택 */
+export async function assignPicker(orders, done) {
+  const list = await pickers(), me = S.user.email;
+  const opts = [{ email: me, name: (S.user.name || me.split('@')[0]) + ' (나 · me)', pick: true }].concat(list.filter(p => p.email !== me));
+  openModal('<h2>👷 ' + bi('픽킹 할당', 'Assign picking') + ' — ' + orders.length + '건 · ' + money(orders.reduce((a, o) => a + (o.amt || 0), 0)) + '</h2>' +
+    '<div class="muted">' + bi('직원을 고르면 그 직원 앱의 "내 픽킹" 목록에 들어갑니다. 픽킹 직원은 관리 → 사용자에서 일을 "픽킹 · 팩킹" 으로 등록하세요.', 'The orders appear in that person\'s "My picking" list.') + '</div>' +
+    '<div class="chips" style="flex-wrap:wrap;margin-top:8px">' + opts.map((p, i) => '<button class="' + (i === 0 ? 'on' : '') + '" data-pk="' + i + '">' + (p.pick ? '👷 ' : '🧑‍💼 ') + esc(p.name) + '</button>').join('') + '</div>' +
+    '<div style="max-height:30vh;overflow:auto;margin-top:8px;font-size:13px">' + orders.map(o => '<div>' + esc(o.store) + ' <span class="muted">' + esc(o.sm) + ' · ' + esc(o.no) + ' · ' + money(o.amt) + '</span></div>').join('') + '</div>' +
+    '<label class="pick on" style="margin-top:8px"><input type="checkbox" id="pkPrint" class="ck-big" checked><span class="pm"><b>🖨 ' + bi('픽킹 인보이스도 인쇄', 'Also print picking lists') + '</b></span></label>' +
+    '<div class="btns"><button class="b-ghost" id="pkX">취소</button><button class="b-blue" id="pkOk">할당</button></div>');
+  let sel = 0; document.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => { sel = +b.dataset.pk; document.querySelectorAll('[data-pk]').forEach(x => x.classList.toggle('on', x === b)); });
+  $('pkX').onclick = closeModal;
+  $('pkOk').onclick = async () => {
+    const p = opts[sel], now = new Date().toISOString(), pr = $('pkPrint').checked; closeModal(); busy(true);
+    try {
+      await S.DB.batch(orders.map(o => ({ op: 'update', col: 'orders', id: o.id, data: { st: 'pick', picker: p.email, pickerName: p.name.replace(/ \(나 · me\)$/, ''), pickAt: now, pickBy: me, updatedAt: now } })));
+      toast('👷 ' + p.name + ' 에게 ' + orders.length + '건 할당', 'good');
+      if (pr) { const all = []; for (const o of orders) { const L = await S.DB.get('orderLines', o.id); all.push(pickingHtml(Object.assign({}, o, { st: 'pick', pickerName: p.name }), (L && L.lines) || [])); } printOpen(all.join('')); }
+    } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false); if (done) done();
+  };
+}
 export const PERIODS = [['today', '오늘', 'Today'], ['yday', '어제', 'Yesterday'], ['week', '이번 주', 'This week'], ['lastw', '지난 주', 'Last week'], ['month', '이번 달', 'This month'], ['lastm', '지난 달', 'Last month'], ['quarter', '이번 분기', 'Quarter'], ['year', '올해', 'This year'], ['lasty', '작년', 'Last year'], ['custom', '기간 직접', 'Custom']];
 export function periodRange(p, from, to) {
   const t = today(), y = Number(t.substring(0, 4)), m = Number(t.substring(5, 7));
