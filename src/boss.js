@@ -59,7 +59,7 @@ async function pageNow() {
   const t = today(), [from, to] = periodRange(NP.p, NP.from, NP.to), days = daysBetween(from, to) + 1, pf = addDays(from, -days), pt = addDays(from, -1);
   const pl = PERIODS.find(x => x[0] === NP.p), ptxt = NP.p === 'custom' || !pl ? md(from) + ' ~ ' + md(to) : pl[1] + (days > 1 ? ' (' + md(from) + ' ~ ' + md(to) + ')' : ' ' + md(from));
   const MAIN = ['today', 'week', 'month', 'quarter', 'year'];
-  /* 매출(인보이스) · 오더 · 미수금은 따로 읽음 — 수금(entries · cod)은 loadAll 의 13개월 */
+  /* 매출(인보이스) · 주문 · 미수금은 따로 읽음 — 수금(entries · cod)은 loadAll 의 13개월 */
   let inv = [], pinv = [], live = [], arAll = null, bo = [];
   try { [inv, pinv, live, arAll, bo] = await Promise.all([
     S.DB.list('invoices', { where: [['d', '>=', from], ['d', '<=', to]] }), days <= 92 ? S.DB.list('invoices', { where: [['d', '>=', pf], ['d', '<=', pt]] }) : Promise.resolve([]),
@@ -67,7 +67,7 @@ async function pageNow() {
   inv = inv.filter(x => x.st !== 'x'); pinv = pinv.filter(x => x.st !== 'x');
   const rows = allRows(), cur = rows.filter(r => r.d >= from && r.d <= to), prev = rows.filter(r => r.d >= pf && r.d <= pt);
   const sales = sum(inv, x => x.total || 0), psales = sum(pinv, x => x.total || 0), coll = sum(cur, r => r.amt), pcoll = sum(prev, r => r.amt);
-  const types = invTypes(S), isJ = tt => { const x = types.find(z => z.c === tt); return x ? x.comm === 'A' : tt === 'A'; };
+  const types = invTypes(S), isJ = tt => { const x = types.find(z => z.c === tt); return x ? (x.comm === 'A' || x.comm === 'W') : tt !== 'P'; };
   const jew = sum(inv.filter(x => isJ(x.t)), x => x.total || 0), oth = R2(sales - jew);
   /* 세일즈맨별 매출 · 수금 나란히 */
   const smS = groupBy(inv, x => x.sm || '—'), smC = groupBy(cur, r => r.sm || '—');
@@ -85,7 +85,7 @@ async function pageNow() {
   const upItems = []; C.ents.forEach(e => (e.pays || []).forEach(p => { if (p.m === 'CHECK' && p.dep && p.dep > t) upItems.push({ d: p.dep, store: e.store, sm: e.sm, check: p.ref, amt: num(p.amt) }); }));
   const upBy = groupBy(upItems, x => x.d), up = Object.keys(upBy).sort().map(d => ({ d, n: upBy[d].length, amt: sum(upBy[d], x => x.amt), items: upBy[d] }));
   const d90 = addDays(t, -90), bounce = C.ents.filter(e => e.repl && e.d >= d90);
-  /* 오더 흐름 · 미수금 */
+  /* 주문 흐름 · 미수금 */
   const oc = st => live.filter(o => st.includes(o.st)), oAmt = L => money(sum(L, o => o.amt || 0));
   let arTot = 0, ar90 = 0, arN = 0; if (arAll && arAll.stores) { arAll.stores.forEach(st => { let net = 0; (st.invs || []).forEach(v => { net += v.bal; if (v.bal > 0 && (v.bk || 0) >= 4) ar90 += v.bal; }); if (net > 0.005) { arTot += net; arN++; } }); }
   const cmp = (a, b) => b ? ' <b class="' + (a >= b ? 'ok' : 'warn') + '">' + ((a - b) / b * 100 >= 0 ? '+' : '') + Math.round((a - b) / b * 100) + '%</b>' : '';
@@ -95,7 +95,7 @@ async function pageNow() {
   h += '<div class="kpi" style="margin:0 0 10px;grid-template-columns:1fr 1fr"><div class="tap" data-go="pay" style="text-align:left;padding:12px"><span>💰 매출 · Sales (인보이스)</span><b style="font-size:22px;display:block;margin-top:4px">' + money(sales) + '</b><span>' + inv.length + '건' + (days <= 92 ? ' · 앞 기간 ' + money(psales) + cmp(sales, psales) : '') + '</span></div>' +
     '<div class="tap" data-go="payc" style="text-align:left;padding:12px"><span>💵 수금 · Collected</span><b style="font-size:22px;display:block;margin-top:4px">' + money(coll) + '</b><span>' + cur.length + '건 · 앞 기간 ' + money(pcoll) + cmp(coll, pcoll) + '</span></div>' +
     '<div class="tap" data-go="bossar" style="text-align:left;padding:12px"><span>📄 미수금 · A/R</span><b style="font-size:22px;display:block;margin-top:4px">' + money(arTot) + '</b><span>' + arN + '곳 · 90일+ <b class="' + (arTot && ar90 / arTot >= 0.3 ? 'warn' : '') + '">' + money(ar90) + '</b>' + (arAll && arAll.asOf ? ' · 기준 ' + md(arAll.asOf) : '') + '</span></div>' +
-    '<div class="tap" data-go="orders" style="text-align:left;padding:12px"><span>📦 오더 · Orders (지금)</span><b style="font-size:22px;display:block;margin-top:4px">' + live.length + '건 · ' + oAmt(live) + '</b><span>접수 ' + oc(['sent']).length + ' · 픽킹 ' + oc(['pick', 'ok']).length + ' · 확인 대기 ' + oc(['picked']).length + ' · 포장 대기 ' + oc(['done']).length + (bo.length ? ' · 백오더 ' + bo.length : '') + '</span></div></div>';
+    '<div class="tap" data-go="orders" style="text-align:left;padding:12px"><span>📦 주문 · Orders (지금)</span><b style="font-size:22px;display:block;margin-top:4px">' + live.length + '건 · ' + oAmt(live) + '</b><span>접수 ' + oc(['sent']).length + ' · 픽킹 ' + oc(['pick', 'ok']).length + ' · 확인 대기 ' + oc(['picked']).length + ' · 포장 대기 ' + oc(['done']).length + (bo.length ? ' · 백오더 ' + bo.length : '') + '</span></div></div>';
   /* ② 매출 · 수금 묶음 */
   h += '<div class="card"><h2>매출 · 수금 — ' + esc(ptxt) + '</h2><div class="kpi" style="grid-template-columns:repeat(4,1fr)"><div><b>' + money(jew) + '</b><span>💍 주얼리</span></div><div><b>' + money(oth) + '</b><span>🧴 그 외 제품</span></div>' + [['FIELD', '현장 수금'], ['COD', 'COD'], ['CARD', '카드'], ['ACH', 'ACH']].filter(x => bySrc[x[0]]).slice(0, 2).map(x => '<div><b>' + money(sum(bySrc[x[0]], r => r.amt)) + '</b><span>' + x[1] + '</span></div>').join('') + '</div>' + bars +
     '<table style="margin-top:8px"><tr><th>세일즈맨</th><th class="r">매출</th><th class="r">수금</th><th class="r">수금/매출</th></tr>' + (smList.map(x => '<tr class="tap" data-smv="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b><div class="paybar" style="margin-top:3px;height:6px"><i style="width:' + Math.round(x.sales / smMax * 100) + '%;background:#3b82f6;height:6px"></i></div><div class="paybar" style="margin-top:2px;height:6px"><i style="width:' + Math.round(x.coll / smMax * 100) + '%;background:#22c55e;height:6px"></i></div></td><td class="r"><b>' + money(x.sales) + '</b><div class="muted" style="font-size:11px">' + x.n + '건</div></td><td class="r"><b>' + money(x.coll) + '</b><div class="muted" style="font-size:11px">' + x.cn + '건</div></td><td class="r">' + (x.sales ? Math.round(x.coll / x.sales * 100) + '%' : '—') + '</td></tr>').join('') || '<tr><td colspan="4" class="none">이 기간 자료 없음</td></tr>') + '</table><div class="hint" style="text-align:center">이름을 누르면 수금 가게별 내역 · 자세한 표는 경영 → 📊 리포트</div></div>';
@@ -500,11 +500,11 @@ async function pageAR() {
     '<div class="hero">' + money(total) + '</div><div class="heroSub">' + stores.length + '곳 · 90일+ <b class="' + (pct90 >= 30 ? 'warn' : '') + '">' + pct90 + '%</b>' + (stores.filter(s => s.dormant).length ? ' · 💤 1년+ 거래 없음 ' + stores.filter(s => s.dormant).length + '곳' : '') + (all.noSmAmt && !AV_SM ? ' · 담당 없음 ' + money(all.noSmAmt) : '') + '</div>' +
     '<div class="kpi" style="grid-template-columns:repeat(5,1fr)">' + LB.map((l, i) => '<div class="k' + i + '"><b style="font-size:11.5px">' + k(bk[i]) + '</b><span>' + l + '</span></div>').join('') + '</div>' +
     '<div class="chips">' + views.map(v => '<button class="' + (AV === v[0] ? 'on' : '') + '" data-av="' + v[0] + '">' + v[1] + '</button>').join('') + '</div></div>';
-  const storeRow = (s, extra) => '<div class="pr tap" data-fs="' + esc(s.acct) + '"><div class="ct"><b>' + esc(s.store) + '</b><small>' + esc(s.acct) + ' · ' + esc(s.sm || '담당 없음') + (s.moved ? ' <span style="color:#6b21a8">← SmartBee ' + esc(s.moved) + '</span>' : '') + (s.lastPaid ? ' · 마지막 수금 ' + md(s.lastPaid) : ' · 수금 기록 없음') + (s.dormant ? ' · 💤' : '') + '</small></div>' + (extra || '') + '<div class="pa"><b>' + money(s.net) + '</b></div></div>';
+  const storeRow = (s, extra) => '<div class="pr tap" data-fs="' + esc(s.acct) + '"><div class="ct"><b>' + esc(s.store) + '</b><small>' + esc(s.acct) + ' · ' + esc(s.sm || '담당 없음') + (s.moved ? ' <span style="color:#6b21a8">← 거래처 담당 ' + esc(s.moved) + '</span>' : '') + (s.lastPaid ? ' · 마지막 수금 ' + md(s.lastPaid) : ' · 수금 기록 없음') + (s.dormant ? ' · 💤' : '') + '</small></div>' + (extra || '') + '<div class="pa"><b>' + money(s.net) + '</b></div></div>';
   if (AV === 'sum') h += trendBox(trend) + '<div class="card"><h2>세일즈맨별 미수금 · 90일+ 비율</h2><table><tr><th>이름</th><th class="r">미수금</th><th class="r">90일+</th></tr>' + smRows.map(x => '<tr class="tap" data-avsm="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b><small style="display:block;color:#94a3b8;font-size:11px">' + x.n + '곳' + (x.dorm ? ' · 💤 ' + x.dorm : '') + '</small>' + stack(x.b, x.total) + '</td><td class="r"><b>' + money(x.total) + '</b></td><td class="r ' + (x.b[4] / Math.max(1, x.total) >= 0.3 ? 'warn' : '') + '">' + Math.round(x.b[4] / Math.max(1, x.total) * 100) + '%</td></tr>').join('') + '</table><div class="hint" style="text-align:center">이름을 누르면 그 담당만 · 막대 = 기한전/1-30/31-60/61-90/90+</div></div>';
   else if (AV === 'top') h += '<div class="card"><h2>연체 큰 순 (61일 이상)</h2>' + (top.map(s => storeRow(s, '<span class="agebadge ' + (s.maxPdd > 90 ? 'a4' : 'a3') + '">' + s.maxPdd + '일</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'stale') h += '<div class="card"><h2>잔액은 있는데 60일 넘게 수금 없음</h2>' + (stale.map(s => storeRow(s, '<span class="agebadge a3">' + (s.lastPaid ? daysBetween(s.lastPaid, t) + '일' : '없음') + '</span>')).join('') || '<div class="none">없음</div>') + '</div>';
-  else if (AV === 'moved') h += '<div class="card"><h2>SmartBee 담당과 실제 수금 담당이 다른 가게</h2><div class="alert a-blu">앱은 최근 1년 실제 수금한 사람을 담당으로 봅니다. SmartBee 쪽 담당을 고치면 사라집니다.</div>' + (moved.map(s => storeRow(s)).join('') || '<div class="none">없음</div>') + '</div>';
+  else if (AV === 'moved') h += '<div class="card"><h2>거래처 담당과 실제 수금 담당이 다른 가게</h2><div class="alert a-blu">앱은 최근 1년 실제 수금한 사람을 담당으로 봅니다. 거래처의 담당을 고치면 사라집니다.</div>' + (moved.map(s => storeRow(s)).join('') || '<div class="none">없음</div>') + '</div>';
   else h += '<div class="card" id="oldBox"></div>';
   $('page').innerHTML = h;
   document.querySelectorAll('[data-avsm]').forEach(b => b.onclick = () => { AV_SM = b.dataset.avsm; pageAR(); });

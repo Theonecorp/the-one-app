@@ -1,5 +1,5 @@
 /* ============================================================
- *  인보이스 종류 · 할인 · 번호 · 인쇄 — 오더(세일즈맨)와 오더 처리(매니저)가 같이 씀
+ *  인보이스 종류 · 할인 · 번호 · 인쇄 — 주문(세일즈맨)와 주문 처리(매니저)가 같이 씀
  *  settings/app.invTypes = [{ c:'G', n:'일반', comm:'A', match:'' }, { c:'H', n:'헤어', comm:'P', match:'EDGE BOOSTER, 코드:EB' }, …]
  *    match: 아이템의 Group · Level 1~3 이름이나 "코드:EB" (코드 앞글자) 중 하나라도 맞으면 그 종류. 안 맞으면 첫 종류(A).
  *  accounts/{acct}.disc = { A: 20, W: 10 }  ← 거래처 기본 할인 % (종류별)
@@ -10,12 +10,12 @@ import { catalog } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
  *  comm: 커미션 계산 때 어느 칸으로 셀지 (A 기본 · P · W) */
-/* SmartBee 와 같은 A · P · W — A 주얼리, P 그 외 제품, W 디스플레이 · 세트 오더.
- *  번호는 SmartBee 마지막 번호(2026-10-16: A43106 · P-008748 · W00611) 다음부터 (관리 → 설정에서 바꿀 수 있음) */
+/* 이전 시스템과 같은 A · P · W — A 주얼리, P 그 외 제품, W 디스플레이 · 세트 주문.
+ *  번호는 이전 시스템 마지막 번호(2026-10-16: A43106 · P-008748 · W00611) 다음부터 (관리 → 설정에서 바꿀 수 있음) */
 export const INV_DEFAULT = [
   { c: 'A', n: '주얼리 Jewelry', comm: 'A', match: 'Jewelry', start: 43107 },
   { c: 'P', n: '그 외 제품 Other', comm: 'P', match: 'Other, Beauty, Hair', start: 8749 },
-  { c: 'W', n: '디스플레이 · 세트 Display & Set', comm: 'W', match: 'Set & Display, Set Orders & Displays, 🧩 세트 · 인서트', start: 612 }
+  { c: 'W', n: '주얼리 · 디스플레이/세트 (커미션 제한) Jewelry display & set', comm: 'W', match: 'Set & Display, Set Orders & Displays, 🧩 세트 · 인서트', start: 612 }
 ];
 const OLD_DEFAULT = 'G,J,H,D,R';   // v0.6.x 임시 종류 — 저장돼 있어도 무시
 export const NUM_DIGITS = 5, NUM_MAX = 99999;
@@ -100,7 +100,7 @@ export function docHead(co, title, boxes) {
     '<div style="text-align:right"><div class="ivt">' + esc(title) + '</div><table class="ivbox"><tr>' + boxes.map(b => '<th>' + esc(b[0]) + '</th>').join('') + '</tr><tr>' + boxes.map(b => '<td>' + esc(b[1]) + '</td>').join('') + '</tr></table></div></div>';
 }
 /**
- * 세일즈 인보이스 — SmartBee 양식: BILL TO/SHIP TO · Acct/Terms/Rep/Ship/Via/S.O./Due · 품목 (DC % · DC Price) · 분류별 소계 · AR 에이징 · 합계
+ * 세일즈 인보이스 — 이전 양식: BILL TO/SHIP TO · Acct/Terms/Rep/Ship/Via/S.O./Due · 품목 (DC % · DC Price) · 분류별 소계 · AR 에이징 · 합계
  *  opt = { co, ar: { asOf, bk:[5], bal }, shipVia, rep }
  */
 export function invoiceHtml(inv, acc, opt) {

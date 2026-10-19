@@ -18,19 +18,22 @@ const SEED = 'var SEED_DATA = ' + JSON.stringify({ fac: [{ code: 'SX', name: 'SH
   const txt = async sel => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; });
   await pg.goto('http://127.0.0.1:8776/test/demo.html'); await pg.waitForSelector('#nav button');
-  await pg.evaluate(() => { location.hash = '#/mg'; }); await pg.waitForSelector('#seedPaste');
-  const before = await txt('#mgBody'); log('home before:', before.slice(0, 120));
+  /* v0.8.20: 가져오기는 관리 → 📥 가져오기 */
+  await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#seedPaste');
+  const cnt = () => pg.evaluate(() => { const S = window.__MOCK_STORE__; return [S.factoryInvoices, S.factoryPayments, S.pay1099, S.bonusAcc, S.payees, S.factories].map(c => Object.keys(c || {}).length).join('/'); });
+  log('before:', await cnt());
   await pg.click('#seedPaste'); await pg.waitForSelector('#seedTxt'); await pg.fill('#seedTxt', SEED); await pg.click('#sOk'); await pg.waitForSelector('#sGo');
   const pv = await txt('#mbox'); log('preview:', pv.slice(0, 400)); await shot('c0_seed_preview');
   if (!/3 줄/.test(pv) || !/2 명/.test(pv)) errs.push('preview counts wrong');
-  await pg.click('#sGo'); await pg.waitForTimeout(1200); await pg.waitForSelector('#seedPaste');
-  const after = await txt('#mgBody'); log('home after:', after.slice(0, 300)); await shot('c1_seed_home');
-  if (!/이미 .*줄 가져옴/.test(after)) errs.push('seeded badge missing');
+  await pg.click('#sGo'); await pg.waitForTimeout(1200);
+  const c1 = await cnt(); log('after 1st:', c1); if (c1.indexOf('3/2/2/1/') !== 0) errs.push('import counts wrong: ' + c1);
   /* 두 번 넣어도 같은 수 */
-  await pg.click('#seedPaste'); await pg.waitForSelector('#seedTxt'); await pg.fill('#seedTxt', SEED); await pg.click('#sOk'); await pg.waitForSelector('#sGo'); log('re-import:', (await txt('#mbox')).slice(0, 120)); await pg.click('#sGo'); await pg.waitForTimeout(1000); await pg.waitForSelector('#seedPaste');
-  const after2 = await txt('#mgBody'); const m1 = after.match(/이미 (\d+)줄/), m2 = after2.match(/이미 (\d+)줄/); log('seed count 1st/2nd:', m1 && m1[1], m2 && m2[1]); if (!m1 || !m2 || m1[1] !== m2[1]) errs.push('re-import duplicated rows');
-  /* 공장 탭 */
-  await pg.click('[data-go="fac"]'); await pg.waitForTimeout(500); log('fac:', (await txt('#mgBody')).slice(0, 300)); await shot('c2_fac');
+  await pg.click('#seedPaste'); await pg.waitForSelector('#seedTxt'); await pg.fill('#seedTxt', SEED); await pg.click('#sOk'); await pg.waitForSelector('#sGo'); log('re-import:', (await txt('#mbox')).slice(0, 120)); await pg.click('#sGo'); await pg.waitForTimeout(1000);
+  const c2 = await cnt(); log('after 2nd:', c2); if (c2 !== c1) errs.push('re-import duplicated rows');
+  /* 경영 → 공장 잔액 */
+  await pg.evaluate(() => { location.hash = '#/mg'; }); await pg.waitForSelector('#mgBody .card'); await pg.waitForTimeout(500);
+  const home = await txt('#mgBody'); log('mg home:', home.slice(0, 200)); if (!/\$3,450\.00/.test(home)) errs.push('factory balance wrong');
+  await pg.click('[data-go="fac"]'); await pg.waitForTimeout(500); log('fac:', (await txt('#mgBody')).slice(0, 200)); await shot('c2_fac');
   /* 1099 탭 */
   await pg.evaluate(() => { document.querySelector('.ctabs button[data-t="p99"], [data-tab="p99"]')?.click(); }); await pg.waitForTimeout(500);
   log('errors:', errs.length ? errs : 'none'); await br.close(); srv.kill(); process.exit(errs.length ? 1 : 0);

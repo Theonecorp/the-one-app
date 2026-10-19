@@ -43,7 +43,7 @@ async function load(from, to) {
   D = { from, to, inv: inv.filter(x => x.st !== 'x'), pays: ents.filter(e => !e.void && !e.repl).map(e => ({ d: e.d, sm: e.sm, acct: e.acct, store: e.store, amt: e.total })).concat(cods.filter(c => !c.void).map(c => ({ d: c.d, sm: c.sm, acct: c.acct, store: c.store, amt: c.amt }))) };
 }
 function rowsFor() {
-  const types = invTypes(S), isJ = t => { const x = types.find(z => z.c === t); return x ? x.comm === 'A' : t === 'A'; };
+  const types = invTypes(S), isJ = t => { const x = types.find(z => z.c === t); return x ? (x.comm === 'A' || x.comm === 'W') : t !== 'P'; };
   let inv = D.inv, pays = D.pays;
   if (R.sm) { inv = inv.filter(x => x.sm === R.sm); pays = pays.filter(p => p.sm === R.sm); }
   const C = catalog();

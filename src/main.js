@@ -18,7 +18,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.19';
+export const VER = 'v0.8.20';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -27,20 +27,20 @@ const ADMIN_EMAILS = ['luke@theonefl.com'];
  *   manager   담당자 — job: office 오피스(기본) · invoice 인보이스 · pick 픽킹·팩킹 · acct 어카운팅
  *   admin     관리자: 전부 */
 const NAV = {
-  salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '오더', 'Orders'], ['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
-  office:   [['order', '🛒', '오더', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['stores', '🏬', '거래처', 'Customers'], ['arup', '📤', '미수금 올리기', 'AR upload'], ['ach', '🏦', 'ACH', 'ACH']],
-  invoice:  [['order', '🧾', '오더·인보이스', 'Orders'], ['stores', '🏬', '거래처', 'Customers'], ['verify', '💵', '수금 확인', 'Payments']],
+  salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '주문', 'Orders'], ['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
+  office:   [['order', '🛒', '주문', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['stores', '🏬', '거래처', 'Customers'], ['ach', '🏦', 'ACH', 'ACH']],
+  invoice:  [['order', '🧾', '주문·인보이스', 'Orders'], ['stores', '🏬', '거래처', 'Customers'], ['verify', '💵', '수금 확인', 'Payments']],
   pick:     [['order', '📦', '픽킹', 'Picking'], ['stores', '🏬', '거래처', 'Customers']],
-  acct:     [['verify', '💵', '수금 확인', 'Payments'], ['order', '🧾', '인보이스', 'Invoices'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['arup', '📤', '미수금 올리기', 'AR upload'], ['stores', '🏬', '거래처', 'Customers']],
-  admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '오더', 'Orders'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
+  acct:     [['verify', '💵', '수금 확인', 'Payments'], ['order', '🧾', '인보이스', 'Invoices'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['stores', '🏬', '거래처', 'Customers']],
+  admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '주문', 'Orders'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
 };
 NAV.manager = NAV.office;
 export const JOBS = [['office', '오피스', 'Office'], ['invoice', '인보이스', 'Invoicing'], ['pick', '픽킹 · 포장', 'Picking & Packing'], ['acct', '회계', 'Accounting']];
 /** 지금 화면의 일 — 담당자는 사용자 기록의 job (없으면 office), 그 외는 역할 그대로 */
 export function jobOf() { if (S.role !== 'manager') return S.role; const j = S.me && S.me.job; return JOBS.some(x => x[0] === j) ? j : 'office'; }
 export function jobLabel(j) { const x = JOBS.find(k => k[0] === j); return x ? x[1] + ' ' + x[2] : j; }
-/* 오더는 관리 → 📦 아이템에서 "오더 켜기" 전까지 관리자에게만 보임 */
-/* 오더가 켜지면 세일즈맨은 🏠 홈(큰 버튼) 이 첫 화면, 꺼져 있으면 예전처럼 수금 입력부터 */
+/* 주문는 관리 → 📦 아이템에서 "주문 켜기" 전까지 관리자에게만 보임 */
+/* 주문가 켜지면 세일즈맨은 🏠 홈(큰 버튼) 이 첫 화면, 꺼져 있으면 예전처럼 수금 입력부터 */
 function navFor(r) {
   const on = S.settings.ordersOn || (S.me && S.me.role === 'admin');
   const key = r === 'manager' ? jobOf() : r;
@@ -102,7 +102,7 @@ async function diag() {
   const me = S.me || {};
   const rows = ['로그인: <b>' + esc(S.user.email) + '</b>', '사용자 기록: 역할 ' + esc(String(me.role)) + ' · 활성 ' + esc(String(me.active)) + ' · 세일즈맨 ' + esc(String(me.sm || '-'))];
   const tests = [['사용자 (내 것)', () => S.DB.get('users', S.user.email)], ['설정', () => S.DB.get('settings', 'app')], ['세일즈맨', () => S.DB.list('salesmen', { limit: 1 })],
-    ['거래처', () => S.DB.list('accounts', { limit: 1 })], ['아이템', () => S.DB.get('catalog', 'meta')], ['오더', () => S.DB.list('orders', S.role === 'salesman' ? { where: [['sm', '==', me.sm || '-']], limit: 1 } : { limit: 1 })]];
+    ['거래처', () => S.DB.list('accounts', { limit: 1 })], ['아이템', () => S.DB.get('catalog', 'meta')], ['주문', () => S.DB.list('orders', S.role === 'salesman' ? { where: [['sm', '==', me.sm || '-']], limit: 1 } : { limit: 1 })]];
   for (const [n, f] of tests) { try { await f(); rows.push('✅ ' + n); } catch (e) { rows.push('❌ ' + n + ' — ' + esc(e.code || e.message)); } }
   out.innerHTML = '<div class="sumbox" style="line-height:1.8">' + rows.join('<br>') + '</div>';
 }
@@ -152,7 +152,7 @@ async function afterLogin(user) {
   } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   busy(false);
   paintNav();
-  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/reports') === 0;
+  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) location.hash = '#/' + navFor(S.role)[0][0];
   Router.stack = [];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();

@@ -501,7 +501,7 @@ const BK = ['기한 전', '1-30일', '31-60일', '61-90일', '90일+'];
 let AR_F = 'all';
 async function paintAR() {
   const ar = await arDocMine();
-  if (!ar || !ar.stores) { $('hubBody').innerHTML = '<div class="card"><div class="none">아직 올라온 AR 이 없습니다. 담당자가 SmartBee AR 을 올리면 여기에 보입니다.<br><span class="en">No AR uploaded yet.</span></div></div>'; return; }
+  if (!ar || !ar.stores) { $('hubBody').innerHTML = '<div class="card"><div class="none">아직 올라온 AR 이 없습니다. 담당자가 미수금(AR)을 올리면 여기에 보입니다.<br><span class="en">No AR uploaded yet.</span></div></div>'; return; }
   const rows = await myEntries(), paid = {};
   rows.forEach(e => { if (e.d <= (ar.asOf || '') || e.repl) return; (e.invs || []).forEach(v => { const k = (v.acct || e.acct) + '|' + v.no; paid[k] = R2((paid[k] || 0) + num(v.amt)); }); });
   const stores = ar.stores.map(s => { let net = 0; const b = [0, 0, 0, 0, 0]; const invs = (s.invs || []).map(v => { const p = paid[s.acct + '|' + v.inv] || 0; const bal = R2(v.bal - p); return Object.assign({}, v, { paid: p, net: bal }); }); invs.forEach(v => { net += v.net; if (v.net > 0) b[Math.max(0, Math.min(4, v.bk || 0))] += v.net; else b[0] += v.net; }); return Object.assign({}, s, { net: R2(net), b: b.map(R2), invs, done: net <= 0.005, maxPdd: Math.max(0, ...invs.filter(v => v.net > 0.005).map(v => v.pdd || 0)) }); });

@@ -18,10 +18,10 @@ function smOptions(v, allowBlank) { return (allowBlank ? [['', '— 세일즈맨
 function methodTag(p) { return p.m === 'CHECK' ? '#' + esc(p.ref) : p.m === 'CASH' ? '캐쉬' : 'Zelle'; }
 
 /* ============================================================
- *  ① 확인 — 세일즈맨이 넣은 수금을 보며 SmartBee 입력 ✓, 실물 체크 오면 수령 ✓
+ *  ① 확인 — 세일즈맨이 넣은 수금을 보며 ① 접수 확인, 실물 체크 오면 수령 ✓
  * ============================================================ */
 let VF = { f: 'todo', sm: '', q: '', grp: 'sm', acct: '' };
-/* ---- 앱 인보이스에 입금 반영 (SmartBee 입력을 대신함) ----
+/* ---- 앱 인보이스에 입금 반영 (이전 시스템 입력을 대신함) ----
  *  invoices/{no}.pays = { [수금 id]: 금액 } · bal = total − Σpays  — 같은 수금을 두 번 넣어도 한 번만 잡힘, 취소하면 되돌아옴 */
 export async function applyToInvoices(key, invs, on) {
   let n = 0;
@@ -211,8 +211,8 @@ function storeForm(a) {
     '<div class="fg"><label>주소</label><input id="sAddr" value="' + esc(a.addr || '') + '"></div>' +
     '<div class="three"><div class="fg"><label>City</label><input id="sCity" value="' + esc(a.city || '') + '"></div><div class="fg"><label>State</label><input id="sState" value="' + esc(a.state || '') + '" maxlength="2" style="text-transform:uppercase"></div><div class="fg"><label>Zip</label><input id="sZip" value="' + esc(a.zip || '') + '"></div></div>' +
     '<div class="two"><div class="fg"><label>전화</label><input id="sTel" value="' + esc(a.tel || '') + '"></div><div class="fg"><label>조건 (N30 · ACH60 …)</label><input id="sTerms" value="' + esc(a.terms || '') + '"></div></div>' +
-    '<div class="fg"><label>메모 (오더 화면에 보임)</label><input id="sNote" value="' + esc(a.note || '') + '"></div>' +
-    '<div class="fg"><label>기본 할인 % (인보이스 종류별 — 오더에 자동으로 들어감)</label><div class="three">' + invTypes(S).map(t => '<div><small class="muted">' + esc(t.c) + ' ' + esc(t.n) + '</small><input type="number" inputmode="decimal" min="0" max="100" data-sd="' + esc(t.c) + '" value="' + esc((a.disc || {})[t.c] || '') + '" placeholder="0"></div>').join('') + '</div></div>' +
+    '<div class="fg"><label>메모 (주문 화면에 보임)</label><input id="sNote" value="' + esc(a.note || '') + '"></div>' +
+    '<div class="fg"><label>기본 할인 % (인보이스 종류별 — 주문에 자동으로 들어감)</label><div class="three">' + invTypes(S).map(t => '<div><small class="muted">' + esc(t.c) + ' ' + esc(t.n) + '</small><input type="number" inputmode="decimal" min="0" max="100" data-sd="' + esc(t.c) + '" value="' + esc((a.disc || {})[t.c] || '') + '" placeholder="0"></div>').join('') + '</div></div>' +
     '<div class="btns"><button class="b-blue" id="sSave">저장</button></div>');
   $('sSave').onclick = async () => {
     const acct = pad4($('sAcct').value.trim()), store = $('sStore').value.trim().toUpperCase();
@@ -232,14 +232,15 @@ export async function bumpAccountsVer() {
 }
 
 /* ============================================================
- *  ⑤ AR 올리기 — SmartBee AR 엑셀을 그대로 올리면 세일즈맨별로 나눠 저장
+ *  ⑤ AR 올리기 — 이전 시스템 AR 엑셀을 그대로 올리면 세일즈맨별로 나눠 저장
  *  ar/{SM} = { sm, asOf, total, stores:[{acct, store, total, b[5], invs:[{inv,d,amt,bal,pdd,bk}], lastPaid, dormant, moved}] }
  *  ar/_all = 전체 (루크 미수금 탭)
  * ============================================================ */
 async function pageArUp() {
   const asOf = S.settings.arAsOf || '';
-  $('page').innerHTML = '<div class="card"><h2>📤 미수금(AR) 올리기</h2><div class="muted">SmartBee 에서 받은 AR 엑셀(.xlsx)을 그대로 고르세요. 기준일은 파일 안 인보이스 날짜로 잡고, 세일즈맨별로 나눠 저장합니다.<br>지금 기준일: <b>' + esc(asOf || '없음') + '</b>' + (asOf ? ' (' + daysBetween(asOf, today()) + '일 전)' : '') + '</div>' +
-    '<div class="fg" style="margin-top:10px"><label>기준일 (SmartBee 에서 뽑은 날)</label>' + inputDate('arD', today()) + '</div>' +
+  if (S.role !== 'admin') { $('page').innerHTML = '<div class="card"><div class="none">미수금 올리기는 관리 → 📥 가져오기에서 합니다 (관리자)</div></div>'; return; }
+  $('page').innerHTML = '<div class="card"><h2>📤 미수금(AR) 올리기</h2><div class="muted">AR 엑셀(.xlsx)을 그대로 고르세요. 보통은 관리 → 📥 가져오기의 ① 수금 입력 파일에 AR 탭이 있어 따로 올릴 필요가 없습니다. 세일즈맨별로 나눠 저장합니다.<br>지금 기준일: <b>' + esc(asOf || '없음') + '</b>' + (asOf ? ' (' + daysBetween(asOf, today()) + '일 전)' : '') + '</div>' +
+    '<div class="fg" style="margin-top:10px"><label>기준일 (AR 을 뽑은 날)</label>' + inputDate('arD', today()) + '</div>' +
     '<input type="file" id="arFile" accept=".xlsx,.xls,.csv" style="padding:8px"><div id="arOut" style="margin-top:10px"></div></div>';
   $('arFile').onchange = () => arParse($('arFile').files[0]);
 }
@@ -285,33 +286,38 @@ async function arParse(file) {
     $('arGo').onclick = () => arBuild(rows, $('arD').value);
   } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
+/** AR 줄 → 세일즈맨별 ar/{sm} + ar/_all 저장. 반환 { stores, unmatched, noSmAmt } */
+export async function saveAr(rows, asOf) {
+  /* 최근 1년 수금 → 가게별 마지막 수금자 */
+  const ents = (await S.DB.list('entries', { where: [['ym', 'in', recentYms(13)]] })).filter(e => !e.void && !e.repl);
+  const last = {};
+  ents.forEach(e => { const touch = (acct) => { if (!acct) return; if (!last[acct] || e.d > last[acct].d) last[acct] = { d: e.d, sm: e.sm }; }; touch(e.acct); (e.invs || []).forEach(v => { if (v.acct) touch(v.acct); }); });
+  const byAcct = groupBy(rows, r => r.acct), unmatched = [], noSm = [];
+  const stores = Object.keys(byAcct).map(acct => {
+    const L = byAcct[acct], a = S.accounts.byCode[acct];
+    if (!a) unmatched.push(acct + ' ' + L[0].store);
+    const rep = L[0].rep, lp = last[acct];
+    const sm = (lp && lp.sm) || (a && a.sm) || rep || '';
+    if (!sm) noSm.push(acct);
+    const b = [0, 0, 0, 0, 0]; L.forEach(r => { b[r.bk] += r.bal; });
+    const newest = L.map(r => r.d).sort().reverse()[0] || '';
+    const dormant = !!(newest && daysBetween(newest, asOf) > 365 && (!lp || daysBetween(lp.d, asOf) > 365));
+    return { acct, store: a ? a.store : L[0].store, sm, rep, total: sum(L, r => r.bal), b: b.map(R2), invs: L.map(r => ({ inv: r.inv, d: r.d, amt: r.amt, bal: r.bal, pdd: r.pdd, bk: r.bk })), lastPaid: lp ? lp.d : '', dormant, moved: rep && rep !== sm ? rep : '', term: L[0].term };
+  });
+  const bySm = groupBy(stores, s => s.sm || '_none');
+  const ops = [];
+  S.sms.forEach(x => { const list = bySm[x.code] || []; ops.push({ op: 'set', col: 'ar', id: x.code, data: { sm: x.code, asOf, total: sum(list, s => s.total), n: list.length, stores: list } }); });
+  Object.keys(bySm).forEach(code => { if (code !== '_none' && !S.smByCode[code]) ops.push({ op: 'set', col: 'ar', id: code, data: { sm: code, asOf, total: sum(bySm[code], s => s.total), n: bySm[code].length, stores: bySm[code] } }); });
+  ops.push({ op: 'set', col: 'ar', id: '_all', data: { sm: '_all', asOf, total: sum(stores, s => s.total), n: stores.length, stores: stores.map(s => Object.assign({}, s)), unmatched, noSmAmt: sum(bySm['_none'] || [], s => s.total), uploadedAt: new Date().toISOString(), by: S.user.email } });
+  await S.DB.batch(ops);
+  await S.DB.update('settings', 'app', { arAsOf: asOf }); S.settings.arAsOf = asOf;
+  return { stores, unmatched, noSmAmt: sum(bySm['_none'] || [], s => s.total) };
+}
 async function arBuild(rows, asOf) {
   busy(true);
   try {
-    /* 최근 1년 수금 → 가게별 마지막 수금자 */
-    const ents = (await S.DB.list('entries', { where: [['ym', 'in', recentYms(13)]] })).filter(e => !e.void && !e.repl);
-    const last = {};
-    ents.forEach(e => { const touch = (acct) => { if (!acct) return; if (!last[acct] || e.d > last[acct].d) last[acct] = { d: e.d, sm: e.sm }; }; touch(e.acct); (e.invs || []).forEach(v => { if (v.acct) touch(v.acct); }); });
-    const byAcct = groupBy(rows, r => r.acct), unmatched = [], noSm = [];
-    const stores = Object.keys(byAcct).map(acct => {
-      const L = byAcct[acct], a = S.accounts.byCode[acct];
-      if (!a) unmatched.push(acct + ' ' + L[0].store);
-      const rep = L[0].rep, lp = last[acct];
-      const sm = (lp && lp.sm) || (a && a.sm) || rep || '';
-      if (!sm) noSm.push(acct);
-      const b = [0, 0, 0, 0, 0]; L.forEach(r => { b[r.bk] += r.bal; });
-      const newest = L.map(r => r.d).sort().reverse()[0] || '';
-      const dormant = !!(newest && daysBetween(newest, asOf) > 365 && (!lp || daysBetween(lp.d, asOf) > 365));
-      return { acct, store: a ? a.store : L[0].store, sm, rep, total: sum(L, r => r.bal), b: b.map(R2), invs: L.map(r => ({ inv: r.inv, d: r.d, amt: r.amt, bal: r.bal, pdd: r.pdd, bk: r.bk })), lastPaid: lp ? lp.d : '', dormant, moved: rep && rep !== sm ? rep : '', term: L[0].term };
-    });
-    const bySm = groupBy(stores, s => s.sm || '_none');
-    const ops = [];
-    S.sms.forEach(x => { const list = bySm[x.code] || []; ops.push({ op: 'set', col: 'ar', id: x.code, data: { sm: x.code, asOf, total: sum(list, s => s.total), n: list.length, stores: list } }); });
-    Object.keys(bySm).forEach(code => { if (code !== '_none' && !S.smByCode[code]) ops.push({ op: 'set', col: 'ar', id: code, data: { sm: code, asOf, total: sum(bySm[code], s => s.total), n: bySm[code].length, stores: bySm[code] } }); });
-    ops.push({ op: 'set', col: 'ar', id: '_all', data: { sm: '_all', asOf, total: sum(stores, s => s.total), n: stores.length, stores: stores.map(s => Object.assign({}, s)), unmatched, noSmAmt: sum(bySm['_none'] || [], s => s.total), uploadedAt: new Date().toISOString(), by: S.user.email } });
-    await S.DB.batch(ops);
-    await S.DB.update('settings', 'app', { arAsOf: asOf }); S.settings.arAsOf = asOf;
-    $('arOut').innerHTML = '<div class="alert a-grn">저장했습니다 — 기준일 ' + esc(asOf) + ' · 가게 ' + stores.length + '곳 · ' + money(sum(stores, s => s.total)) + '<br>담당 없는 금액 ' + money(sum(bySm['_none'] || [], s => s.total)) + ' · 거래처 목록에 없는 가게 ' + unmatched.length + '곳</div>' + (unmatched.length ? '<div class="muted">' + unmatched.slice(0, 30).map(esc).join('<br>') + (unmatched.length > 30 ? '<br>…' : '') + '</div>' : '');
+    const r = await saveAr(rows, asOf);
+    $('arOut').innerHTML = '<div class="alert a-grn">저장했습니다 — 기준일 ' + esc(asOf) + ' · 가게 ' + r.stores.length + '곳 · ' + money(sum(r.stores, s => s.total)) + '<br>담당 없는 금액 ' + money(r.noSmAmt) + ' · 거래처 목록에 없는 가게 ' + r.unmatched.length + '곳</div>' + (r.unmatched.length ? '<div class="muted">' + r.unmatched.slice(0, 30).map(esc).join(', ') + '</div>' : '');
     toast('AR 저장 완료', 'good');
   } catch (e) { $('arOut').innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
   busy(false);
