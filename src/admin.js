@@ -125,13 +125,15 @@ async function importer() {
     '<div class="fg"><label>③ THE ONE 커미션.xlsx — 요율 · 정산 기록</label><input type="file" id="f3" accept=".xlsx"></div>' +
     '<div id="impOut"></div></div>' +
     '<div class="card"><h2>📤 미수금(AR) 파일만 올리기</h2><div class="muted">AR 엑셀만 따로 받았을 때. ① 파일에 AR 탭이 있으면 이건 필요 없습니다.</div><div class="two" style="margin-top:8px"><input type="date" id="arD2" value="' + today() + '"><input type="file" id="arF2" accept=".xlsx,.xls,.csv"></div><div id="arOut2"></div></div>' +
-    '<div class="card"><h2>🏭 과거 경영 자료 (공장 · 1099 · 보너스 · 배분표)</h2><div class="muted">변환해 둔 SEED_DATA 파일(.js / .json)을 고르거나 내용을 붙여 넣습니다. 엑셀 원본은 바로 읽지 못합니다 — 원본 엑셀을 보내 주시면 읽는 기능을 붙이겠습니다. 같은 파일을 다시 넣어도 두 번 쌓이지 않습니다.</div><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></div>';
+    '<div class="card"><h2>④ THE ONE 수금 대시보드.xlsx — 공장 장부 · 1099 · 오피스 보너스 · 배분표 · 1099 대상 · 커미션 공제 · 정산 옵션</h2><div class="muted">경영 파일을 그대로 올리세요. 탭 이름(🏭 공장 이름 · 1099 2026 · 오피스 보너스 …)으로 찾고, 시트 안의 ID 를 그대로 써서 다시 올려도 두 번 쌓이지 않습니다.</div>' +
+    '<div class="fg" style="margin-top:10px"><input type="file" id="f4" accept=".xlsx"></div><div id="bossOut"></div>' +
+    '<details style="margin-top:6px"><summary class="muted">변환해 둔 SEED_DATA(.js) 파일로 넣기</summary><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></details></div>';
   bindExport();
   $('arF2').onchange = async () => { const f = $('arF2').files[0]; if (!f) return; const out = $('arOut2'); out.innerHTML = '<div class="muted">읽는 중…</div>'; try { const { XLSX, wb } = await readBook(f); const rows0 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }); const { rows } = parseArRows(rows0); busy(true); const r = await saveAr(rows, $('arD2').value || today()); busy(false); out.innerHTML = '<div class="alert a-grn">저장 — 인보이스 ' + rows.length + '건 · ' + money(sum(rows, x => x.bal)) + ' · 가게 ' + r.stores.length + '곳' + (r.unmatched.length ? '<br>거래처 목록에 없는 가게: ' + r.unmatched.slice(0, 20).map(esc).join(', ') : '') + '</div>'; } catch (e) { busy(false); out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; } };
   $('seedPick').onclick = () => $('seedFile').click();
   $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedImport(r.result); r.readAsText(f); };
   $('seedPaste').onclick = () => { openModal('<h2>📋 SEED_DATA 붙여넣기</h2><textarea id="seedTxt" style="width:100%;height:200px;font-size:11px"></textarea><div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sOk">읽기</button></div>'); $('sX').onclick = closeModal; $('sOk').onclick = () => { const t = $('seedTxt').value; seedImport(t); }; };
-  $('f1').onchange = () => importMain($('f1').files[0]); $('f2').onchange = () => importSales($('f2').files[0]); $('f3').onchange = () => importComm($('f3').files[0]);
+  $('f1').onchange = () => importMain($('f1').files[0]); $('f2').onchange = () => importSales($('f2').files[0]); $('f3').onchange = () => importComm($('f3').files[0]); $('f4').onchange = () => importBoss($('f4').files[0]);
 }
 async function loadXlsx() { if (window.XLSX) return window.XLSX; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); return window.XLSX; }
 async function readBook(file) { const XLSX = await loadXlsx(); const buf = await file.arrayBuffer(); return { XLSX, wb: XLSX.read(buf, { type: 'array', cellDates: true }) }; }
@@ -207,6 +209,80 @@ async function importSales(file) {
     say('COD·카드·ACH ' + nC + '건 · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
   } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
+}
+/* ④ 수금 대시보드 파일 — 경영 자료 전부 */
+const dcell = v => dstr(v) || '';
+const sv = v => String(v == null ? '' : v).trim();
+export function parseBossBook(XLSX, wb) {
+  const out = { fac: [], inv: [], pay: [], acc: [], dist: [], split: [], payees: [], ded: [], dedHist: [], opts: [], years: [], warn: [] };
+  const get = n => aoa(XLSX, wb, n);
+  /* 공장 */
+  const fac = get('공장'); if (fac) for (let i = 1; i < fac.length; i++) { const code = sv(fac[i][0]).toUpperCase(); if (code) out.fac.push({ code, name: sv(fac[i][1]) || code, note: sv(fac[i][2]) }); }
+  const codeOfName = nm => { const f = out.fac.find(x => x.name.toUpperCase() === nm.toUpperCase()); return f ? f.code : ''; };
+  /* 🏭 장부 — 5행 머리글: 날짜 구분 물품 운임 운임% 합계 메모 ID | 송금일 금액 메모 ID */
+  wb.SheetNames.filter(n => n.indexOf('🏭') === 0).forEach(n => {
+    const nm = n.replace('🏭', '').trim(), code = codeOfName(nm) || nm.split(' ')[0].substring(0, 4).toUpperCase(), r = get(n);
+    if (!codeOfName(nm)) out.fac.push({ code, name: nm, note: '' });
+    let hi = r.findIndex(row => sv(row[0]) === '날짜'); if (hi < 0) { out.warn.push(n + ': 머리글 없음'); return; }
+    const hd = r[hi].map(sv), ci = hd.indexOf('ID'), pj = hd.indexOf('송금일'), pid = hd.lastIndexOf('ID');
+    for (let i = hi + 1; i < r.length; i++) {
+      const row = r[i]; if (!row) continue;
+      const d = dcell(row[0]), id = sv(row[ci]);
+      if (d && id) out.inv.push({ id, f: code, d, type: sv(row[1]) || '인보이스', item: R2(num(row[2])), frt: R2(num(row[3])), amt: R2(num(row[5])), note: sv(row[6]) });
+      if (pj >= 0) { const pd = dcell(row[pj]), pi2 = sv(row[pid]); if (pd && pi2 && pid !== ci) out.pay.push({ id: pi2, f: code, d: pd, amt: R2(num(row[pj + 1])), note: sv(row[pj + 2]) }); }
+    }
+  });
+  /* 오피스 보너스 — 적립 | 지급 */
+  const ob = get('오피스 보너스'); if (ob) { const hi = ob.findIndex(row => sv(row[0]) === '날짜'); if (hi >= 0) { const hd = ob[hi].map(sv), pj = hd.indexOf('지급일'), rounds = {};
+    for (let i = hi + 1; i < ob.length; i++) { const row = ob[i]; if (!row) continue; const d = dcell(row[0]), id = sv(row[5]); if (d && id) out.acc.push({ id, d, sm: sv(row[1]).toUpperCase(), amt: R2(num(row[2])), src: sv(row[3]) || '엑셀', note: sv(row[4]) });
+      if (pj >= 0) { const pd = dcell(row[pj]); if (pd) { const k = pd + '|' + sv(row[pj + 4]); (rounds[k] = rounds[k] || { d: pd, round: sv(row[pj + 4]), rows: [], id: sv(row[pj + 5]) }).rows.push({ who: sv(row[pj + 1]).toUpperCase(), amt: R2(num(row[pj + 2])), pct: num(row[pj + 3]) }); } } }
+    Object.values(rounds).forEach(r => { out.dist.push({ id: r.id || ('BDX' + r.d.replace(/-/g, '') + (r.round || '').replace(/\W/g, '')), d: r.d, round: r.round, rows: r.rows, n: r.rows.length, sum: R2(r.rows.reduce((a, x) => a + x.amt, 0)) }); }); } }
+  /* 배분표 */
+  const sp = get('보너스 배분표'); if (sp) for (let i = 1; i < sp.length; i++) { const who = sv(sp[i][2]).toUpperCase(); if (who) out.split.push({ grp: sv(sp[i][0]) || 'A', share: num(sp[i][1]) || 100, who, pct: num(sp[i][3]) }); }
+  /* 1099 대상 */
+  const pz = get('1099 대상'); if (pz) for (let i = 1; i < pz.length; i++) { const who = sv(pz[i][0]).toUpperCase(); if (who) out.payees.push({ who, co: sv(pz[i][1]), kind: sv(pz[i][2]) || '고정', cycle: sv(pz[i][3]), officePct: num(pz[i][4]), active: !/^N/i.test(sv(pz[i][5]) || 'Y'), note: sv(pz[i][6]) }); }
+  /* 1099 YYYY — 2행 이름(짝수 열), 3행 회사, 6행부터 (왼쪽 칸 날짜 · 그 칸 금액) */
+  wb.SheetNames.filter(n => /^1099\s+\d{4}$/.test(n.trim())).forEach(n => {
+    const y = n.trim().split(/\s+/)[1], r = get(n); if (!r || r.length < 3) return; out.years.push(y);
+    const names = r[1].map(sv), cos = (r[2] || []).map(sv), seq = {};
+    for (let j = 2; j < names.length; j++) { const who = names[j].toUpperCase(); if (!who || who === 'DATE') continue;
+      for (let i = 5; i < r.length; i++) { const row = r[i]; if (!row) continue; const d = dcell(row[j - 1]), amt = num(row[j]); if (!d || !amt) continue; const k = who + d; seq[k] = (seq[k] || 0) + 1; out.payees.find(p => p.who === who) || out.payees.push({ who, co: cos[j] || '', kind: '고정', cycle: '', officePct: 0, active: true, note: '' });
+        out.inv99 = out.inv99 || []; out.inv99.push({ id: 'X99-' + y + '-' + who.replace(/\W/g, '') + '-' + d.replace(/-/g, '') + (seq[k] > 1 ? '-' + seq[k] : ''), d, who, co: cos[j] || '', amt: R2(amt), note: '엑셀 ' + y }); } }
+  });
+  /* 커미션 공제 · 공제 기록 */
+  const dd = get('커미션 공제'); if (dd) for (let i = 1; i < dd.length; i++) { const id = sv(dd[i][0]); if (!id) continue; out.ded.push({ id, sm: sv(dd[i][1]).toUpperCase(), acct: sv(dd[i][2]), store: sv(dd[i][3]), why: sv(dd[i][4]) || '기타', total: R2(num(dd[i][5])), per: R2(num(dd[i][6])) || R2(num(dd[i][5])), start: dcell(dd[i][7]) || today(), st: sv(dd[i][8]), note: sv(dd[i][9]), invs: sv(dd[i][10]) }); }
+  const dh = get('공제 기록'); if (dh) for (let i = 1; i < dh.length; i++) { const id = sv(dh[i][2]); if (!id) continue; out.dedHist.push({ id, d: dcell(dh[i][0]), amt: R2(num(dh[i][4])), ref: sv(dh[i][5]) }); }
+  /* 세일즈맨 정산 옵션 */
+  const so = get('세일즈맨 정산 옵션'); if (so) for (let i = 1; i < so.length; i++) { const sm = sv(so[i][0]).toUpperCase(); if (sm) out.opts.push({ sm, cashKeep: /^Y/i.test(sv(so[i][1])), defaultPer: R2(num(so[i][2])) }); }
+  return out;
+}
+async function importBoss(file) {
+  if (!file) return; const out = $('bossOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
+  try {
+    const { XLSX, wb } = await readBook(file);
+    const P = parseBossBook(XLSX, wb), n99 = (P.inv99 || []).length;
+    out.innerHTML = '<div class="alert a-blu">공장 ' + P.fac.length + ' · 공장 인보이스 ' + P.inv.length + '줄 ' + money(sum(P.inv, x => x.amt)) + ' · 송금 ' + P.pay.length + '줄 ' + money(sum(P.pay, x => x.amt)) + '<br>1099 지급 ' + n99 + '줄 (' + P.years.join(', ') + ') · 1099 대상 ' + P.payees.length + '명 · 보너스 적립 ' + P.acc.length + ' · 배분 ' + P.dist.length + '회 · 배분표 ' + P.split.length + '줄<br>커미션 공제 ' + P.ded.length + ' · 공제 기록 ' + P.dedHist.length + ' · 정산 옵션 ' + P.opts.length + (P.warn.length ? '<br><span class="warn">' + P.warn.map(esc).join(' · ') + '</span>' : '') + '</div><button class="b-blue" id="bossGo">넣기</button>';
+    $('bossGo').onclick = async () => {
+      busy(true);
+      try {
+        const now = new Date().toISOString(), ops = [];
+        P.fac.forEach(f => ops.push({ op: 'set', col: 'factories', id: f.code, data: { id: f.code, code: f.code, name: f.name, note: f.note, active: true, createdAt: now } }));
+        P.inv.forEach(x => ops.push({ op: 'set', col: 'factoryInvoices', id: x.id, data: Object.assign({}, x, { seed: true, createdAt: now, updatedAt: now }) }));
+        P.pay.forEach(x => ops.push({ op: 'set', col: 'factoryPayments', id: x.id, data: Object.assign({}, x, { seed: true, createdAt: now }) }));
+        P.acc.forEach(x => ops.push({ op: 'set', col: 'bonusAcc', id: x.id, data: Object.assign({}, x, { ref: '', seed: true }) }));
+        P.dist.forEach(x => ops.push({ op: 'set', col: 'bonusDist', id: x.id, data: Object.assign({}, x, { seed: true, createdBy: S.user.email, createdAt: now }) }));
+        if (P.split.length) ops.push({ op: 'set', col: 'bonusSplit', id: 'main', data: { id: 'main', rows: P.split, updatedAt: now } });
+        P.payees.forEach(p => ops.push({ op: 'set', col: 'payees', id: p.who, data: Object.assign({ id: p.who }, p) }));
+        (P.inv99 || []).forEach(x => ops.push({ op: 'set', col: 'pay1099', id: x.id, data: Object.assign({}, x, { gross: x.amt, acc: 0, ref: '', seed: true, createdAt: now }) }));
+        const hist = {}; P.dedHist.forEach(h => { (hist[h.id] = hist[h.id] || []).push({ d: h.d, amt: h.amt, ref: h.ref }); });
+        P.ded.forEach(d => { const h = hist[d.id] || [], used = R2(h.reduce((a, x) => a + x.amt, 0)); ops.push({ op: 'set', col: 'deductions', id: d.id, data: Object.assign({}, d, { used, hist: h, st: d.st || (used >= d.total - 0.005 ? '완료' : ''), seed: true, createdBy: S.user.email, createdAt: now, updatedAt: now }) }); });
+        P.opts.forEach(o => { if (S.smByCode[o.sm]) ops.push({ op: 'update', col: 'salesmen', id: o.sm, data: { cashKeep: o.cashKeep, defaultPer: o.defaultPer } }); });
+        await S.DB.batch(ops);
+        out.innerHTML = '<div class="alert a-grn">넣었습니다 — ' + ops.length + '건. 경영 탭에서 확인하세요.</div>'; toast('경영 자료 ' + ops.length + '건', 'good');
+      } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+      busy(false);
+    };
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
 async function importComm(file) {
   if (!file) return; busy(true); $('impOut').innerHTML = '';
