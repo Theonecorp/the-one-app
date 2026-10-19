@@ -177,7 +177,10 @@ export function invoiceHtml(inv, acc, opt) {
   const C = catalog(), view = Object.assign({}, INV_VIEW_DEFAULT, opt.view || {});
   const grpOf = l => { if (l.g) return l.g; const it = C && C.byCode[l.c]; return it ? (it.l1 || it.g || '') : ''; };
   const byGroup = view.sort === 'group';
-  const rows = view.sort === 'order' ? inv.lines.slice() : view.sort === 'abc' ? inv.lines.slice().sort((a, b) => a.c < b.c ? -1 : a.c > b.c ? 1 : 0) : inv.lines.slice().sort((a, b) => (grpOf(a) + '\u0001' + a.c) < (grpOf(b) + '\u0001' + b.c) ? -1 : 1);
+  /* 손님 보기 순서 — 제품 라인(Level 1)별로 묶고, 그 안에서 세부 라인(Level 2 · 3) → 코드 순 */
+  const subOf = l => { const it = C && C.byCode[l.c]; return it ? [it.l2 || '', it.l3 || ''].join('\u0001') : ''; };
+  const COLL2 = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+  const rows = view.sort === 'order' ? inv.lines.slice() : view.sort === 'abc' ? inv.lines.slice().sort((a, b) => COLL2.compare(a.c, b.c)) : inv.lines.slice().sort((a, b) => COLL2.compare(grpOf(a), grpOf(b)) || COLL2.compare(subOf(a), subOf(b)) || COLL2.compare(a.c, b.c));
   const dc = Number(inv.disc) || 0;
   const A = inv.shipTo ? Object.assign({}, acc || {}, inv.shipTo) : acc;   // 🏬 이 주문만 고친 이름 · 주소가 있으면 그걸로
   const addr = A ? [A.addr, [A.city, A.state].filter(Boolean).join(', ') + (A.zip ? ' ' + A.zip : '')].filter(Boolean) : [];
@@ -186,10 +189,11 @@ export function invoiceHtml(inv, acc, opt) {
   const due = addDays(inv.d, termDays(terms));
   /* 품목 — 분류별 소계 */
   let body = '', cur = null, gq = 0, gl = 0, gd = 0, gt = 0, tq = 0;
-  const flush = () => { if (cur === null || !byGroup) return; body += '<tr class="ivsub"><td colspan="4" class="r">' + esc(cur || '기타') + ' Sub Total:</td><td class="r">' + n2(gl) + '</td><td></td><td class="r">' + n2(gt - gl) + '</td><td class="r">' + n2(gt) + '</td></tr>'; gq = gl = gd = gt = 0; };
+  const gName = g => String(g || '').replace(/^""|""$/g, '').replace(/^["\[<*]+|["\]>*]+$/g, '').trim() || 'OTHER';
+  const flush = () => { if (cur === null || !byGroup) return; body += '<tr class="ivsub"><td colspan="4" class="r">' + esc(gName(cur)) + ' Sub Total:</td><td class="r">' + n2(gl) + '</td><td></td><td class="r">' + n2(gt - gl) + '</td><td class="r">' + n2(gt) + '</td></tr>'; gq = gl = gd = gt = 0; };
   let sumT = 0;
   rows.forEach(l => {
-    const g = grpOf(l); if (byGroup && g !== cur) { flush(); cur = g; }
+    const g = grpOf(l); if (byGroup && g !== cur) { flush(); cur = g; body += '<tr class="ivgh"><td colspan="7">' + esc(gName(g)) + '</td></tr>'; }
     const dp = dcPrice(l.p, dc), lt = lineTotal(l.q, l.p, dc); gq += l.q; gl += l.q * l.p; gt += lt; tq += l.q; sumT += lt;
     const kitOpen = l.kit && l.kit.length && view.kits !== 'closed';
     body += '<tr' + (kitOpen ? ' class="ivset"' : '') + '><td><b>' + esc(l.c) + '</b></td><td class="r">' + l.q + '</td><td>' + esc(l.d) + (l.kit && !kitOpen ? '<div class="ivkit">SET: ' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + '</div>' : '') + '</td><td class="r">' + n2(l.p) + '</td><td class="r">' + (dc ? dc + '%' : '%') + '</td><td class="r">' + n2(dp) + '</td><td class="r">' + n2(lt) + '</td></tr>';

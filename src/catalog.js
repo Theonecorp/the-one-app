@@ -1,7 +1,8 @@
 /* ============================================================
  *  아이템 카탈로그 — 7천여 개를 매번 읽지 않도록 묶음(문서 몇 개)으로 저장하고 폰에 보관
  *  catalog/meta = { ver, count, chunks, cats:[[g,l1,l2,l3]...], updatedAt, by }
- *  catalog/c0..cN = { j: JSON [[code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide], ...] }
+ *  catalog/c0..cN = { j: JSON [[code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide, loc], ...] }
+ *    loc = 창고 통로 · 위치 (예: A-03-2). 비어 있으면 분류 기본 위치(settings.app.catLoc)를 씀 → 픽킹 리스트를 통로 순으로
  *    hide = 1 이면 '숨김' — 목록에는 있지만 세일즈맨 주문 화면(분류 · 검색 · ✨)에 안 보임 (단종 · 재입고 지연). 이전 시스템의 "레벨 비워두기" 역할
  *  catalog/sets = { j: JSON { SETCODE: { n: 이름, k: [[code, qty], ...] } } }  ← 세트 · 인서트 구성 (meta.setsVer)
  *  ver 가 바뀔 때만 다시 받습니다 (📦 아이템 올리기 때 바뀜)
@@ -31,6 +32,17 @@ export function catalog() { return CAT; }
 let PINS = { top: [], bottom: [] };
 const pinKey = s => String(s || '').trim().toUpperCase();
 export function pins() { return PINS; }
+/* ---------- 📍 창고 위치 — 아이템 loc 이 없으면 분류 기본 위치 (Level 1 › 2 › 3 중 가장 자세한 것) ---------- */
+let LOCS = {};   // { 'L1': 'A', 'L1\u0001L2': 'A-03', … }
+export const locKey = path => path.filter(Boolean).join('\u0001');
+export function catLocs() { return LOCS; }
+export function setLocs(m) { LOCS = m || {}; }
+/** 아이템(또는 코드)의 위치 — 자기 위치 → L1›L2›L3 → L1›L2 → L1 */
+export function locOf(x) { if (typeof x === 'string') x = CAT && CAT.byCode[x]; if (!x) return ''; if (x.loc) return x.loc; for (let n = 3; n >= 1; n--) { const v = LOCS[locKey([x.l1, x.l2, x.l3].slice(0, n))]; if (v) return v; } return ''; }
+/** 통로 이름 — 'A-03-2' → 'A', '12.4' → '12' */
+export const aisleOf = loc => String(loc || '').split(/[-.\s/]/)[0] || '';
+/** 픽킹 순서: 위치 있는 것 통로 · 선반 순(자연 정렬) → 위치 없는 것 코드 순 */
+export function pickSort(a, b) { const x = locOf(a.c), y = locOf(b.c); if (!x !== !y) return x ? -1 : 1; return COLL.compare(x, y) || COLL.compare(a.c, b.c); }
 export function setPins(p) {
   PINS = { top: ((p && p.top) || []).map(String), bottom: ((p && p.bottom) || []).map(String) };
   if (CAT) { sortTree(CAT.tree); sortTree(CAT.tree1); }
@@ -118,6 +130,7 @@ export function popularItems(path, start, hist, limit) {
 
 export async function loadCatalog(S, force) {
   if (S && S.settings && S.settings.catPins) setPins(S.settings.catPins);
+  if (S && S.settings) setLocs(S.settings.catLoc);
   if (!POP.length || force) loadPop(S);
   DRIVE_ON = !!(S && S.settings && S.settings.photoDrive);
   loadPhotoIndex();
@@ -151,7 +164,7 @@ async function readSets(S) { try { const d = await S.DB.get('catalog', 'sets'); 
 export const SET_GROUP = '🧩 세트 · 인서트';
 const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function index(pack) {
-  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
+  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
   const byCode = {}, byBar = {}, byNorm = {};
   items.forEach(x => { byCode[x.c] = x; if (x.b) byBar[x.b] = byBar[x.b] || x; const n = norm(x.c); if (!byNorm[n]) byNorm[n] = x; });
   /* 세트: 아이템 목록에 있으면 그 아이템에 구성을 붙이고, 없으면 세트 아이템을 새로 만듦 (가격 = 구성품 합) */
@@ -246,7 +259,7 @@ export function parseItemMaster(items, cats) {
   if (!items || items.length < 2) throw new Error('Items 탭을 찾지 못했습니다');
   const hr = items[0].map(h => String(h || '').trim().toLowerCase());
   const col = (re) => hr.findIndex(h => re.test(h));
-  const ix = { c: col(/^code$/), d: col(/^description$/), p: col(/^price$/), b: col(/^barcode$/), g: col(/^group$/), l1: col(/^level\s*1$/), l2: col(/^level\s*2$/), l3: col(/^level\s*3$/), ph: col(/^photo$/), s: col(/^srp$/), h: col(/^hide$/) };
+  const ix = { c: col(/^code$/), d: col(/^description$/), p: col(/^price$/), b: col(/^barcode$/), g: col(/^group$/), l1: col(/^level\s*1$/), l2: col(/^level\s*2$/), l3: col(/^level\s*3$/), ph: col(/^photo$/), s: col(/^srp$/), h: col(/^hide$/), loc: col(/^(location|loc|bin|aisle|위치|통로)$/) };
   if (ix.c < 0 || ix.d < 0 || ix.p < 0) throw new Error('Items 탭 머리글(Code, Description, Price)을 찾지 못했습니다');
   const v = (r, k) => ix[k] < 0 ? '' : r[ix[k]];
   const str = x => String(x == null ? '' : x).trim();
@@ -262,7 +275,7 @@ export function parseItemMaster(items, cats) {
     if (bar) { if (barSeen[bar]) dupBar.push(code + '=' + barSeen[bar]); else barSeen[bar] = code; }
     const price = R2(num(v(r, 'p'))); if (!price) noPrice.push(code);
     let ph = str(v(r, 'ph')).split(/\s+/)[0] || ''; if (!/^https?:\/\//i.test(ph)) ph = '';
-    rows.push([code, str(v(r, 'd')), price, R2(num(v(r, 's'))) || 0, bar, str(v(r, 'g')), str(v(r, 'l1')), str(v(r, 'l2')), str(v(r, 'l3')), ph, hide ? 1 : 0]);
+    rows.push([code, str(v(r, 'd')), price, R2(num(v(r, 's'))) || 0, bar, str(v(r, 'g')), str(v(r, 'l1')), str(v(r, 'l2')), str(v(r, 'l3')), ph, hide ? 1 : 0, str(v(r, 'loc')).toUpperCase()]);
   }
   const catRows = [];
   if (cats && cats.length > 1) {
@@ -345,7 +358,9 @@ export function parseSetBook(compRows, listRows, which) {
  *  분류 · 아이템 일괄 변경 (관리) — SBM 의 "레벨 정리 · 디스크립션 변경 · 코드 변경 · 일괄 업데이트" 파일 역할
  *  rows 한 줄 = [code, desc, price, srp, barcode, group, l1, l2, l3, photo]
  * ============================================================ */
-const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9, h: 10 };
+const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9, h: 10, loc: 11 };
+/** 위치 일괄 — codes 의 아이템 위치를 loc 로 (빈 값 = 분류 기본 위치 따름) */
+export function setLoc(rows, codes, loc) { const set = new Set(codes.map(c => String(c).toUpperCase())); let k = 0; rows.forEach(r => { if (set.has(r[0])) { while (r.length < 11) r.push(r.length === 10 ? 0 : ''); r[11] = loc; k++; } }); return k; }
 /** 숨김 · 보임 일괄 — codes 의 아이템을 on(true=숨김) 으로. 돌려주는 값: 바뀐 수 */
 export function setHidden(rows, codes, on) { const want = on ? 1 : 0, set = new Set(codes.map(c => String(c).toUpperCase())); let k = 0; rows.forEach(r => { if (set.has(r[0]) && (r[10] ? 1 : 0) !== want) { r[10] = want; k++; } }); return k; }
 /** 아이템 분류 일괄 바꾸기 — codes 를 to = [g, l1, l2, l3] 로 */
@@ -405,7 +420,7 @@ export function parseBulkSheet(aoa, opts) {
   const f = res => hr.findIndex(h => res.some(re => re.test(h)));
   const ix = { c: f([/^code$/, /^item ?code$/, /^item ?#?$/, /^코드$/, /^아이템 ?코드$/, /^sku$/]), nc: f([/^new ?code$/, /^새 ?코드$/, /^code2$/]), d: f([/^description$/, /^desc$/, /^디스크립션$/, /^설명$/, /^name$/]),
     p: f([/^price$/, /^가격$/, /^wholesale/]), s: f([/^srp$/, /^retail$/]), b: f([/^barcode$/, /^upc$/, /^바코드$/]), g: f([/^group$/, /^그룹$/]), l1: f([/^level ?1$/, /^l1$/]), l2: f([/^level ?2$/, /^l2$/]), l3: f([/^level ?3$/, /^l3$/]),
-    ph: f([/^photo$/, /^image$/, /^사진$/]), del: f([/^delete$/, /^삭제$/, /^remove$/]), h: f([/^hide$/, /^hidden$/, /^숨김$/, /^show$/, /^visible$/]),
+    ph: f([/^photo$/, /^image$/, /^사진$/]), del: f([/^delete$/, /^삭제$/, /^remove$/]), loc: f([/^location$/, /^loc$/, /^bin$/, /^aisle$/, /^위치$/, /^통로$/]), h: f([/^hide$/, /^hidden$/, /^숨김$/, /^show$/, /^visible$/]),
     /* SBM 의 GROUP_NAME_CHANGE 파일: CURRENT GROUP NAME · NEW GROUP NAME → Level 3 (새 이름이 비어 있으면 현재 이름) */
     gN: f([/^new group ?name$/, /^new group$/]), gC: f([/^current group ?name$/, /^group ?name$/, /^current group$/]) };
   if (ix.c < 0) throw new Error('Code(코드) 열을 찾지 못했습니다');
@@ -449,7 +464,7 @@ export function parseBulkSheet(aoa, opts) {
       else if (k === 'h') { const yes = /^(x|y|yes|true|1|숨김|hide|hidden)$/i.test(str(v)), no = /^(n|no|false|0|보임|show|visible)$/i.test(str(v)); if (yes || no) pt.set.h = (hideCol ? no : yes) ? 1 : 0; }
       else if (k === 'p' || k === 's') pt.set[k] = R2(num(v));
       else if (k === 'b') { let bb = str(v).replace(/\.0+$/, ''); if (/^\d{11}$/.test(bb)) bb = '0' + bb; pt.set.b = bb; }
-      else pt.set[k] = k === 'ph' ? str(v).split(/\s+/)[0] : str(v);
+      else pt.set[k] = k === 'ph' ? str(v).split(/\s+/)[0] : k === 'loc' ? str(v).toUpperCase() : str(v);
     });
     /* Level 1 만 주고 Group 이 없는 파일 (이전 시스템 LEVEL_1_AND_2) — Group 은 앞글자 규칙으로 (Jewelry · Other · Set & Display = A · P · W) */
     if (pt.set.l1 && ix.g < 0) pt.set.g = familyOf(pt.set.l1);
@@ -468,7 +483,7 @@ export function applyBulk(rows, cats, sets, patches) {
     let i = at[pt.code];
     if (i == null) {
       /* 없는 코드 — 디스크립션 · 가격이 다 있으면 새 아이템으로 추가 */
-      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0]; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; }
+      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0, pt.set.loc || '']; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; }
       else sum.missing.push(pt.code);
       return;
     }
@@ -495,7 +510,7 @@ export function sbmLevelRows() { return [['ITEM CODE', 'LEVEL 1', 'LEVEL 2']].co
 export function sbmGroupRows() { return [['ITEM CODE', 'CURRENT GROUP NAME', 'NEW GROUP NAME']].concat(CAT.items.filter(x => !x.virt).map(x => [x.c, x.l3 || '', ''])); }
 export function catalogCsv() {
   const q = s => { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const head = ['Code', 'NewCode', 'Description', 'Price', 'SRP', 'Barcode', 'Group', 'Level 1', 'Level 2', 'Level 3', 'Photo', 'Hide', 'Delete'];
-  const lines = [head].concat((CAT ? CAT.rows : []).map(r => [r[0], '', r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10] ? 'x' : '', '']));
+  const head = ['Code', 'NewCode', 'Description', 'Price', 'SRP', 'Barcode', 'Group', 'Level 1', 'Level 2', 'Level 3', 'Photo', 'Hide', 'Location', 'Delete'];
+  const lines = [head].concat((CAT ? CAT.rows : []).map(r => [r[0], '', r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10] ? 'x' : '', r[11] || '', '']));
   return '﻿' + lines.map(r => r.map(q).join(',')).join('\r\n');
 }

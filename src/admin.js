@@ -8,7 +8,7 @@ import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
 import { roleLabel, JOBS, jobLabel } from './main.js';
 import { seedImport } from './mg.js';
 import { dropBossCache } from './boss.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows } from './catalog.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey } from './catalog.js';
 import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM } from './invoicing.js';
 
 let S = null, TAB = 'users';
@@ -672,7 +672,7 @@ async function treeAdmin() {
     '<div class="fg" style="margin-top:8px"><label>주문 화면 시작 단계</label><div class="seg"><button class="' + (start === 'l1' ? 'on' : '') + '" data-cs="l1">Level 1 부터 (ANKLET · EARRING … SBMGo 처럼)</button><button class="' + (start === 'g' ? 'on' : '') + '" data-cs="g">Group 부터 (Jewelry · Beauty …)</button></div></div>' +
     crumbs + '<div class="muted" style="margin:4px 0">' + esc(LV[depth]) + ' · ' + kids.length + '개</div>' +
     kids.map(k => { const pt = pinOf(k.name); return '<div class="pr"><div class="ct tap" data-tin="' + esc(k.name) + '"><b>' + (pt === 'top' ? '📌 ' : pt === 'bottom' ? '📍 ' : '') + esc(k.name) + '</b><small>' + k.n.toLocaleString() + '개' + (k.kids.length ? ' · 하위 ' + k.kids.length : '') + (pt === 'top' ? ' · 위에 고정' : pt === 'bottom' ? ' · 아래에 고정' : '') + '</small></div>' +
-      '<button class="b-ghost b-sm' + (pt === 'top' ? ' on' : '') + '" data-tup="' + esc(k.name) + '" title="위에 고정" style="' + (pt === 'top' ? 'background:#fef3c7' : '') + '">📌↑</button><button class="b-ghost b-sm" data-tdn="' + esc(k.name) + '" title="아래에 고정" style="' + (pt === 'bottom' ? 'background:#fef3c7' : '') + '">📍↓</button><button class="b-ghost b-sm" data-tren="' + esc(k.name) + '" title="이름 바꾸기">✏️</button>' + (depth >= 1 ? '<button class="b-ghost b-sm" data-tmv="' + esc(k.name) + '" title="다른 곳으로 옮기기">➡️</button>' : '') + '</div>'; }).join('') + '</div>' +
+      '<button class="b-ghost b-sm' + (pt === 'top' ? ' on' : '') + '" data-tup="' + esc(k.name) + '" title="위에 고정" style="' + (pt === 'top' ? 'background:#fef3c7' : '') + '">📌↑</button><button class="b-ghost b-sm" data-tdn="' + esc(k.name) + '" title="아래에 고정" style="' + (pt === 'bottom' ? 'background:#fef3c7' : '') + '">📍↓</button>' + (depth >= 1 ? '<button class="b-ghost b-sm" data-tloc="' + esc(k.name) + '" title="창고 위치 (통로)">📍' + esc(catLocs()[locKey(under.slice(1).concat([k.name]))] || '') + '</button>' : '') + '<button class="b-ghost b-sm" data-tren="' + esc(k.name) + '" title="이름 바꾸기">✏️</button>' + (depth >= 1 ? '<button class="b-ghost b-sm" data-tmv="' + esc(k.name) + '" title="다른 곳으로 옮기기">➡️</button>' : '') + '</div>'; }).join('') + '</div>' +
     (depth >= 1 ? '<div class="btns"><button class="b-ghost" id="tItems">📋 이 분류의 아이템 ' + node.n.toLocaleString() + '개 보기 · 하나씩 바꾸기</button></div><div id="tItemList"></div>' : '') + '</div>' +
     '<div class="card"><h2>🔎 코드로 아이템 분류 바꾸기</h2><div class="muted">아이템 코드(또는 바코드)를 치면 지금 분류가 보이고 Group · Level 1 · 2 · 3 을 바로 고칠 수 있습니다. 아이템을 다른 Level 1 로 옮기거나, 새 Level 이름을 만들 때 쓰세요.</div><div class="fg" style="margin-top:8px"><input id="tCode" placeholder="예: AHG103" autocomplete="off" style="text-transform:uppercase"></div><div id="tCodeOut"></div>' +
     '<div class="card"><h2>✨ 자주 나가는 아이템</h2><div class="muted">주문 화면 맨 위 "✨ 자주 나가는" 칸의 순서입니다. 가게가 최근에 산 것이 먼저 나오고, 그 다음 이 목록 순서입니다. 이전 시스템의 <b>Sales Report by Item</b>(엑셀) 처럼 <b>Item</b>(코드) 과 <b>Qty</b>(수량) 열이 있는 파일을 올리면 많이 나간 순으로 저장됩니다.' + (popularCodes().length ? ' 지금 <b>' + popularCodes().length + '개</b> 올라와 있음.' : ' 아직 없음.') + '</div>' +
@@ -690,6 +690,15 @@ async function treeAdmin() {
   document.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { TP = TP.slice(0, +b.dataset.tp); treeAdmin(); });
   document.querySelectorAll('[data-tin]').forEach(el => el.onclick = () => { if (depth < 3) { TP = under.concat([el.dataset.tin]); treeAdmin(); } });
   const lvKey = ['g', 'l1', 'l2', 'l3'][depth];
+  /* 📍 분류 기본 창고 위치 — 이 분류 아이템 중 자기 위치가 없는 것이 이 통로로 정렬됨 (픽킹 리스트) */
+  document.querySelectorAll('[data-tloc]').forEach(b => b.onclick = () => {
+    const name = b.dataset.tloc, key = locKey(under.slice(1).concat([name])), now = catLocs()[key] || '';
+    openModal('<h2>📍 ' + esc(name) + ' — 창고 위치</h2><div class="muted">이 분류(하위 포함) 아이템의 기본 통로 · 선반입니다. 예: <b>A</b>, <b>A-03</b>, <b>12-4</b>. 아이템에 따로 적은 위치가 있으면 그게 먼저입니다. 픽킹 리스트가 이 순서로 정렬됩니다.</div><div class="fg" style="margin-top:8px"><input id="clIn" value="' + esc(now) + '" autocapitalize="characters" style="text-transform:uppercase;font-size:20px;font-weight:800;text-align:center" placeholder="A-03"></div><div class="btns"><button class="b-ghost" id="clX">취소</button><button class="b-blue" id="clOk">저장</button></div>');
+    $('clX').onclick = closeModal; setTimeout(() => $('clIn') && $('clIn').focus(), 50);
+    $('clOk').onclick = async () => { const v = $('clIn').value.trim().toUpperCase(); closeModal(); busy(true);
+      try { const cur = (await S.DB.get('settings', 'app')) || {}; const m = Object.assign({}, cur.catLoc || {}); if (v) m[key] = v; else delete m[key]; cur.catLoc = m; await S.DB.set('settings', 'app', cur); S.settings.catLoc = m; setLocs(m); toast('📍 ' + name + ' → ' + (v || '비움'), 'good'); treeAdmin(); }
+      catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  });
   document.querySelectorAll('[data-tren]').forEach(b => b.onclick = () => {
     const from = b.dataset.tren;
     openModal('<h2>✏️ ' + esc(LV[depth]) + ' 이름 바꾸기</h2><div class="muted">' + esc(under.join(' › ') || '전체') + ' 안의 <b>' + esc(from) + '</b></div><div class="fg" style="margin-top:8px"><input id="trNew" value="' + esc(from) + '"></div><div class="muted">같은 이름이 이미 있으면 거기에 합쳐집니다.</div><div class="btns"><button class="b-ghost" id="trX">닫기</button><button class="b-blue" id="trOk">바꾸기</button></div>');
