@@ -13,7 +13,7 @@ import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, c
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
 import { jobOf } from './main.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, invoicesBetween } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
 
@@ -238,7 +238,7 @@ async function staffHome() {
     const [live, bo, ords, inv, pinv] = await Promise.all([
       S.DB.list('orders', { where: [['st', 'in', LIVE_ST]] }), S.DB.list('backorders', { where: [['st', '==', 'open']] }),
       S.DB.list('orders', { where: [['d', '>=', addDays(from, -7)], ['d', '<=', to]] }),
-      invoicesBetween(S, from, to), days <= 92 ? invoicesBetween(S, pf, pt) : Promise.resolve(null)]);
+      salesRows(S, from, to), days <= 92 ? salesRows(S, pf, pt) : Promise.resolve(null)]);
     if (!$('hSales')) return;
     const inR = iso => { const d = localDay(iso); return d >= from && d <= to; };
     const sentIn = ords.filter(o => o.sentAt && o.st !== 'draft' && o.st !== 'x' && inR(o.sentAt)), doneIn = ords.filter(o => (o.st === 'done' || o.st === 'shipped') && o.doneAt && inR(o.doneAt)), shipIn = ords.filter(o => o.st === 'shipped' && o.shipAt && inR(o.shipAt));
@@ -256,7 +256,7 @@ async function staffHome() {
     const iv = inv.filter(x => x.st !== 'x'), tot = sum(iv, x => x.total || 0), pcs = iv.reduce((a, x) => a + (x.qty || 0), 0);
     const pv = pinv ? sum(pinv.filter(x => x.st !== 'x'), x => x.total || 0) : null;
     const types = invTypes(S), isJ = t => { const x = types.find(z => z.c === t); return x ? (x.comm === 'A' || x.comm === 'W') : t !== 'P'; };
-    const byT = groupBy(iv, x => isJ(x.t) ? '💍 주얼리 · Jewelry' : '🧴 그 외 제품 · Other'), bySm = sortBy(Object.entries(groupBy(iv, x => x.sm || '—')).map(([sm, L]) => ({ sm, n: L.length, amt: sum(L, x => x.total || 0) })), x => x.amt, true);
+    const byT = groupBy(iv, x => isJ(x.t) ? '💍 주얼리 · Jewelry' : '🧴 그 외 제품 · Other'), bySm = sortBy(Object.entries(groupBy(iv, x => x.sm || '—')).map(([sm, L]) => ({ sm, n: invCount(L), amt: sum(L, x => x.total || 0) })), x => x.amt, true);
     const mx = Math.max(1, ...bySm.map(x => x.amt));
     let bars = '';
     if (days > 1) {
@@ -265,9 +265,9 @@ async function staffHome() {
       const m = groupBy(iv, x => keyOf(x.d)), vals = keys.map(k => sum(m[k] || [], x => x.total || 0)), bm = Math.max(1, ...vals);
       bars = '<div class="bars" style="height:70px">' + keys.map((k, i) => '<div class="b" style="flex:1;background:#3b82f6;height:' + Math.max(2, Math.round(vals[i] / bm * 100)) + '%" data-v="' + esc(k + ' ' + money(vals[i])) + '" title="' + esc(k + ' ' + money(vals[i])) + '"></div>').join('') + '</div><div class="muted" style="display:flex;justify-content:space-between;font-size:11px"><span>' + esc(keys[0]) + '</span><span>' + esc(keys[keys.length - 1]) + '</span></div>';
     }
-    $('hSales').innerHTML = '<h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + ' · ' + esc(ptxt) + '</h2><div class="hero">' + money(tot) + '</div><div class="heroSub">' + iv.length + '건 · ' + pcs.toLocaleString() + ' pcs' +
+    $('hSales').innerHTML = '<h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + ' · ' + esc(ptxt) + '</h2><div class="hero">' + money(tot) + '</div><div class="heroSub">' + invCount(iv) + '건 · ' + pcs.toLocaleString() + ' pcs' +
       (pv != null ? ' · 바로 앞 기간 ' + money(pv) + ' <b class="' + (tot >= pv ? 'ok' : 'warn') + '">' + (pv ? ((tot - pv) / pv * 100 >= 0 ? '+' : '') + Math.round((tot - pv) / pv * 100) + '%' : '') + '</b>' : '') + '</div>' +
-      '<div class="kpi" style="grid-template-columns:1fr 1fr;margin-top:8px">' + Object.keys(byT).sort().map(t => '<div class="tap" data-ivt="' + (t.includes('Jewelry') ? 'J' : 'O') + '"><b>' + money(sum(byT[t], x => x.total || 0)) + '</b><span>' + esc(t) + ' · ' + byT[t].length + '건</span></div>').join('') + '</div>' + bars +
+      '<div class="kpi" style="grid-template-columns:1fr 1fr;margin-top:8px">' + Object.keys(byT).sort().map(t => '<div class="tap" data-ivt="' + (t.includes('Jewelry') ? 'J' : 'O') + '"><b>' + money(sum(byT[t], x => x.total || 0)) + '</b><span>' + esc(t) + ' · ' + invCount(byT[t]) + '건</span></div>').join('') + '</div>' + bars +
       (bySm.length ? '<table style="margin-top:8px;font-size:13px"><tr><th>세일즈맨</th><th class="r">건</th><th class="r">매출</th></tr>' + bySm.map(x => '<tr class="tap" data-ivsm="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b><div class="paybar" style="margin-top:3px"><i style="width:' + Math.round(x.amt / mx * 100) + '%;background:#3b82f6"></i></div></td><td class="r">' + x.n + '</td><td class="r"><b>' + money(x.amt) + '</b></td></tr>').join('') + '</table>' : '<div class="none">이 기간에 인보이스가 없습니다</div>') +
       (days > 92 ? '<div class="hint">긴 기간은 인보이스를 많이 읽어 느릴 수 있습니다</div>' : '');
     document.querySelectorAll('[data-ivt]').forEach(b => b.onclick = () => { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; LF.it = b.dataset.ivt === 'J' ? (types.find(z => z.comm === 'A') || types[0]).c : ''; LF.st = 'inv'; LF.list = true; pageOrder(''); });

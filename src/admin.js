@@ -9,7 +9,7 @@ import { roleLabel, JOBS, jobLabel } from './main.js';
 import { seedImport } from './mg.js';
 import { dropBossCache } from './boss.js';
 import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows } from './catalog.js';
-import { invTypes, fmtNo, company, dropInvCache } from './invoicing.js';
+import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM } from './invoicing.js';
 
 let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); }
@@ -107,7 +107,9 @@ async function settings() {
     '<div class="fg"><label>🔒 자동 로그아웃 (분 · 아무 조작 없이 이 시간이 지나면 로그아웃, 0 = 끔)</label><input id="stIdle" inputmode="numeric" value="' + esc(s.idleMin == null ? '' : s.idleMin) + '" placeholder="예: 480 (8시간)"></div>' +
     '<h2 style="margin-top:14px">인보이스에 찍히는 회사 정보</h2>' + (() => { const c = company(S); return '<div class="fg"><label>회사 이름</label><input id="coName" value="' + esc(c.name) + '"></div><div class="two"><div class="fg"><label>주소 1</label><input id="coA1" value="' + esc(c.addr1) + '"></div><div class="fg"><label>주소 2 (City, ST Zip)</label><input id="coA2" value="' + esc(c.addr2) + '"></div></div><div class="two"><div class="fg"><label>전화</label><input id="coTel" value="' + esc(c.tel) + '"></div><div class="fg"><label>하단 인사말</label><input id="coThx" value="' + esc(c.thanks) + '"></div></div>'; })() +
     '<div class="muted">AR 기준일: ' + esc(s.arAsOf || '없음') + ' · 거래처 버전: ' + esc(s.accountsVer || '0') + '</div>' +
-    '<div class="btns"><button class="b-blue" id="stSave">저장</button></div></div>' + invTypeCard();
+    '<div class="btns"><button class="b-blue" id="stSave">저장</button></div></div>' + invTypeCard() +
+    '<div class="card"><h2>📊 월별 매출 요약</h2><div class="muted">현황 · 주문 대시보드의 분기 · 올해 보기는 인보이스 수천 장 대신 월별 요약을 읽습니다. 발행 · 취소 · 가져오기 때 자동으로 갱신되지만, 숫자가 이상하면 여기서 다시 만듭니다 (최근 36개월 인보이스를 한 번 읽음).</div><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="smRebuild">다시 만들기</button></div><div id="smOut"></div></div>';
+  $('smRebuild').onclick = async () => { busy(true); try { const ms = []; const d = new Date(); for (let i = 0; i < 36; i++) { ms.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } const n = await rebuildSalesM(S, ms); $('smOut').innerHTML = '<div class="alert a-grn">' + n + '개월 요약을 다시 만들었습니다</div>'; } catch (e) { $('smOut').innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; } busy(false); };
   bindInvTypes();
   $('stSave').onclick = async () => { const doc = Object.assign({}, s, { discLimit: num($('stDisc').value) / 100, specialKeywords: $('stKw').value.trim(), specialTitle: $('stTitle').value.trim(), reportTo: $('stMail').value.trim(), idleMin: Math.max(0, Math.floor(num($('stIdle').value))), co: { name: $('coName').value.trim(), addr1: $('coA1').value.trim(), addr2: $('coA2').value.trim(), tel: $('coTel').value.trim(), thanks: $('coThx').value.trim() } }); busy(true); try { await S.DB.set('settings', 'app', doc); S.settings = doc; toast('저장'); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
@@ -290,6 +292,7 @@ async function importInvoices(file, auto) {
         const now = new Date().toISOString();
         for (let i = 0; i < rows.length; i += 400) { const part = rows.slice(i, i + 400); await S.DB.batch(part.map(r => ({ op: 'set', col: 'invoices', id: r.id, data: Object.assign({}, r, { createdAt: now, importedAt: now }) }))); done += part.length; prog.textContent = done.toLocaleString() + ' / ' + rows.length.toLocaleString() + ' 저장 중…'; }
         dropInvCache(); dropBossCache();
+        prog.textContent = '월별 매출 요약 계산 중…'; try { await rebuildSalesM(S, rows.map(r => r.ym)); } catch (e) {}
         out.insertAdjacentHTML('beforeend', '<div class="alert a-grn">넣었습니다 — ' + done.toLocaleString() + '장. 현황 · 리포트 · 가게 창에 바로 보입니다.</div>'); toast('인보이스 ' + done.toLocaleString() + '장', 'good');
       } catch (e) { out.insertAdjacentHTML('beforeend', '<div class="alert a-red">' + done.toLocaleString() + '장까지 넣고 멈춤: ' + esc(e.code || e.message) + (/resource-exhausted|quota/i.test(e.code || e.message) ? ' — 하루 쓰기 한도입니다. 내일 같은 파일을 다시 올리면 이어서 들어갑니다(중복 없음).' : '') + '</div>'); }
       busy(false);

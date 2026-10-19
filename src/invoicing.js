@@ -102,6 +102,57 @@ export async function invoicesBetween(S, from, to) {
   const out = []; months.forEach(k => (INV_M.get(k) || []).forEach(r => { if (r.d >= from && r.d <= to) out.push(r); }));
   return out;
 }
+/* ---------- 월별 매출 요약 salesM/{ym} — 긴 기간(분기 · 올해)은 인보이스 수천 장 대신 요약 12건만 읽음 ----------
+ *  { ym, n, qty, total, bySm: { SM: { T: { n, qty, total } } }, byDay: { 'DD': total }, updatedAt }
+ *  발행(+1) · 취소(−1) · 가져오기(다시 계산) 때 갱신. 문서가 없으면 그 달은 원본을 읽고 요약을 만들어 저장함 */
+const SM_M = new Map();
+export function dropSalesM() { SM_M.clear(); }
+function mAdd(doc, x, sign) {
+  if (!x || x.st === 'x') return;
+  const t = x.t || 'A', sm = x.sm || '—', dd = String(x.d || '').substring(8, 10) || '00', tot = R2((x.total || 0) * sign), q = (x.qty || 0) * sign;
+  doc.n += sign; doc.qty += q; doc.total = R2(doc.total + tot);
+  const s = doc.bySm[sm] = doc.bySm[sm] || {}; const b = s[t] = s[t] || { n: 0, qty: 0, total: 0 }; b.n += sign; b.qty += q; b.total = R2(b.total + tot);
+  doc.byDay[dd] = R2((doc.byDay[dd] || 0) + tot);
+}
+export function buildSalesM(ym, rows) { const doc = { id: ym, ym, n: 0, qty: 0, total: 0, bySm: {}, byDay: {}, updatedAt: new Date().toISOString() }; rows.forEach(x => mAdd(doc, x, 1)); return doc; }
+/** 요약 문서 → 대시보드가 쓰는 가짜 인보이스 줄 (세일즈맨 × 종류 하나씩, cnt 에 장수) */
+function expandM(doc) {
+  const out = [];
+  Object.keys(doc.bySm || {}).forEach(sm => Object.keys(doc.bySm[sm]).forEach(t => { const b = doc.bySm[sm][t]; out.push({ no: 'SUM-' + doc.ym + '-' + sm + '-' + t, d: doc.ym + '-15', ym: doc.ym, sm, t, total: b.total, qty: b.qty, cnt: b.n, st: 'open', src: 'sum', byDay: doc.byDay }); }));
+  return out;
+}
+export const invCount = rows => rows.reduce((a, x) => a + (x.cnt || 1), 0);
+/** 기간의 매출 줄 — 꽉 찬 달은 요약, 걸치는 달은 원본 */
+export async function salesRows(S, from, to) {
+  const months = []; let m = from.substring(0, 7); while (m <= to.substring(0, 7)) { months.push(m); const y = Number(m.substring(0, 4)), mm = Number(m.substring(5, 7)); m = (mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0')); }
+  const last = k => { const y = Number(k.substring(0, 4)), mm = Number(k.substring(5, 7)); return k + '-' + String(new Date(y, mm, 0).getDate()).padStart(2, '0'); };
+  const out = [];
+  for (const k of months) {
+    const full = from <= k + '-01' && to >= last(k);
+    if (!full) { (await invoicesBetween(S, k + '-01' < from ? from : k + '-01', last(k) > to ? to : last(k))).forEach(x => out.push(x)); continue; }
+    let doc = SM_M.get(k);
+    if (!doc) { try { doc = await S.DB.get('salesM', k); } catch (e) { doc = null; } }
+    if (!doc) { const rows = await invoicesBetween(S, k + '-01', last(k)); doc = buildSalesM(k, rows); if (S.role !== 'salesman') { try { await S.DB.set('salesM', k, doc); } catch (e) {} } }
+    SM_M.set(k, doc); expandM(doc).forEach(x => out.push(x));
+  }
+  return out;
+}
+/** 발행 · 취소 때 그 달 요약 갱신 (요약이 아직 없으면 그냥 둠 — 처음 볼 때 만들어짐) */
+export async function bumpSalesM(S, invs, sign) {
+  const by = {}; (invs || []).forEach(x => { const k = String(x.d || '').substring(0, 7); if (k) (by[k] = by[k] || []).push(x); });
+  for (const k of Object.keys(by)) { try { const doc = await S.DB.get('salesM', k); if (!doc) continue; by[k].forEach(x => mAdd(doc, x, sign)); doc.updatedAt = new Date().toISOString(); await S.DB.set('salesM', k, doc); } catch (e) {} }
+  dropSalesM();
+}
+/** 가져오기 뒤 — 그 달들을 원본에서 다시 계산 */
+export async function rebuildSalesM(S, months) {
+  dropInvCache(); dropSalesM();
+  const last = k => { const y = Number(k.substring(0, 4)), mm = Number(k.substring(5, 7)); return k + '-' + String(new Date(y, mm, 0).getDate()).padStart(2, '0'); };
+  const uniq = Array.from(new Set(months)).sort(); if (!uniq.length) return 0;
+  const rows = await invoicesBetween(S, uniq[0] + '-01', last(uniq[uniq.length - 1]));
+  const by = {}; rows.forEach(x => { const k = String(x.d || '').substring(0, 7); (by[k] = by[k] || []).push(x); });
+  for (const k of uniq) await S.DB.set('salesM', k, buildSalesM(k, by[k] || []));
+  return uniq.length;
+}
 export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, t.start || 1); return fmtNo(t, n); }
 
 /* ---------- 회사 정보 (관리 → 설정) ---------- */

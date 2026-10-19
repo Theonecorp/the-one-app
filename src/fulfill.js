@@ -9,7 +9,7 @@
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords } from './ui.js';
 import { jobOf } from './main.js';
 import { loadCatalog, catalog, exactItem } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer } from './mgr.js';
@@ -240,7 +240,7 @@ async function confirmInvoice(o, lines) {
       const doc = orderDoc(Object.assign({}, o, { st: 'done', invs: invs.map(x => x.no), doneAt: now, doneBy: S.user.email, bo: bo.length ? o.id : '', updatedAt: now }), lines, o.disc);
       doc.amt = R2(invs.reduce((a, x) => a + x.total, 0));
       ops.push({ op: 'set', col: 'orders', id: o.id, data: doc }, { op: 'set', col: 'orderLines', id: o.id, data: { sm: o.sm, lines } });
-      await S.DB.batch(ops); dropInvCache();
+      await S.DB.batch(ops); dropInvCache(); bumpSalesM(S, invs, 1);
       toast('인보이스 ' + invs.map(x => x.no).join(', '), 'good');
       busy(false);
       await printInvoices(invs, acc);
@@ -434,5 +434,5 @@ export async function openInvoice(no) {
     '<div class="card"><table><tr><th>코드</th><th class="r">수량</th><th class="r">가격</th><th class="r">금액</th></tr>' + x.lines.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table></div>';
   $('iBack').onclick = () => Router.go('order');
   $('iPrint').onclick = () => printInvoices([x], acctOf(x.acct));
-  if ($('iVoid')) $('iVoid').onclick = async () => { if (!(await confirmBox(x.no + ' 인보이스를 VOID 할까요? 번호는 다시 쓰지 않습니다.', 'VOID'))) return; busy(true); try { await S.DB.update('invoices', no, { st: 'x', bal: 0, voidAt: new Date().toISOString(), voidBy: S.user.email }); toast('VOID'); openInvoice(no); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('iVoid')) $('iVoid').onclick = async () => { if (!(await confirmBox(x.no + ' 인보이스를 VOID 할까요? 번호는 다시 쓰지 않습니다.', 'VOID'))) return; busy(true); try { await S.DB.update('invoices', no, { st: 'x', bal: 0, voidAt: new Date().toISOString(), voidBy: S.user.email }); dropInvCache(); await bumpSalesM(S, [x], -1); toast('VOID'); openInvoice(no); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
 }
