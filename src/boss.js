@@ -23,6 +23,15 @@ export function register(state) {
 const SRC_TAG = { FIELD: ['현장', 't-f'], COD: ['COD', 't-c'], ACH: ['ACH', 't-a'], CARD: ['카드', 't-k'] };
 const srcOf = c => c.method === 'ACH' ? 'ACH' : c.method === 'CREDIT CARD' ? 'CARD' : 'COD';
 function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
+/** 미수금 전체 — _all(합계 · 기준일) + 세일즈맨별 문서의 가게 목록을 합침 (_all 에 invs 가 있으면 옛 모양 그대로 씀). 문서 1MB 한도 대비 */
+async function loadArAll() {
+  let docs = []; try { docs = await S.DB.list('ar'); } catch (e) { return null; }
+  const all = docs.find(d => d.id === '_all' || d.sm === '_all'); if (!all) return null;
+  if (all.stores && all.stores.length && all.stores[0].invs) return all;
+  const seen = {}, stores = [];
+  docs.filter(d => d !== all).forEach(d => (d.stores || []).forEach(s => { if (!seen[s.acct]) { seen[s.acct] = 1; stores.push(s); } }));
+  return Object.assign({}, all, { stores });
+}
 /** 가져오기 뒤 현황 캐시 비우기 */
 export function dropBossCache() { C.at = 0; C.ents = null; HIST = null; }
 async function loadAll(force) {
@@ -65,7 +74,7 @@ async function pageNow() {
   let inv = [], pinv = [], live = [], arAll = null, bo = [];
   try { [inv, pinv, live, arAll, bo] = await Promise.all([
     S.DB.list('invoices', { where: [['d', '>=', from], ['d', '<=', to]] }), days <= 92 ? S.DB.list('invoices', { where: [['d', '>=', pf], ['d', '<=', pt]] }) : Promise.resolve([]),
-    S.DB.list('orders', { where: [['st', 'in', ['sent', 'pick', 'ok', 'picked', 'done']]] }), S.DB.get('ar', '_all').catch(() => null), S.DB.list('backorders', { where: [['st', '==', 'open']] }).catch(() => [])]); } catch (e) { toast('일부를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
+    S.DB.list('orders', { where: [['st', 'in', ['sent', 'pick', 'ok', 'picked', 'done']]] }), loadArAll(), S.DB.list('backorders', { where: [['st', '==', 'open']] }).catch(() => [])]); } catch (e) { toast('일부를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   inv = inv.filter(x => x.st !== 'x'); pinv = pinv.filter(x => x.st !== 'x');
   const rows = allRows(), cur = rows.filter(r => r.d >= from && r.d <= to), prev = rows.filter(r => r.d >= pf && r.d <= pt);
   const sales = sum(inv, x => x.total || 0), psales = sum(pinv, x => x.total || 0), coll = sum(cur, r => r.amt), pcoll = sum(prev, r => r.amt);
@@ -370,7 +379,7 @@ async function loadDed() {
   const sm = P.sm; if (!sm) return;
   let active = [], ar = null;
   try { active = (await S.DB.list('deductions', { where: [['sm', '==', sm]] })).filter(d => d.st !== '취소'); } catch (e) {}
-  try { ar = await S.DB.get('ar', '_all'); } catch (e) {}
+  try { ar = await loadArAll(); } catch (e) {}
   const cand = { six: [], four: [], asOf: ar && ar.asOf || '', note: ar ? '' : 'AR 이 아직 없습니다' };
   if (ar && ar.stores) {
     const paid = {}; C.ents.forEach(e => { if (e.d <= ar.asOf || e.repl) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
@@ -481,7 +490,7 @@ async function xlsxSave(c) {
 let AV = 'sum', AV_SM = '';
 async function pageAR() {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
-  const all = await S.DB.get('ar', '_all');
+  const all = await loadArAll();
   await loadAll();
   if (!all || !all.stores) { $('page').innerHTML = '<div class="card"><h2>💰 미수금</h2><div class="none">아직 올라온 AR 이 없습니다 — 담당자 화면 📤 AR 올리기에서 올립니다</div></div>' + '<div class="card" id="oldBox"></div>'; paintOld(); return; }
   const asOf = all.asOf, paid = {}, t = today();
@@ -557,7 +566,7 @@ async function pageFind(q) {
   const items = sortBy(rows.filter(r => acct ? r.acct === acct : hasWords(r.store, q)), r => r.d, true);
   if (!items.length && !a) { $('fOut').innerHTML = '<div class="card"><div class="none">"' + esc(q) + '" — 가게도 수금 기록도 없습니다</div></div>'; return; }
   const months = recentYms(12).reverse().map(m => ({ ym: m, amt: sum(items.filter(r => r.ym === m), r => r.amt) })), mx = Math.max(1, ...months.map(x => x.amt));
-  const ar = await S.DB.get('ar', '_all').catch(() => null); const ars = ar && ar.stores ? ar.stores.find(s => s.acct === acct) : null;
+  const ar = await loadArAll().catch(() => null); const ars = ar && ar.stores ? ar.stores.find(s => s.acct === acct) : null;
   $('fOut').innerHTML = '<div class="card"><h2>' + esc(store || items[0].store) + (acct ? ' <span class="code">' + esc(acct) + '</span>' : '') + (a && a.sm ? ' · 담당 ' + esc(a.sm) : '') + '</h2>' + (a ? '<div class="muted">' + esc([a.addr, a.city, a.state, a.zip].filter(Boolean).join(', ')) + (a.tel ? ' · ' + esc(a.tel) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</div>' : '') +
     '<div class="hero">' + money(sum(items, r => r.amt)) + '</div><div class="heroSub">' + items.length + '건 (최근 13개월)' + (ars ? ' · AR 잔액 ' + money(ars.total) + ' (기준일 ' + esc(ar.asOf) + ')' : '') + '</div><div class="bars" style="margin-top:12px">' + months.map(x => '<div class="b' + (x.ym === ym(today()) ? ' on' : '') + '" style="height:' + Math.max(2, Math.round(x.amt / mx * 78)) + 'px" data-v="' + x.ym.substring(5) + '월 ' + k(x.amt) + '"></div>').join('') + '</div><div class="xlab"><span>' + months[0].ym + '</span><span>최근 12개월</span><span>' + months[11].ym + '</span></div></div>' +
     '<div class="card"><h2>수금 내역</h2>' + (items.length ? '<table><tr><th>날짜</th><th>방법</th><th>담당</th><th class="r">금액</th></tr>' + items.map(r => '<tr><td style="font-size:13px">' + esc(r.d) + '</td><td><span class="tag ' + SRC_TAG[r.src][1] + '">' + SRC_TAG[r.src][0] + '</span> <span class="muted" style="font-size:12px">' + esc(r.method || '') + (r.check ? ' #' + esc(r.check) : '') + '</span></td><td class="muted" style="font-size:12px">' + esc(r.sm) + '</td><td class="r"><b>' + money(r.amt) + '</b></td></tr>').join('') + '</table>' : '<div class="none">수금 기록이 없습니다</div>') + '</div>';

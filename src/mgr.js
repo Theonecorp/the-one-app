@@ -2,11 +2,12 @@
  *  담당자(회계) 화면 — 수금 확인(① 접수 확인 · ② 체크 수령) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
  * ============================================================ */
 import { invTypes } from './invoicing.js';
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, dropAccountCache } from './accounts.js';
 import { invType } from './comm.js';
 import { stageText } from './sales.js';
+import { storeSheet } from './store.js';
 
 let S = null;
 export function register(state) {
@@ -197,11 +198,12 @@ function codForm(r) {
 let STQ = '';
 async function pageStores() {
   const hits = STQ ? searchAccounts(S.accounts, STQ, 40) : [];
-  $('page').innerHTML = '<div class="card"><h2>🏬 거래처 ' + S.accounts.length + '곳</h2><input id="stQ" placeholder="가게 이름 · 계정코드 · 도시" value="' + esc(STQ) + '" autocomplete="off"><div class="btns"><button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button></div></div>' +
-    '<div class="card">' + (hits.length ? hits.map(a => '<div class="pr tap" data-st="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.addr, a.city, a.state, a.zip].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</small></div></div>').join('') : '<div class="none">' + (STQ ? '없음' : '찾을 가게 이름을 치세요') + '</div>') + '</div>';
+  $('page').innerHTML = '<div class="card"><h2>🏬 ' + bi('거래처', 'Customers') + ' <span class="muted" style="font-size:12px;font-weight:400">' + S.accounts.length + '곳</span></h2><div class="muted">가게를 찾아 누르면 정보 · 미수금 · 주문 · 수금 기록 · 스테이트먼트. <span class="en">Tap a store for details.</span></div><input id="stQ" placeholder="가게 이름 · 계정코드 · 도시 · 전화 / Store · Acct · City · Phone" value="' + esc(STQ) + '" autocomplete="off"><div class="btns">' + (S.role !== 'salesman' ? '<button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button>' : '') + '</div></div>' +
+    '<div class="card">' + (hits.length ? hits.map(a => '<div class="pr tap" data-st="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.addr, a.city, a.state, a.zip].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</small></div>' + (S.role !== 'salesman' ? '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' : '') + '</div>').join('') : '<div class="none">' + (STQ ? '없음' : '찾을 가게 이름을 치세요') + '</div>') + '</div>';
   $('stQ').oninput = debounce(() => { STQ = $('stQ').value; pageStores(); setTimeout(() => { const q = $('stQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 0); }, 300);
-  $('stNew').onclick = () => storeForm(null);
-  document.querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeForm(S.accounts.byCode[el.dataset.st]));
+  if ($('stNew')) $('stNew').onclick = () => storeForm(null);
+  document.querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeSheet(el.dataset.st));
+  document.querySelectorAll('[data-ste]').forEach(el => el.onclick = e => { e.stopPropagation(); storeForm(S.accounts.byCode[el.dataset.ste]); });
 }
 function storeForm(a) {
   a = a || {};
@@ -308,7 +310,7 @@ export async function saveAr(rows, asOf) {
   const ops = [];
   S.sms.forEach(x => { const list = bySm[x.code] || []; ops.push({ op: 'set', col: 'ar', id: x.code, data: { sm: x.code, asOf, total: sum(list, s => s.total), n: list.length, stores: list } }); });
   Object.keys(bySm).forEach(code => { if (code !== '_none' && !S.smByCode[code]) ops.push({ op: 'set', col: 'ar', id: code, data: { sm: code, asOf, total: sum(bySm[code], s => s.total), n: bySm[code].length, stores: bySm[code] } }); });
-  ops.push({ op: 'set', col: 'ar', id: '_all', data: { sm: '_all', asOf, total: sum(stores, s => s.total), n: stores.length, stores: stores.map(s => Object.assign({}, s)), unmatched, noSmAmt: sum(bySm['_none'] || [], s => s.total), uploadedAt: new Date().toISOString(), by: S.user.email } });
+  ops.push({ op: 'set', col: 'ar', id: '_all', data: { sm: '_all', asOf, total: sum(stores, s => s.total), n: stores.length, stores: stores.map(s => { const x = Object.assign({}, s); delete x.invs; return x; }), unmatched, noSmAmt: sum(bySm['_none'] || [], s => s.total), uploadedAt: new Date().toISOString(), by: S.user.email } });
   await S.DB.batch(ops);
   await S.DB.update('settings', 'app', { arAsOf: asOf }); S.settings.arAsOf = asOf;
   return { stores, unmatched, noSmAmt: sum(bySm['_none'] || [], s => s.total) };

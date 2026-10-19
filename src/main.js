@@ -18,7 +18,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.23';
+export const VER = 'v0.8.24';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -27,7 +27,7 @@ const ADMIN_EMAILS = ['luke@theonefl.com'];
  *   manager   담당자 — job: office 오피스(기본) · invoice 인보이스 · pick 픽킹·팩킹 · acct 어카운팅
  *   admin     관리자: 전부 */
 const NAV = {
-  salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '주문', 'Orders'], ['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
+  salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '주문', 'Orders'], ['entry', '✍️', '수금 입력', 'Payment'], ['stores', '🏬', '거래처', 'Customers'], ['ar', '💰', '미수금', 'A/R'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
   office:   [['order', '🛒', '주문', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['stores', '🏬', '거래처', 'Customers'], ['ach', '🏦', 'ACH', 'ACH']],
   invoice:  [['order', '🧾', '주문·인보이스', 'Orders'], ['stores', '🏬', '거래처', 'Customers'], ['verify', '💵', '수금 확인', 'Payments']],
   pick:     [['order', '📦', '픽킹', 'Picking'], ['stores', '🏬', '거래처', 'Customers']],
