@@ -231,9 +231,10 @@ async function staffHome() {
   if (j !== 'pick') A.push(tile('verify', '💵', bi('수금 확인', 'Payments'), '세일즈맨 수금 확인'));
   if (j !== 'pick') A.push(tile('items', '🏷', bi('아이템', 'Items'), '등록 · 가격 · 분류'));
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📅 ' + bi('기간', 'Period') + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
-    '<div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div>' +
-    '<div class="hgrid">' + T.join('') + '</div><div class="hgrid">' + A.join('') + '</div>';
+  /* 담당자 홈 = 주문 처리 먼저 (접수 · 픽킹 · 인보이스 · 포장), 바로가기, 매출은 맨 아래 */
+  $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📦 ' + bi('주문 처리', 'Order processing') + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
+    '<div class="hgrid">' + T.join('') + '</div><div class="hgrid">' + A.join('') + '</div>' +
+    '<div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div>';
   document.querySelectorAll('[data-hp]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp; staffHome(); });
   /* ◀ ▶ — 같은 길이만큼 앞뒤로 (달 단위 기간은 달로) */
   const shift = dir => { const isMonth = from.endsWith('-01') && (to === today() || to === Fulfill.monthEnd(from)); if (LF.hp === 'month' || LF.hp === 'lastm' || (LF.hp === 'custom' && isMonth && daysBetween(from, to) >= 27)) { const f = Fulfill.addMonths(from, dir); LF.hfrom = f; LF.hto = Fulfill.monthEnd(f); } else { LF.hfrom = addDays(from, dir * days); LF.hto = addDays(to, dir * days); } LF.hp = 'custom'; staffHome(); };
