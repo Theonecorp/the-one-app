@@ -7,6 +7,7 @@ import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
 import { roleLabel, JOBS, jobLabel } from './main.js';
 import { seedImport } from './mg.js';
+import { dropBossCache } from './boss.js';
 import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows } from './catalog.js';
 import { invTypes, fmtNo, company } from './invoicing.js';
 
@@ -173,6 +174,7 @@ async function importMain(file) {
     if (ent) { const list = parseEntriesSheet(ent); list.forEach(e => ops.push({ op: 'set', col: 'entries', id: e.id, data: e })); nE = list.length; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list, e => e.total))); }
     await S.DB.batch(ops);
     if (acc) await bumpAccountsVer();
+    dropBossCache();
     if (ar) { try { const { rows } = parseArRows(ar); const asOf = $('impArD') && $('impArD').value ? $('impArD').value : today(); const r = await saveAr(rows, asOf); say('미수금(AR) 탭 "' + esc(arName) + '": 인보이스 ' + rows.length + '건 · ' + money(sum(rows, x => x.bal)) + ' · 가게 ' + r.stores.length + '곳 · 기준일 ' + asOf + (r.unmatched.length ? ' · 거래처 목록에 없는 가게 ' + r.unmatched.length : '')); } catch (e) { say('<span class="warn">AR 탭을 읽지 못했습니다: ' + esc(e.message) + '</span>'); } }
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] }); S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
     say('<b>저장 완료</b> — 다음은 ② SALES 파일');
@@ -206,6 +208,7 @@ async function importSales(file) {
     });
     Object.values(ents).forEach(e => { if (e._p) ops.push({ op: 'update', col: 'entries', id: e.id, data: e._p }); });
     await S.DB.batch(ops);
+    dropBossCache();
     say('COD·카드·ACH ' + nC + '건 · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
   } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
@@ -277,7 +280,7 @@ async function importBoss(file) {
         const hist = {}; P.dedHist.forEach(h => { (hist[h.id] = hist[h.id] || []).push({ d: h.d, amt: h.amt, ref: h.ref }); });
         P.ded.forEach(d => { const h = hist[d.id] || [], used = R2(h.reduce((a, x) => a + x.amt, 0)); ops.push({ op: 'set', col: 'deductions', id: d.id, data: Object.assign({}, d, { used, hist: h, st: d.st || (used >= d.total - 0.005 ? '완료' : ''), seed: true, createdBy: S.user.email, createdAt: now, updatedAt: now }) }); });
         P.opts.forEach(o => { if (S.smByCode[o.sm]) ops.push({ op: 'update', col: 'salesmen', id: o.sm, data: { cashKeep: o.cashKeep, defaultPer: o.defaultPer } }); });
-        await S.DB.batch(ops);
+        await S.DB.batch(ops); dropBossCache();
         out.innerHTML = '<div class="alert a-grn">넣었습니다 — ' + ops.length + '건. 경영 탭에서 확인하세요.</div>'; toast('경영 자료 ' + ops.length + '건', 'good');
       } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
       busy(false);
@@ -297,6 +300,7 @@ async function importComm(file) {
     let ok = 0, fail = 0;
     for (const o of ops) { try { if (o.op === 'update') await S.DB.update(o.col, o.id, o.data); else await S.DB.set(o.col, o.id, o.data); ok++; } catch (e) { fail++; } }
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] }); S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
+    dropBossCache();
     say('요율 ' + nR + '명 · 정산 기록 ' + nL + '줄 (반영 ' + ok + ' · 못 찾음 ' + fail + ')<br><b>가져오기 끝</b>');
   } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
