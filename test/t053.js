@@ -19,7 +19,7 @@ const SEED = 'var SEED_DATA = ' + JSON.stringify({ fac: [{ code: 'SX', name: 'SH
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; });
   await pg.goto('http://127.0.0.1:8776/test/demo.html'); await pg.waitForSelector('#nav button');
   /* v0.8.20: 가져오기는 관리 → 📥 가져오기 */
-  await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#seedPaste');
+  await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#f4'); await pg.evaluate(() => { document.querySelectorAll('details').forEach(d => { d.open = true; }); }); await pg.waitForSelector('#seedPaste');
   const cnt = () => pg.evaluate(() => { const S = window.__MOCK_STORE__; return [S.factoryInvoices, S.factoryPayments, S.pay1099, S.bonusAcc, S.payees, S.factories].map(c => Object.keys(c || {}).length).join('/'); });
   log('before:', await cnt());
   await pg.click('#seedPaste'); await pg.waitForSelector('#seedTxt'); await pg.fill('#seedTxt', SEED); await pg.click('#sOk'); await pg.waitForSelector('#sGo');
