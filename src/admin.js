@@ -417,7 +417,7 @@ async function catalogAdmin() {
   if ($('phTest')) $('phTest').onclick = () => {
     const px = photoIndex(); const id = px && (px.pic['N_BH01G'] || Object.values(px.pic)[0]);
     const out = $('phTestOut'); out.innerHTML = '<div class="load">사진 불러오는 중…</div>';
-    const img = new Image(); img.onload = () => { out.innerHTML = '<div class="alert a-grn">✅ 드라이브 사진이 열립니다 — 켜도 됩니다</div>'; }; img.onerror = () => { out.innerHTML = '<div class="alert a-red">❌ 열리지 않습니다 — 드라이브에서 <b>item_picture</b> · <b>The One item</b> 공유 드라이브(폴더)를 "링크가 있는 모든 사용자 · 뷰어"로 바꾼 뒤 다시 시험하세요</div>'; };
+    const img = new Image(); img.onload = () => { out.innerHTML = '<div class="alert a-grn">✅ 드라이브 사진이 열립니다 — 켜도 됩니다</div>'; }; img.onerror = () => { out.innerHTML = '<div class="alert a-red">❌ 열리지 않습니다 — 구글이 로그인 화면으로 돌려보냅니다 (회사 계정 전용 공유). 고치는 법:<br>① 드라이브에서 <b>item_picture</b> 폴더와 <b>The One item</b>(세트 사진) 폴더 → 공유 → 일반 액세스 → <b>링크가 있는 모든 사용자 · 뷰어</b><br>② 공유 드라이브라서 이 메뉴가 회색이면: 공유 드라이브 설정 → "외부 사용자 액세스 허용" 켜기, 그래도 안 되면 admin.google.com → 앱 → Google Workspace → 드라이브 및 문서 → 공유 설정 → theonefl.com 외부 공유 허용<br>바꾼 뒤 이 버튼을 다시 눌러 ✅ 가 나오면 됩니다.</div>'; };
     img.src = driveUrl(id, 100) + '&t=' + Date.now();
   };
   $('catFile').onchange = async () => {
@@ -486,7 +486,7 @@ function photoCard() {
   const withPh = C ? C.items.filter(x => x.ph).length : 0;
   return '<div class="card"><h2>🖼 사진 규칙 — 코드와 맞는 사진만</h2><div class="muted">① 드라이브 item_picture 에 <b>코드 이름</b>으로 있는 사진 (세트 · 인서트는 Gallery 의 세트 사진) ② 시트 Photo 칸 — 같은 사진을 골드 · 실버 아이템이 같이 쓰면 URL 에 코드가 들어 있는 것만 ③ 세트는 구성품 사진을 빌리지 않음.</div>' +
     '<div class="sumbox" style="margin-top:8px">지금 사진 있는 아이템 <b>' + withPh.toLocaleString() + '</b>개 · 골드/실버 섞여서 뺀 것 <b>' + st.dropped + '</b>개 · 드라이브 사진 ' + (S.settings.photoDrive ? '<b>' + st.drive + '</b>개 사용 중' : '꺼짐') + (px ? ' · 드라이브 색인 ' + Object.keys(px.pic).length + ' + 세트 ' + Object.keys(px.gal).length : '') + '</div>' +
-    '<label class="pick ' + (S.settings.photoDrive ? 'on' : '') + '" id="phDrive" style="margin-top:8px"><span class="ck">✓</span><span class="pm"><b>드라이브 item_picture 사진 쓰기</b><small>폴더가 "링크가 있는 모든 사용자" 로 공유돼 있어야 폰에서 보입니다. 아래 시험으로 먼저 확인하세요.</small></span></label>' +
+    '<label class="pick ' + (S.settings.photoDrive ? 'on' : '') + '" id="phDrive" style="margin-top:8px"><span class="ck">✓</span><span class="pm"><b>드라이브 item_picture 사진 쓰기</b><small>폴더가 "링크가 있는 모든 사용자 · 뷰어" 로 공유돼 있어야 앱에서 보입니다. <b>회사(theonefl.com) 안에서만</b> 공유하면 앱에서는 구글이 로그인 화면으로 돌려보내서 사진이 안 뜹니다 (예전 Apps Script 는 구글 주소 안에서 돌아서 보였던 것). 안 열리는 동안은 Shopify 사진이 있는 아이템만 그걸로 대신 보여 줍니다.</small></span></label>' +
     '<div class="btns"><button class="b-ghost b-sm" id="phTest">🔎 드라이브 사진 시험</button></div><div id="phTestOut"></div></div>';
 }
 /* ---- 인보이스 종류 — 아이템이 어느 인보이스로 갈지, 커미션은 어느 칸으로 셀지 ---- */
