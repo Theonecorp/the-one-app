@@ -67,7 +67,17 @@ async function loadPop(S) {
  *   1) 드라이브 item_picture 에 코드 이름으로 있는 사진 (data/photo-index.json, 설정 photoDrive 켠 뒤) — 세트 · 인서트는 Gallery 의 세트 사진
  *   2) 시트 Photo 칸 — 여러 아이템이 같은 URL 을 쓰는데 골드 · 실버가 섞여 있으면, URL 에 코드가 들어 있는 아이템만 씀
  *   3) 세트는 구성품 사진을 빌려 쓰지 않음 */
-let PHX = null, DRIVE_ON = false;   // { pic: {code: driveId}, gal: {code: driveId} }
+let PHX = null, DRIVE_ON = false, DRIVE_BAD = 0, DRIVE_OK = 0;
+const ALT = {};   // 드라이브 사진 id → 시트(Shopify) 사진 — 드라이브가 막히면 이걸로 바꿔 보여 줌
+/** 드라이브 사진 상태 — 'ok'(열림) · 'blocked'(로그인 요구로 막힘) · ''(아직 모름) */
+export function driveState() { return DRIVE_BAD >= 3 && DRIVE_OK === 0 ? 'blocked' : DRIVE_OK ? 'ok' : ''; }
+const driveIdOf = src => { const m = String(src || '').match(/drive\.google\.com\/thumbnail\?id=([\w-]+)/) || String(src || '').match(/googleusercontent\.com\/d\/([\w-]+)/); return m ? m[1] : ''; };
+/* 드라이브 사진이 안 열리면(회사 계정 전용 공유 → 로그인 페이지로 돌아감) 같은 아이템의 Shopify 사진으로 바꿈.
+ *  3장 이상 연달아 막히면 이번 접속 동안은 처음부터 Shopify 사진을 먼저 씀 */
+if (typeof document !== 'undefined') {
+  document.addEventListener('error', e => { const img = e.target; if (!img || img.tagName !== 'IMG') return; const id = driveIdOf(img.src); if (!id) return; DRIVE_BAD++; const alt = ALT[id]; if (alt && !img.dataset.alt) { e.stopPropagation(); img.dataset.alt = '1'; img.src = thumb(alt, 300); } if (DRIVE_BAD === 3 && !DRIVE_OK && CAT) fixPhotos(CAT); }, true);
+  document.addEventListener('load', e => { const img = e.target; if (img && img.tagName === 'IMG' && driveIdOf(img.src)) DRIVE_OK++; }, true);
+}   // { pic: {code: driveId}, gal: {code: driveId} }
 export function photoIndex() { return PHX; }
 export const driveUrl = (id, w) => 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + (w || 400);
 async function loadPhotoIndex() {
@@ -87,8 +97,8 @@ export function fixPhotos(C) {
     const sheet = x.ph0 && (!conflict || codeInUrl(x.c, x.ph0)) ? x.ph0 : '';
     if (x.ph0 && !sheet) dropped++;
     let d = '';
-    if (DRIVE_ON && PHX) { const id = PHX.pic[x.c] || PHX.gal[x.c] || (x.old && (PHX.pic[x.old] || PHX.gal[x.old])); if (id) { d = driveUrl(id); drive++; } }
-    x.ph = d || sheet;
+    if (DRIVE_ON && PHX) { const id = PHX.pic[x.c] || PHX.gal[x.c] || (x.old && (PHX.pic[x.old] || PHX.gal[x.old])); if (id) { d = driveUrl(id); drive++; if (sheet) ALT[id] = sheet; } }
+    x.ph = driveState() === 'blocked' ? (sheet || d) : (d || sheet);
   });
   C.photoStat = { dropped, drive };
   return C.photoStat;
