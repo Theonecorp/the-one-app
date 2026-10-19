@@ -18,7 +18,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.22';
+export const VER = 'v0.8.23';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -100,11 +100,28 @@ function userMenu() {
 async function diag() {
   const out = $('diagOut'); out.innerHTML = '<div class="load">점검 중…</div>';
   const me = S.me || {};
-  const rows = ['로그인: <b>' + esc(S.user.email) + '</b>', '사용자 기록: 역할 ' + esc(String(me.role)) + ' · 활성 ' + esc(String(me.active)) + ' · 세일즈맨 ' + esc(String(me.sm || '-'))];
+  const rows = ['앱 ' + VER + ' · 로그인 <b>' + esc(S.user.email) + '</b>', '사용자 기록: 역할 ' + esc(String(me.role)) + ' · 활성 ' + esc(String(me.active)) + ' · 세일즈맨 코드 ' + esc(String(me.sm || '-')) + ' · 일 ' + esc(String(me.job || '-'))];
   const tests = [['사용자 (내 것)', () => S.DB.get('users', S.user.email)], ['설정', () => S.DB.get('settings', 'app')], ['세일즈맨', () => S.DB.list('salesmen', { limit: 1 })],
     ['거래처', () => S.DB.list('accounts', { limit: 1 })], ['아이템', () => S.DB.get('catalog', 'meta')], ['주문', () => S.DB.list('orders', S.role === 'salesman' ? { where: [['sm', '==', me.sm || '-']], limit: 1 } : { limit: 1 })]];
   for (const [n, f] of tests) { try { await f(); rows.push('✅ ' + n); } catch (e) { rows.push('❌ ' + n + ' — ' + esc(e.code || e.message)); } }
   out.innerHTML = '<div class="sumbox" style="line-height:1.8">' + rows.join('<br>') + '</div>';
+  /* 📊 자료 건수 — 서버에 실제로 뭐가 들어 있나 (관리자 · 담당자) */
+  if (S.role === 'salesman') return;
+  const ym0 = today().substring(0, 7), d1 = new Date(); d1.setMonth(d1.getMonth() - 1); const ym1 = d1.getFullYear() + '-' + String(d1.getMonth() + 1).padStart(2, '0');
+  const cnt = async (col, q) => { try { const r = await S.DB.list(col, q || {}); return r.length; } catch (e) { return '❌ ' + (e.code || e.message); } };
+  const L = [];
+  L.push('거래처 accounts: <b>' + ((S.accounts && S.accounts.length) || 0) + '</b> (버전 ' + esc(String(S.settings.accountsVer || '없음')) + ')');
+  L.push('세일즈맨 salesmen: <b>' + (S.sms || []).length + '</b> — ' + esc((S.sms || []).map(x => x.code).join(', ')));
+  L.push('수금 entries ' + ym0 + ': <b>' + await cnt('entries', { where: [['ym', '==', ym0]] }) + '</b> · ' + ym1 + ': <b>' + await cnt('entries', { where: [['ym', '==', ym1]] }) + '</b>');
+  L.push('COD·카드·ACH cod ' + ym0 + ': <b>' + await cnt('cod', { where: [['ym', '==', ym0]] }) + '</b> · ' + ym1 + ': <b>' + await cnt('cod', { where: [['ym', '==', ym1]] }) + '</b>');
+  try { const ar = await S.DB.get('ar', '_all'); L.push('미수금 ar/_all: ' + (ar ? '<b>' + (ar.n || 0) + '곳 · $' + Math.round(ar.total || 0).toLocaleString() + '</b> · 기준일 ' + esc(ar.asOf || '?') + ' · 올린 날 ' + esc(String(ar.uploadedAt || '').substring(0, 10)) : '<b class="warn">없음</b>')); } catch (e) { L.push('미수금 ar/_all: ❌ ' + esc(e.code || e.message)); }
+  const arDocs = await (async () => { try { return (await S.DB.list('ar')).map(d => d.id + '(' + (d.n || 0) + ')').join(' '); } catch (e) { return '❌ ' + (e.code || e.message); } })();
+  L.push('세일즈맨별 ar 문서: ' + esc(arDocs || '없음'));
+  L.push('주문 orders: <b>' + await cnt('orders', { where: [['ym', 'in', [ym0, ym1]]] }) + '</b> (최근 2달) · 인보이스 invoices: <b>' + await cnt('invoices', { where: [['ym', 'in', [ym0, ym1]]] }) + '</b> (최근 2달)');
+  L.push('정산 settlements: <b>' + await cnt('settlements') + '</b> · 공제 deductions: <b>' + await cnt('deductions') + '</b>');
+  try { const m = await S.DB.get('catalog', 'meta'); L.push('아이템 catalog: ' + (m ? '<b>' + (m.count || 0) + '개</b> · ' + esc(String(m.updatedAt || '').substring(0, 10)) : '<b class="warn">없음</b>')); } catch (e) {}
+  if (S.role === 'admin') { L.push('공장 인보이스: <b>' + await cnt('factoryInvoices') + '</b> · 송금: <b>' + await cnt('factoryPayments') + '</b> · 1099: <b>' + await cnt('pay1099') + '</b> · 보너스 적립: <b>' + await cnt('bonusAcc') + '</b>'); }
+  out.insertAdjacentHTML('beforeend', '<div class="sumbox" style="line-height:1.8;margin-top:8px"><b>📊 서버 자료 건수</b><br>' + L.join('<br>') + '</div>');
 }
 function openMenu(h) { openModal(h); }
 export function roleLabel(r) { return { admin: '관리자 Admin', manager: '담당자 Staff', salesman: '세일즈맨 Salesman' }[r] || r; }
