@@ -89,14 +89,9 @@ function paintHome() {
     '<div class="card tap" data-go="bon"><h2>🎁 오피스 보너스 적립금</h2><div class="hero" style="font-size:26px">' + money(bo.avail) + '</div><div class="heroSub">적립 ' + money(bo.pool) + ' − 지급 ' + money(bo.paid) + ' · ' + D.acc.length + '건</div></div></div>';
   h += '<div class="card tap" id="mgRep"><h2>📊 리포트 <span class="en">Reports</span></h2><div class="muted">기간을 골라 아이템별 · 손님별 · 세일즈맨별 매출과 수금 — CSV · 인쇄</div></div>';
   h += '<div class="card tap" data-go="sales"><h2>📈 회사 매출 (The One sales amount)</h2>' + (sl && sl.rows ? (() => { const T = sl.rows.find(r => r.label === 'TOTAL SALES'); const lastM = T ? T.m.map((v, i) => v ? i : -1).filter(i => i >= 0).pop() : -1; const ytd = T ? sum(T.m) : 0; return lastM >= 0 ? '<div class="hero" style="font-size:26px">' + money(T.m[lastM]) + '<span style="font-size:13px;color:#64748b;font-weight:600;margin-left:8px">' + YEAR + '년 ' + MON_KO[lastM] + ' TOTAL SALES</span></div><div class="heroSub">YTD ' + money(ytd) + '</div>' : '<div class="none">아직 입력된 달이 없습니다</div>'; })() : '<div class="none">아직 입력된 달이 없습니다 — 📈 매출 탭에서 월별 숫자 입력</div>') + '</div>';
-  const seeded = D.inv.filter(x => x.seed).length + D.pay.filter(x => x.seed).length + D.p99.filter(x => x.seed).length + D.acc.filter(x => x.seed).length;
-  h += '<div class="card"><h2>📥 과거 데이터 가져오기 (엑셀 → 앱)</h2><div class="heroSub">옛 대시보드 SEED_DATA 파일(공장 인보이스·송금, 1099 지급, 보너스 적립, 배분표, 대상 구분)을 탭에 넣습니다. 같은 파일을 다시 넣어도 두 번 쌓이지 않습니다.' + (seeded ? ' · <b>이미 ' + seeded + '줄 가져옴</b>' : '') + '</div><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></div>';
   $('mgBody').innerHTML = h;
   document.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { TAB = el.dataset.go; page(); });
   $('mgRep').onclick = () => Router.go('reports');
-  $('seedPick').onclick = () => $('seedFile').click();
-  $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedPreview(r.result); r.readAsText(f); };
-  $('seedPaste').onclick = () => { openModal('<h2>📋 SEED_DATA 붙여넣기</h2><div class="heroSub">파일 내용 전체를 붙여 넣으세요 (var SEED_DATA = {...}; 그대로 됩니다)</div><textarea id="seedTxt" style="width:100%;height:200px;font-size:11px"></textarea><div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sOk">읽기</button></div>'); $('sX').onclick = closeModal; $('sOk').onclick = () => seedPreview($('seedTxt').value); };
 }
 
 /* ============================================================
@@ -121,6 +116,8 @@ function seedOps(o) {
   if ((o.split || []).length && !(D.split.rows || []).filter(r => r.who).length) { ops.push({ op: 'set', col: 'bonusSplit', id: 'main', data: { id: 'main', rows: o.split.map(r => ({ grp: r.grp || 'A', who: String(r.name || r.who || '').toUpperCase(), pct: num(r.pct), share: num(r.share) || 100 })), updatedAt: now } }); cnt.split = o.split.length; }
   return { ops, cnt };
 }
+/** 관리 → 가져오기에서 부름 — 경영 자료를 읽은 뒤 미리보기 */
+export async function seedImport(txt) { await load(); seedPreview(txt); }
 function seedPreview(txt) {
   let o; try { o = seedParse(txt); } catch (e) { return toast('읽을 수 없습니다: ' + e.message, 'bad'); }
   const { ops, cnt } = seedOps(o), has = D.inv.some(x => x.seed) || D.p99.some(x => x.seed);
@@ -130,7 +127,7 @@ function seedPreview(txt) {
     '<div class="hint">⚠️ 표시가 붙은 줄(날짜 없음·금액 불일치 등)은 메모에 그대로 남겨 두니 나중에 장부에서 고쳐 주세요.</div>' +
     '<div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sGo">' + ops.length + '건 넣기</button></div>');
   $('sX').onclick = closeModal;
-  $('sGo').onclick = async () => { busy(true); try { await S.DB.batch(ops); closeModal(); toast('가져왔습니다 — ' + ops.length + '건', 'good'); await refresh(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  $('sGo').onclick = async () => { busy(true); try { await S.DB.batch(ops); closeModal(); toast('가져왔습니다 — ' + ops.length + '건', 'good'); await load(true); if (location.hash.indexOf('#/mg') === 0) page(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ============================================================

@@ -149,7 +149,7 @@ table.pk td{vertical-align:top}table.pk tr.bo td{background:#fef2f2}
 #prtbody h1{font-size:21px;margin:0 0 2px}#prtbody .meta{font-size:12.5px;color:#444;margin-bottom:16px}
 #prtbody table{font-size:12px}#prtbody th,#prtbody td{border:1px solid #bbb;padding:5px 6px}#prtbody th{background:#eef2f7;font-size:11px}
 #prtbody .fin td{background:#fef08a;font-weight:800;font-size:15px}
-/* 인보이스 (SmartBee 양식) */
+/* 인보이스 (이전 양식) */
 #prtbody .iv{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:11.5px;page-break-after:always;min-height:9.6in;display:flex;flex-direction:column}
 #prtbody .iv table{font-size:11px}#prtbody .iv th,#prtbody .iv td{border:1px solid #333;padding:3px 5px}#prtbody .iv th{background:#fff;font-weight:700;text-align:center;font-size:10.5px}
 #prtbody .ivh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}#prtbody .ivh .ivlogo{width:62px;height:62px;margin-right:10px;float:left}

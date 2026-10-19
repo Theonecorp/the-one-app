@@ -4,8 +4,9 @@
 import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz } from './ui.js';
 import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
-import { bumpAccountsVer } from './mgr.js';
+import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
 import { roleLabel, JOBS, jobLabel } from './main.js';
+import { seedImport } from './mg.js';
 import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows } from './catalog.js';
 import { invTypes, fmtNo, company } from './invoicing.js';
 
@@ -37,7 +38,7 @@ function userForm(u) {
   openModal('<h2>' + (u.email ? esc(u.email) : '＋ 사용자') + '</h2>' +
     '<div class="fg"><label>구글 이메일</label><input id="uEmail" value="' + esc(u.email || '') + '" ' + (u.email ? 'readonly' : '') + ' placeholder="name@gmail.com"></div>' +
     '<div class="two"><div class="fg"><label>이름</label><input id="uName" value="' + esc(u.name || '')+ '"></div><div class="fg"><label>역할</label>' + sel('uRole', [['salesman', '세일즈맨'], ['manager', '담당자'], ['admin', '관리자']], u.role || 'salesman') + '</div></div>' +
-    '<div class="fg"><label>담당자의 일 (담당자만) — 화면이 달라집니다</label>' + sel('uJob', JOBS.map(j => [j[0], j[1] + ' · ' + j[2]]), u.job || 'office') + '<small class="muted">오피스: 오더 · 수금 확인 · COD · AR 전부 / 인보이스: 픽킹 확인 · 인보이스 확정 · 인보이스 찾기 / 픽킹·팩킹: 들어온 오더 · 픽킹 결과만 / 어카운팅: 수금 확인 · COD · ACH · AR · 인보이스 찾기</small></div>' +
+    '<div class="fg"><label>담당자의 일 (담당자만) — 화면이 달라집니다</label>' + sel('uJob', JOBS.map(j => [j[0], j[1] + ' · ' + j[2]]), u.job || 'office') + '<small class="muted">오피스: 주문 · 수금 확인 · COD · AR 전부 / 인보이스: 픽킹 확인 · 인보이스 확정 · 인보이스 찾기 / 픽킹·팩킹: 들어온 주문 · 픽킹 결과만 / 어카운팅: 수금 확인 · COD · ACH · AR · 인보이스 찾기</small></div>' +
     '<div class="two"><div class="fg"><label>세일즈맨 코드</label><input id="uSm" list="uSmList" value="' + esc(u.sm || '') + '" placeholder="예: BRANDON" style="text-transform:uppercase" autocomplete="off"><datalist id="uSmList">' + S.sms.map(s => '<option value="' + esc(s.code) + '">').join('') + '</datalist><small class="muted">목록에 없으면 그대로 입력 — 저장할 때 세일즈맨도 같이 만듭니다</small></div><div class="fg"><label>옵션</label><label class="muted" style="display:flex;gap:6px;align-items:center;padding:8px 0"><input type="checkbox" id="uAch" style="width:18px;height:18px" ' + (u.achAccess ? 'checked' : '') + '> ACH 은행 정보 접근</label><label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="uAct" style="width:18px;height:18px" ' + (u.active !== false ? 'checked' : '') + '> 활성</label></div></div>' +
     '<div class="btns">' + (u.email && u.email !== S.user.email ? '<button class="b-ghost" id="uDel">삭제</button>' : '') + '<button class="b-blue" id="uSave">저장</button></div>');
   $('uSave').onclick = async () => {
@@ -118,11 +119,18 @@ async function settings() {
  * ============================================================ */
 async function importer() {
   $('adminBody').innerHTML = exportCard() + '<div class="card"><h2>📥 옛 시트에서 가져오기</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
-    '<div class="fg" style="margin-top:10px"><label>① The One 수금 입력 (2026).xlsx — 거래처 · 세일즈맨 · 수금</label><input type="file" id="f1" accept=".xlsx"></div>' +
+    '<div class="fg" style="margin-top:10px"><label>① The One 수금 입력 (2026).xlsx — 거래처 · 세일즈맨 · 수금 · <b>미수금(AR 탭)</b></label><input type="file" id="f1" accept=".xlsx"></div>' +
+    '<div class="fg"><label>AR 기준일 (AR 탭을 마지막으로 새로고친 날 — 비우면 오늘)</label><input type="date" id="impArD"></div>' +
     '<div class="fg"><label>② THE ONE 수금 (SALES).xlsx — COD 입력 · 세일즈맨 탭의 확인 표시</label><input type="file" id="f2" accept=".xlsx"></div>' +
     '<div class="fg"><label>③ THE ONE 커미션.xlsx — 요율 · 정산 기록</label><input type="file" id="f3" accept=".xlsx"></div>' +
-    '<div id="impOut"></div></div>';
+    '<div id="impOut"></div></div>' +
+    '<div class="card"><h2>📤 미수금(AR) 파일만 올리기</h2><div class="muted">AR 엑셀만 따로 받았을 때. ① 파일에 AR 탭이 있으면 이건 필요 없습니다.</div><div class="two" style="margin-top:8px"><input type="date" id="arD2" value="' + today() + '"><input type="file" id="arF2" accept=".xlsx,.xls,.csv"></div><div id="arOut2"></div></div>' +
+    '<div class="card"><h2>🏭 과거 경영 자료 (공장 · 1099 · 보너스 · 배분표)</h2><div class="muted">변환해 둔 SEED_DATA 파일(.js / .json)을 고르거나 내용을 붙여 넣습니다. 엑셀 원본은 바로 읽지 못합니다 — 원본 엑셀을 보내 주시면 읽는 기능을 붙이겠습니다. 같은 파일을 다시 넣어도 두 번 쌓이지 않습니다.</div><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></div>';
   bindExport();
+  $('arF2').onchange = async () => { const f = $('arF2').files[0]; if (!f) return; const out = $('arOut2'); out.innerHTML = '<div class="muted">읽는 중…</div>'; try { const { XLSX, wb } = await readBook(f); const rows0 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }); const { rows } = parseArRows(rows0); busy(true); const r = await saveAr(rows, $('arD2').value || today()); busy(false); out.innerHTML = '<div class="alert a-grn">저장 — 인보이스 ' + rows.length + '건 · ' + money(sum(rows, x => x.bal)) + ' · 가게 ' + r.stores.length + '곳' + (r.unmatched.length ? '<br>거래처 목록에 없는 가게: ' + r.unmatched.slice(0, 20).map(esc).join(', ') : '') + '</div>'; } catch (e) { busy(false); out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; } };
+  $('seedPick').onclick = () => $('seedFile').click();
+  $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedImport(r.result); r.readAsText(f); };
+  $('seedPaste').onclick = () => { openModal('<h2>📋 SEED_DATA 붙여넣기</h2><textarea id="seedTxt" style="width:100%;height:200px;font-size:11px"></textarea><div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sOk">읽기</button></div>'); $('sX').onclick = closeModal; $('sOk').onclick = () => { const t = $('seedTxt').value; seedImport(t); }; };
   $('f1').onchange = () => importMain($('f1').files[0]); $('f2').onchange = () => importSales($('f2').files[0]); $('f3').onchange = () => importComm($('f3').files[0]);
 }
 async function loadXlsx() { if (window.XLSX) return window.XLSX; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); return window.XLSX; }
@@ -154,6 +162,7 @@ async function importMain(file) {
   try {
     const { XLSX, wb } = await readBook(file);
     const acc = aoa(XLSX, wb, '_ACCOUNTS'), smv = aoa(XLSX, wb, '_SALESMEN'), ent = aoa(XLSX, wb, '_ENTRIES');
+    const arName = wb.SheetNames.find(n => /^_?AR\b/i.test(n.trim())), ar = arName ? aoa(XLSX, wb, arName) : null;
     const ops = [];
     if (acc) { for (let i = 1; i < acc.length; i++) { const r = acc[i]; const code = pad4(r[0]); if (!code || !r[1]) continue; ops.push({ op: 'set', col: 'accounts', id: code, data: { acct: code, store: String(r[1]).trim(), addr: String(r[2] || '').trim(), city: String(r[3] || '').trim(), state: String(r[4] || '').trim(), zip: String(r[5] || '').trim(), tel: String(r[6] || '').trim(), sm: String(r[7] || '').trim().toUpperCase(), note: String(r[8] || '').trim() } }); } say('거래처 ' + ops.length + '곳'); }
     let nS = 0;
@@ -162,6 +171,7 @@ async function importMain(file) {
     if (ent) { const list = parseEntriesSheet(ent); list.forEach(e => ops.push({ op: 'set', col: 'entries', id: e.id, data: e })); nE = list.length; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list, e => e.total))); }
     await S.DB.batch(ops);
     if (acc) await bumpAccountsVer();
+    if (ar) { try { const { rows } = parseArRows(ar); const asOf = $('impArD') && $('impArD').value ? $('impArD').value : today(); const r = await saveAr(rows, asOf); say('미수금(AR) 탭 "' + esc(arName) + '": 인보이스 ' + rows.length + '건 · ' + money(sum(rows, x => x.bal)) + ' · 가게 ' + r.stores.length + '곳 · 기준일 ' + asOf + (r.unmatched.length ? ' · 거래처 목록에 없는 가게 ' + r.unmatched.length : '')); } catch (e) { say('<span class="warn">AR 탭을 읽지 못했습니다: ' + esc(e.message) + '</span>'); } }
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] }); S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
     say('<b>저장 완료</b> — 다음은 ② SALES 파일');
   } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
@@ -221,14 +231,14 @@ async function importComm(file) {
  * ============================================================ */
 async function catalogAdmin() {
   const meta = await S.DB.get('catalog', 'meta');
-  $('adminBody').innerHTML = '<div class="card"><h2>📦 아이템 목록 (오더용)</h2>' +
+  $('adminBody').innerHTML = '<div class="card"><h2>📦 아이템 목록 (주문용)</h2>' +
     (meta ? '<div class="sumbox">지금: <b>' + (meta.count || 0).toLocaleString() + '개</b> · ' + esc(String(meta.updatedAt || '').substring(0, 16).replace('T', ' ')) + ' · ' + esc(meta.by || '') + '</div>' : '<div class="alert a-amb">아직 올린 아이템 목록이 없습니다</div>') +
     '<div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽고, Hide 에 x 표시된 것은 뺍니다. 시트가 바뀔 때마다 다시 올리면 됩니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div>' +
     '<div class="btns" style="justify-content:flex-start"><button class="b-ghost" onclick="location.hash=\'#/items\'">🏷 아이템 하나씩 등록 · 수정 · 삭제</button></div><div class="hint">새로 들어온 아이템 몇 개는 여기서 바로 등록하면 됩니다 (담당자도 가능). 엑셀은 대량 변경용.</div></div>' +
     '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
     photoCard() +
-    '<div class="card"><h2>🛒 오더 탭</h2><label class="pick ' + (S.settings.ordersOn ? 'on' : '') + '" id="ordOn"><span class="ck">✓</span><span class="pm"><b>세일즈맨 · 담당자에게 오더 탭 보이기</b><small>끄면 관리자만 봅니다 (시험용)</small></span></label></div>';
+    '<div class="card"><h2>🛒 주문 탭</h2><label class="pick ' + (S.settings.ordersOn ? 'on' : '') + '" id="ordOn"><span class="ck">✓</span><span class="pm"><b>세일즈맨 · 담당자에게 주문 탭 보이기</b><small>끄면 관리자만 봅니다 (시험용)</small></span></label></div>';
   setAdmin();
   $('phDrive').onclick = async () => {
     const on = !S.settings.photoDrive;
@@ -267,16 +277,16 @@ async function catalogAdmin() {
   $('ordOn').onclick = async () => {
     const on = !S.settings.ordersOn;
     busy(true);
-    try { const cur = (await S.DB.get('settings', 'app')) || {}; await S.DB.set('settings', 'app', Object.assign(cur, { ordersOn: on })); S.settings.ordersOn = on; toast(on ? '오더 탭을 켰습니다' : '오더 탭을 껐습니다'); catalogAdmin(); }
+    try { const cur = (await S.DB.get('settings', 'app')) || {}; await S.DB.set('settings', 'app', Object.assign(cur, { ordersOn: on })); S.settings.ordersOn = on; toast(on ? '주문 탭을 켰습니다' : '주문 탭을 껐습니다'); catalogAdmin(); }
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
 }
 
-/* ---- 📤 자료 내려받기 — 앱에 쌓인 자료(오더 · 인보이스 · 수금 · 거래처 · 아이템)를 달 단위 엑셀로 (보관 · 회계 · 시트 분석용) ---- */
+/* ---- 📤 자료 내려받기 — 앱에 쌓인 자료(주문 · 인보이스 · 수금 · 거래처 · 아이템)를 달 단위 엑셀로 (보관 · 회계 · 시트 분석용) ---- */
 function exportCard() {
   const d = new Date(), yms = []; for (let i = 0; i < 24; i++) { yms.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); }
-  return '<div class="card"><h2>📤 자료 내려받기 (백업 · 보관)</h2><div class="muted">앱 자료는 Firebase(Firestore) 에 쌓입니다. 달을 골라 받으면 그 달의 <b>오더 · 오더 줄 · 인보이스 · 수금 · 백오더</b> 와 지금의 <b>거래처 · 아이템</b> 이 탭별로 든 엑셀 한 파일이 됩니다. 달마다 한 번 받아 드라이브 "THE ONE 데이터 보관/연도" 폴더에 넣어 두면 회계 · 분석 · 백업이 됩니다.</div>' +
+  return '<div class="card"><h2>📤 자료 내려받기 (백업 · 보관)</h2><div class="muted">앱 자료는 Firebase(Firestore) 에 쌓입니다. 달을 골라 받으면 그 달의 <b>주문 · 주문 줄 · 인보이스 · 수금 · 백오더</b> 와 지금의 <b>거래처 · 아이템</b> 이 탭별로 든 엑셀 한 파일이 됩니다. 달마다 한 번 받아 드라이브 "THE ONE 데이터 보관/연도" 폴더에 넣어 두면 회계 · 분석 · 백업이 됩니다.</div>' +
     '<div class="two" style="margin-top:8px">' + sel('exYm', yms.map(y => [y, y])) + '<button class="b-blue" id="exGo">⬇️ 이 달 엑셀 받기</button></div><div id="exOut"></div></div>';
 }
 function bindExport() {
@@ -298,7 +308,7 @@ function bindExport() {
       add('Accounts', [['Acct', 'Store', 'Address', 'City', 'State', 'Zip', 'Tel', 'SalesRep', 'Terms', 'Note', 'Disc']].concat(accts.map(a => [a.acct, a.store, a.addr || '', a.city || '', a.state || '', a.zip || '', a.tel || '', a.sm || '', a.terms || '', a.note || '', JSON.stringify(a.disc || {})])));
       const C = catalog(); if (C) add('Items', [['Code', 'Description', 'Price', 'SRP', 'Barcode', 'Group', 'Level 1', 'Level 2', 'Level 3', 'Photo']].concat(C.rows));
       XLSX.writeFile(wb, 'THE_ONE_' + ym + '.xlsx');
-      out.innerHTML = '<div class="alert a-grn">' + ym + ' — 오더 ' + orders.length + ' · 줄 ' + lines.length + ' · 인보이스 ' + invs.length + ' · 수금 ' + entries.length + ' · 백오더 ' + bos.length + ' · 거래처 ' + accts.length + '</div>';
+      out.innerHTML = '<div class="alert a-grn">' + ym + ' — 주문 ' + orders.length + ' · 줄 ' + lines.length + ' · 인보이스 ' + invs.length + ' · 수금 ' + entries.length + ' · 백오더 ' + bos.length + ' · 거래처 ' + accts.length + '</div>';
     } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; }
     busy(false);
   };
@@ -316,9 +326,9 @@ function photoCard() {
 let IT = null;
 function invTypeCard() {
   IT = invTypes(S).map(t => Object.assign({}, t));
-  return '<div class="card"><h2>🧾 인보이스 종류 <span class="en">Invoice types</span></h2><div class="muted">SmartBee 와 같이 <b>A 주얼리 · P 그 외 제품 · W 디스플레이 · 세트</b>. 번호는 <b>영문 한 글자 + 다섯 자리</b> (A43107). 99999 다음은 자동으로 AA00001 → AB00001 … 로 넘어갑니다.<br>' +
+  return '<div class="card"><h2>🧾 인보이스 종류 <span class="en">Invoice types</span></h2><div class="muted">이전 시스템과 같이 <b>A 주얼리 · P 그 외 제품 · W 디스플레이 · 세트</b>. 번호는 <b>영문 한 글자 + 다섯 자리</b> (A43107). 99999 다음은 자동으로 AA00001 → AB00001 … 로 넘어갑니다.<br>' +
     '첫 줄은 기본 (규칙에 안 맞는 아이템). 규칙은 아이템의 Group · Level 1~3 이름을 쉼표로 (예: <b>Jewelry</b>, <b>Other</b>, <b>Set &amp; Display</b>), 코드 앞글자는 <b>코드:EB</b>.<br>' +
-    '<b>다음 번호</b>는 SmartBee 에서 마지막으로 쓴 번호 다음으로 맞춰 두세요 (두 프로그램을 같이 쓰는 동안 겹치지 않게). 커미션 칸은 정산서의 A · P · W 요율 중 어느 것으로 셀지입니다.</div><div id="itRows"><div class="load">읽는 중…</div></div>' +
+    '<b>다음 번호</b>는 이전 시스템에서 마지막으로 쓴 번호 다음으로 맞춰 두세요 (두 프로그램을 같이 쓰는 동안 겹치지 않게). 커미션 칸은 정산서의 A · P · W 요율 중 어느 것으로 셀지입니다.</div><div id="itRows"><div class="load">읽는 중…</div></div>' +
     '<div class="btns"><button class="b-ghost" id="itAdd">＋ 종류 추가</button><button class="b-blue" id="itSave">인보이스 종류 저장</button></div></div>';
 }
 async function bindInvTypes() {
@@ -390,7 +400,7 @@ async function setAdmin() {
       missN = Object.keys(miss).length;
       const inCat = C2 ? Object.keys(r.sets).filter(k => C2.byCode[k] && !C2.byCode[k].virt).length : 0;
       out.innerHTML = '<div class="alert a-blu">세트 <b>' + Object.keys(r.sets).length + '개</b> · 구성 ' + r.lines.toLocaleString() + '줄 · 이름 있는 세트 ' + r.named + '개<br>아이템 목록에 같은 코드가 있는 세트 ' + inCat + '개 (그 가격 사용) · 나머지는 세트 목록의 리스트 가격 (없으면 구성품 합)</div>' +
-        (missN ? '<div class="alert a-amb">아이템 목록에 없는 구성품 코드 ' + missN + '개 — 오더는 되지만 사진 · 가격이 비어 있습니다: ' + esc(Object.keys(miss).slice(0, 12).join(', ')) + '</div>' : '') +
+        (missN ? '<div class="alert a-amb">아이템 목록에 없는 구성품 코드 ' + missN + '개 — 주문는 되지만 사진 · 가격이 비어 있습니다: ' + esc(Object.keys(miss).slice(0, 12).join(', ')) + '</div>' : '') +
         '<button class="b-blue" id="setGo" style="margin-top:8px">이대로 세트 올리기</button>';
       $('setGo').onclick = async () => { busy(true); try { await publishSets(S, r.sets); await loadCatalog(S, true); toast('세트 ' + Object.keys(r.sets).length + '개 올림', 'good'); setAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
     } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
@@ -428,14 +438,14 @@ function setForm(code, sets) {
  *  🗂 분류 — 레벨 이름 바꾸기 · 순서 · 시작 단계, 그리고 일괄 변경 파일 (SBM 의 레벨 정리 · 디스크립션 · 코드 변경 파일 역할)
  * ============================================================ */
 let TP = [];   // 펼친 경로 (전체 4단계 기준)
-/* SmartBee 분류로 되돌리기 — data/sbm-tree.json (SmartBee LEVEL 1 · 2 · GROUP NAME, 2026-10 내보내기) 을 한 번에 적용 */
+/* 이전 시스템 분류로 되돌리기 — data/sbm-tree.json (이전 시스템 LEVEL 1 · 2 · GROUP NAME, 2026-10 내보내기) 을 한 번에 적용 */
 function sbmCard(C) {
   const L1 = {}; C.items.forEach(x => { if (x.l1) L1[x.l1] = 1; });
   const sbm = ['EARRING', 'NECKLACE', 'ANKLET', 'NOSE'].filter(k => L1[k]).length >= 3;
-  return '<div class="card" style="border:2px solid ' + (sbm ? '#bbf7d0' : '#fdba74') + '"><h2>🐝 SmartBee 분류 (LEVEL 1 · 2 · GROUP)</h2>' +
-    (sbm ? '<div class="alert a-grn">✅ 지금 SmartBee 분류를 쓰고 있습니다. 순서: "" 맨 앞 → " → 주얼리 ABC → [ 그 외 → &lt; * z 맨 뒤 (+ 📌 고정).</div>' :
-      '<div class="alert a-amb">⚠️ 지금은 THE ONE 카탈로그 분류(Earrings · Hoops … )입니다. 아래 버튼 한 번이면 세일즈맨이 쓰던 SmartBee LEVEL 1 · LEVEL 2 · GROUP 으로 바뀝니다 (7,268개, Group 은 Jewelry · Other · Set &amp; Display = 인보이스 A · P · W).</div>') +
-    '<div class="btns"><button class="' + (sbm ? 'b-ghost' : 'b-blue') + '" id="sbmGo">🐝 SmartBee 분류로 ' + (sbm ? '다시 ' : '') + '바꾸기</button></div></div>';
+  return '<div class="card" style="border:2px solid ' + (sbm ? '#bbf7d0' : '#fdba74') + '"><h2>🐝 이전 시스템 분류 (LEVEL 1 · 2 · GROUP)</h2>' +
+    (sbm ? '<div class="alert a-grn">✅ 지금 이전 시스템 분류를 쓰고 있습니다. 순서: "" 맨 앞 → " → 주얼리 ABC → [ 그 외 → &lt; * z 맨 뒤 (+ 📌 고정).</div>' :
+      '<div class="alert a-amb">⚠️ 지금은 THE ONE 카탈로그 분류(Earrings · Hoops … )입니다. 아래 버튼 한 번이면 세일즈맨이 쓰던 이전 시스템 LEVEL 1 · LEVEL 2 · GROUP 으로 바뀝니다 (7,268개, Group 은 Jewelry · Other · Set &amp; Display = 인보이스 A · P · W).</div>') +
+    '<div class="btns"><button class="' + (sbm ? 'b-ghost' : 'b-blue') + '" id="sbmGo">🐝 이전 시스템 분류로 ' + (sbm ? '다시 ' : '') + '바꾸기</button></div></div>';
 }
 const cleanLbl = n => cleanName(n) + (cleanName(n) !== String(n) ? ' (' + n + ')' : '');
 /** 오타 · 잘린 이름 · 따옴표만 다른 분류 찾기 — 같은 상위 안에서 (예: INDUSTRIA / INDUSTRIAL / INDUSTRIAL") */
@@ -452,7 +462,7 @@ function findDupes(C) {
         if (a === b || done[b] || done[a]) return;
         const na = nz(a), nb = nz(b); if (!na || !nb) return;
         const same = na === nb, quote = b.replace(/"/g, '') === a.replace(/"/g, '') && !/""$/.test(a) && !/""$/.test(b);
-        const trunc = (nb.length === 9 || nb.length === 10) && na.length > nb.length && na.startsWith(nb) && b.length <= 10;   // SmartBee 10자 잘림
+        const trunc = (nb.length === 9 || nb.length === 10) && na.length > nb.length && na.startsWith(nb) && b.length <= 10;   // 이전 시스템 10자 잘림
         if (same || quote || trunc) { out.push({ lv, under: g.under, keep: a, drop: b, nk: g.cnt[a], nd: g.cnt[b], why: same ? '기호만 다름' : quote ? '따옴표' : '잘린 이름' }); done[b] = 1; }
       }));
     });
@@ -461,7 +471,7 @@ function findDupes(C) {
 }
 function dupeCard(C) {
   const d = findDupes(C);
-  return '<div class="card"><h2>🧹 비슷한 이름 합치기</h2><div class="muted">같은 상위 안에서 오타 · 잘린 이름(SmartBee 10자) · 따옴표만 다른 분류를 찾았습니다. "합치기"를 누르면 아이템이 많은 쪽 이름으로 합쳐집니다.</div>' +
+  return '<div class="card"><h2>🧹 비슷한 이름 합치기</h2><div class="muted">같은 상위 안에서 오타 · 잘린 이름(이전 시스템 10자) · 따옴표만 다른 분류를 찾았습니다. "합치기"를 누르면 아이템이 많은 쪽 이름으로 합쳐집니다.</div>' +
     (d.length ? d.map((x, i) => '<div class="pr"><div class="ct"><b>' + esc(x.drop) + ' <span class="muted">(' + x.nd + ')</span> → ' + esc(x.keep) + ' <span class="muted">(' + x.nk + ')</span></b><small>' + esc(x.under.filter(Boolean).map(cleanLbl).join(' › ')) + ' · ' + x.why + '</small></div><button class="b-blue b-sm" data-dupe="' + i + '">합치기</button></div>').join('') + (d.length > 1 ? '<div class="btns"><button class="b-ghost" id="dupeAll">모두 합치기 (' + d.length + ')</button></div>' : '') : '<div class="none">지금은 비슷한 이름이 없습니다 ✅</div>') + '</div>';
 }
 function pinOf(name) { const P = pins(), k = String(name).toUpperCase(); if (P.top.some(x => x.toUpperCase() === k)) return 'top'; if (P.bottom.some(x => x.toUpperCase() === k)) return 'bottom'; return ''; }
@@ -491,17 +501,17 @@ async function treeAdmin() {
   const crumbs = '<div class="chips" style="margin-top:0"><button class="' + (depth ? '' : 'on') + '" data-tp="0">전체</button>' + under.map((p, i) => '<button class="' + (i === under.length - 1 ? 'on' : '') + '" data-tp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
   const kids = node.kids;
   $('adminBody').innerHTML = '<div class="card"><h2>🗂 분류 (' + C.items.length.toLocaleString() + '개 아이템)</h2>' +
-    '<div class="muted">오더 화면의 품목 단계입니다. 순서 규칙: <b>📌 위에 고정 → ABC 순 → 📌 아래에 고정</b> (분류 안의 아이템은 코드 순). 이름을 바꾸면 그 분류의 아이템 전체에 적용됩니다. 아이템을 다른 분류로 옮기는 건 아래 "일괄 변경 파일"로 합니다.</div>' +
-    '<div class="fg" style="margin-top:8px"><label>오더 화면 시작 단계</label><div class="seg"><button class="' + (start === 'l1' ? 'on' : '') + '" data-cs="l1">Level 1 부터 (ANKLET · EARRING … SBMGo 처럼)</button><button class="' + (start === 'g' ? 'on' : '') + '" data-cs="g">Group 부터 (Jewelry · Beauty …)</button></div></div>' +
+    '<div class="muted">주문 화면의 품목 단계입니다. 순서 규칙: <b>📌 위에 고정 → ABC 순 → 📌 아래에 고정</b> (분류 안의 아이템은 코드 순). 이름을 바꾸면 그 분류의 아이템 전체에 적용됩니다. 아이템을 다른 분류로 옮기는 건 아래 "일괄 변경 파일"로 합니다.</div>' +
+    '<div class="fg" style="margin-top:8px"><label>주문 화면 시작 단계</label><div class="seg"><button class="' + (start === 'l1' ? 'on' : '') + '" data-cs="l1">Level 1 부터 (ANKLET · EARRING … SBMGo 처럼)</button><button class="' + (start === 'g' ? 'on' : '') + '" data-cs="g">Group 부터 (Jewelry · Beauty …)</button></div></div>' +
     crumbs + '<div class="muted" style="margin:4px 0">' + esc(LV[depth]) + ' · ' + kids.length + '개</div>' +
     kids.map(k => { const pt = pinOf(k.name); return '<div class="pr"><div class="ct tap" data-tin="' + esc(k.name) + '"><b>' + (pt === 'top' ? '📌 ' : pt === 'bottom' ? '📍 ' : '') + esc(k.name) + '</b><small>' + k.n.toLocaleString() + '개' + (k.kids.length ? ' · 하위 ' + k.kids.length : '') + (pt === 'top' ? ' · 위에 고정' : pt === 'bottom' ? ' · 아래에 고정' : '') + '</small></div>' +
       '<button class="b-ghost b-sm' + (pt === 'top' ? ' on' : '') + '" data-tup="' + esc(k.name) + '" title="위에 고정" style="' + (pt === 'top' ? 'background:#fef3c7' : '') + '">📌↑</button><button class="b-ghost b-sm" data-tdn="' + esc(k.name) + '" title="아래에 고정" style="' + (pt === 'bottom' ? 'background:#fef3c7' : '') + '">📍↓</button><button class="b-ghost b-sm" data-tren="' + esc(k.name) + '" title="이름 바꾸기">✏️</button>' + (depth >= 1 ? '<button class="b-ghost b-sm" data-tmv="' + esc(k.name) + '" title="다른 곳으로 옮기기">➡️</button>' : '') + '</div>'; }).join('') + '</div>' +
     (depth >= 1 ? '<div class="btns"><button class="b-ghost" id="tItems">📋 이 분류의 아이템 ' + node.n.toLocaleString() + '개 보기 · 하나씩 바꾸기</button></div><div id="tItemList"></div>' : '') + '</div>' +
     '<div class="card"><h2>🔎 코드로 아이템 분류 바꾸기</h2><div class="muted">아이템 코드(또는 바코드)를 치면 지금 분류가 보이고 Group · Level 1 · 2 · 3 을 바로 고칠 수 있습니다. 아이템을 다른 Level 1 로 옮기거나, 새 Level 이름을 만들 때 쓰세요.</div><div class="fg" style="margin-top:8px"><input id="tCode" placeholder="예: AHG103" autocomplete="off" style="text-transform:uppercase"></div><div id="tCodeOut"></div>' +
-    '<div class="card"><h2>✨ 자주 나가는 아이템</h2><div class="muted">오더 화면 맨 위 "✨ 자주 나가는" 칸의 순서입니다. 가게가 최근에 산 것이 먼저 나오고, 그 다음 이 목록 순서입니다. SmartBee 의 <b>Sales Report by Item</b>(엑셀) 처럼 <b>Item</b>(코드) 과 <b>Qty</b>(수량) 열이 있는 파일을 올리면 많이 나간 순으로 저장됩니다.' + (popularCodes().length ? ' 지금 <b>' + popularCodes().length + '개</b> 올라와 있음.' : ' 아직 없음.') + '</div>' +
+    '<div class="card"><h2>✨ 자주 나가는 아이템</h2><div class="muted">주문 화면 맨 위 "✨ 자주 나가는" 칸의 순서입니다. 가게가 최근에 산 것이 먼저 나오고, 그 다음 이 목록 순서입니다. 이전 시스템의 <b>Sales Report by Item</b>(엑셀) 처럼 <b>Item</b>(코드) 과 <b>Qty</b>(수량) 열이 있는 파일을 올리면 많이 나간 순으로 저장됩니다.' + (popularCodes().length ? ' 지금 <b>' + popularCodes().length + '개</b> 올라와 있음.' : ' 아직 없음.') + '</div>' +
     '<div class="fg" style="margin-top:8px"><input type="file" id="popFile" accept=".xlsx,.csv"></div><div id="popOut"></div></div>' +
     sbmCard(C) + dupeCard(C) +
-    '<div class="card"><h2>📄 일괄 변경 파일 — SmartBee 편의 파일 그대로</h2><div class="muted">SmartBee 에서 쓰던 <b>LEVEL_1_AND_2</b> (ITEM CODE · LEVEL 1 · LEVEL 2) 와 <b>GROUP_NAME_CHANGE</b> (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) 파일을 그대로 올리면 됩니다. 아래에서 지금 상태를 같은 모양으로 받아 엑셀에서 고친 뒤 다시 올리세요. SmartBee 내보내기에서 칸이 깨진 줄(줄바꿈 · 탭)도 알아서 살려 읽습니다.<br>' +
+    '<div class="card"><h2>📄 일괄 변경 파일 — 이전 시스템 편의 파일 그대로</h2><div class="muted">이전 시스템에서 쓰던 <b>LEVEL_1_AND_2</b> (ITEM CODE · LEVEL 1 · LEVEL 2) 와 <b>GROUP_NAME_CHANGE</b> (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) 파일을 그대로 올리면 됩니다. 아래에서 지금 상태를 같은 모양으로 받아 엑셀에서 고친 뒤 다시 올리세요. 이전 시스템 내보내기에서 칸이 깨진 줄(줄바꿈 · 탭)도 알아서 살려 읽습니다.<br>' +
     'LEVEL 파일은 Level 1 이름의 앞글자로 Group(인보이스 A · P · W)이 정해집니다: 보통 이름 → Jewelry(A), [ ] → Other(P), "" → Set &amp; Display(W). GROUP NAME 은 Level 3 으로 들어갑니다 (NEW 가 비어 있으면 CURRENT 그대로).<br>' +
     '그 밖의 열도 됩니다 (<b>있는 열만</b> 바꾸고 빈 칸은 그대로): Code(필수) · NewCode · Description · Price · SRP · Barcode · Group · Level 1 · 2 · 3 · Photo · Delete(x). 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
     '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="tDlLevel">⬇️ LEVEL_1_AND_2.xlsx</button><button class="b-ghost" id="tDlGroup">⬇️ GROUP_NAME_CHANGE.xlsx</button><button class="b-ghost" id="tCsv">⬇️ 전체 CSV</button></div>' +
@@ -605,14 +615,14 @@ async function treeAdmin() {
   document.querySelectorAll('[data-dupe]').forEach(b => b.onclick = async () => { const x = DUP[+b.dataset.dupe]; if (await confirmBox(x.drop + ' → ' + x.keep + ' 으로 합칠까요? (' + x.nd + '개 아이템)', '합치기')) mergeDupes([x]); });
   if ($('dupeAll')) $('dupeAll').onclick = async () => { if (await confirmBox(DUP.length + '개를 모두 합칠까요?', '모두 합치기')) mergeDupes(DUP); };
   if ($('sbmGo')) $('sbmGo').onclick = async () => {
-    if (!(await confirmBox('모든 아이템의 분류를 SmartBee 의 LEVEL 1 · LEVEL 2 · GROUP 으로 바꿀까요? (Group 은 Jewelry · Other · Set & Display 로 — 인보이스 A · P · W 와 연결)', '바꾸기'))) return;
+    if (!(await confirmBox('모든 아이템의 분류를 이전 시스템의 LEVEL 1 · LEVEL 2 · GROUP 으로 바꿀까요? (Group 은 Jewelry · Other · Set & Display 로 — 인보이스 A · P · W 와 연결)', '바꾸기'))) return;
     busy(true);
     try {
       const res = await fetch('data/sbm-tree.json?v=' + Date.now()); if (!res.ok) throw new Error('data/sbm-tree.json 을 읽지 못했습니다');
       const m = await res.json();
       const patches = Object.keys(m).map(c => ({ code: c, set: { g: m[c][0], l1: m[c][1], l2: m[c][2], l3: m[c][3] } }));
       const r = await editCatalog(S, (rows, cats, sets) => { cats.length = 0; return applyBulk(rows, cats, sets, patches); });
-      toast('SmartBee 분류로 바꿨습니다 — ' + r.changed + '개 (목록에 없는 코드 ' + r.missing.length + ')', 'good'); TP = []; treeAdmin();
+      toast('이전 시스템 분류로 바꿨습니다 — ' + r.changed + '개 (목록에 없는 코드 ' + r.missing.length + ')', 'good'); TP = []; treeAdmin();
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
@@ -658,7 +668,7 @@ function previewBulk(t, name, out) {
   const sum = applyBulk(rows, cats, sets, r.patches);
   const lab = { nc: '코드 변경', d: 'Description', p: 'Price', s: 'SRP', b: 'Barcode', g: 'Group', l1: 'Level 1', l2: 'Level 2', l3: 'Level 3', ph: 'Photo', del: '삭제' };
   out.innerHTML = '<div class="alert a-blu">탭 <b>' + esc(name) + '</b> · ' + r.patches.length.toLocaleString() + '줄 · 바꾸는 열: ' + r.cols.map(k => lab[k]).join(', ') + '<br>바뀌는 아이템 <b>' + sum.changed.toLocaleString() + '</b> · 코드 변경 ' + sum.renamed + ' · 새 아이템 ' + sum.added + ' · 삭제 ' + sum.deleted + '</div>' +
-    (r.fixed && r.fixed.length ? '<div class="alert a-grn">SmartBee 내보내기에서 깨진 줄 ' + r.fixed.length + '개를 살려 읽었습니다</div>' : '') +
+    (r.fixed && r.fixed.length ? '<div class="alert a-grn">이전 시스템 내보내기에서 깨진 줄 ' + r.fixed.length + '개를 살려 읽었습니다</div>' : '') +
     (r.broken && r.broken.length ? '<div class="alert a-amb">칸이 깨진 줄 ' + r.broken.length + '개 건너뜀 (줄바꿈 · 탭이 섞임): ' + esc(r.broken.slice(0, 8).join(', ')) + '</div>' : '') +
     (sum.missing.length ? '<div class="alert a-amb">목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 10).join(', ')) + '</div>' : '') +
     (sum.dupNew.length ? '<div class="alert a-red">새 코드가 이미 있어 바꾸지 못함 ' + sum.dupNew.length + '개: ' + esc(sum.dupNew.slice(0, 10).join(', ')) + '</div>' : '') +

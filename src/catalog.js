@@ -34,7 +34,7 @@ export function setPins(p) {
   PINS = { top: ((p && p.top) || []).map(String), bottom: ((p && p.bottom) || []).map(String) };
   if (CAT) { sortTree(CAT.tree); sortTree(CAT.tree1); }
 }
-/* SmartBee 에서 쓰던 앞글자 규칙 (세일즈맨이 익숙한 순서):
+/* 이전 시스템에서 쓰던 앞글자 규칙 (세일즈맨이 익숙한 순서):
  *   ""  → 맨 앞 (SET ORDER"")   "  → 그 다음 (디스플레이 · 인서트)   보통 이름 → 주얼리 ABC
  *   [   → 그 외 제품 ([NEXONE] [PERFUME] …)   < * z → 맨 뒤 (<GIFT> *SUPPLY* zCREDIT) */
 export function prefixRank(name) {
@@ -55,7 +55,7 @@ function sortTree(node) {
   node.kids.sort((a, b) => { const x = rank(a.name), y = rank(b.name); return x[0] - y[0] || x[1] - y[1] || COLL.compare(a.cn || (a.cn = cleanName(a.name)), b.cn || (b.cn = cleanName(b.name))); });
   node.kids.forEach(sortTree);
 }
-/* ---------- ✨ 자주 나가는 아이템 (catalog/pop = SmartBee 아이템별 판매 수량에서 올림) ---------- */
+/* ---------- ✨ 자주 나가는 아이템 (catalog/pop = 이전 시스템 아이템별 판매 수량에서 올림) ---------- */
 let POP = [];   // [code, qty] 많이 나간 순
 export function popularCodes() { return POP; }
 async function loadPop(S) {
@@ -182,7 +182,7 @@ function index(pack) {
   const tmp = { items }; fixPhotos(tmp);
   return { photoStat: tmp.photoStat, ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, byCode, byBar, byNorm, tree, tree1, sets, rows: pack.rows, cats: pack.cats || [] };
 }
-/** 오더 화면이 어느 단계부터 보이나 — 'l1'(기본, SBMGo 처럼 ANKLET · EARRING …) 또는 'g'(Jewelry · Beauty … 부터) */
+/** 주문 화면이 어느 단계부터 보이나 — 'l1'(기본, SBMGo 처럼 ANKLET · EARRING …) 또는 'g'(Jewelry · Beauty … 부터) */
 export function catStart(S) { return S && S.settings && S.settings.catStart === 'g' ? 'g' : 'l1'; }
 export function treeFor(S) { return catStart(S) === 'g' ? CAT.tree : CAT.tree1; }
 export function levelsOf(x, start) { return start === 'g' ? [x.g, x.l1, x.l2, x.l3] : [x.l1, x.l2, x.l3]; }
@@ -392,7 +392,7 @@ export function parseBulkSheet(aoa) {
   if (!has.length) throw new Error('바꿀 열이 없습니다 (Description · Price · Level 1 · NewCode …)');
   const str = v => String(v == null ? '' : v).trim();
   const out = [], broken = [], fixed = [];
-  /* SmartBee 내보내기(LEVEL_1_AND_2 · GROUP_NAME_CHANGE)에서 칸 안에 줄바꿈 · 탭이 섞여 깨진 줄 —
+  /* 이전 시스템 내보내기(LEVEL_1_AND_2 · GROUP_NAME_CHANGE)에서 칸 안에 줄바꿈 · 탭이 섞여 깨진 줄 —
    *   'L1\tL2\r\ncode2\tL1\r\ncode3\t\t…' 꼴. 첫 조각은 이 줄의 값, 그 뒤 줄들은 "코드 \t 값" 으로 살려서 따로 패치를 만듦 */
   const sbmLevel = ix.l1 >= 0 && ix.g < 0 && ix.d < 0, sbmGroup = ix.gC >= 0 && ix.l1 < 0;
   const rowsIn = [];
@@ -425,7 +425,7 @@ export function parseBulkSheet(aoa) {
       else if (k === 'b') { let bb = str(v).replace(/\.0+$/, ''); if (/^\d{11}$/.test(bb)) bb = '0' + bb; pt.set.b = bb; }
       else pt.set[k] = k === 'ph' ? str(v).split(/\s+/)[0] : str(v);
     });
-    /* Level 1 만 주고 Group 이 없는 파일 (SmartBee LEVEL_1_AND_2) — Group 은 앞글자 규칙으로 (Jewelry · Other · Set & Display = A · P · W) */
+    /* Level 1 만 주고 Group 이 없는 파일 (이전 시스템 LEVEL_1_AND_2) — Group 은 앞글자 규칙으로 (Jewelry · Other · Set & Display = A · P · W) */
     if (pt.set.l1 && ix.g < 0) pt.set.g = familyOf(pt.set.l1);
     if (Object.keys(pt.set).length || pt.nc || pt.del) out.push(pt);
   }
@@ -462,7 +462,7 @@ export function applyBulk(rows, cats, sets, patches) {
   return sum;
 }
 /** 지금 아이템 전체를 CSV 로 (엑셀에서 고쳐서 다시 올리는 용) */
-/** SmartBee 편의 파일 모양으로 내려받기 — LEVEL_1_AND_2 (ITEM CODE · LEVEL 1 · LEVEL 2) / GROUP_NAME_CHANGE (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) */
+/** 이전 시스템 편의 파일 모양으로 내려받기 — LEVEL_1_AND_2 (ITEM CODE · LEVEL 1 · LEVEL 2) / GROUP_NAME_CHANGE (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) */
 export function sbmLevelRows() { return [['ITEM CODE', 'LEVEL 1', 'LEVEL 2']].concat(CAT.items.filter(x => !x.virt).map(x => [x.c, x.l1 || '', x.l2 || ''])); }
 export function sbmGroupRows() { return [['ITEM CODE', 'CURRENT GROUP NAME', 'NEW GROUP NAME']].concat(CAT.items.filter(x => !x.virt).map(x => [x.c, x.l3 || '', ''])); }
 export function catalogCsv() {

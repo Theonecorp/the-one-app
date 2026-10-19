@@ -22,7 +22,7 @@ async function page(arg) {
 function paint() {
   const C = catalog();
   $('page').innerHTML = '<div class="card"><h2>🏷 ' + bi('아이템 관리', 'Items') + ' <span class="muted" style="font-weight:400;font-size:12px">' + C.items.filter(x => !x.virt).length.toLocaleString() + '개</span></h2>' +
-    '<div class="muted">새 아이템 등록 · 가격 · 이름 · 분류 수정 · 삭제. 저장하면 모든 폰의 오더 목록이 바뀝니다. 엑셀로 한꺼번에 올리기는 관리 → 📦 아이템.</div>' +
+    '<div class="muted">새 아이템 등록 · 가격 · 이름 · 분류 수정 · 삭제. 저장하면 모든 폰의 주문 목록이 바뀝니다. 엑셀로 한꺼번에 올리기는 관리 → 📦 아이템.</div>' +
     '<div style="display:flex;gap:6px;margin-top:10px"><input id="itQ" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" value="' + esc(Q) + '" autocomplete="off" autocapitalize="characters" style="flex:1"><button class="b-blue" id="itNew" style="flex:0 0 auto">＋ ' + bi('새 아이템', 'New') + '</button></div>' +
     '<div id="itList" style="margin-top:8px"></div></div>';
   const list = () => {
@@ -62,14 +62,14 @@ function form(it, newCode) {
     '<div class="sumbox" id="fType"></div>' +
     '<div class="btns">' + (isNew ? '' : '<button class="b-ghost" id="fDel" style="color:#991b1b">🗑 삭제</button>') + '<button class="b-ghost" id="fX">취소</button><button class="b-blue" id="fOk">' + (isNew ? '등록' : '저장') + '</button></div>');
   const cur = () => ({ c: $('fC').value.trim().toUpperCase(), d: $('fD').value.trim(), p: R2(num($('fP').value)), s: R2(num($('fS').value)) || 0, b: $('fB').value.trim().replace(/\.0+$/, ''), g: $('fG').value.trim(), l1: $('fL1').value.trim(), l2: $('fL2').value.trim(), l3: $('fL3').value.trim(), ph: $('fPh').value.trim() });
-  const showType = () => { const v = cur(); const t = typeOfItem(S, v), tt = invTypes(S).find(z => z.c === t); $('fType').innerHTML = '🧾 인보이스 종류: <b>' + esc(t) + '</b> ' + esc(tt ? tt.n : '') + ' <span class="muted">(분류 이름으로 자동 결정 · 관리 → 설정 → 인보이스 종류)</span>' + (v.g || v.l1 ? '' : '<br><span class="warn">분류가 없으면 오더 화면의 분류 버튼에서 찾을 수 없고 검색으로만 나옵니다</span>'); };
+  const showType = () => { const v = cur(); const t = typeOfItem(S, v), tt = invTypes(S).find(z => z.c === t); $('fType').innerHTML = '🧾 인보이스 종류: <b>' + esc(t) + '</b> ' + esc(tt ? tt.n : '') + ' <span class="muted">(분류 이름으로 자동 결정 · 관리 → 설정 → 인보이스 종류)</span>' + (v.g || v.l1 ? '' : '<br><span class="warn">분류가 없으면 주문 화면의 분류 버튼에서 찾을 수 없고 검색으로만 나옵니다</span>'); };
   ['fG', 'fL1', 'fL2', 'fL3'].forEach(id => $(id).oninput = showType);
   const refreshLists = () => { const v = cur(); const fill = (id, arr) => { const dl = $(id + 'L'); if (dl) dl.innerHTML = arr.map(n => '<option value="' + esc(n) + '">').join(''); }; fill('fL1', l1s(v.g)); fill('fL2', l2s(v.g, v.l1)); fill('fL3', l3s(v.g, v.l1, v.l2)); };
   ['fG', 'fL1', 'fL2'].forEach(id => $(id).onchange = refreshLists);
   showType();
   $('fX').onclick = closeModal;
   if ($('fDel')) $('fDel').onclick = async () => {
-    if (!(await confirmBox(x.c + ' 아이템을 목록에서 뺄까요? 지난 오더 · 인보이스 기록은 그대로 남습니다. / Remove this item from the catalog?', '삭제'))) return;
+    if (!(await confirmBox(x.c + ' 아이템을 목록에서 뺄까요? 지난 주문 · 인보이스 기록은 그대로 남습니다. / Remove this item from the catalog?', '삭제'))) return;
     busy(true);
     try { await editCatalog(S, (rows, cats, sets) => { const i = rows.findIndex(r => r[0] === x.c); if (i >= 0) rows.splice(i, 1); if (sets[x.c]) delete sets[x.c]; }); closeModal(); toast(x.c + ' 삭제 — 모든 폰에 반영됩니다', 'good'); paint(); }
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }

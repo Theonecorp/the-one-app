@@ -80,7 +80,7 @@ function paintEntry() {
     '<div class="btns" style="margin-top:4px"><button class="b-ghost b-sm" id="btnAddInv">＋ ' + bi('번호 직접 입력', 'Type invoice #') + '</button><button class="b-ghost b-sm" id="btnAddOther">🏬 ' + bi('다른 가게 인보이스', 'Other store') + '</button></div>' +
     '<div id="sumBox" style="margin-top:8px"></div>' +
     '<div class="fg" style="margin-top:10px"><label>📝 ' + bi('메모', 'Memo') + '</label><input id="fMemo" value="' + esc(F.memo || '') + '" placeholder="특이사항 · 할인 요청 · notes"></div></div>';
-  /* 아래 고정 바 — 오더처럼: 가게 · 받은 돈(크게) · 맞는지 */
+  /* 아래 고정 바 — 주문처럼: 가게 · 받은 돈(크게) · 맞는지 */
   h += '<div class="sticky"><div class="tbar"><div class="tl"><b>' + esc(F.store || '가게를 고르세요 · pick a store') + '</b><small id="tbSub">' + tbarSub() + '</small></div><div class="ta" id="tbAmt">' + money(got) + '</div></div>' +
     '<div class="btns" style="margin-top:6px">' + (F.editing ? '<button class="b-ghost" id="btnCancelEdit2" style="flex:0 0 96px">' + bi('취소', 'Cancel') + '</button>' : '') + '<button class="b-green" id="btnSave">💾 ' + bi(F.editing ? '수정 저장' : '저장', 'Save') + '</button></div></div>';
   $('page').innerHTML = h;
@@ -185,7 +185,7 @@ export async function openInvoices(acct) {
   const st = ar.stores.find(s => s.acct === acct); if (!st) return { asOf: ar.asOf, list: [] };
   const paid = await paidSince(ar.asOf || '');
   const list = (st.invs || []).map(v => { const p = paid[acct + '|' + v.inv] || 0; return { no: v.inv, d: v.d, amt: v.amt, paid: p, bal: R2(v.bal - p), pdd: v.pdd, bk: v.bk }; });
-  /* 앱에서 확정한 인보이스 (아직 SmartBee AR 에 없는 것) 도 같이 — 세일즈맨이 어느 인보이스에 얼마를 적용할지 고를 수 있게 */
+  /* 앱에서 확정한 인보이스 (아직 올린 AR 에 없는 것) 도 같이 — 세일즈맨이 어느 인보이스에 얼마를 적용할지 고를 수 있게 */
   try {
     const wh = [['acct', '==', acct], ['st', '==', 'open']]; if (S.role === 'salesman') wh.push(['sm', '==', me()]);
     const app = await S.DB.list('invoices', { where: wh });
@@ -322,7 +322,7 @@ async function pageAR() {
   if (!me()) return noSm();
   $('page').innerHTML = '<div class="load">AR 읽는 중…</div>';
   const ar = await arDoc();
-  if (!ar || !ar.stores) { $('page').innerHTML = '<div class="card"><div class="none">아직 올라온 AR 이 없습니다. 담당자가 SmartBee AR 을 올리면 여기에 보입니다.</div></div>'; return; }
+  if (!ar || !ar.stores) { $('page').innerHTML = '<div class="card"><div class="none">아직 올라온 AR 이 없습니다. 담당자가 미수금(AR)을 올리면 여기에 보입니다.</div></div>'; return; }
   const paid = await paidSince(ar.asOf || '');
   const stores = ar.stores.map(s => {
     let net = 0; const b = [0, 0, 0, 0, 0];
@@ -338,7 +338,7 @@ async function pageAR() {
   let h = '<div class="card"><h2>' + esc(me()) + ' 미수금 <span class="muted">기준일 ' + esc(ar.asOf) + (stale > 10 ? ' <span class="warn">(' + stale + '일 전)</span>' : '') + '</span></h2><div class="hero">' + money(total) + '</div><div class="heroSub">' + live.length + '곳 · 기준일 뒤 받은 돈은 뺐습니다</div>' +
     '<div class="kpi" style="grid-template-columns:repeat(5,1fr)">' + bk.map((v, i) => '<div class="' + (i >= 3 ? 'bad' : '') + '"><b style="font-size:12px">' + money(v) + '</b><span>' + BK[i] + '</span></div>').join('') + '</div>' +
     '<div class="chips">' + [['all', '전체 ' + live.length], ['4', '90일+ ' + live.filter(s => s.b[4] > 0.005).length], ['3', '61-90 ' + live.filter(s => s.b[3] > 0.005).length], ['z', '💤 1년+ ' + dormant.length], ['done', '✅ 받을 것 없음 ' + done.length]].map(c => '<button class="' + (AR_F === c[0] ? 'on' : '') + '" data-arf="' + c[0] + '">' + c[1] + '</button>').join('') + '</div></div>';
-  h += '<div class="card">' + (filt.length ? sortBy(filt, s => s.maxPdd, true).map(s => '<div class="pr tap" data-ars="' + esc(s.acct) + '"><div class="ct"><b>' + esc(s.store) + (s.dormant ? ' <span class="tag t-g">💤</span>' : '') + (s.moved ? ' <span class="tag t-a">SmartBee ' + esc(s.moved) + '</span>' : '') + '</b><small>' + esc(s.acct) + ' · ' + s.invs.filter(v => v.net > 0.005).length + '건' + (s.lastPaid ? ' · 마지막 수금 ' + md(s.lastPaid) : '') + '</small></div><div class="pa"><b>' + money(s.net) + '</b><small class="' + (s.maxPdd > 60 ? 'warn' : '') + '">' + (s.maxPdd > 0 ? s.maxPdd + '일 연체' : '기한 전') + '</small></div></div>').join('') : '<div class="none">없음</div>') + '</div>';
+  h += '<div class="card">' + (filt.length ? sortBy(filt, s => s.maxPdd, true).map(s => '<div class="pr tap" data-ars="' + esc(s.acct) + '"><div class="ct"><b>' + esc(s.store) + (s.dormant ? ' <span class="tag t-g">💤</span>' : '') + (s.moved ? ' <span class="tag t-a">이전 시스템 ' + esc(s.moved) + '</span>' : '') + '</b><small>' + esc(s.acct) + ' · ' + s.invs.filter(v => v.net > 0.005).length + '건' + (s.lastPaid ? ' · 마지막 수금 ' + md(s.lastPaid) : '') + '</small></div><div class="pa"><b>' + money(s.net) + '</b><small class="' + (s.maxPdd > 60 ? 'warn' : '') + '">' + (s.maxPdd > 0 ? s.maxPdd + '일 연체' : '기한 전') + '</small></div></div>').join('') : '<div class="none">없음</div>') + '</div>';
   $('page').innerHTML = h;
   document.querySelectorAll('[data-arf]').forEach(b => b.onclick = () => { AR_F = b.dataset.arf; pageAR(); });
   document.querySelectorAll('[data-ars]').forEach(el => el.onclick = () => { const s = stores.find(x => x.acct === el.dataset.ars); arStore(s); });
