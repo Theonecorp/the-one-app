@@ -18,7 +18,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.18';
+export const VER = 'v0.8.19';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -158,6 +158,10 @@ async function afterLogin(user) {
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
 }
 let ROUTER_ON = false;
+/* 🔒 자동 로그아웃 — 설정 idleMin(분) 동안 아무 조작이 없으면 로그아웃 (폰을 잃어버렸을 때 대비) */
+let LAST_ACT = Date.now();
+['click', 'keydown', 'touchstart', 'scroll'].forEach(ev => window.addEventListener(ev, () => { LAST_ACT = Date.now(); }, { passive: true }));
+setInterval(() => { const m = Number(S && S.settings && S.settings.idleMin) || 0; if (m > 0 && S && S.user && Date.now() - LAST_ACT > m * 60000) { S.AUTH.signOut(); toast('🔒 ' + m + '분 동안 사용하지 않아 로그아웃했습니다 · Signed out after inactivity'); } }, 30000);
 
 async function boot() {
   shell();

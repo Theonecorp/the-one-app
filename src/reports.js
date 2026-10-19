@@ -3,8 +3,8 @@
  *    아이템별 · 손님별 · 세일즈맨별로 묶어 보여 주고, CSV 로 내려받거나 인쇄
  *  자료: invoices (st != 'x', lines 포함) · entries · cod (수금, void 아닌 것)
  * ============================================================ */
-import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, Router, sel, sum, sortBy, groupBy, printOpen, debounce, bi, hasWords, addDays, daysBetween, localDay } from './ui.js';
-import { PERIODS, periodRange, addMonths, monthEnd } from './fulfill.js';
+import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, Router, sel, sum, sortBy, groupBy, printOpen, debounce, bi, hasWords, addDays, daysBetween, localDay, pickDates } from './ui.js';
+import { PERIODS, periodRange, addMonths, monthEnd, quickRanges } from './fulfill.js';
 import { invTypes, lineTotal, company, docHead } from './invoicing.js';
 import { catalog, loadCatalog, cleanName } from './catalog.js';
 
@@ -29,13 +29,7 @@ async function page() {
   $('rQ').oninput = debounce(() => { R.q = $('rQ').value.trim(); paint(); }, 300);
   const shift = dir => { if (R.p === 'month' || R.p === 'lastm' || (R.p === 'custom' && from.endsWith('-01') && to === monthEnd(from))) { const f = addMonths(from, dir); R.from = f; R.to = monthEnd(f); } else { R.from = addDays(from, dir * days); R.to = addDays(to, dir * days); } R.p = 'custom'; D = null; page(); };
   $('rPrev').onclick = () => shift(-1); $('rNext').onclick = () => shift(1);
-  $('rCal').onclick = () => {
-    openModal('<h2>📅 ' + bi('기간 고르기', 'Pick a period') + '</h2><div class="chips">' + PERIODS.filter(c => c[0] !== 'custom').map(c => '<button data-rpm="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
-      '<div class="two" style="margin-top:8px"><div class="fg"><label>' + bi('부터', 'From') + '</label><input type="date" id="rFrom" value="' + esc(from) + '"></div><div class="fg"><label>' + bi('까지', 'To') + '</label><input type="date" id="rTo" value="' + esc(to) + '"></div></div>' +
-      '<div class="btns"><button class="b-ghost" id="rcX">취소</button><button class="b-blue" id="rcOk">보기</button></div>');
-    document.querySelectorAll('[data-rpm]').forEach(b => b.onclick = () => { closeModal(); R.p = b.dataset.rpm; D = null; page(); });
-    $('rcX').onclick = closeModal; $('rcOk').onclick = () => { const f = $('rFrom').value, t = $('rTo').value; if (!f || !t || f > t) return toast('날짜를 확인하세요', 'bad'); closeModal(); R.p = 'custom'; R.from = f; R.to = t; D = null; page(); };
-  };
+  $('rCal').onclick = async () => { const r = await pickDates({ from, to, quick: quickRanges() }); if (!r) return; R.p = 'custom'; R.from = r[0]; R.to = r[1]; D = null; page(); };
   await load(from, to);
   paint();
 }

@@ -102,11 +102,12 @@ async function settings() {
     '<div class="fg"><label>EXCHANGE 가게 키워드 (쉼표로)</label><input id="stKw" value="' + esc(s.specialKeywords || 'BEAUTY EXCHANGE, BEAUTY EXCAHNGE') + '"></div>' +
     '<div class="fg"><label>EXCHANGE 칸 제목</label><input id="stTitle" value="' + esc(s.specialTitle || 'BEAUTY EXCHANGE') + '"></div>' +
     '<div class="fg"><label>담당자 알림 이메일 (옵션)</label><input id="stMail" value="' + esc(s.reportTo || 'check@theonefl.com') + '"></div>' +
+    '<div class="fg"><label>🔒 자동 로그아웃 (분 · 아무 조작 없이 이 시간이 지나면 로그아웃, 0 = 끔)</label><input id="stIdle" inputmode="numeric" value="' + esc(s.idleMin == null ? '' : s.idleMin) + '" placeholder="예: 480 (8시간)"></div>' +
     '<h2 style="margin-top:14px">인보이스에 찍히는 회사 정보</h2>' + (() => { const c = company(S); return '<div class="fg"><label>회사 이름</label><input id="coName" value="' + esc(c.name) + '"></div><div class="two"><div class="fg"><label>주소 1</label><input id="coA1" value="' + esc(c.addr1) + '"></div><div class="fg"><label>주소 2 (City, ST Zip)</label><input id="coA2" value="' + esc(c.addr2) + '"></div></div><div class="two"><div class="fg"><label>전화</label><input id="coTel" value="' + esc(c.tel) + '"></div><div class="fg"><label>하단 인사말</label><input id="coThx" value="' + esc(c.thanks) + '"></div></div>'; })() +
     '<div class="muted">AR 기준일: ' + esc(s.arAsOf || '없음') + ' · 거래처 버전: ' + esc(s.accountsVer || '0') + '</div>' +
     '<div class="btns"><button class="b-blue" id="stSave">저장</button></div></div>' + invTypeCard();
   bindInvTypes();
-  $('stSave').onclick = async () => { const doc = Object.assign({}, s, { discLimit: num($('stDisc').value) / 100, specialKeywords: $('stKw').value.trim(), specialTitle: $('stTitle').value.trim(), reportTo: $('stMail').value.trim(), co: { name: $('coName').value.trim(), addr1: $('coA1').value.trim(), addr2: $('coA2').value.trim(), tel: $('coTel').value.trim(), thanks: $('coThx').value.trim() } }); busy(true); try { await S.DB.set('settings', 'app', doc); S.settings = doc; toast('저장'); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  $('stSave').onclick = async () => { const doc = Object.assign({}, s, { discLimit: num($('stDisc').value) / 100, specialKeywords: $('stKw').value.trim(), specialTitle: $('stTitle').value.trim(), reportTo: $('stMail').value.trim(), idleMin: Math.max(0, Math.floor(num($('stIdle').value))), co: { name: $('coName').value.trim(), addr1: $('coA1').value.trim(), addr2: $('coA2').value.trim(), tel: $('coTel').value.trim(), thanks: $('coThx').value.trim() } }); busy(true); try { await S.DB.set('settings', 'app', doc); S.settings = doc; toast('저장'); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ============================================================

@@ -226,7 +226,7 @@ function storeForm(a) {
 }
 export async function bumpAccountsVer() {
   const ver = String(Date.now());
-  await S.DB.set('settings', 'app', Object.assign({}, S.settings, { accountsVer: ver }));
+  await S.DB.update('settings', 'app', { accountsVer: ver });
   S.settings.accountsVer = ver; dropAccountCache();
   const { loadAccounts } = await import('./accounts.js'); S.accounts = await loadAccounts(S);
 }
@@ -310,7 +310,7 @@ async function arBuild(rows, asOf) {
     Object.keys(bySm).forEach(code => { if (code !== '_none' && !S.smByCode[code]) ops.push({ op: 'set', col: 'ar', id: code, data: { sm: code, asOf, total: sum(bySm[code], s => s.total), n: bySm[code].length, stores: bySm[code] } }); });
     ops.push({ op: 'set', col: 'ar', id: '_all', data: { sm: '_all', asOf, total: sum(stores, s => s.total), n: stores.length, stores: stores.map(s => Object.assign({}, s)), unmatched, noSmAmt: sum(bySm['_none'] || [], s => s.total), uploadedAt: new Date().toISOString(), by: S.user.email } });
     await S.DB.batch(ops);
-    await S.DB.set('settings', 'app', Object.assign({}, S.settings, { arAsOf: asOf })); S.settings.arAsOf = asOf;
+    await S.DB.update('settings', 'app', { arAsOf: asOf }); S.settings.arAsOf = asOf;
     $('arOut').innerHTML = '<div class="alert a-grn">저장했습니다 — 기준일 ' + esc(asOf) + ' · 가게 ' + stores.length + '곳 · ' + money(sum(stores, s => s.total)) + '<br>담당 없는 금액 ' + money(sum(bySm['_none'] || [], s => s.total)) + ' · 거래처 목록에 없는 가게 ' + unmatched.length + '곳</div>' + (unmatched.length ? '<div class="muted">' + unmatched.slice(0, 30).map(esc).join('<br>') + (unmatched.length > 30 ? '<br>…' : '') + '</div>' : '');
     toast('AR 저장 완료', 'good');
   } catch (e) { $('arOut').innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }

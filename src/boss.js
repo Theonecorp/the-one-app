@@ -7,12 +7,12 @@
  *    찾기: 가게 → 12개월 · 수금 내역 (현장 · COD · ACH · 카드)
  *  자료: entries · cod · ar/_all · settlements · deductions · salesmen(rates · cashKeep) · bonusAcc · pay1099 · payees
  * ============================================================ */
-import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords } from './ui.js';
+import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords, pickDates } from './ui.js';
 import { newId } from './db.js';
 import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
 import { settlementHtml } from './sales.js';
 import { searchAccounts } from './accounts.js';
-import { PERIODS, periodRange, addMonths, monthEnd } from './fulfill.js';
+import { PERIODS, periodRange, addMonths, monthEnd, quickRanges } from './fulfill.js';
 import { invTypes } from './invoicing.js';
 
 let S = null, C = { ents: null, cod: null, at: 0 };
@@ -111,8 +111,7 @@ async function pageNow() {
   document.querySelectorAll('[data-np]').forEach(b => b.onclick = () => { NP.p = b.dataset.np; pageNow(); });
   const shift = dir => { if (NP.p === 'month' || NP.p === 'lastm' || (NP.p === 'custom' && from.endsWith('-01') && to === monthEnd(from))) { const f = addMonths(from, dir); NP.from = f; NP.to = monthEnd(f); } else { NP.from = addDays(from, dir * days); NP.to = addDays(to, dir * days); } NP.p = 'custom'; pageNow(); };
   $('npPrev').onclick = () => shift(-1); $('npNext').onclick = () => shift(1);
-  $('npCal').onclick = () => { openModal('<h2>📅 기간 고르기</h2><div class="chips">' + PERIODS.filter(c => c[0] !== 'custom').map(c => '<button data-npm="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div><div class="two" style="margin-top:8px"><div class="fg"><label>부터</label><input type="date" id="npF" value="' + esc(from) + '"></div><div class="fg"><label>까지</label><input type="date" id="npT" value="' + esc(to) + '"></div></div><div class="btns"><button class="b-ghost" id="npX">취소</button><button class="b-blue" id="npOk">보기</button></div>');
-    document.querySelectorAll('[data-npm]').forEach(b => b.onclick = () => { closeModal(); NP.p = b.dataset.npm; pageNow(); }); $('npX').onclick = closeModal; $('npOk').onclick = () => { const f = $('npF').value, tt = $('npT').value; if (!f || !tt || f > tt) return toast('날짜를 확인하세요', 'bad'); closeModal(); NP.p = 'custom'; NP.from = f; NP.to = tt; pageNow(); }; };
+  $('npCal').onclick = async () => { const r = await pickDates({ from, to, quick: quickRanges() }); if (!r) return; NP.p = 'custom'; NP.from = r[0]; NP.to = r[1]; pageNow(); };
   document.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { const g = el.dataset.go; if (g === 'orders') Router.go('order'); else if (g === 'payc') Router.go('find'); else Router.go(g); });
   document.querySelectorAll('[data-smv]').forEach(el => el.onclick = () => smDetail(el.dataset.smv));
   document.querySelectorAll('[data-up]').forEach(el => el.onclick = () => { const d = up.find(x => x.d === el.dataset.up); openModal('<h2>' + dlabel(d.d) + ' 입금 예정 · ' + money(d.amt) + '</h2><table>' + d.items.map(i => '<tr><td class="nm">' + esc(i.store) + '</td><td class="muted" style="font-size:12px">' + esc(i.sm) + ' #' + esc(i.check) + '</td><td class="r"><b>' + money(i.amt) + '</b></td></tr>').join('') + '</table><div class="btns"><button class="b-ghost" id="mX">닫기</button></div>'); $('mX').onclick = closeModal; });

@@ -49,6 +49,35 @@ export function confirmBox(msg, okLabel) {
     $('cfOk').onclick = () => { closeModal(); res(true); };
   });
 }
+/* 📅 달력 기간 선택 — 날짜 하나를 누르면 시작, 또 하나 누르면 끝 (같은 날 두 번 = 하루). quick: [[label, from, to], ...]
+ *  pickDates({ from, to, quick }) → Promise<[from, to] | null> */
+export function pickDates(o) {
+  o = o || {};
+  return new Promise(res => {
+    const t = today(); let from = o.from || t, to = o.to || from, view = (o.to || t).substring(0, 7), stage = 0;
+    const WD = ['월', '화', '수', '목', '금', '토', '일'];
+    const paint = () => {
+      const y = Number(view.substring(0, 4)), m = Number(view.substring(5, 7)), first = new Date(y, m - 1, 1), nd = new Date(y, m, 0).getDate(), off = (first.getDay() + 6) % 7;
+      let cells = ''; for (let i = 0; i < off; i++) cells += '<i></i>';
+      for (let d = 1; d <= nd; d++) { const ds = view + '-' + String(d).padStart(2, '0'); const inR = ds >= from && ds <= to, edge = ds === from || ds === to; cells += '<b class="' + (inR ? 'in' : '') + (edge ? ' edge' : '') + (ds === t ? ' tdy' : '') + (ds > t ? ' fut' : '') + '" data-cd="' + ds + '">' + d + '</b>'; }
+      const nextM = addDays(view + '-28', 7).substring(0, 7), prevM = addDays(view + '-01', -1).substring(0, 7);
+      $('mbox').innerHTML = '<h2>📅 기간 고르기 <span class="en">Pick dates</span></h2>' +
+        (o.quick && o.quick.length ? '<div class="chips">' + o.quick.map((q, i) => '<button data-cq="' + i + '">' + q[0] + '</button>').join('') + '</div>' : '') +
+        '<div class="cal"><div class="calhd"><button data-cm="' + prevM + '">‹</button><b>' + y + '년 ' + m + '월</b><button data-cm="' + nextM + '">›</button></div><div class="calwd">' + WD.map(w => '<span>' + w + '</span>').join('') + '</div><div class="calgrid">' + cells + '</div></div>' +
+        '<div class="sumbox" style="display:flex;justify-content:space-between;align-items:center"><span>' + md(from) + ' ~ ' + md(to) + ' <span class="muted">(' + (daysBetween(from, to) + 1) + '일)</span></span><span class="muted">' + (stage === 0 ? '시작 날짜를 누르세요' : '끝 날짜를 누르세요') + '</span></div>' +
+        '<div class="two"><input type="date" id="cdF" value="' + from + '"><input type="date" id="cdT" value="' + to + '"></div>' +
+        '<div class="btns"><button class="b-ghost" id="cdX">취소</button><button class="b-blue" id="cdOk">보기</button></div>';
+      document.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { view = b.dataset.cm; paint(); });
+      document.querySelectorAll('[data-cd]').forEach(b => b.onclick = () => { const d = b.dataset.cd; if (stage === 0) { from = d; to = d; stage = 1; } else { if (d < from) { to = from; from = d; } else to = d; stage = 0; } paint(); });
+      document.querySelectorAll('[data-cq]').forEach(b => b.onclick = () => { const q = o.quick[+b.dataset.cq]; from = q[1]; to = q[2]; view = to.substring(0, 7); stage = 0; paint(); });
+      $('cdF').onchange = () => { if ($('cdF').value) { from = $('cdF').value; if (to < from) to = from; view = from.substring(0, 7); paint(); } };
+      $('cdT').onchange = () => { if ($('cdT').value) { to = $('cdT').value; if (to < from) from = to; paint(); } };
+      $('cdX').onclick = () => { closeModal(); res(null); };
+      $('cdOk').onclick = () => { closeModal(); res([from, to]); };
+    };
+    openModal(''); paint();
+  });
+}
 export function inputDate(id, v, extra) { return '<input type="date" id="' + id + '" value="' + esc(v || today()) + '" ' + (extra || '') + '>'; }
 export function sel(id, opts, v, extra) {
   return '<select id="' + id + '" ' + (extra || '') + '>' + opts.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return '<option value="' + esc(val) + '" ' + (val === v ? 'selected' : '') + '>' + esc(lab) + '</option>'; }).join('') + '</select>';
