@@ -350,6 +350,7 @@ function viewOrder(o, lines, local) {
   const B = [];
   if (o.acct) B.push('<button class="b-ghost" id="oStoreI">📋 가게 기록</button>');
   if (canEdit(o)) B.push('<button class="b-ghost" id="oEdit">✏️ 수정</button>');
+  if (!local && canEdit(o)) B.push('<button class="b-ghost" id="oStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>');
   if (local) B.push('<button class="b-blue" id="oSyncOne">📤 지금 보내기</button>');
   if (local && readOut()[o.id] && readOut()[o.id].err) B.push('<button class="b-ghost" id="oDropLocal" style="color:#991b1b">🗑 이 기록 지우기</button>');
   else if (o.st === 'draft' && o.sm === mySm()) B.push('<button class="b-blue" id="oSend">📤 회사로 보내기</button>');
@@ -366,6 +367,7 @@ function viewOrder(o, lines, local) {
   paint(); $('oFind').oninput = debounce(paint, 150);
   $('oBack').onclick = () => Router.go('order');
   if ($('oEdit')) $('oEdit').onclick = () => openEditor(o, null, lines);
+  if ($('oStoreChg')) $('oStoreChg').onclick = () => Fulfill.changeStore(o, () => goOrder(o.id));
   if ($('oCfOk')) $('oCfOk').onclick = async () => { busy(true); try { await S.DB.update('orders', o.id, { cfOk: true, cfAt: new Date().toISOString(), cfBy: S.user.email }); toast('✅ 확인했습니다 — 사무실에 표시됩니다', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('oStoreI')) $('oStoreI').onclick = () => Store.storeSheet(o.acct);
   if ($('oDropLocal')) $('oDropLocal').onclick = async () => { if (!(await confirmBox('회사로 못 간 이 주문를 폰에서 지울까요? (' + readOut()[o.id].err + ')', '지우기'))) return; const b = readOut(); delete b[o.id]; writeOut(b); Router.go('order'); };

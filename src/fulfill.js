@@ -12,7 +12,7 @@ import { loadCatalog, catalog, exactItem } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
-import { bumpAccountsVer } from './mgr.js';
+import { bumpAccountsVer, storeForm } from './mgr.js';
 import { storeSheet } from './store.js';
 import { searchAccounts } from './accounts.js';
 
@@ -47,7 +47,8 @@ export function manage(o, lines) {
   const pd = priceDiff(lines, 'q');
   let h = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">' + esc(o.no) + ' ' + stTag(o.st) + '</h2>' +
     '<div style="font-size:18px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div>' +
-    '<div class="muted">' + esc([o.acct, acc ? [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : ''].filter(Boolean).join(' · ')) + (acc && acc.terms ? ' · ' + esc(acc.terms) : '') + '</div>' +
+    '<div class="muted">' + esc([o.acct, o.shipTo ? [o.shipTo.addr, o.shipTo.city, o.shipTo.state].filter(Boolean).join(', ') + ' (이 주문만)' : acc ? [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : ''].filter(Boolean).join(' · ')) + (acc && acc.terms ? ' · ' + esc(acc.terms) : '') + '</div>' +
+    (o.storeChg && o.storeChg.length ? '<div class="muted" style="font-size:12px">🏬 가게 변경 ' + o.storeChg.length + '번 · 마지막: ' + esc(o.storeChg[o.storeChg.length - 1].from.store) + ' → ' + esc(o.storeChg[o.storeChg.length - 1].to.store) + ' (' + esc(String(o.storeChg[o.storeChg.length - 1].by).split('@')[0]) + ')</div>' : '') +
     '<div class="muted">' + esc(o.sm) + ' · ' + esc(o.d) + (o.sentAt ? ' · 들어옴 ' + esc(o.sentAt.substring(5, 16).replace('T', ' ')) : '') + (o.pickAt ? ' · 픽킹 ' + esc(o.pickAt.substring(5, 16).replace('T', ' ')) + (o.pickerName ? ' 👷 ' + esc(o.pickerName) : '') : '') + (o.pickDoneAt ? ' · 픽킹 완료 ' + esc(o.pickDoneAt.substring(5, 16).replace('T', ' ')) : '') + (o.shipAt ? ' · 출고 ' + esc(o.shipAt.substring(5, 16).replace('T', ' ')) + (o.track ? ' 🚚 ' + esc(o.track) : '') : '') + '</div>' + cfTag(o) + '</div>' +
     '<button class="b-ghost b-sm" id="mBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     (acc && acc.note ? '<div class="alert a-blu">🏬 ' + esc(acc.note) + '</div>' : '') +
@@ -73,6 +74,7 @@ export function manage(o, lines) {
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
     (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 ' + bi('가게 기록', 'Store') + '</button>' : '') +
+    (o.st !== 'x' && J !== 'pick' ? '<button class="b-ghost b-sm" id="mStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>' : '') +
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
     (o.st === 'pick' || o.st === 'ok' ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('접수로 되돌리기', 'Back to received') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('담당 바꾸기', 'Reassign') + '</button>' : '') +
     (o.st === 'picked' ? '<button class="b-ghost b-sm" id="mRepick">↩️ ' + bi('다시 픽킹으로', 'Back to picking') + '</button>' : '') +
@@ -190,11 +192,91 @@ export function manage(o, lines) {
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 주문로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mStoreI')) $('mStoreI').onclick = () => storeSheet(o.acct);
+  if ($('mStoreChg')) $('mStoreChg').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 가게를 바꿀까요? (픽킹 입력은 사라집니다)')) return; changeStore(o, () => goOrder(o.id)); };
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);
   if ($('mCancel')) $('mCancel').onclick = async () => { if (!(await confirmBox('이 주문를 취소할까요?', '주문 취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'x', updatedAt: new Date().toISOString(), cancelBy: S.user.email }); toast('취소했습니다'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mInvPrint')) $('mInvPrint').onclick = async () => { busy(true); try { const invs = []; for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (x) invs.push(x); } if (invs.length) await printInvoices(invs, acctOf(o.acct)); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mInv')) $('mInv').onclick = () => confirmInvoice(o, lines);
+}
+
+/* ============================================================
+ *  🏬 가게 바꾸기 — 주문을 보낸 뒤 · 픽킹 중 · 인보이스 발행 뒤에도
+ *    ① 다른 거래처(계정)로 옮기기  ② 이 주문 · 인보이스에 찍힐 이름 · 주소만 고치기(거래처 기록은 그대로)
+ *    ③ 거래처 기록 자체 고치기(모든 주문에 적용 — 거래처 화면)
+ *  바꾸기 전에 꼭 "전 → 후" 확인 팝업. 주문 · 주문 줄 · 인보이스 · 백오더를 함께 바꾸고 변경 기록(storeChg)을 남김
+ *  세일즈맨: 자기 주문이 저장 · 접수 상태일 때만 ① (담당은 그대로)
+ * ============================================================ */
+export function changeStore(o, done) {
+  const staff = S.role !== 'salesman';
+  const cur = acctOf(o.acct), invN = (o.invs || []).length;
+  const base = o.shipTo || (cur ? { store: o.store, addr: cur.addr || '', city: cur.city || '', state: cur.state || '', zip: cur.zip || '' } : { store: o.store, addr: '', city: '', state: '', zip: '' });
+  let tgt = null, mode = 'acct';
+  const curTxt = '<b>' + esc(o.store) + '</b> <span class="muted">' + esc(o.acct || '신규') + ' · ' + esc(o.sm) + '</span>' + (cur || o.shipTo ? '<div class="muted">' + esc([base.addr, base.city, base.state, base.zip].filter(Boolean).join(', ')) + '</div>' : '');
+  openModal('<h2>🏬 ' + bi('가게 바꾸기', 'Change store') + ' — ' + esc(o.no) + '</h2><div class="sumbox">지금 · now: ' + curTxt + '</div>' +
+    (invN ? '<div class="alert a-amb">🧾 인보이스 ' + invN + '장(' + esc(o.invs.join(', ')) + ')도 같이 바뀝니다.</div>' : '') +
+    (staff ? '<div class="seg" style="margin-top:8px"><button class="on" data-cm="acct">🔁 ' + bi('다른 거래처로', 'Other account') + '</button><button data-cm="name">✏️ ' + bi('이름 · 주소만', 'Name · address') + '</button></div>' : '') +
+    '<div id="csBody"></div><div class="btns"><button class="b-ghost" id="csX">취소</button><button class="b-blue" id="csOk" disabled>바꾸기…</button></div>');
+  const body = () => {
+    if (mode === 'acct') {
+      $('csBody').innerHTML = '<div class="fg" style="margin-top:8px"><label>' + bi('새 거래처 찾기', 'Find account') + '</label><input id="csQ" placeholder="가게 이름 · 계정코드 · 도시 · 전화" autocomplete="off"></div><div id="csHits"></div><div id="csSel"></div>' +
+        (staff ? '<div class="hint">거래처 기록 자체(주소 · 전화 · 담당)를 고치려면: <a href="#" id="csEditAcct">🏬 이 거래처 정보 고치기</a> (이 가게의 모든 주문에 적용)</div>' : '');
+      const hits = () => { const q = $('csQ').value; const L = searchAccounts(S.accounts, q, 8).filter(a => a.acct !== o.acct); $('csHits').innerHTML = L.map(a => '<div class="pr tap" data-cs="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + ' · ' + esc(a.sm || '—') + '</small></div></div>').join('') || (q ? '<div class="none">없음</div>' : '');
+        $('csHits').querySelectorAll('[data-cs]').forEach(el => el.onclick = () => { tgt = acctOf(el.dataset.cs); $('csHits').innerHTML = ''; $('csQ').value = '';
+          const smDiff = staff && tgt.sm && String(tgt.sm).toUpperCase() !== String(o.sm).toUpperCase();
+          $('csSel').innerHTML = '<div class="sumbox">→ 새 거래처: <b>' + esc(tgt.store) + '</b> <span class="muted">' + esc(tgt.acct) + ' · 담당 ' + esc(tgt.sm || '—') + '</span><div class="muted">' + esc([tgt.addr, tgt.city, tgt.state, tgt.zip].filter(Boolean).join(', ')) + '</div></div>' +
+            (smDiff ? '<label class="pick" id="csSm" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>담당 세일즈맨도 ' + esc(tgt.sm) + ' 로 바꾸기</b><small>끄면 이 주문은 ' + esc(o.sm) + ' 주문으로 남습니다 (커미션 · 매출 집계 기준)</small></span></label>' : '');
+          if ($('csSm')) $('csSm').onclick = () => $('csSm').classList.toggle('on');
+          $('csOk').disabled = false; }); };
+      $('csQ').oninput = debounce(hits, 120); setTimeout(() => { if ($('csQ')) $('csQ').focus(); }, 50);
+      if ($('csEditAcct')) $('csEditAcct').onclick = e => { e.preventDefault(); if (!cur) return toast('계정코드가 없는 주문입니다', 'bad'); closeModal(); storeForm(cur); };
+    } else {
+      const f = (id, lab, v) => '<div class="fg"><label>' + lab + '</label><input id="' + id + '" value="' + esc(v || '') + '"></div>';
+      $('csBody').innerHTML = '<div class="muted" style="margin-top:8px">이 주문과 인보이스에 찍히는 이름 · 주소만 바뀝니다. 거래처 기록과 다른 주문은 그대로입니다.</div>' + f('csN', '가게 이름 · Store name', base.store) + f('csA', '주소 · Address', base.addr) + '<div class="two">' + f('csC', 'City', base.city) + f('csS', 'State', base.state) + '</div>' + f('csZ', 'ZIP', base.zip) +
+        (o.shipTo ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="csReset">↩️ 거래처 기록대로 되돌리기</button></div>' : '');
+      $('csOk').disabled = false;
+      if ($('csReset')) $('csReset').onclick = () => apply({ reset: true });
+    }
+  };
+  document.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { mode = b.dataset.cm; tgt = null; $('csOk').disabled = true; document.querySelectorAll('[data-cm]').forEach(x => x.classList.toggle('on', x === b)); body(); });
+  $('csX').onclick = closeModal;
+  const apply = async (opt) => {
+    opt = opt || {};
+    let patch, after;
+    if (opt.reset) { patch = { shipTo: null, store: cur ? cur.store : o.store }; after = (cur ? cur.store : o.store) + ' (거래처 기록대로)'; }
+    else if (mode === 'acct') {
+      if (!tgt) return toast('새 거래처를 고르세요', 'bad');
+      const smTo = $('csSm') && $('csSm').classList.contains('on') ? String(tgt.sm).toUpperCase() : o.sm;
+      patch = { acct: tgt.acct, store: tgt.store, shipTo: null, sm: smTo };
+      after = tgt.store + ' (' + tgt.acct + ')' + (smTo !== o.sm ? ' · 담당 ' + o.sm + ' → ' + smTo : '');
+    } else {
+      const v = { store: $('csN').value.trim(), addr: $('csA').value.trim(), city: $('csC').value.trim(), state: $('csS').value.trim().toUpperCase(), zip: $('csZ').value.trim() };
+      if (!v.store) return toast('가게 이름을 넣어 주세요', 'bad');
+      patch = { store: v.store, shipTo: v };
+      after = v.store + ' · ' + [v.addr, v.city, v.state, v.zip].filter(Boolean).join(', ') + ' (이 주문만)';
+    }
+    if (!(await confirmBox('가게를 바꿀까요? / Change the store?\n\n전 · before: ' + o.store + ' (' + (o.acct || '신규') + ')\n후 · after: ' + after + (invN ? '\n\n🧾 인보이스 ' + invN + '장도 같이 바뀝니다: ' + o.invs.join(', ') : '') + (mode === 'acct' && !opt.reset ? '\n할인율은 이 주문에 넣은 그대로 둡니다.' : ''), '바꾸기'))) return;
+    closeModal(); busy(true);
+    try {
+      const now = new Date().toISOString(), smChg = patch.sm && patch.sm !== o.sm;
+      const hist = (o.storeChg || []).concat([{ at: now, by: S.user.email, from: { acct: o.acct || '', store: o.store, sm: o.sm }, to: { acct: patch.acct || o.acct || '', store: patch.store, sm: patch.sm || o.sm }, kind: opt.reset ? 'reset' : mode }]);
+      const op = Object.assign({}, patch, { storeChg: hist, updatedAt: now });
+      const ops = [{ op: 'update', col: 'orders', id: o.id, data: op }];
+      if (smChg) ops.push({ op: 'update', col: 'orderLines', id: o.id, data: { sm: patch.sm } });
+      const invs = [];
+      if (staff) {
+        for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (!x) continue; invs.push(x); const ip = { store: patch.store, shipTo: patch.shipTo === undefined ? (x.shipTo || null) : patch.shipTo, updatedAt: now }; if (patch.acct) ip.acct = patch.acct; if (smChg) ip.sm = patch.sm; ops.push({ op: 'update', col: 'invoices', id: n, data: ip }); }
+        if (o.bo) { const b = await S.DB.get('backorders', o.id).catch(() => null); if (b) ops.push({ op: 'update', col: 'backorders', id: o.id, data: Object.assign({ store: patch.store }, patch.acct ? { acct: patch.acct } : {}, smChg ? { sm: patch.sm } : {}) }); }
+      }
+      await S.DB.batch(ops);
+      if (invs.length) { dropInvCache(); if (smChg) { await bumpSalesM(S, invs, -1); await bumpSalesM(S, invs.map(x => Object.assign({}, x, { sm: patch.sm })), 1); } }
+      toast('🏬 바꿨습니다 → ' + patch.store, 'good');
+      if (done) done();
+    } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+  $('csOk').onclick = () => apply();
+  body();
 }
 
 async function printPicking(o, lines) {
@@ -205,7 +287,7 @@ export function pickingHtml(o, lines) {
   const acc = acctOf(o.acct);
   const rows = sortBy(lines, l => l.c);
   return ('<div class="iv" style="min-height:0">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
-    '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (acc ? ' · ' + esc([acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ')) : '') +
+    '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
     '<br>Rep. ' + esc(o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + '</div></div>' +
     '<table><tr><th>#</th><th>CODE</th><th>DESCRIPTION</th><th>TYPE</th><th class="r">ORDER</th><th class="r">PICKED</th><th>NOTE</th></tr>' +
     rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>' +
@@ -244,7 +326,7 @@ async function confirmInvoice(o, lines) {
         const t = types.find(x => x.c === g.t) || { c: g.t, start: 1, pad: 5 };
         const no = await nextInvoiceNo(S, t);
         const C = catalog();
-        const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, sm: o.sm, d, ym: ym(d), lines: g.lines.map(l => { const it = C && C.byCode[l.c]; return Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, g: it ? (it.l1 || it.g || '') : '' }, l.kit ? { kit: l.kit } : {}); }),
+        const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, shipTo: o.shipTo || null, sm: o.sm, d, ym: ym(d), lines: g.lines.map(l => { const it = C && C.byCode[l.c]; return Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, g: it ? (it.l1 || it.g || '') : '' }, l.kit ? { kit: l.kit } : {}); }),
           qty: g.qty, sub: g.sub, list: g.list, disc: g.disc, total: g.total, bal: g.total, terms: (acc && acc.terms) || '', st: 'open', memo, createdBy: S.user.email, createdAt: now };
         invs.push(inv); ops.push({ op: 'set', col: 'invoices', id: no, data: inv });
       }
