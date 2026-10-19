@@ -313,6 +313,8 @@ export async function assignPicker(orders, done) {
   };
 }
 export const PERIODS = [['today', '오늘', 'Today'], ['yday', '어제', 'Yesterday'], ['week', '이번 주', 'This week'], ['lastw', '지난 주', 'Last week'], ['month', '이번 달', 'This month'], ['lastm', '지난 달', 'Last month'], ['quarter', '이번 분기', 'Quarter'], ['year', '올해', 'This year'], ['lasty', '작년', 'Last year'], ['custom', '기간 직접', 'Custom']];
+/** 달력의 빠른 선택 목록 */
+export function quickRanges() { return PERIODS.filter(c => c[0] !== 'custom').map(c => { const r = periodRange(c[0]); return [c[1], r[0], r[1]]; }); }
 export function periodRange(p, from, to) {
   const t = today(), y = Number(t.substring(0, 4)), m = Number(t.substring(5, 7));
   const mon = (yy, mm) => yy + '-' + String(mm).padStart(2, '0'), wd = (new Date(t + 'T12:00:00').getDay() + 6) % 7;   // 월요일 시작

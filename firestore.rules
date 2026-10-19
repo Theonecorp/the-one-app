@@ -20,9 +20,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     // ---------- 기준 자료 ----------
-    match /salesmen/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /salesmen/{id} { allow read: if registered(); allow write: if isAdmin(); }   // 요율 · 캐쉬 보관은 루크만
     match /accounts/{id} { allow read: if registered(); allow write: if isStaff(); }
-    match /settings/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /settings/{id} {
+      allow read: if registered();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountsVer', 'arAsOf', 'updatedAt']));   // 담당자는 버전 · AR 기준일만
+    }
 
     // ---------- 현장 수금 ----------
     match /entries/{id} {

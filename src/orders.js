@@ -9,7 +9,7 @@
  *  orderLines/{id} = { sm, lines:[{c, d, q, p, lp, t, pq?, note?}] }   (lp = 목록가, t = 인보이스 종류, pq = 픽킹 수량)
  *  st: draft(임시저장) → sent(보냄) → pick(픽킹 중) → done(인보이스 확정) · x(취소)
  * ============================================================ */
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates } from './ui.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
 import { jobOf } from './main.js';
@@ -226,13 +226,7 @@ async function staffHome() {
   /* ◀ ▶ — 같은 길이만큼 앞뒤로 (달 단위 기간은 달로) */
   const shift = dir => { const isMonth = from.endsWith('-01') && (to === today() || to === Fulfill.monthEnd(from)); if (LF.hp === 'month' || LF.hp === 'lastm' || (LF.hp === 'custom' && isMonth && daysBetween(from, to) >= 27)) { const f = Fulfill.addMonths(from, dir); LF.hfrom = f; LF.hto = Fulfill.monthEnd(f); } else { LF.hfrom = addDays(from, dir * days); LF.hto = addDays(to, dir * days); } LF.hp = 'custom'; staffHome(); };
   $('hPrev').onclick = () => shift(-1); $('hNext').onclick = () => shift(1);
-  $('hCal').onclick = () => {
-    openModal('<h2>📅 ' + bi('기간 고르기', 'Pick a period') + '</h2><div class="chips">' + Fulfill.PERIODS.filter(c => c[0] !== 'custom').map(c => '<button data-hpm="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
-      '<div class="two" style="margin-top:8px"><div class="fg"><label>' + bi('부터', 'From') + '</label><input type="date" id="hFrom" value="' + esc(from) + '"></div><div class="fg"><label>' + bi('까지', 'To') + '</label><input type="date" id="hTo" value="' + esc(to) + '"></div></div>' +
-      '<div class="btns"><button class="b-ghost" id="hcX">취소</button><button class="b-blue" id="hcOk">보기</button></div>');
-    document.querySelectorAll('[data-hpm]').forEach(b => b.onclick = () => { closeModal(); LF.hp = b.dataset.hpm; staffHome(); });
-    $('hcX').onclick = closeModal; $('hcOk').onclick = () => { const f = $('hFrom').value, t = $('hTo').value; if (!f || !t || f > t) return toast('날짜를 확인하세요', 'bad'); closeModal(); LF.hp = 'custom'; LF.hfrom = f; LF.hto = t; staffHome(); };
-  };
+  $('hCal').onclick = async () => { const r = await pickDates({ from, to, quick: Fulfill.quickRanges() }); if (!r) return; LF.hp = 'custom'; LF.hfrom = r[0]; LF.hto = r[1]; staffHome(); };
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
     if (k === 'new') { if (readWip() && !confirm('작성 중인 오더가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
@@ -283,13 +277,14 @@ async function staffHome() {
 function listHead() {
   if (!isStaff()) return '<button class="b-blue" id="oNew" style="margin-bottom:12px;padding:15px">＋ ' + bi('새 오더', 'New order') + '</button>';
   const j = jobOf();
-  const per = (LF.st === 'all' || LF.st === 'done' || LF.st === 'x' || LF.st === 'shipped') ? '<div class="chips" style="margin-top:0">' + Fulfill.PERIODS.map(c => '<button class="' + ((LF.hp || 'today') === c[0] ? 'on' : '') + '" data-hp2="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' + ((LF.hp || 'today') === 'custom' ? '<div class="two" style="margin:0 0 8px"><input type="date" id="hFrom2" value="' + esc(Fulfill.periodRange('custom', LF.hfrom, LF.hto)[0]) + '"><input type="date" id="hTo2" value="' + esc(Fulfill.periodRange('custom', LF.hfrom, LF.hto)[1]) + '"></div>' : '') : '';
+  const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto);
+  const per = (LF.st === 'all' || LF.st === 'done' || LF.st === 'x' || LF.st === 'shipped') ? '<div class="chips" style="margin-top:0">' + Fulfill.PERIODS.filter(c => ['today', 'week', 'month', 'quarter', 'year'].includes(c[0])).map(c => '<button class="' + ((LF.hp || 'today') === c[0] ? 'on' : '') + '" data-hp2="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (['today', 'week', 'month', 'quarter', 'year'].includes(LF.hp || 'today') ? '' : 'on') + '" id="hCal2">📅 ' + esc(md(pr[0]) + (pr[0] !== pr[1] ? ' ~ ' + md(pr[1]) : '')) + '</button></div>' : '';
   return statusStrip() + '<div class="chips"><button data-lf="home">🏠 ' + bi('홈', 'Home') + '</button>' + chipsFor().map(c => '<button class="' + (LF.st === c[0] ? 'on' : '') + '" data-lf="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' + per +
     '<div class="two" style="margin-bottom:10px">' + sel('lfSm', [['', '세일즈맨 전체 · All salesmen']].concat(S.sms.map(s => [s.code, s.code])), LF.sm) + (j === 'pick' ? '<span></span>' : '<button class="b-blue" id="oNew">＋ ' + bi('오더 만들기', 'New order') + '</button>') + '</div>';
 }
 function bindHead() {
   document.querySelectorAll('[data-hp2]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp2; pageOrder(''); });
-  if ($('hFrom2')) { $('hFrom2').onchange = () => { LF.hfrom = $('hFrom2').value; pageOrder(''); }; $('hTo2').onchange = () => { LF.hto = $('hTo2').value; pageOrder(''); }; }
+  if ($('hCal2')) $('hCal2').onclick = async () => { const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto), r = await pickDates({ from: pr[0], to: pr[1], quick: Fulfill.quickRanges() }); if (!r) return; LF.hp = 'custom'; LF.hfrom = r[0]; LF.hto = r[1]; pageOrder(''); };
   if ($('oNew')) $('oNew').onclick = () => { if (readWip() && !confirm('작성 중인 오더가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); Router.go('order', 'new'); };
   document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') { LF.list = false; return pageOrder(''); } LF.st = b.dataset.lf; pageOrder(''); });
   if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageOrder(''); };
