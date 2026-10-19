@@ -7,7 +7,7 @@
  *  행 모양: [code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide]
  * ============================================================ */
 import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi } from './ui.js';
-import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels } from './catalog.js';
+import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf } from './catalog.js';
 import { typeOfItem, invTypes } from './invoicing.js';
 
 let S = null;
@@ -81,7 +81,7 @@ function list() {
 function row(it) {
   return '<div class="pr irow' + (it.h ? ' hid' : '') + '"><input type="checkbox" data-ic="' + esc(it.c) + '" ' + (IT.sel.has(it.c) ? 'checked' : '') + ' style="width:20px;height:20px;margin-right:8px;flex:0 0 auto">' +
     (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:8px" alt="">' : '') +
-    '<div class="ct tap" data-it="' + esc(it.c) + '"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a">🧩 세트</span>' : '') + (it.h ? ' <span class="tag t-x">🙈 숨김</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + esc(pathOf(it).filter(Boolean).map(cleanName).join(' › ') || '분류 없음') + (it.b ? ' · ' + esc(it.b) : '') + '</small></div>' +
+    '<div class="ct tap" data-it="' + esc(it.c) + '"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a">🧩 세트</span>' : '') + (it.h ? ' <span class="tag t-x">🙈 숨김</span>' : '') + (locOf(it) ? ' <span class="loc"' + (it.loc ? '' : ' style="background:#64748b" title="분류 기본 위치"') + '>📍' + esc(locOf(it)) + '</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + esc(pathOf(it).filter(Boolean).map(cleanName).join(' › ') || '분류 없음') + (it.b ? ' · ' + esc(it.b) : '') + '</small></div>' +
     '<div class="pa"><b>' + money(it.p) + '</b>' + (it.s ? '<small>SRP ' + money(it.s) + '</small>' : '') + '</div>' +
     (it.virt ? '' : '<button class="b-ghost b-sm" data-ih="' + esc(it.c) + '" data-on="' + (it.h ? '0' : '1') + '" title="' + (it.h ? '보이기' : '숨기기') + '" style="margin-left:6px">' + (it.h ? '👁' : '🙈') + '</button>') + '</div>';
 }
@@ -91,8 +91,12 @@ function bulk() {
   const n = IT.sel.size;
   bar.style.display = n ? '' : 'none';
   if (!n) return;
-  bar.innerHTML = '<b>' + n.toLocaleString() + '개 선택</b><button class="b-ghost b-sm" id="bkHide">🙈 숨기기</button><button class="b-ghost b-sm" id="bkShow">👁 보이기</button><button class="b-ghost b-sm" id="bkMove">➡️ 분류 옮기기</button>' + (isAdmin() ? '<button class="b-ghost b-sm" id="bkDel" style="color:#991b1b">🗑 삭제</button>' : '') + '<button class="b-ghost b-sm" id="bkClr">✕ 선택 해제</button>';
+  bar.innerHTML = '<b>' + n.toLocaleString() + '개 선택</b><button class="b-ghost b-sm" id="bkHide">🙈 숨기기</button><button class="b-ghost b-sm" id="bkShow">👁 보이기</button><button class="b-ghost b-sm" id="bkMove">➡️ 분류 옮기기</button><button class="b-ghost b-sm" id="bkLoc">📍 위치</button>' + (isAdmin() ? '<button class="b-ghost b-sm" id="bkDel" style="color:#991b1b">🗑 삭제</button>' : '') + '<button class="b-ghost b-sm" id="bkClr">✕ 선택 해제</button>';
   $('bkHide').onclick = () => applyHidden(Array.from(IT.sel), true);
+  $('bkLoc').onclick = () => { const codes = Array.from(IT.sel), C = catalog(), now = (C.byCode[codes[0]] || {}).loc || '';
+    openModal('<h2>📍 ' + codes.length + '개 창고 위치</h2><div class="muted">통로-선반-칸 처럼 적으세요 (예: <b>A-03-2</b>, <b>12-4</b>). 픽킹 리스트가 이 순서로 정렬됩니다. 비우면 분류 기본 위치(관리 → 🗂 분류 → 📍)를 따릅니다.</div><div class="fg" style="margin-top:8px"><input id="lcIn" value="' + esc(now) + '" autocapitalize="characters" style="text-transform:uppercase;font-size:20px;font-weight:800;text-align:center" placeholder="A-03-2"></div><div class="btns"><button class="b-ghost" id="lcX">취소</button><button class="b-blue" id="lcOk">저장</button></div>');
+    $('lcX').onclick = closeModal; setTimeout(() => $('lcIn') && $('lcIn').focus(), 50);
+    $('lcOk').onclick = async () => { const v = $('lcIn').value.trim().toUpperCase(); closeModal(); await save(rows => setLoc(rows, codes, v), n => n + '개 위치 ' + (v || '비움 (분류 기본)')); IT.sel.clear(); }; };
   $('bkShow').onclick = () => applyHidden(Array.from(IT.sel), false);
   $('bkMove').onclick = () => moveForm(Array.from(IT.sel));
   if ($('bkDel')) $('bkDel').onclick = async () => {
@@ -166,7 +170,7 @@ function form(it, newCode) {
     '<div class="two"><div class="fg"><label>도매가 <span class="en">Price</span> * $</label><input id="fP" value="' + esc(x.p === '' ? '' : x.p) + '" inputmode="decimal" style="font-weight:800;text-align:right"></div><div class="fg"><label>소비자가 <span class="en">SRP</span> $</label><input id="fS" value="' + esc(x.s || '') + '" inputmode="decimal" style="text-align:right"></div></div>' +
     '<div class="two">' + catPick('fG', '그룹 <span class="en">Group</span>', L.groups, x.g) + catPick('fL1', 'Level 1', L.l1s(x.g), x.l1) + '</div>' +
     '<div class="two">' + catPick('fL2', 'Level 2', L.l2s(x.g, x.l1), x.l2) + catPick('fL3', 'Level 3', L.l3s(x.g, x.l1, x.l2), x.l3) + '</div>' +
-    '<div class="fg"><label>사진 주소 <span class="en">Photo URL</span></label><input id="fPh" value="' + esc(x.ph || '') + '" placeholder="https://…"></div>' +
+    '<div class="two"><div class="fg"><label>📍 창고 위치 <span class="en">Location</span></label><input id="fLoc" value="' + esc(x.loc || '') + '" placeholder="' + esc(it ? (locOf(Object.assign({}, x, { loc: '' })) || 'A-03-2') : 'A-03-2') + '" autocapitalize="characters" style="text-transform:uppercase"></div><div class="fg"><label>사진 주소 <span class="en">Photo URL</span></label><input id="fPh" value="' + esc(x.ph || '') + '" placeholder="https://…"></div></div>' +
     (x.virt ? '' : '<label class="pick ' + (x.h ? '' : 'on') + '" id="fVis"><span class="ck">✓</span><span class="pm"><b>👁 세일즈맨 주문 화면에 보이기 <span class="en">Visible to salesmen</span></b><small>끄면 🙈 숨김 — 목록 · 기록엔 남고 주문 분류 · 검색에서만 빠집니다 (단종 · 재입고 지연)</small></span></label>') +
     '<div class="sumbox" id="fType"></div>' +
     '<div class="btns">' + (isNew ? '' : '<button class="b-ghost" id="fDel" style="color:#991b1b">🗑 삭제</button>') + '<button class="b-ghost" id="fX">취소</button><button class="b-blue" id="fOk">' + (isNew ? '등록' : '저장') + '</button></div>');
@@ -192,10 +196,11 @@ function form(it, newCode) {
     if (isNew && C.byCode[v.c]) return toast('이미 있는 코드입니다 — 찾아서 수정하세요', 'bad');
     if (v.b) { const dup = C.items.find(i => i.b === v.b && i.c !== v.c); if (dup && !(await confirmBox('바코드 ' + v.b + ' 는 ' + dup.c + ' 에도 있습니다. 그래도 저장할까요?', '저장'))) return; }
     if (v.ph && !/^https?:\/\//i.test(v.ph)) return toast('사진 주소는 https:// 로 시작해야 합니다', 'bad');
+    const locV = $('fLoc') ? $('fLoc').value.trim().toUpperCase() : (x.loc || '');
     closeModal();
     IT.q = v.c;
     await save((rows, cats) => {
-      const row = [v.c, v.d, v.p, v.s, v.b, v.g, v.l1, v.l2, v.l3, v.ph, vis ? 0 : 1];
+      const row = [v.c, v.d, v.p, v.s, v.b, v.g, v.l1, v.l2, v.l3, v.ph, vis ? 0 : 1, locV];
       const i = rows.findIndex(r => r[0] === v.c); if (i >= 0) rows[i] = row; else rows.push(row);
       ensureCats(rows, cats); return 1;
     }, () => (isNew ? '등록 — ' : '저장 — ') + v.c + (vis ? '' : ' (🙈 숨김)'));

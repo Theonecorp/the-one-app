@@ -8,7 +8,7 @@
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords } from './ui.js';
 import { jobOf } from './main.js';
-import { loadCatalog, catalog, exactItem } from './catalog.js';
+import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
@@ -100,6 +100,7 @@ export function manage(o, lines) {
   const paint = () => {
     const q = $('mFind').value.trim().toUpperCase();
     let rows = lines.map((l, i) => Object.assign({ _i: i }, l));
+    if (picking) rows.sort(pickSort);   // 픽킹 중에는 창고 통로 순
     if (q) rows = rows.filter(l => hasWords(l.c + ' ' + l.d, q));
     if (MF === 'bo') rows = rows.filter(l => (l.pq || 0) < l.q);
     if (MF === 'u') rows = rows.filter(l => !l.ok);
@@ -107,7 +108,8 @@ export function manage(o, lines) {
     $('mLines').innerHTML = '<table class="pk"><tr><th>코드</th><th class="r">주문</th>' + (picking ? '<th class="r">픽</th>' : '') + '<th class="r">가격</th><th class="r">금액</th></tr>' + rows.slice(0, 2500).map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001, bo = picking && l.ok && (l.pq || 0) < l.q;
       const qq = picking ? (l.pq || 0) : l.q;
-      return '<tr class="' + (bo ? 'bo' : '') + (picking && l.ok && !bo ? ' okd' : '') + '"><td><b>' + esc(l.c) + '</b> ' + (office ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
+      const loc = picking ? locOf(l.c) : '';
+      return '<tr class="' + (bo ? 'bo' : '') + (picking && l.ok && !bo ? ' okd' : '') + '"><td>' + (loc ? '<span class="loc">📍' + esc(loc) + '</span> ' : '') + '<b>' + esc(l.c) + '</b> ' + (office ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
         '<div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div>' + (l.kit ? '<div class="muted" style="font-size:11px">🧩 ' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + (picking ? ' <button class="b-ghost b-sm" data-brk="' + l._i + '" style="padding:2px 7px">세트 풀기</button>' : '') + '</div>' : '') + (picking ? '<input class="sm" data-note="' + l._i + '" value="' + esc(l.note || '') + '" placeholder="메모" style="margin-top:3px;padding:4px 7px;font-size:12px">' : (l.note ? '<div class="muted">📝 ' + esc(l.note) + '</div>' : '')) + '</td>' +
         '<td class="r"><b>' + l.q + '</b></td>' +
         (picking ? '<td class="r pkc">' + pkBtn(l) + '</td>' : '') +
@@ -285,14 +287,16 @@ async function printPicking(o, lines) {
 }
 export function pickingHtml(o, lines) {
   const acc = acctOf(o.acct);
-  const rows = sortBy(lines, l => l.c);
+  const rows = lines.slice().sort(pickSort);   // 📍 통로 · 선반 순 — 위치 없는 것은 맨 뒤 코드 순
+  let lastA = null;
+  const aisleRow = l => { const a = aisleOf(locOf(l.c)) || ''; if (a === lastA) return ''; lastA = a; return '<tr class="pkaisle"><td colspan="8">' + (a ? '📍 AISLE ' + esc(a) : '📍 위치 미지정 · NO LOCATION') + '</td></tr>'; };
   return ('<div class="iv" style="min-height:0">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
     '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
     '<br>Rep. ' + esc(o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + '</div></div>' +
-    '<table><tr><th>#</th><th>CODE</th><th>DESCRIPTION</th><th>TYPE</th><th class="r">ORDER</th><th class="r">PICKED</th><th>NOTE</th></tr>' +
-    rows.map((l, i) => '<tr><td>' + (i + 1) + '</td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>' +
-      (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
-    '<tr class="fin"><td colspan="4">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></table>' +
+    '<table><tr><th>#</th><th>LOC</th><th>CODE</th><th>DESCRIPTION</th><th>TYPE</th><th class="r">ORDER</th><th class="r">PICKED</th><th>NOTE</th></tr>' +
+    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>' +
+      (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td>' + esc(locOf(k.c)) + '</td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
+    '<tr class="fin"><td colspan="5">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></table>' +
     '<div class="sig"><div>Picked by</div><div>Checked by</div><div>Date</div></div>');
 }
 function csv(o, lines) {
