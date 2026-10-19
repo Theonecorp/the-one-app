@@ -527,13 +527,14 @@ function paintAdd() {
   const T = treeFor(S);
   let node = T; O.path.forEach(p => { node = (node && node.map[p]) || null; });
   if (!node) { O.path = []; node = T; }
-  const crumbs = '<div class="chips crumbs"><button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">' + bi('전체', 'All') + '</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
+  const crumbs = '<div class="chips crumbs">' + (O.path.length ? '<button class="up" data-cp="' + (O.path.length - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">' + bi('전체', 'All') + '</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
   const popN = popularItems(O.path, catStart(S), INFO && INFO.hist, 300).length;
   const popTile = popN ? '<button class="pop' + (O.pop ? ' on' : '') + '" data-pop="1"><b>✨ 자주 나가는 <span class="en">Popular</span></b><span>' + (INFO && Object.keys(INFO.hist).length ? '이 가게 최근 구매 + 많이 나가는 순 · recent + best sellers' : '많이 나가는 순 · best sellers') + ' · ' + popN + '</span></button>' : '';
   const kids = node.kids.length || popTile ? '<div class="cats">' + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
-  $('eBody').innerHTML = '<div class="card"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
-    '<button class="b-ghost b-sm" id="eVM" title="보기 바꾸기" style="font-size:18px">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost b-sm" id="eShow" title="손님 보기" style="font-size:18px">🖼</button></div>' +
-    crumbs + kids + '<div id="eRes"></div></div>';
+  /* 검색 + 분류 경로는 카드 밖 sticky — 아래로 아무리 내려가도 맨 위에 붙어 있어 바로 상위로 돌아감 */
+  $('eBody').innerHTML = '<div class="ordtop"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
+    '<button class="b-ghost ib" id="eVM" title="보기 바꾸기">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost ib" id="eShow" title="손님 보기">🖼</button></div>' + crumbs + '</div>' +
+    '<div class="card">' + kids + '<div id="eRes"></div></div>';
   const sb = $('eQuick'); if (sb) { sb.innerHTML = quickBar(); bindQuick(sb); }
   const q = $('eQ1');
   const run = () => { if (!O || !$('eQ1')) return; O.q = q.value; PAGE = 60; paintResults(); };

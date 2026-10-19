@@ -196,11 +196,42 @@ function codForm(r) {
  *  ④ 거래처
  * ============================================================ */
 let STQ = '';
+let STM = { mode: '', sm: '', state: '', city: '' };
 async function pageStores() {
-  const hits = STQ ? searchAccounts(S.accounts, STQ, 40) : [];
-  $('page').innerHTML = '<div class="card"><h2>🏬 ' + bi('거래처', 'Customers') + ' <span class="muted" style="font-size:12px;font-weight:400">' + S.accounts.length + '곳</span></h2><div class="muted">가게를 찾아 누르면 정보 · 미수금 · 주문 · 수금 기록 · 스테이트먼트. <span class="en">Tap a store for details.</span></div><input id="stQ" placeholder="가게 이름 · 계정코드 · 도시 · 전화 / Store · Acct · City · Phone" value="' + esc(STQ) + '" autocomplete="off"><div class="btns">' + (S.role !== 'salesman' ? '<button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button>' : '') + '</div></div>' +
-    '<div class="card">' + (hits.length ? hits.map(a => '<div class="pr tap" data-st="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.addr, a.city, a.state, a.zip].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</small></div>' + (S.role !== 'salesman' ? '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' : '') + '</div>').join('') : '<div class="none">' + (STQ ? '없음' : '찾을 가게 이름을 치세요') + '</div>') + '</div>';
-  $('stQ').oninput = debounce(() => { STQ = $('stQ').value; pageStores(); setTimeout(() => { const q = $('stQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 0); }, 300);
+  const isSales = S.role === 'salesman', mine = (S.me && S.me.sm) ? String(S.me.sm).toUpperCase() : '';
+  if (!STM.mode) { STM.mode = isSales ? 'sm' : 'q'; if (isSales) STM.sm = mine; }
+  const A = S.accounts;
+  const row = a => '<div class="pr tap" data-st="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.tel ? ' · ' + esc(a.tel) : '') + '</small></div>' + (!isSales ? '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' : '') + '</div>';
+  const cnt = (list, f) => { const m = {}; list.forEach(a => { const k = f(a) || '—'; m[k] = (m[k] || 0) + 1; }); return m; };
+  let body = '', sub = '';
+  if (STM.mode === 'q') {
+    const hits = STQ ? searchAccounts(A, STQ, 60) : [];
+    sub = '<input id="stQ" placeholder="가게 이름 · 계정코드 · 도시 · 전화 / Store · Acct · City · Phone" value="' + esc(STQ) + '" autocomplete="off" style="margin-top:8px">';
+    body = hits.length ? hits.map(row).join('') : '<div class="none">' + (STQ ? '없음 · no match' : '가게 이름 · 코드 · 도시 · 전화번호를 치세요') + '</div>';
+  } else if (STM.mode === 'sm') {
+    const bySm = cnt(A, a => String(a.sm || '').toUpperCase()), sms = Object.keys(bySm).sort((x, y) => x === mine ? -1 : y === mine ? 1 : x < y ? -1 : 1);
+    sub = '<div class="chips" style="margin-top:8px">' + sms.map(k => '<button class="' + (STM.sm === k ? 'on' : '') + '" data-stsm="' + esc(k) + '">' + (k === mine ? '👤 ' : '') + esc(k) + ' <span class="en">' + bySm[k] + '</span></button>').join('') + '</div>';
+    const list = sortBy(A.filter(a => String(a.sm || '').toUpperCase() === (STM.sm || '—') || (STM.sm === '—' && !a.sm)), a => a.store);
+    body = STM.sm ? (list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.sm) + ' · ' + list.length + '곳 · 이름순</div>' + list.map(row).join('') : '<div class="none">없음</div>') : '<div class="none">세일즈맨을 고르세요</div>';
+  } else {
+    const byState = cnt(A, a => String(a.state || '').toUpperCase()), states = Object.keys(byState).sort();
+    sub = '<div class="chips" style="margin-top:8px">' + states.map(k => '<button class="' + (STM.state === k ? 'on' : '') + '" data-stst="' + esc(k) + '">' + esc(k) + ' <span class="en">' + byState[k] + '</span></button>').join('') + '</div>';
+    if (STM.state) {
+      const inState = A.filter(a => String(a.state || '').toUpperCase() === STM.state), byCity = cnt(inState, a => String(a.city || '').toUpperCase()), cities = Object.keys(byCity).sort();
+      sub += '<div class="chips">' + '<button class="' + (STM.city ? '' : 'on') + '" data-stct="">' + bi('전체', 'All') + ' ' + inState.length + '</button>' + cities.map(k => '<button class="' + (STM.city === k ? 'on' : '') + '" data-stct="' + esc(k) + '">' + esc(k) + ' <span class="en">' + byCity[k] + '</span></button>').join('') + '</div>';
+      const list = sortBy(inState.filter(a => !STM.city || String(a.city || '').toUpperCase() === STM.city), a => (a.city || '') + ' ' + a.store);
+      body = list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.state) + (STM.city ? ' · ' + esc(STM.city) : '') + ' · ' + list.length + '곳</div>' + list.slice(0, 400).map(row).join('') + (list.length > 400 ? '<div class="hint">400곳까지 표시 — 도시를 고르세요</div>' : '') : '<div class="none">없음</div>';
+    } else body = '<div class="none">주(State)를 고르세요</div>';
+  }
+  $('page').innerHTML = '<div class="card"><h2>🏬 ' + bi('거래처', 'Customers') + ' <span class="muted" style="font-size:12px;font-weight:400">' + A.length + '곳</span></h2>' +
+    '<div class="seg">' + [['q', '🔎 ' + bi('검색', 'Search')], ['sm', '👤 ' + bi('세일즈맨별', 'By salesman')], ['geo', '🗺 ' + bi('주 · 도시별', 'By state · city')]].map(t => '<button class="' + (STM.mode === t[0] ? 'on' : '') + '" data-stm="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' + sub +
+    (!isSales ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button></div>' : '') + '</div>' +
+    '<div class="card">' + body + '</div>';
+  document.querySelectorAll('[data-stm]').forEach(b => b.onclick = () => { STM.mode = b.dataset.stm; pageStores(); });
+  document.querySelectorAll('[data-stsm]').forEach(b => b.onclick = () => { STM.sm = b.dataset.stsm; pageStores(); });
+  document.querySelectorAll('[data-stst]').forEach(b => b.onclick = () => { STM.state = b.dataset.stst; STM.city = ''; pageStores(); });
+  document.querySelectorAll('[data-stct]').forEach(b => b.onclick = () => { STM.city = b.dataset.stct; pageStores(); });
+  if ($('stQ')) { $('stQ').oninput = debounce(() => { STQ = $('stQ').value; pageStores(); setTimeout(() => { const q = $('stQ'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 0); }, 300); if (!('ontouchstart' in window)) $('stQ').focus(); }
   if ($('stNew')) $('stNew').onclick = () => storeForm(null);
   document.querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeSheet(el.dataset.st));
   document.querySelectorAll('[data-ste]').forEach(el => el.onclick = e => { e.stopPropagation(); storeForm(S.accounts.byCode[el.dataset.ste]); });
