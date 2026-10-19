@@ -13,7 +13,7 @@ import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf,
 import { settlementHtml } from './sales.js';
 import { searchAccounts } from './accounts.js';
 import { PERIODS, periodRange, addMonths, monthEnd, quickRanges } from './fulfill.js';
-import { invTypes, invoicesBetween } from './invoicing.js';
+import { invTypes, salesRows, invCount } from './invoicing.js';
 
 let S = null, C = { ents: null, cod: null, at: 0 };
 export function register(state) {
@@ -73,7 +73,7 @@ async function pageNow() {
   /* 매출(인보이스) · 주문 · 미수금은 따로 읽음 — 수금(entries · cod)은 loadAll 의 13개월 */
   let inv = [], pinv = [], live = [], arAll = null, bo = [];
   try { [inv, pinv, live, arAll, bo] = await Promise.all([
-    invoicesBetween(S, from, to), days <= 92 ? invoicesBetween(S, pf, pt) : Promise.resolve([]),
+    salesRows(S, from, to), days <= 92 ? salesRows(S, pf, pt) : Promise.resolve([]),
     S.DB.list('orders', { where: [['st', 'in', ['sent', 'pick', 'ok', 'picked', 'done']]] }), loadArAll(), S.DB.list('backorders', { where: [['st', '==', 'open']] }).catch(() => [])]); } catch (e) { toast('일부를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   inv = inv.filter(x => x.st !== 'x'); pinv = pinv.filter(x => x.st !== 'x');
   const rows = allRows(), cur = rows.filter(r => r.d >= from && r.d <= to), prev = rows.filter(r => r.d >= pf && r.d <= pt);
@@ -82,7 +82,7 @@ async function pageNow() {
   const jew = sum(inv.filter(x => isJ(x.t)), x => x.total || 0), oth = R2(sales - jew);
   /* 세일즈맨별 매출 · 수금 나란히 */
   const smS = groupBy(inv, x => x.sm || '—'), smC = groupBy(cur, r => r.sm || '—');
-  const smList = sortBy(Array.from(new Set(Object.keys(smS).concat(Object.keys(smC)))).map(sm => ({ sm, sales: sum(smS[sm] || [], x => x.total || 0), n: (smS[sm] || []).length, coll: sum(smC[sm] || [], r => r.amt), cn: (smC[sm] || []).length })), x => x.sales + x.coll, true);
+  const smList = sortBy(Array.from(new Set(Object.keys(smS).concat(Object.keys(smC)))).map(sm => ({ sm, sales: sum(smS[sm] || [], x => x.total || 0), n: invCount(smS[sm] || []), coll: sum(smC[sm] || [], r => r.amt), cn: (smC[sm] || []).length })), x => x.sales + x.coll, true);
   const smMax = Math.max(1, ...smList.map(x => Math.max(x.sales, x.coll)));
   /* 막대 — 하루/월 단위 매출(파랑) · 수금(초록) */
   let bars = '';
@@ -106,7 +106,7 @@ async function pageNow() {
   let h = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📈 현황 — ' + esc(ptxt) + '</h2><div class="chips" style="margin:0 0 8px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (NP.p === c[0] ? 'on' : '') + '" data-np="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (MAIN.includes(NP.p) ? '' : 'on') + '" id="npCal">📅 날짜 선택</button></div>' +
     '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="npPrev">◀</button><div style="text-align:center;font-weight:800">' + esc(ptxt) + '</div><button class="b-ghost b-sm" id="npNext">▶</button></div></div>';
   /* ① 큰 숫자 넷 */
-  h += '<div class="kpi" style="margin:0 0 10px;grid-template-columns:1fr 1fr"><div class="tap" data-go="pay" style="text-align:left;padding:12px"><span>💰 매출 · Sales (인보이스)</span><b style="font-size:22px;display:block;margin-top:4px">' + money(sales) + '</b><span>' + inv.length + '건' + (days <= 92 ? ' · 앞 기간 ' + money(psales) + cmp(sales, psales) : '') + '</span></div>' +
+  h += '<div class="kpi" style="margin:0 0 10px;grid-template-columns:1fr 1fr"><div class="tap" data-go="pay" style="text-align:left;padding:12px"><span>💰 매출 · Sales (인보이스)</span><b style="font-size:22px;display:block;margin-top:4px">' + money(sales) + '</b><span>' + invCount(inv) + '건' + (days <= 92 ? ' · 앞 기간 ' + money(psales) + cmp(sales, psales) : '') + '</span></div>' +
     '<div class="tap" data-go="payc" style="text-align:left;padding:12px"><span>💵 수금 · Collected</span><b style="font-size:22px;display:block;margin-top:4px">' + money(coll) + '</b><span>' + cur.length + '건 · 앞 기간 ' + money(pcoll) + cmp(coll, pcoll) + '</span></div>' +
     '<div class="tap" data-go="bossar" style="text-align:left;padding:12px"><span>📄 미수금 · A/R</span><b style="font-size:22px;display:block;margin-top:4px">' + money(arTot) + '</b><span>' + arN + '곳 · 90일+ <b class="' + (arTot && ar90 / arTot >= 0.3 ? 'warn' : '') + '">' + money(ar90) + '</b>' + (arAll && arAll.asOf ? ' · 기준 ' + md(arAll.asOf) : '') + '</span></div>' +
     '<div class="tap" data-go="orders" style="text-align:left;padding:12px"><span>📦 주문 · Orders (지금)</span><b style="font-size:22px;display:block;margin-top:4px">' + live.length + '건 · ' + oAmt(live) + '</b><span>접수 ' + oc(['sent']).length + ' · 픽킹 ' + oc(['pick', 'ok']).length + ' · 확인 대기 ' + oc(['picked']).length + ' · 포장 대기 ' + oc(['done']).length + (bo.length ? ' · 백오더 ' + bo.length : '') + '</span></div></div>';
