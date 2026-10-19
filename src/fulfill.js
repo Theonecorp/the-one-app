@@ -9,7 +9,7 @@
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords } from './ui.js';
 import { jobOf } from './main.js';
 import { loadCatalog, catalog, exactItem } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer } from './mgr.js';
@@ -240,7 +240,7 @@ async function confirmInvoice(o, lines) {
       const doc = orderDoc(Object.assign({}, o, { st: 'done', invs: invs.map(x => x.no), doneAt: now, doneBy: S.user.email, bo: bo.length ? o.id : '', updatedAt: now }), lines, o.disc);
       doc.amt = R2(invs.reduce((a, x) => a + x.total, 0));
       ops.push({ op: 'set', col: 'orders', id: o.id, data: doc }, { op: 'set', col: 'orderLines', id: o.id, data: { sm: o.sm, lines } });
-      await S.DB.batch(ops);
+      await S.DB.batch(ops); dropInvCache();
       toast('인보이스 ' + invs.map(x => x.no).join(', '), 'good');
       busy(false);
       await printInvoices(invs, acc);
@@ -350,7 +350,7 @@ export async function invBrowser(LF, head) {
   try {
     if (acc) rows = await S.DB.list('invoices', { where: [['acct', '==', acc.acct]] });
     else if (isNo) { const x = await S.DB.get('invoices', q.toUpperCase()); rows = x ? [x] : await S.DB.list('invoices', { where: [['order', '==', q.toUpperCase()]] }); }
-    else rows = await S.DB.list('invoices', { where: [['d', '>=', from], ['d', '<=', to]] });
+    else rows = await invoicesBetween(S, from, to);
   } catch (e) { err = String(e.code || e.message); }
   if (!$('iList')) return;
   if (LF.sm) rows = rows.filter(r => r.sm === LF.sm);
