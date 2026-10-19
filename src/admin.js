@@ -119,7 +119,10 @@ async function settings() {
  *   · THE ONE 커미션.xlsx → 세일즈맨 요율 · 정산 기록(settled)
  * ============================================================ */
 async function importer() {
-  $('adminBody').innerHTML = exportCard() + '<div class="card"><h2>📥 옛 시트에서 가져오기</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
+  $('adminBody').innerHTML = exportCard() + '<div class="card" style="border:2px solid #bfdbfe"><h2>📥 한 번에 올리기 <span class="en">Upload all at once</span></h2><div class="muted">파일을 여러 개 한꺼번에 고르세요 (수금 입력 · SALES · 커미션 · 수금 대시보드 · sales_invoice). 탭 이름으로 종류를 알아보고 ① → ② → ③ → ④ → ⑤ 순서로 넣습니다. 끝날 때까지 화면을 닫지 마세요.</div>' +
+    '<div class="two" style="margin-top:8px"><div class="fg"><label>인보이스는 이 날짜부터</label><input type="date" id="allFrom" value="' + today().substring(0, 4) + '-01-01"></div><div class="fg"><label>AR 기준일 (비우면 오늘)</label><input type="date" id="allArD"></div></div>' +
+    '<input type="file" id="fAll" accept=".xlsx" multiple style="padding:8px"><div id="allOut"></div></div>' +
+    '<div class="card"><h2>📥 옛 시트에서 가져오기 (하나씩)</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
     '<div class="fg" style="margin-top:10px"><label>① The One 수금 입력 (2026).xlsx — 거래처 · 세일즈맨 · 수금 · <b>미수금(AR 탭)</b></label><input type="file" id="f1" accept=".xlsx"></div>' +
     '<div class="fg"><label>AR 기준일 (AR 탭을 마지막으로 새로고친 날 — 비우면 오늘)</label><input type="date" id="impArD"></div>' +
     '<div class="fg"><label>② THE ONE 수금 (SALES).xlsx — COD 입력 · 세일즈맨 탭의 확인 표시</label><input type="file" id="f2" accept=".xlsx"></div>' +
@@ -136,6 +139,7 @@ async function importer() {
   $('seedPick').onclick = () => $('seedFile').click();
   $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedImport(r.result); r.readAsText(f); };
   $('seedPaste').onclick = () => { openModal('<h2>📋 SEED_DATA 붙여넣기</h2><textarea id="seedTxt" style="width:100%;height:200px;font-size:11px"></textarea><div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sOk">읽기</button></div>'); $('sX').onclick = closeModal; $('sOk').onclick = () => { const t = $('seedTxt').value; seedImport(t); }; };
+  $('fAll').onchange = () => importAll(Array.from($('fAll').files));
   $('f1').onchange = () => importMain($('f1').files[0]); $('f2').onchange = () => importSales($('f2').files[0]); $('f3').onchange = () => importComm($('f3').files[0]); $('f4').onchange = () => importBoss($('f4').files[0]); $('f5').onchange = () => importInvoices($('f5').files[0]);
 }
 async function loadXlsx() { if (window.XLSX) return window.XLSX; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); return window.XLSX; }
@@ -215,6 +219,41 @@ async function importSales(file) {
   } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
 }
+/* 📥 한 번에 올리기 — 탭 이름으로 종류를 알아내 순서대로 */
+async function detectKind(file) {
+  try { const { wb } = await readBook(file); const n = wb.SheetNames;
+    if (n.includes('_ENTRIES') || n.includes('_ACCOUNTS')) return 'main';
+    if (n.includes('COD 입력')) return 'sales';
+    if (n.includes('세일즈맨 요율') || n.includes('정산 기록')) return 'comm';
+    if (n.includes('공장') || n.some(x => x.indexOf('🏭') === 0)) return 'boss';
+    const first = wb.Sheets[n[0]]; const h = window.XLSX.utils.sheet_to_json(first, { header: 1, range: 0 })[0] || []; const hs = h.map(x => String(x || '').toLowerCase());
+    if (hs.some(x => /^invoice/.test(x)) && hs.some(x => /trans\s*date|invoice\s*date/.test(x))) return 'inv';
+    if (n.includes('Items')) return 'items';
+  } catch (e) {}
+  return '';
+}
+async function importAll(files) {
+  const out = $('allOut'); if (!files.length) return; out.innerHTML = '<div class="muted">파일 종류 확인 중…</div>';
+  const kinds = []; for (const f of files) kinds.push({ f, k: await detectKind(f) });
+  const ORDER = ['main', 'sales', 'comm', 'boss', 'inv'], NAME = { main: '① 수금 입력 (거래처 · 세일즈맨 · 수금 · AR)', sales: '② SALES (COD · 카드 · ACH)', comm: '③ 커미션 (요율 · 정산 기록)', boss: '④ 수금 대시보드 (공장 · 1099 · 보너스)', inv: '⑤ 인보이스 목록', items: '아이템 (관리 → 📦 아이템에서 올리세요)', '': '모르는 파일' };
+  out.innerHTML = '<div class="sumbox">' + kinds.map(x => (x.k && ORDER.includes(x.k) ? '✅ ' : '⚠️ ') + esc(x.f.name) + ' → ' + NAME[x.k]).join('<br>') + '</div><div id="allLog"></div>';
+  if ($('impArD') && $('allArD').value) $('impArD').value = $('allArD').value; if ($('f5From')) $('f5From').value = $('allFrom').value || $('f5From').value;
+  const log = (h) => $('allLog').insertAdjacentHTML('beforeend', '<div class="alert a-blu">' + h + '</div>');
+  for (const k of ORDER) {
+    const x = kinds.find(y => y.k === k); if (!x) continue;
+    log('▶ ' + NAME[k] + ' 넣는 중…');
+    try {
+      if (k === 'main') { $('impOut').innerHTML = ''; await importMain(x.f); }
+      else if (k === 'sales') { $('impOut').innerHTML = ''; await importSales(x.f); }
+      else if (k === 'comm') { $('impOut').innerHTML = ''; await importComm(x.f); }
+      else if (k === 'boss') { await importBoss(x.f); if ($('bossGo')) { $('bossGo').click(); await new Promise(r => { const t = setInterval(() => { if ($('bossOut') && /넣었습니다|실패|❌/.test($('bossOut').textContent)) { clearInterval(t); r(); } }, 500); }); } }
+      else if (k === 'inv') { await importInvoices(x.f, true); }
+      const msg = k === 'boss' ? $('bossOut').textContent : k === 'inv' ? $('invOut').textContent : $('impOut').textContent;
+      log('✓ ' + NAME[k] + ' — ' + esc(String(msg).replace(/\s+/g, ' ').slice(0, 240)));
+    } catch (e) { log('<span class="warn">✗ ' + NAME[k] + ' 실패: ' + esc(e.code || e.message) + '</span>'); }
+  }
+  log('<b>끝.</b> 메뉴 → 🔎 연결 · 권한 점검의 📊 서버 자료 건수로 확인하세요.');
+}
 /* ⑤ 이전 시스템 인보이스 목록 — 머리글 이름으로 열을 찾음 */
 export function parseInvoiceList(aoa, fromD) {
   let hi = -1, ix = {};
@@ -235,7 +274,7 @@ export function parseInvoiceList(aoa, fromD) {
   }
   return { rows: out, skipped, old };
 }
-async function importInvoices(file) {
+async function importInvoices(file, auto) {
   if (!file) return; const out = $('invOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
   try {
     const { XLSX, wb } = await readBook(file);
@@ -245,7 +284,7 @@ async function importInvoices(file) {
     out.innerHTML = '<div class="alert a-blu">인보이스 <b>' + rows.length.toLocaleString() + '</b>장 · 매출 ' + money(sum(rows, r => r.total)) + ' · 잔액 ' + money(sum(rows, r => r.bal)) + (old ? ' · 시작일 전 ' + old.toLocaleString() + '장 제외' : '') + (skipped ? ' · 건너뜀 ' + skipped : '') + '<br>' + Object.keys(byY).sort().map(y => y + ': ' + byY[y].n.toLocaleString() + '장 ' + money(byY[y].amt)).join(' · ') + '</div>' +
       (rows.length > 18000 ? '<div class="alert a-amb">1만 8천 장이 넘습니다 — 무료 요금제면 하루 한도에 걸릴 수 있습니다. 시작일을 올리거나 Blaze 로 바꾼 뒤 넣으세요.</div>' : '') +
       '<button class="b-blue" id="invGo">넣기</button><div id="invProg" class="muted" style="margin-top:6px"></div>';
-    $('invGo').onclick = async () => {
+    const run = async () => {
       busy(true); const prog = $('invProg'); let done = 0;
       try {
         const now = new Date().toISOString();
@@ -255,6 +294,7 @@ async function importInvoices(file) {
       } catch (e) { out.insertAdjacentHTML('beforeend', '<div class="alert a-red">' + done.toLocaleString() + '장까지 넣고 멈춤: ' + esc(e.code || e.message) + (/resource-exhausted|quota/i.test(e.code || e.message) ? ' — 하루 쓰기 한도입니다. 내일 같은 파일을 다시 올리면 이어서 들어갑니다(중복 없음).' : '') + '</div>'); }
       busy(false);
     };
+    $('invGo').onclick = run; if (auto) await run();
   } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
 /* ④ 수금 대시보드 파일 — 경영 자료 전부 */
