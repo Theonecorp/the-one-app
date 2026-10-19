@@ -5,7 +5,7 @@
  * ============================================================ */
 import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, Router, sel, sum, sortBy, groupBy, printOpen, debounce, bi, hasWords, addDays, daysBetween, localDay, pickDates } from './ui.js';
 import { PERIODS, periodRange, addMonths, monthEnd, quickRanges } from './fulfill.js';
-import { invTypes, lineTotal, company, docHead } from './invoicing.js';
+import { invTypes, lineTotal, company, docHead, invoicesBetween } from './invoicing.js';
 import { catalog, loadCatalog, cleanName } from './catalog.js';
 
 let S = null, R = { p: 'month', from: '', to: '', tab: 'item', sm: '', q: '', sort: 'amt' }, D = null;
@@ -37,7 +37,7 @@ async function load(from, to) {
   if (D && D.from === from && D.to === to) return;
   try { await loadCatalog(S); } catch (e) {}
   const [inv, ents, cods] = await Promise.all([
-    S.DB.list('invoices', { where: [['d', '>=', from], ['d', '<=', to]] }),
+    invoicesBetween(S, from, to),
     S.DB.list('entries', { where: [['d', '>=', from], ['d', '<=', to]] }).catch(() => []),
     S.DB.list('cod', { where: [['d', '>=', from], ['d', '<=', to]] }).catch(() => [])]);
   D = { from, to, inv: inv.filter(x => x.st !== 'x'), pays: ents.filter(e => !e.void && !e.repl).map(e => ({ d: e.d, sm: e.sm, acct: e.acct, store: e.store, amt: e.total })).concat(cods.filter(c => !c.void).map(c => ({ d: c.d, sm: c.sm, acct: c.acct, store: c.store, amt: c.amt }))) };

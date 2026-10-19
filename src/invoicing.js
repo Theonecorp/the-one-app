@@ -84,6 +84,24 @@ export function fmtNo(t, n) {
   const lv = Math.floor((n - 1) / NUM_MAX), k = ((n - 1) % NUM_MAX) + 1;
   return t.c + (lv ? LEVELS[lv - 1] || ('Z' + lv) : '') + String(k).padStart(NUM_DIGITS, '0');
 }
+/* ---------- 인보이스 읽기 캐시 — 달 단위로 한 번만 읽고 기간은 메모리에서 거름 (읽기 횟수 · 비용 절약) ---------- */
+const INV_M = new Map();   // 'YYYY-MM' → rows (st != 'x' 포함 전부)
+let INV_AT = 0;
+export function dropInvCache() { INV_M.clear(); INV_AT = 0; }
+export async function invoicesBetween(S, from, to) {
+  if (Date.now() - INV_AT > 15 * 60000) { INV_M.clear(); INV_AT = Date.now(); }   // 15분마다 새로
+  const months = []; let m = from.substring(0, 7); while (m <= to.substring(0, 7)) { months.push(m); const y = Number(m.substring(0, 4)), mm = Number(m.substring(5, 7)); m = (mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0')); }
+  const miss = months.filter(k => !INV_M.has(k));
+  if (miss.length) {
+    /* 연속된 달은 한 번에 */
+    const first = miss[0], last = miss[miss.length - 1];
+    const rows = await S.DB.list('invoices', { where: [['d', '>=', first + '-01'], ['d', '<=', last + '-31']] });
+    miss.forEach(k => INV_M.set(k, []));
+    rows.forEach(r => { const k = String(r.d || '').substring(0, 7); if (INV_M.has(k)) INV_M.get(k).push(r); });
+  }
+  const out = []; months.forEach(k => (INV_M.get(k) || []).forEach(r => { if (r.d >= from && r.d <= to) out.push(r); }));
+  return out;
+}
 export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, t.start || 1); return fmtNo(t, n); }
 
 /* ---------- 회사 정보 (관리 → 설정) ---------- */

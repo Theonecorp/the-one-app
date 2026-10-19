@@ -13,7 +13,7 @@ import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf,
 import { settlementHtml } from './sales.js';
 import { searchAccounts } from './accounts.js';
 import { PERIODS, periodRange, addMonths, monthEnd, quickRanges } from './fulfill.js';
-import { invTypes } from './invoicing.js';
+import { invTypes, invoicesBetween } from './invoicing.js';
 
 let S = null, C = { ents: null, cod: null, at: 0 };
 export function register(state) {
@@ -73,7 +73,7 @@ async function pageNow() {
   /* 매출(인보이스) · 주문 · 미수금은 따로 읽음 — 수금(entries · cod)은 loadAll 의 13개월 */
   let inv = [], pinv = [], live = [], arAll = null, bo = [];
   try { [inv, pinv, live, arAll, bo] = await Promise.all([
-    S.DB.list('invoices', { where: [['d', '>=', from], ['d', '<=', to]] }), days <= 92 ? S.DB.list('invoices', { where: [['d', '>=', pf], ['d', '<=', pt]] }) : Promise.resolve([]),
+    invoicesBetween(S, from, to), days <= 92 ? invoicesBetween(S, pf, pt) : Promise.resolve([]),
     S.DB.list('orders', { where: [['st', 'in', ['sent', 'pick', 'ok', 'picked', 'done']]] }), loadArAll(), S.DB.list('backorders', { where: [['st', '==', 'open']] }).catch(() => [])]); } catch (e) { toast('일부를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   inv = inv.filter(x => x.st !== 'x'); pinv = pinv.filter(x => x.st !== 'x');
   const rows = allRows(), cur = rows.filter(r => r.d >= from && r.d <= to), prev = rows.filter(r => r.d >= pf && r.d <= pt);

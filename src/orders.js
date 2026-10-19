@@ -13,7 +13,7 @@ import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, c
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
 import { jobOf } from './main.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, invoicesBetween } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
 
@@ -238,7 +238,7 @@ async function staffHome() {
     const [live, bo, ords, inv, pinv] = await Promise.all([
       S.DB.list('orders', { where: [['st', 'in', LIVE_ST]] }), S.DB.list('backorders', { where: [['st', '==', 'open']] }),
       S.DB.list('orders', { where: [['d', '>=', addDays(from, -7)], ['d', '<=', to]] }),
-      S.DB.list('invoices', { where: [['d', '>=', from], ['d', '<=', to]] }), days <= 92 ? S.DB.list('invoices', { where: [['d', '>=', pf], ['d', '<=', pt]] }) : Promise.resolve(null)]);
+      invoicesBetween(S, from, to), days <= 92 ? invoicesBetween(S, pf, pt) : Promise.resolve(null)]);
     if (!$('hSales')) return;
     const inR = iso => { const d = localDay(iso); return d >= from && d <= to; };
     const sentIn = ords.filter(o => o.sentAt && o.st !== 'draft' && o.st !== 'x' && inR(o.sentAt)), doneIn = ords.filter(o => (o.st === 'done' || o.st === 'shipped') && o.doneAt && inR(o.doneAt)), shipIn = ords.filter(o => o.st === 'shipped' && o.shipAt && inR(o.shipAt));
