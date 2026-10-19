@@ -85,32 +85,44 @@ export function manage(o, lines) {
     (o.st === 'done' || o.st === 'shipped' ? '<div class="sumbox">🧾 인보이스: ' + (o.invs || []).map(n => '<a href="#/order/inv:' + esc(n) + '"><b>' + esc(n) + '</b></a>').join(' · ') + (o.bo ? ' · ⏳ <a href="#/order/bo:' + esc(o.bo) + '">백오더 있음</a>' : '') + '</div>' : '') + '</div>';
   /* 줄 */
   h += '<div class="card"><h2>' + (picking ? '📦 ' + bi('픽킹 결과 — 실제로 담은 수량', 'Picked qty') : bi('아이템', 'Items')) + ' ' + lines.length + '</h2>' +
-    (picking ? '<div class="muted">픽 칸에 실제 담은 수량을 넣으세요. 주문보다 적으면 백오더가 됩니다. <span class="en">Enter the quantity actually picked; less than ordered becomes a backorder.</span></div><div class="btns" style="flex-wrap:wrap"><button class="b-ghost b-sm" id="mAllQ">' + bi('모두 주문 수량으로', 'All as ordered') + '</button><button class="b-ghost b-sm" id="mAllZ">' + bi('모두 0 으로', 'All zero') + '</button><button class="b-ghost b-sm" id="mAdd">＋ ' + bi('아이템 추가', 'Add item') + '</button></div>' : '') +
-    '<input id="mFind" placeholder="이 주문 안에서 찾기 · 스캔 / Find in this order · scan" autocomplete="off" style="margin:8px 0 6px"><div class="chips" style="margin:0 0 6px"><button class="on" data-mf="all">' + bi('전체', 'All') + '</button>' + (picking ? '<button data-mf="bo">' + bi('백오더만', 'Backorder only') + '</button>' : '') + '<button data-mf="p">' + bi('가격 수정만', 'Price changed') + '</button></div><div id="mLines"></div></div>';
+    (picking ? '<div class="muted">줄의 버튼을 <b>한 번</b> 두드리면 ✓ 통과(주문 수량), <b>다시</b> 두드리면 ⏳ 백오더(0), 일부만 담았으면 <b>✎ 수량</b>. 코드를 스캔하면 1개씩 올라갑니다. <span class="en">Tap once = picked as ordered, tap again = backorder, ✎ for a partial qty.</span></div><div class="btns" style="flex-wrap:wrap"><button class="b-ghost b-sm" id="mAllQ">✓ ' + bi('모두 통과', 'All picked') + '</button><button class="b-ghost b-sm" id="mAllZ">⏳ ' + bi('모두 백오더', 'All backorder') + '</button><button class="b-ghost b-sm" id="mAdd">＋ ' + bi('아이템 추가', 'Add item') + '</button></div>' : '') +
+    '<input id="mFind" placeholder="이 주문 안에서 찾기 · 스캔 / Find in this order · scan" autocomplete="off" style="margin:8px 0 6px"><div class="chips" style="margin:0 0 6px"><button class="on" data-mf="all">' + bi('전체', 'All') + '</button>' + (picking ? '<button data-mf="u">○ ' + bi('미확인만', 'Unchecked') + '</button><button data-mf="bo">⏳ ' + bi('백오더만', 'Backorder only') + '</button>' : '') + '<button data-mf="p">' + bi('가격 수정만', 'Price changed') + '</button></div><div id="mLines"></div></div>';
   $('page').innerHTML = h;
 
   let MF = 'all';
   const sumNow = () => { $('mSum').innerHTML = (picking ? '<div class="muted" style="margin-top:8px">🧾 픽킹한 수량 기준 — 확정하면 종류마다 인보이스가 따로 나옵니다 <span class="en">Based on picked qty; one invoice per type on confirm</span></div>' : '<div class="muted" style="margin-top:8px">🧾 주문 수량 기준 미리보기 — 픽킹 후 확정 <span class="en">Preview by ordered qty; split after picking</span></div>') + typeSummary(splitByType(lines, o.disc, picking ? 'pq' : 'q')) + (picking ? boLine() : ''); };
-  const boLine = () => { const b = lines.filter(l => (l.pq || 0) < l.q); return b.length ? '<div class="alert a-red">⏳ 백오더 ' + b.length + '줄 · ' + b.reduce((a, l) => a + l.q - (l.pq || 0), 0) + '개</div>' : '<div class="alert a-grn">✓ 모두 픽킹됨</div>'; };
-  const types = invTypes(S);
+  const boLine = () => { const b = lines.filter(l => (l.pq || 0) < l.q), u = lines.filter(l => !l.ok); return (u.length ? '<div class="alert a-amb">○ 아직 두드리지 않은 줄 <b>' + u.length + '</b> / ' + lines.length + ' <span class="en">not yet checked</span></div>' : '') + (b.length ? '<div class="alert a-red">⏳ 백오더 ' + b.length + '줄 · ' + b.reduce((a, l) => a + l.q - (l.pq || 0), 0) + '개</div>' : u.length ? '' : '<div class="alert a-grn">✓ 모두 픽킹됨</div>'); };
+  const types = invTypes(S), office = picking && o.st === 'picked' && J !== 'pick';   // 인보이스 종류는 사무실 확인 단계에서만 바꿈
+  /* 픽킹 입력은 두드려서: 처음 한 번 = ✓ 통과(주문 수량), 다시 = ⏳ 백오더(0), 다시 = ✓ … · ✎ 수량 으로 일부만 담았을 때 숫자 입력 */
+  const pkBtn = l => { const pq = l.pq || 0, st = !l.ok ? 'u' : pq >= l.q ? 'ok' : pq === 0 ? 'bo' : 'part'; const ic = st === 'u' ? '○' : st === 'ok' ? '✓' : st === 'bo' ? '⏳' : '◐'; return '<button class="pkb ' + st + '" data-pkt="' + l._i + '">' + ic + ' <b>' + pq + '</b><span>/' + l.q + '</span></button><button class="b-ghost pkq" data-pkq="' + l._i + '">✎ ' + bi('수량', 'Qty') + '</button>'; };
   const paint = () => {
     const q = $('mFind').value.trim().toUpperCase();
     let rows = lines.map((l, i) => Object.assign({ _i: i }, l));
     if (q) rows = rows.filter(l => hasWords(l.c + ' ' + l.d, q));
     if (MF === 'bo') rows = rows.filter(l => (l.pq || 0) < l.q);
+    if (MF === 'u') rows = rows.filter(l => !l.ok);
     if (MF === 'p') rows = rows.filter(l => l.lp != null && Math.abs(l.lp - l.p) > 0.0001);
     $('mLines').innerHTML = '<table class="pk"><tr><th>코드</th><th class="r">주문</th>' + (picking ? '<th class="r">픽</th>' : '') + '<th class="r">가격</th><th class="r">금액</th></tr>' + rows.slice(0, 2500).map(l => {
-      const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001, bo = picking && (l.pq || 0) < l.q;
+      const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001, bo = picking && l.ok && (l.pq || 0) < l.q;
       const qq = picking ? (l.pq || 0) : l.q;
-      return '<tr class="' + (bo ? 'bo' : '') + '"><td><b>' + esc(l.c) + '</b> ' + (picking ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
+      return '<tr class="' + (bo ? 'bo' : '') + (picking && l.ok && !bo ? ' okd' : '') + '"><td><b>' + esc(l.c) + '</b> ' + (office ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
         '<div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div>' + (l.kit ? '<div class="muted" style="font-size:11px">🧩 ' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + (picking ? ' <button class="b-ghost b-sm" data-brk="' + l._i + '" style="padding:2px 7px">세트 풀기</button>' : '') + '</div>' : '') + (picking ? '<input class="sm" data-note="' + l._i + '" value="' + esc(l.note || '') + '" placeholder="메모" style="margin-top:3px;padding:4px 7px;font-size:12px">' : (l.note ? '<div class="muted">📝 ' + esc(l.note) + '</div>' : '')) + '</td>' +
         '<td class="r"><b>' + l.q + '</b></td>' +
-        (picking ? '<td class="r"><input class="sm pq" type="number" inputmode="numeric" min="0" data-pq="' + l._i + '" value="' + (l.pq || 0) + '"></td>' : '') +
-        '<td class="r">' + (picking ? '<input class="sm pin' + (chg ? ' chg' : '') + '" type="number" step="0.01" inputmode="decimal" data-pp="' + l._i + '" value="' + l.p + '">' : money(l.p)) + (chg ? '<div class="muted" style="text-decoration:line-through">' + money(l.lp) + '</div>' : '') + '</td>' +
+        (picking ? '<td class="r pkc">' + pkBtn(l) + '</td>' : '') +
+        '<td class="r">' + money(l.p) + (chg ? '<div class="muted" style="text-decoration:line-through">' + money(l.lp) + '</div>' : '') + '</td>' +
         '<td class="r">' + money(qq * l.p) + '</td></tr>';
     }).join('') + '</table>' + (rows.length ? '' : '<div class="none">없음</div>');
-    document.querySelectorAll('[data-pq]').forEach(inp => { inp.onfocus = () => inp.select(); inp.onchange = () => { lines[+inp.dataset.pq].pq = Math.max(0, Math.floor(Number(inp.value) || 0)); dirty = true; sumNow(); inp.closest('tr').classList.toggle('bo', lines[+inp.dataset.pq].pq < lines[+inp.dataset.pq].q); }; });
-    document.querySelectorAll('[data-pp]').forEach(inp => inp.onchange = () => { lines[+inp.dataset.pp].p = R2(inp.value); dirty = true; setTimeout(() => { if ($('mLines')) { sumNow(); paint(); } }, 0); });
+    /* 두드리기: ○ 미확인 → ✓ 통과 → ⏳ 백오더 → ✓ … (줄만 다시 그림) */
+    const redraw = i => { const tr = document.querySelector('[data-pkt="' + i + '"]'); if (!tr) return paint(); const l = Object.assign({ _i: i }, lines[i]); const td = tr.closest('td'); td.innerHTML = pkBtn(l); bindPk(td); const row = td.closest('tr'); const bo = l.ok && (l.pq || 0) < l.q; row.classList.toggle('bo', bo); row.classList.toggle('okd', !!l.ok && !bo); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} };
+    const bindPk = root => {
+      root.querySelectorAll('[data-pkt]').forEach(b => b.onclick = () => { const l = lines[+b.dataset.pkt]; if (!l.ok) { l.ok = true; l.pq = l.q; } else if ((l.pq || 0) >= l.q) l.pq = 0; else l.pq = l.q; dirty = true; sumNow(); redraw(+b.dataset.pkt); });
+      root.querySelectorAll('[data-pkq]').forEach(b => b.onclick = () => { const i = +b.dataset.pkq, l = lines[i];
+        openModal('<h2>✎ ' + esc(l.c) + '</h2><div class="muted">' + esc(l.d) + ' · 주문 <b>' + l.q + '</b></div><div class="fg" style="margin-top:8px"><label>' + bi('실제 담은 수량', 'Picked qty') + '</label><input id="pqIn" type="number" inputmode="numeric" min="0" value="' + (l.pq == null ? l.q : l.pq) + '" style="font-size:26px;font-weight:800;text-align:center"></div><div class="chips">' + [0, Math.floor(l.q / 2), l.q].filter((v, k, a) => a.indexOf(v) === k).map(v => '<button data-pqv="' + v + '">' + v + (v === l.q ? ' ✓' : v === 0 ? ' ⏳' : '') + '</button>').join('') + '</div><div class="btns"><button class="b-ghost" id="pqX">취소</button><button class="b-blue" id="pqOk">확인</button></div>');
+        const done = v => { l.pq = Math.max(0, Math.floor(Number(v) || 0)); l.ok = true; dirty = true; closeModal(); sumNow(); redraw(i); };
+        document.querySelectorAll('[data-pqv]').forEach(x => x.onclick = () => done(x.dataset.pqv)); $('pqX').onclick = closeModal; $('pqOk').onclick = () => done($('pqIn').value); $('pqIn').onkeydown = e => { if (e.key === 'Enter') done($('pqIn').value); };
+        setTimeout(() => { $('pqIn').focus(); $('pqIn').select(); }, 50); });
+    };
+    bindPk($('mLines'));
     document.querySelectorAll('[data-t]').forEach(s => s.onchange = () => { lines[+s.dataset.t].t = s.value; dirty = true; sumNow(); });
     document.querySelectorAll('[data-brk]').forEach(b => b.onclick = async () => {
       const i = +b.dataset.brk, l = lines[i];
@@ -124,7 +136,7 @@ export function manage(o, lines) {
   let dirty = false;
   sumNow(); paint();
   $('mFind').oninput = debounce(paint, 150);
-  $('mFind').onkeydown = e => { if (e.key !== 'Enter' || !picking) return; e.preventDefault(); const v = $('mFind').value.trim().toUpperCase(); const i = lines.findIndex(l => l.c === v || (catalog() && exactItem(v) && exactItem(v).c === l.c)); if (i < 0) return toast('이 주문에 없는 코드입니다', 'bad'); lines[i].pq = (lines[i].pq || 0) + 1; dirty = true; $('mFind').value = ''; sumNow(); paint(); toast(lines[i].c + ' 픽 ' + lines[i].pq + ' / ' + lines[i].q, 'good'); };
+  $('mFind').onkeydown = e => { if (e.key !== 'Enter' || !picking) return; e.preventDefault(); const v = $('mFind').value.trim().toUpperCase(); const i = lines.findIndex(l => l.c === v || (catalog() && exactItem(v) && exactItem(v).c === l.c)); if (i < 0) return toast('이 주문에 없는 코드입니다', 'bad'); lines[i].pq = (lines[i].ok ? (lines[i].pq || 0) : 0) + 1; lines[i].ok = true; dirty = true; $('mFind').value = ''; sumNow(); paint(); toast(lines[i].c + ' 픽 ' + lines[i].pq + ' / ' + lines[i].q, 'good'); };
   document.querySelectorAll('[data-mf]').forEach(b => b.onclick = () => { MF = b.dataset.mf; document.querySelectorAll('[data-mf]').forEach(x => x.classList.toggle('on', x === b)); paint(); });
   $('mBack').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 나갈까요?')) return; Router.go('order'); };
   if ($('mShowP')) $('mShowP').onclick = () => { MF = 'p'; document.querySelectorAll('[data-mf]').forEach(x => x.classList.toggle('on', x.dataset.mf === 'p')); paint(); $('mLines').scrollIntoView({ behavior: 'smooth' }); };
@@ -132,8 +144,8 @@ export function manage(o, lines) {
     if (!(await confirmBox(o.store + ' 기본 할인을 ' + (Object.keys(o.disc || {}).map(k => k + ' ' + o.disc[k] + '%').join(', ') || '없음') + ' 으로 바꿀까요? 다음 주문부터 자동으로 들어갑니다.', '저장'))) return;
     busy(true); try { await S.DB.update('accounts', o.acct, { disc: Object.assign({}, o.disc || {}) }); await bumpAccountsVer(); await S.DB.update('orders', o.id, { discChg: false }); toast('가게 기본 할인 저장', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
   };
-  if ($('mAllQ')) $('mAllQ').onclick = () => { lines.forEach(l => { l.pq = l.q; }); dirty = true; sumNow(); paint(); };
-  if ($('mAllZ')) $('mAllZ').onclick = () => { lines.forEach(l => { l.pq = 0; }); dirty = true; sumNow(); paint(); };
+  if ($('mAllQ')) $('mAllQ').onclick = () => { lines.forEach(l => { l.pq = l.q; l.ok = true; }); dirty = true; sumNow(); paint(); };
+  if ($('mAllZ')) $('mAllZ').onclick = () => { lines.forEach(l => { l.pq = 0; l.ok = true; }); dirty = true; sumNow(); paint(); };
   if ($('mAdd')) $('mAdd').onclick = async () => {
     try { await loadCatalog(S); } catch (e) {}
     openModal('<h2>＋ 아이템 추가</h2><div class="fg"><label>코드 · 바코드</label><input id="aCode" autocomplete="off" style="text-transform:uppercase"></div><div class="two"><div class="fg"><label>수량</label><input id="aQ" type="number" inputmode="numeric" value="1"></div><div class="fg"><label>가격 (비우면 목록가)</label><input id="aP" type="number" step="0.01" inputmode="decimal"></div></div><div class="btns"><button class="b-ghost" id="aX">닫기</button><button class="b-blue" id="aOk">추가</button></div>');
@@ -142,7 +154,7 @@ export function manage(o, lines) {
       const it = exactItem($('aCode').value); if (!it) return toast('목록에 없는 코드입니다', 'bad');
       const q = Math.max(1, Math.floor(Number($('aQ').value) || 1)), p = $('aP').value ? R2($('aP').value) : it.p;
       const ex = lines.find(l => l.c === it.c);
-      if (ex) { ex.q += q; ex.pq = (ex.pq || 0) + q; } else lines.push({ c: it.c, d: it.d, q, pq: q, p, lp: it.p, t: typeOfItem(S, it), note: '사무실 추가' });
+      if (ex) { ex.q += q; ex.pq = (ex.pq || 0) + q; ex.ok = true; } else lines.push({ c: it.c, d: it.d, q, pq: q, ok: true, p, lp: it.p, t: typeOfItem(S, it), note: '사무실 추가' });
       dirty = true; closeModal(); sumNow(); paint();
     };
   };
@@ -160,8 +172,8 @@ export function manage(o, lines) {
   if ($('mAssign')) $('mAssign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mReassign')) $('mReassign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mPickDone')) $('mPickDone').onclick = async () => {
-    const b = lines.filter(l => (l.pq || 0) < l.q), n = b.reduce((a, l) => a + l.q - (l.pq || 0), 0);
-    if (!(await confirmBox('픽킹 완료로 넘길까요?' + (b.length ? '\n⏳ 부족(백오더) ' + b.length + '줄 · ' + n + '개는 사무실이 확인 뒤 백오더로 남깁니다.' : '\n✓ 전부 픽킹됨') + '\n사무실 확인 → 인보이스 발행으로 넘어갑니다.', '픽킹 완료'))) return;
+    const b = lines.filter(l => (l.pq || 0) < l.q), n = b.reduce((a, l) => a + l.q - (l.pq || 0), 0), u = lines.filter(l => !l.ok).length;
+    if (!(await confirmBox('픽킹 완료로 넘길까요?' + (u ? '\n○ 두드리지 않은 줄 ' + u + '개는 주문 수량대로 담은 것으로 처리합니다.' : '') + (b.length ? '\n⏳ 부족(백오더) ' + b.length + '줄 · ' + n + '개는 사무실이 확인 뒤 백오더로 남깁니다.' : '\n✓ 전부 픽킹됨') + '\n사무실 확인 → 인보이스 발행으로 넘어갑니다.', '픽킹 완료'))) return;
     busy(true); try { await saveLines({ st: 'picked', pickDoneAt: new Date().toISOString(), pickDoneBy: S.user.email }); dirty = false; toast('✅ 픽킹 완료 — 사무실 확인 대기', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
   };
   if ($('mRepick')) $('mRepick').onclick = async () => { busy(true); try { await saveLines({ st: 'pick' }); toast('다시 픽킹 중'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
