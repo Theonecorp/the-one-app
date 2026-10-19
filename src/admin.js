@@ -15,7 +15,7 @@ let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); }
 async function pageAdmin(arg) {
   if (arg) TAB = arg;
-  let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['cat', '📦 아이템'], ['tree', '🗂 분류'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div id="adminBody"><div class="load">읽는 중…</div></div>';
+  let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['cat', '📦 아이템'], ['tree', '🗂 분류'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div class="btns" style="justify-content:flex-start;margin:0 0 4px;flex-wrap:wrap"><button class="b-ghost b-sm" onclick="location.hash=\'#/stores\'">🏬 거래처 전체 보기 (세일즈맨 · 주 · 도시별)</button><button class="b-ghost b-sm" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 숨기기</button></div><div id="adminBody"><div class="load">읽는 중…</div></div>';
   $('page').innerHTML = h;
   document.querySelectorAll('[data-at]').forEach(b => b.onclick = () => { TAB = b.dataset.at; pageAdmin(); });
   try { if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') await settings(); else if (TAB === 'cat') await catalogAdmin(); else if (TAB === 'tree') await treeAdmin(); else await importer(); }
@@ -400,9 +400,9 @@ async function catalogAdmin() {
   const meta = await S.DB.get('catalog', 'meta');
   $('adminBody').innerHTML = '<div class="card"><h2>📦 아이템 목록 (주문용)</h2>' +
     (meta ? '<div class="sumbox">지금: <b>' + (meta.count || 0).toLocaleString() + '개</b> · ' + esc(String(meta.updatedAt || '').substring(0, 16).replace('T', ' ')) + ' · ' + esc(meta.by || '') + '</div>' : '<div class="alert a-amb">아직 올린 아이템 목록이 없습니다</div>') +
-    '<div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽고, Hide 에 x 표시된 것은 뺍니다. 시트가 바뀔 때마다 다시 올리면 됩니다.</div>' +
+    '<div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽습니다. Hide 에 x 표시된 것은 <b>숨김</b>으로 올립니다 (목록엔 있고 세일즈맨 주문 화면에만 안 보임). 시트가 바뀔 때마다 다시 올리면 됩니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div>' +
-    '<div class="btns" style="justify-content:flex-start"><button class="b-ghost" onclick="location.hash=\'#/items\'">🏷 아이템 하나씩 등록 · 수정 · 삭제</button></div><div class="hint">새로 들어온 아이템 몇 개는 여기서 바로 등록하면 됩니다 (담당자도 가능). 엑셀은 대량 변경용.</div></div>' +
+    '<div class="btns" style="justify-content:flex-start"><button class="b-ghost" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 등록 · 숨기기 · 분류 옮기기</button></div><div class="hint">분류별로 훑어보며 여러 개를 체크해 한 번에 숨기기 · 보이기 · 옮기기 · 삭제 (담당자도 가능). 엑셀은 대량 변경용.</div></div>' +
     '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
     photoCard() +
     '<div class="card"><h2>🛒 주문 탭</h2><label class="pick ' + (S.settings.ordersOn ? 'on' : '') + '" id="ordOn"><span class="ck">✓</span><span class="pm"><b>세일즈맨 · 담당자에게 주문 탭 보이기</b><small>끄면 관리자만 봅니다 (시험용)</small></span></label></div>';
@@ -430,7 +430,7 @@ async function catalogAdmin() {
       if (p.dup.length) warn.push('같은 코드가 두 번: ' + p.dup.length + '개 (첫 줄만 씀) — ' + p.dup.slice(0, 8).join(', '));
       if (p.dupBar.length) warn.push('같은 바코드를 쓰는 코드: ' + p.dupBar.length + '쌍 (스캔하면 앞의 것이 담김) — ' + p.dupBar.slice(0, 5).join(', '));
       if (p.noPrice.length) warn.push('가격 없음: ' + p.noPrice.length + '개 — ' + p.noPrice.slice(0, 8).join(', '));
-      out.innerHTML = '<div class="alert a-blu">아이템 <b>' + p.rows.length.toLocaleString() + '개</b> · 사진 ' + p.photos.toLocaleString() + '개 · 카테고리 ' + p.cats.length + '줄 · 숨김(뺌) ' + p.hidden + '개</div>' +
+      out.innerHTML = '<div class="alert a-blu">아이템 <b>' + p.rows.length.toLocaleString() + '개</b> · 사진 ' + p.photos.toLocaleString() + '개 · 카테고리 ' + p.cats.length + '줄 · 🙈 숨김 ' + p.hidden + '개</div>' +
         warn.map(w => '<div class="alert a-amb">' + esc(w) + '</div>').join('') +
         '<button class="b-blue" id="catGo" style="margin-top:10px">이대로 올리기</button>';
       $('catGo').onclick = async () => {
@@ -668,7 +668,7 @@ async function treeAdmin() {
   const crumbs = '<div class="chips" style="margin-top:0"><button class="' + (depth ? '' : 'on') + '" data-tp="0">전체</button>' + under.map((p, i) => '<button class="' + (i === under.length - 1 ? 'on' : '') + '" data-tp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
   const kids = node.kids;
   $('adminBody').innerHTML = '<div class="card"><h2>🗂 분류 (' + C.items.length.toLocaleString() + '개 아이템)</h2>' +
-    '<div class="muted">주문 화면의 품목 단계입니다. 순서 규칙: <b>📌 위에 고정 → ABC 순 → 📌 아래에 고정</b> (분류 안의 아이템은 코드 순). 이름을 바꾸면 그 분류의 아이템 전체에 적용됩니다. 아이템을 다른 분류로 옮기는 건 아래 "일괄 변경 파일"로 합니다.</div>' +
+    '<div class="btns" style="justify-content:flex-start;margin:0 0 6px"><button class="b-ghost b-sm" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 🙈 숨기기 · 분류 옮기기</button></div><div class="muted">주문 화면의 품목 단계입니다 (🙈 숨김 아이템은 빠짐). 순서 규칙: <b>📌 위에 고정 → ABC 순 → 📌 아래에 고정</b> (분류 안의 아이템은 코드 순). 이름을 바꾸면 그 분류의 아이템 전체에 적용됩니다. 아이템을 다른 분류로 옮기는 건 아래 "일괄 변경 파일"로 합니다.</div>' +
     '<div class="fg" style="margin-top:8px"><label>주문 화면 시작 단계</label><div class="seg"><button class="' + (start === 'l1' ? 'on' : '') + '" data-cs="l1">Level 1 부터 (ANKLET · EARRING … SBMGo 처럼)</button><button class="' + (start === 'g' ? 'on' : '') + '" data-cs="g">Group 부터 (Jewelry · Beauty …)</button></div></div>' +
     crumbs + '<div class="muted" style="margin:4px 0">' + esc(LV[depth]) + ' · ' + kids.length + '개</div>' +
     kids.map(k => { const pt = pinOf(k.name); return '<div class="pr"><div class="ct tap" data-tin="' + esc(k.name) + '"><b>' + (pt === 'top' ? '📌 ' : pt === 'bottom' ? '📍 ' : '') + esc(k.name) + '</b><small>' + k.n.toLocaleString() + '개' + (k.kids.length ? ' · 하위 ' + k.kids.length : '') + (pt === 'top' ? ' · 위에 고정' : pt === 'bottom' ? ' · 아래에 고정' : '') + '</small></div>' +
@@ -679,8 +679,8 @@ async function treeAdmin() {
     '<div class="fg" style="margin-top:8px"><input type="file" id="popFile" accept=".xlsx,.csv"></div><div id="popOut"></div></div>' +
     sbmCard(C) + dupeCard(C) +
     '<div class="card"><h2>📄 일괄 변경 파일 — 이전 시스템 편의 파일 그대로</h2><div class="muted">이전 시스템에서 쓰던 <b>LEVEL_1_AND_2</b> (ITEM CODE · LEVEL 1 · LEVEL 2) 와 <b>GROUP_NAME_CHANGE</b> (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) 파일을 그대로 올리면 됩니다. 아래에서 지금 상태를 같은 모양으로 받아 엑셀에서 고친 뒤 다시 올리세요. 이전 시스템 내보내기에서 칸이 깨진 줄(줄바꿈 · 탭)도 알아서 살려 읽습니다.<br>' +
-    'LEVEL 파일은 Level 1 이름의 앞글자로 Group(인보이스 A · P · W)이 정해집니다: 보통 이름 → Jewelry(A), [ ] → Other(P), "" → Set &amp; Display(W). GROUP NAME 은 Level 3 으로 들어갑니다 (NEW 가 비어 있으면 CURRENT 그대로).<br>' +
-    '그 밖의 열도 됩니다 (<b>있는 열만</b> 바꾸고 빈 칸은 그대로): Code(필수) · NewCode · Description · Price · SRP · Barcode · Group · Level 1 · 2 · 3 · Photo · Delete(x). 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
+    'LEVEL 파일에서 <b>LEVEL 1 이 빈 줄은 🙈 숨김</b>(이전 시스템처럼 세일즈맨 주문 화면에서 빠짐), 레벨이 있으면 보임으로 바뀝니다. Level 1 이름의 앞글자로 Group(인보이스 A · P · W)이 정해집니다: 보통 이름 → Jewelry(A), [ ] → Other(P), "" → Set &amp; Display(W). GROUP NAME 은 Level 3 으로 들어갑니다 (NEW 가 비어 있으면 CURRENT 그대로).<br>' +
+    '그 밖의 열도 됩니다 (<b>있는 열만</b> 바꾸고 빈 칸은 그대로): Code(필수) · NewCode · Description · Price · SRP · Barcode · Group · Level 1 · 2 · 3 · Photo · Hide(x 숨김 / n 보임) · Delete(x). 목록에 없는 코드에 Description 과 Price 가 있으면 새 아이템으로 추가됩니다.</div>' +
     '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="tDlLevel">⬇️ LEVEL_1_AND_2.xlsx</button><button class="b-ghost" id="tDlGroup">⬇️ GROUP_NAME_CHANGE.xlsx</button><button class="b-ghost" id="tCsv">⬇️ 전체 CSV</button></div>' +
     '<div class="sumbox" style="margin-top:10px"><b>📊 구글 시트에서 바로 반영</b><div class="muted">편의 파일들을 구글 시트 탭(LEVEL_1_AND_2 · GROUP_NAME_CHANGE · POPULAR)으로 두고 거기서 고친 뒤, 여기서 탭을 누르면 읽어 와서 미리보기 → 적용합니다. 시트는 <b>공유 → 일반 액세스 → 링크가 있는 모든 사용자 · 뷰어</b> 여야 합니다.</div>' +
     '<div style="display:flex;gap:6px;margin-top:6px"><input id="gsUrl" placeholder="구글 시트 주소 붙여넣기" value="' + esc(S.settings.catSheet || '') + '" style="flex:1"><button class="b-ghost b-sm" id="gsSave">연결</button></div>' +
@@ -750,7 +750,7 @@ async function treeAdmin() {
   /* 📋 이 분류의 아이템 — 하나씩 바꾸기 */
   if ($('tItems')) $('tItems').onclick = () => {
     const list = C.items.filter(x => { const L = [x.g, x.l1, x.l2, x.l3]; return under.every((u, i) => L[i] === u); }).slice(0, 300);
-    $('tItemList').innerHTML = list.map(x => '<div class="pr"><div class="ct"><b>' + esc(x.c) + '</b><small>' + esc(x.d) + ' · ' + esc([x.l1, x.l2, x.l3].filter(Boolean).map(cleanLbl).join(' › ')) + '</small></div><button class="b-ghost b-sm" data-tfix="' + esc(x.c) + '">바꾸기</button></div>').join('') + (node.n > 300 ? '<div class="muted">300개까지만 보입니다 — 나머지는 아래 "코드로 바꾸기"로</div>' : '');
+    $('tItemList').innerHTML = list.map(x => '<div class="pr"><div class="ct"><b>' + esc(x.c) + (x.h ? ' <span class="tag t-x">🙈</span>' : '') + '</b><small>' + esc(x.d) + ' · ' + esc([x.l1, x.l2, x.l3].filter(Boolean).map(cleanLbl).join(' › ')) + '</small></div><button class="b-ghost b-sm" data-tfix="' + esc(x.c) + '">바꾸기</button></div>').join('') + (node.n > 300 ? '<div class="muted">300개까지만 보입니다 — 나머지는 아래 "코드로 바꾸기"로</div>' : '');
     $('tItemList').querySelectorAll('[data-tfix]').forEach(bb => bb.onclick = () => itemFix(bb.dataset.tfix));
   };
   /* 🔎 코드로 바꾸기 */
@@ -833,8 +833,9 @@ function previewBulk(t, name, out) {
   const r = parseBulkSheet(t);
   const rows = catalog().rows.map(x => x.slice()), cats = catalog().cats.map(x => x.slice()), sets = JSON.parse(JSON.stringify(catalog().sets || {}));
   const sum = applyBulk(rows, cats, sets, r.patches);
-  const lab = { nc: '코드 변경', d: 'Description', p: 'Price', s: 'SRP', b: 'Barcode', g: 'Group', l1: 'Level 1', l2: 'Level 2', l3: 'Level 3', ph: 'Photo', del: '삭제' };
-  out.innerHTML = '<div class="alert a-blu">탭 <b>' + esc(name) + '</b> · ' + r.patches.length.toLocaleString() + '줄 · 바꾸는 열: ' + r.cols.map(k => lab[k]).join(', ') + '<br>바뀌는 아이템 <b>' + sum.changed.toLocaleString() + '</b> · 코드 변경 ' + sum.renamed + ' · 새 아이템 ' + sum.added + ' · 삭제 ' + sum.deleted + '</div>' +
+  const lab = { nc: '코드 변경', d: 'Description', p: 'Price', s: 'SRP', b: 'Barcode', g: 'Group', l1: 'Level 1', l2: 'Level 2', l3: 'Level 3', ph: 'Photo', h: '🙈 숨김 · 보임', del: '삭제' };
+  out.innerHTML = '<div class="alert a-blu">탭 <b>' + esc(name) + '</b> · ' + r.patches.length.toLocaleString() + '줄 · 바꾸는 열: ' + r.cols.map(k => lab[k]).join(', ') + '<br>바뀌는 아이템 <b>' + sum.changed.toLocaleString() + '</b> · 코드 변경 ' + sum.renamed + ' · 새 아이템 ' + sum.added + ' · 삭제 ' + sum.deleted + (sum.hidden || sum.shown ? ' · 🙈 숨김 ' + sum.hidden + ' · 👁 보임 ' + sum.shown : '') + '</div>' +
+    (r.blankHides ? '<div class="alert a-amb">LEVEL 1 이 빈 줄은 숨김으로, 레벨이 있는 줄은 보임으로 맞춥니다 (이전 시스템과 같은 뜻)</div>' : '') +
     (r.fixed && r.fixed.length ? '<div class="alert a-grn">이전 시스템 내보내기에서 깨진 줄 ' + r.fixed.length + '개를 살려 읽었습니다</div>' : '') +
     (r.broken && r.broken.length ? '<div class="alert a-amb">칸이 깨진 줄 ' + r.broken.length + '개 건너뜀 (줄바꿈 · 탭이 섞임): ' + esc(r.broken.slice(0, 8).join(', ')) + '</div>' : '') +
     (sum.missing.length ? '<div class="alert a-amb">목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 10).join(', ')) + '</div>' : '') +

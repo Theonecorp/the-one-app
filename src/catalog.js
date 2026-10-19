@@ -1,7 +1,8 @@
 /* ============================================================
  *  아이템 카탈로그 — 7천여 개를 매번 읽지 않도록 묶음(문서 몇 개)으로 저장하고 폰에 보관
  *  catalog/meta = { ver, count, chunks, cats:[[g,l1,l2,l3]...], updatedAt, by }
- *  catalog/c0..cN = { j: JSON [[code, desc, price, srp, barcode, group, l1, l2, l3, photo], ...] }
+ *  catalog/c0..cN = { j: JSON [[code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide], ...] }
+ *    hide = 1 이면 '숨김' — 목록에는 있지만 세일즈맨 주문 화면(분류 · 검색 · ✨)에 안 보임 (단종 · 재입고 지연). 이전 시스템의 "레벨 비워두기" 역할
  *  catalog/sets = { j: JSON { SETCODE: { n: 이름, k: [[code, qty], ...] } } }  ← 세트 · 인서트 구성 (meta.setsVer)
  *  ver 가 바뀔 때만 다시 받습니다 (📦 아이템 올리기 때 바뀜)
  * ============================================================ */
@@ -97,7 +98,7 @@ export function popularItems(path, start, hist, limit) {
   if (!CAT) return [];
   const inPath = x => { if (!path || !path.length) return true; const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); };
   const out = [], seen = {};
-  const push = c => { const it = CAT.byCode[c]; if (!it || seen[it.c] || !inPath(it)) return; seen[it.c] = 1; out.push(it); };
+  const push = c => { const it = CAT.byCode[c]; if (!it || it.h || seen[it.c] || !inPath(it)) return; seen[it.c] = 1; out.push(it); };
   if (hist) Object.keys(hist).sort((a, b) => (hist[b][0] && hist[b][0][0] || '') < (hist[a][0] && hist[a][0][0] || '') ? -1 : 1).forEach(push);
   const nStore = out.length;
   for (const r of POP) { if (out.length >= (limit || 300)) break; push(r[0]); }
@@ -140,7 +141,7 @@ async function readSets(S) { try { const d = await S.DB.get('catalog', 'sets'); 
 export const SET_GROUP = '🧩 세트 · 인서트';
 const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function index(pack) {
-  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
+  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
   const byCode = {}, byBar = {}, byNorm = {};
   items.forEach(x => { byCode[x.c] = x; if (x.b) byBar[x.b] = byBar[x.b] || x; const n = norm(x.c); if (!byNorm[n]) byNorm[n] = x; });
   /* 세트: 아이템 목록에 있으면 그 아이템에 구성을 붙이고, 없으면 세트 아이템을 새로 만듦 (가격 = 구성품 합) */
@@ -153,7 +154,7 @@ function index(pack) {
     if (!it) {
       const p = st.p || (oldIt && oldIt.p) || R2(k.reduce((a, x) => a + (byCode[x[0]] ? byCode[x[0]].p : 0) * x[1], 0));
       const ph = (oldIt && oldIt.ph) || '';   // 세트는 자기 사진만 (구성품 사진을 빌리지 않음)
-      it = { c: code, d: st.n || (oldIt && oldIt.d) || code, p, s: (oldIt && oldIt.s) || 0, b: (oldIt && oldIt.b) || '', g: oldIt ? oldIt.g : SET_GROUP, l1: oldIt ? oldIt.l1 : '', l2: oldIt ? oldIt.l2 : '', l3: oldIt ? oldIt.l3 : '', ph, _i: items.length, _n: norm(code) + ' ' + norm(st.old) + ' ' + String(st.n || '').toUpperCase(), virt: true };
+      it = { c: code, d: st.n || (oldIt && oldIt.d) || code, p, s: (oldIt && oldIt.s) || 0, b: (oldIt && oldIt.b) || '', g: oldIt ? oldIt.g : SET_GROUP, l1: oldIt ? oldIt.l1 : '', l2: oldIt ? oldIt.l2 : '', l3: oldIt ? oldIt.l3 : '', ph, h: !!(oldIt && oldIt.h), _i: items.length, _n: norm(code) + ' ' + norm(st.old) + ' ' + String(st.n || '').toUpperCase(), virt: true };
       items.push(it); byCode[code] = it; byNorm[norm(code)] = byNorm[norm(code)] || it;
     }
     it.k = k; it.kn = st.n || ''; it.kst = st.st || '';
@@ -164,23 +165,30 @@ function index(pack) {
   /* 카테고리 트리: 📌 위 고정 → ABC → 📌 아래 고정 (sortTree)
    *  tree  = Group → Level 1 → Level 2 → Level 3   (4단계)
    *  tree1 = Level 1 → Level 2 → Level 3            (SBMGo 처럼 큰 품목부터, 기본) */
-  const mk = () => ({ kids: [], map: {} });
-  const tree = mk(), tree1 = mk();
+  const mk = () => ({ kids: [], map: {}, n: 0, nh: 0 });
+  const tree = mk(), tree1 = mk(), treeA = mk();   // tree · tree1 = 주문 화면(숨김 제외) · treeA = 관리용 4단계(숨김 포함, nh = 숨김 수)
   const add = (root, path) => {
     let node = root;
     path.forEach(name => {
       if (!name) return;
-      if (!node.map[name]) { const n = { name, kids: [], map: {}, n: 0 }; node.map[name] = n; node.kids.push(n); }
+      if (!node.map[name]) { const n = { name, kids: [], map: {}, n: 0, nh: 0 }; node.map[name] = n; node.kids.push(n); }
       node = node.map[name];
     });
   };
-  (pack.cats || []).forEach(p => { add(tree, p); add(tree1, p.slice(1)); });
-  const count = (root, path) => { let node = root; path.forEach(name => { if (!name) return; node = node.map[name]; node.n++; }); };
-  items.forEach(x => { add(tree, [x.g, x.l1, x.l2, x.l3]); count(tree, [x.g, x.l1, x.l2, x.l3]); add(tree1, [x.l1, x.l2, x.l3]); count(tree1, [x.l1, x.l2, x.l3]); });
+  (pack.cats || []).forEach(p => { add(tree, p); add(tree1, p.slice(1)); add(treeA, p); });
+  const count = (root, path, hid) => { let node = root; if (hid) node.nh++; else node.n++; path.forEach(name => { if (!name) return; node = node.map[name]; if (hid) node.nh++; else node.n++; }); };
+  items.forEach(x => {
+    const P = [x.g, x.l1, x.l2, x.l3];
+    add(treeA, P); count(treeA, P, x.h);
+    if (x.h) return;
+    add(tree, P); count(tree, P); add(tree1, P.slice(1)); count(tree1, P.slice(1));
+  });
   const prune = n => { n.kids = n.kids.filter(k => k.n > 0); n.kids.forEach(prune); };
-  prune(tree); prune(tree1); sortTree(tree); sortTree(tree1);
+  const pruneA = n => { n.kids = n.kids.filter(k => k.n + k.nh > 0); n.kids.forEach(pruneA); };
+  prune(tree); prune(tree1); pruneA(treeA); sortTree(tree); sortTree(tree1); sortTree(treeA);
+  const vis = items.filter(x => !x.h);
   const tmp = { items }; fixPhotos(tmp);
-  return { photoStat: tmp.photoStat, ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, byCode, byBar, byNorm, tree, tree1, sets, rows: pack.rows, cats: pack.cats || [] };
+  return { photoStat: tmp.photoStat, ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, vis, byCode, byBar, byNorm, tree, tree1, treeA, sets, rows: pack.rows, cats: pack.cats || [] };
 }
 /** 주문 화면이 어느 단계부터 보이나 — 'l1'(기본, SBMGo 처럼 ANKLET · EARRING …) 또는 'g'(Jewelry · Beauty … 부터) */
 export function catStart(S) { return S && S.settings && S.settings.catStart === 'g' ? 'g' : 'l1'; }
@@ -192,11 +200,11 @@ export function exactItem(q) {
   if (!CAT) return null; q = String(q || '').trim(); if (!q) return null;
   return CAT.byCode[q.toUpperCase()] || CAT.byBar[q] || (/^\d{11}$/.test(q) ? CAT.byBar['0' + q] : null) || CAT.byNorm[norm(q)] || null;
 }
-/** 검색 — 띄어쓰기로 나눈 단어가 모두 들어 있는 것 (코드 · 설명), 정확히 맞는 코드가 먼저 */
-export function searchItems(q, path, limit, start) {
+/** 검색 — 띄어쓰기로 나눈 단어가 모두 들어 있는 것 (코드 · 설명), 정확히 맞는 코드가 먼저. 숨김 아이템은 all 일 때만 (관리 화면) */
+export function searchItems(q, path, limit, start, all) {
   if (!CAT) return [];
   limit = limit || 80;
-  let pool = CAT.items;
+  let pool = all ? CAT.items : CAT.vis;
   if (path && path.length) pool = pool.filter(x => { const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); });
   const words = String(q || '').toUpperCase().split(/\s+/).filter(Boolean);
   if (!words.length) return pool.slice(0, limit);
@@ -220,7 +228,7 @@ export function thumb(url, w) {
 
 /* ---------- 올리기 (관리) — THE ONE Item Master 를 엑셀로 받은 파일 ---------- */
 /**
- * Items 탭: Code, Description, Price, Barcode, Group, Level 1, Level 2, Level 3, Photo, SRP, Hide …
+ * Items 탭: Code, Description, Price, Barcode, Group, Level 1, Level 2, Level 3, Photo, SRP, Hide(x = 숨김 — 목록에 두되 주문 화면에 안 보임) …
  * Categories 탭: Group, Level 1, Level 2, Level 3 (행 순서 = 보이는 순서)
  * 머리글 이름으로 열을 찾으므로 열 순서가 바뀌어도 됩니다.
  */
@@ -237,14 +245,14 @@ export function parseItemMaster(items, cats) {
   for (let i = 1; i < items.length; i++) {
     const r = items[i]; if (!r) continue;
     const code = str(v(r, 'c')).toUpperCase(); if (!code) continue;
-    if (/^x$/i.test(str(v(r, 'h'))) || /^(y|yes|true|hide)$/i.test(str(v(r, 'h')))) { hidden++; continue; }
+    const hide = /^(x|y|yes|true|hide|1|숨김)$/i.test(str(v(r, 'h'))); if (hide) hidden++;
     if (seen[code]) { dup.push(code); continue; }
     seen[code] = 1;
     let bar = str(v(r, 'b')).replace(/\.0+$/, ''); if (/^\d{11}$/.test(bar)) bar = '0' + bar;
     if (bar) { if (barSeen[bar]) dupBar.push(code + '=' + barSeen[bar]); else barSeen[bar] = code; }
     const price = R2(num(v(r, 'p'))); if (!price) noPrice.push(code);
     let ph = str(v(r, 'ph')).split(/\s+/)[0] || ''; if (!/^https?:\/\//i.test(ph)) ph = '';
-    rows.push([code, str(v(r, 'd')), price, R2(num(v(r, 's'))) || 0, bar, str(v(r, 'g')), str(v(r, 'l1')), str(v(r, 'l2')), str(v(r, 'l3')), ph]);
+    rows.push([code, str(v(r, 'd')), price, R2(num(v(r, 's'))) || 0, bar, str(v(r, 'g')), str(v(r, 'l1')), str(v(r, 'l2')), str(v(r, 'l3')), ph, hide ? 1 : 0]);
   }
   const catRows = [];
   if (cats && cats.length > 1) {
@@ -327,7 +335,11 @@ export function parseSetBook(compRows, listRows, which) {
  *  분류 · 아이템 일괄 변경 (관리) — SBM 의 "레벨 정리 · 디스크립션 변경 · 코드 변경 · 일괄 업데이트" 파일 역할
  *  rows 한 줄 = [code, desc, price, srp, barcode, group, l1, l2, l3, photo]
  * ============================================================ */
-const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9 };
+const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9, h: 10 };
+/** 숨김 · 보임 일괄 — codes 의 아이템을 on(true=숨김) 으로. 돌려주는 값: 바뀐 수 */
+export function setHidden(rows, codes, on) { const want = on ? 1 : 0, set = new Set(codes.map(c => String(c).toUpperCase())); let k = 0; rows.forEach(r => { if (set.has(r[0]) && (r[10] ? 1 : 0) !== want) { r[10] = want; k++; } }); return k; }
+/** 아이템 분류 일괄 바꾸기 — codes 를 to = [g, l1, l2, l3] 로 */
+export function setLevels(rows, cats, codes, to) { const set = new Set(codes.map(c => String(c).toUpperCase())); let k = 0; rows.forEach(r => { if (set.has(r[0])) { for (let i = 0; i < 4; i++) r[5 + i] = to[i] || ''; k++; } }); ensureCats(rows, cats); return k; }
 /** 지금 목록을 바꿔서 다시 올림 — fn(rows, cats, sets) 가 바꾸고 요약을 돌려줌 */
 export async function editCatalog(S, fn) {
   if (!CAT) await loadCatalog(S);
@@ -377,13 +389,13 @@ export function ensureCats(rows, cats) {
  *   Code(코드, 필수) · NewCode(새 코드) · Description · Price · SRP · Barcode · Group · Level 1 · Level 2 · Level 3 · Photo · Delete(삭제: x)
  *   Tree_업데이트 / TreeUpdate 탭 (Code, Group, Level 1~3) 도 그대로 됨
  */
-export function parseBulkSheet(aoa) {
+export function parseBulkSheet(aoa, opts) {
   if (!aoa || aoa.length < 2) throw new Error('시트가 비어 있습니다');
   const hr = aoa[0].map(h => String(h || '').trim().toLowerCase());
   const f = res => hr.findIndex(h => res.some(re => re.test(h)));
   const ix = { c: f([/^code$/, /^item ?code$/, /^item ?#?$/, /^코드$/, /^아이템 ?코드$/, /^sku$/]), nc: f([/^new ?code$/, /^새 ?코드$/, /^code2$/]), d: f([/^description$/, /^desc$/, /^디스크립션$/, /^설명$/, /^name$/]),
     p: f([/^price$/, /^가격$/, /^wholesale/]), s: f([/^srp$/, /^retail$/]), b: f([/^barcode$/, /^upc$/, /^바코드$/]), g: f([/^group$/, /^그룹$/]), l1: f([/^level ?1$/, /^l1$/]), l2: f([/^level ?2$/, /^l2$/]), l3: f([/^level ?3$/, /^l3$/]),
-    ph: f([/^photo$/, /^image$/, /^사진$/]), del: f([/^delete$/, /^삭제$/, /^hide$/, /^remove$/]),
+    ph: f([/^photo$/, /^image$/, /^사진$/]), del: f([/^delete$/, /^삭제$/, /^remove$/]), h: f([/^hide$/, /^hidden$/, /^숨김$/, /^show$/, /^visible$/]),
     /* SBM 의 GROUP_NAME_CHANGE 파일: CURRENT GROUP NAME · NEW GROUP NAME → Level 3 (새 이름이 비어 있으면 현재 이름) */
     gN: f([/^new group ?name$/, /^new group$/]), gC: f([/^current group ?name$/, /^group ?name$/, /^current group$/]) };
   if (ix.c < 0) throw new Error('Code(코드) 열을 찾지 못했습니다');
@@ -395,6 +407,9 @@ export function parseBulkSheet(aoa) {
   /* 이전 시스템 내보내기(LEVEL_1_AND_2 · GROUP_NAME_CHANGE)에서 칸 안에 줄바꿈 · 탭이 섞여 깨진 줄 —
    *   'L1\tL2\r\ncode2\tL1\r\ncode3\t\t…' 꼴. 첫 조각은 이 줄의 값, 그 뒤 줄들은 "코드 \t 값" 으로 살려서 따로 패치를 만듦 */
   const sbmLevel = ix.l1 >= 0 && ix.g < 0 && ix.d < 0, sbmGroup = ix.gC >= 0 && ix.l1 < 0;
+  /* 이전 시스템 LEVEL_1_AND_2: LEVEL 1 이 비어 있는 줄 = 세일즈맨에게 안 보이는 아이템 → 숨김, 있으면 보임 (옛 시스템과 같은 뜻) */
+  const blankHides = sbmLevel && !(opts && opts.keepBlank);
+  const hideCol = ix.h >= 0 && /show|visible/.test(hr[ix.h]);   // Show 열이면 뜻이 반대
   const rowsIn = [];
   for (let i = 1; i < aoa.length; i++) {
     const r = (aoa[i] || []).slice(); const code = str(r[ix.c]).toUpperCase(); if (!code) continue;
@@ -421,33 +436,36 @@ export function parseBulkSheet(aoa) {
       const v = r[ix[k]]; if (v === undefined || v === null || String(v).trim() === '') return;   // 빈 칸은 "그대로"
       if (k === 'nc') pt.nc = str(v).toUpperCase();
       else if (k === 'del') pt.del = /^(x|y|yes|true|1|삭제)$/i.test(str(v));
+      else if (k === 'h') { const yes = /^(x|y|yes|true|1|숨김|hide|hidden)$/i.test(str(v)), no = /^(n|no|false|0|보임|show|visible)$/i.test(str(v)); if (yes || no) pt.set.h = (hideCol ? no : yes) ? 1 : 0; }
       else if (k === 'p' || k === 's') pt.set[k] = R2(num(v));
       else if (k === 'b') { let bb = str(v).replace(/\.0+$/, ''); if (/^\d{11}$/.test(bb)) bb = '0' + bb; pt.set.b = bb; }
       else pt.set[k] = k === 'ph' ? str(v).split(/\s+/)[0] : str(v);
     });
     /* Level 1 만 주고 Group 이 없는 파일 (이전 시스템 LEVEL_1_AND_2) — Group 은 앞글자 규칙으로 (Jewelry · Other · Set & Display = A · P · W) */
     if (pt.set.l1 && ix.g < 0) pt.set.g = familyOf(pt.set.l1);
+    if (blankHides) pt.set.h = pt.set.l1 ? 0 : 1;
     if (Object.keys(pt.set).length || pt.nc || pt.del) out.push(pt);
   }
-  return { patches: out, cols: has.filter(k => k !== 'gN' && k !== 'gC'), broken, fixed };
+  const cols = has.filter(k => k !== 'gN' && k !== 'gC'); if (blankHides && !cols.includes('h')) cols.push('h');
+  return { patches: out, cols, broken, fixed, blankHides };
 }
 /** 패치 적용 — rows 와 sets 를 바꾸고 요약 돌려줌 */
 export function applyBulk(rows, cats, sets, patches) {
   const at = {}; rows.forEach((r, i) => { at[r[0]] = i; });
-  const sum = { changed: 0, renamed: 0, deleted: 0, added: 0, missing: [], dupNew: [] };
+  const sum = { changed: 0, renamed: 0, deleted: 0, added: 0, hidden: 0, shown: 0, missing: [], dupNew: [] };
   const del = {};
   patches.forEach(pt => {
     let i = at[pt.code];
     if (i == null) {
       /* 없는 코드 — 디스크립션 · 가격이 다 있으면 새 아이템으로 추가 */
-      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '']; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; }
+      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0]; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; }
       else sum.missing.push(pt.code);
       return;
     }
     const r = rows[i];
     if (pt.del) { del[pt.code] = 1; sum.deleted++; return; }
     let ch = false;
-    Object.keys(pt.set).forEach(k => { const j = COL[k]; if (j != null && r[j] !== pt.set[k]) { r[j] = pt.set[k]; ch = true; } });
+    Object.keys(pt.set).forEach(k => { const j = COL[k]; if (j == null) return; const cur = k === 'h' ? (r[j] ? 1 : 0) : r[j]; if (cur !== pt.set[k]) { r[j] = pt.set[k]; ch = true; if (k === 'h') { if (pt.set[k]) sum.hidden++; else sum.shown++; } } });
     if (pt.nc && pt.nc !== pt.code) {
       if (at[pt.nc] != null) { sum.dupNew.push(pt.code + '→' + pt.nc); }
       else {
@@ -463,11 +481,11 @@ export function applyBulk(rows, cats, sets, patches) {
 }
 /** 지금 아이템 전체를 CSV 로 (엑셀에서 고쳐서 다시 올리는 용) */
 /** 이전 시스템 편의 파일 모양으로 내려받기 — LEVEL_1_AND_2 (ITEM CODE · LEVEL 1 · LEVEL 2) / GROUP_NAME_CHANGE (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) */
-export function sbmLevelRows() { return [['ITEM CODE', 'LEVEL 1', 'LEVEL 2']].concat(CAT.items.filter(x => !x.virt).map(x => [x.c, x.l1 || '', x.l2 || ''])); }
+export function sbmLevelRows() { return [['ITEM CODE', 'LEVEL 1', 'LEVEL 2']].concat(CAT.items.filter(x => !x.virt).map(x => x.h ? [x.c, '', ''] : [x.c, x.l1 || '', x.l2 || ''])); }   // 숨김은 옛 시스템처럼 레벨을 비워서 내보냄
 export function sbmGroupRows() { return [['ITEM CODE', 'CURRENT GROUP NAME', 'NEW GROUP NAME']].concat(CAT.items.filter(x => !x.virt).map(x => [x.c, x.l3 || '', ''])); }
 export function catalogCsv() {
   const q = s => { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const head = ['Code', 'NewCode', 'Description', 'Price', 'SRP', 'Barcode', 'Group', 'Level 1', 'Level 2', 'Level 3', 'Photo', 'Delete'];
-  const lines = [head].concat((CAT ? CAT.rows : []).map(r => [r[0], '', r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], '']));
+  const head = ['Code', 'NewCode', 'Description', 'Price', 'SRP', 'Barcode', 'Group', 'Level 1', 'Level 2', 'Level 3', 'Photo', 'Hide', 'Delete'];
+  const lines = [head].concat((CAT ? CAT.rows : []).map(r => [r[0], '', r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10] ? 'x' : '', '']));
   return '﻿' + lines.map(r => r.map(q).join(',')).join('\r\n');
 }
