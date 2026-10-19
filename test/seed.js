@@ -53,6 +53,10 @@ window.__MOCK_SEED__ = {
   const G = [['Jewelry', 'Earrings · Hoops & Pincatch', 'Aluminum', 'Gold'], ['Jewelry', 'Earrings · Hoops & Pincatch', 'Aluminum', 'Silver'], ['Jewelry', 'Chains', '14K', 'Gold'], ['Hair', 'Edge Control', 'EDGE BOOSTER', ''], ['Hair', 'Wax', 'GUMMY', '']];
   const rows = [];
   for (let i = 0; i < 1200; i++) { const g = G[i % G.length]; const code = (i % 5 === 3 ? 'EB' : i % 5 === 4 ? 'GM' : 'AHG') + String(100 + i); rows.push([code, (g[2] + ' ' + g[3] + ' ITEM ' + i).trim(), 2.5 + (i % 7) * 0.25, 4.99, String(898000000000 + i), g[0], g[1], g[2], g[3], '']); }
+  /* 🙈 숨김 아이템 3개 — 목록엔 있고 세일즈맨 주문 화면에선 빠져야 함 (FLSIDE52 는 이전 시스템 숨김 기록에도 있는 코드) */
+  rows.push(['AHG9001', 'ALUMINUM GOLD HIDDEN ITEM', 3, 4.99, '', 'Jewelry', 'Earrings · Hoops & Pincatch', 'Aluminum', 'Gold', '', 1]);
+  rows.push(['AHG9002', 'ALUMINUM GOLD HIDDEN ITEM 2', 3, 4.99, '', 'Jewelry', 'Earrings · Hoops & Pincatch', 'Aluminum', 'Gold', '', 1]);
+  rows.push(['FLSIDE52', 'FL INT #52 - BODY J - CHIN (66PC)', 198, 0, '', 'Set Orders & Displays', 'Floor Inserts', 'FL Side Insert', 'Body Jewelry', '', 0]);
   window.__MOCK_SEED__.catalog = [{ id: 'meta', ver: 'T1', count: rows.length, chunks: 1, cats: G.map(g => g.join('\u0001')), updatedAt: '2026-10-15T10:00:00Z', by: 'luke@theonefl.com' }, { id: 'c0', j: JSON.stringify(rows), n: rows.length, ver: 'T1' }];
   window.__MOCK_SEED__.catalog[0].setsVer = 'S1';
   window.__MOCK_SEED__.catalog.push({ id: 'sets', ver: 'S1', j: JSON.stringify({ 'FI-TEST01': { n: 'FLOOR INSERT TEST CZ SET', k: [['AHG100', 6], ['AHG105', 6], ['AHG110', 12]], p: 216, old: 'AHG115', st: '확정' }, 'C4-EB01': { n: 'C4 EDGE BOOSTER INSERT', k: [['EB103', 12], ['EB108', 12]] } }) });

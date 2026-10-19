@@ -543,7 +543,8 @@ function paintAdd() {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     const it = exactItem(q.value);
-    if (it) { const n = setQty(it.c, tapQty(it.c)); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
+    if (it && it.h && !isStaff()) { toast('🙈 지금은 주문할 수 없는 아이템입니다 (단종 · 재입고 지연) — 담당자에게 문의 · Not available', 'bad'); return; }
+    if (it) { if (it.h) toast('🙈 숨김 아이템을 담았습니다 (담당자 전용)'); const n = setQty(it.c, tapQty(it.c)); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
     else { run(); toast('정확히 맞는 코드가 없습니다 — 아래에서 고르세요', 'bad'); }
   };
   document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.pop = false; O.all = false; PAGE = 60; paintAdd(); });
