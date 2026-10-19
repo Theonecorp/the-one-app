@@ -236,7 +236,7 @@ async function pageStores() {
   document.querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeSheet(el.dataset.st));
   document.querySelectorAll('[data-ste]').forEach(el => el.onclick = e => { e.stopPropagation(); storeForm(S.accounts.byCode[el.dataset.ste]); });
 }
-function storeForm(a) {
+export function storeForm(a) {
   a = a || {};
   openModal('<h2>' + (a.acct ? esc(a.store) : '＋ 새 거래처') + '</h2>' +
     '<div class="two"><div class="fg"><label>계정코드</label><input id="sAcct" value="' + esc(a.acct || '') + '" ' + (a.acct ? 'readonly' : '') + '></div><div class="fg"><label>담당 세일즈맨</label>' + sel('sSm', smOptions(null, true), a.sm || '') + '</div></div>' +

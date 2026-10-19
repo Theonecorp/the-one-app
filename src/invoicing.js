@@ -179,7 +179,8 @@ export function invoiceHtml(inv, acc, opt) {
   const byGroup = view.sort === 'group';
   const rows = view.sort === 'order' ? inv.lines.slice() : view.sort === 'abc' ? inv.lines.slice().sort((a, b) => a.c < b.c ? -1 : a.c > b.c ? 1 : 0) : inv.lines.slice().sort((a, b) => (grpOf(a) + '\u0001' + a.c) < (grpOf(b) + '\u0001' + b.c) ? -1 : 1);
   const dc = Number(inv.disc) || 0;
-  const addr = acc ? [acc.addr, [acc.city, acc.state].filter(Boolean).join(', ') + (acc.zip ? ' ' + acc.zip : '')].filter(Boolean) : [];
+  const A = inv.shipTo ? Object.assign({}, acc || {}, inv.shipTo) : acc;   // 🏬 이 주문만 고친 이름 · 주소가 있으면 그걸로
+  const addr = A ? [A.addr, [A.city, A.state].filter(Boolean).join(', ') + (A.zip ? ' ' + A.zip : '')].filter(Boolean) : [];
   const party = (t) => '<div class="ivp"><b>' + t + ' :</b><div>' + esc(inv.store) + '</div>' + addr.map(x => '<div>' + esc(x) + '</div>').join('') + (t === 'BILL TO' ? '<div>Phone : ' + esc((acc && acc.tel) || '') + '</div>' : '') + '</div>';
   const terms = inv.terms || (acc && acc.terms) || 'N30';
   const due = addDays(inv.d, termDays(terms));
