@@ -23,6 +23,8 @@ export function register(state) {
 const SRC_TAG = { FIELD: ['현장', 't-f'], COD: ['COD', 't-c'], ACH: ['ACH', 't-a'], CARD: ['카드', 't-k'] };
 const srcOf = c => c.method === 'ACH' ? 'ACH' : c.method === 'CREDIT CARD' ? 'CARD' : 'COD';
 function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
+/** 가져오기 뒤 현황 캐시 비우기 */
+export function dropBossCache() { C.at = 0; C.ents = null; HIST = null; }
 async function loadAll(force) {
   if (C.ents && !force && Date.now() - C.at < 120000) return C;
   const yms = recentYms(13);
@@ -87,7 +89,10 @@ async function pageNow() {
   const d90 = addDays(t, -90), bounce = C.ents.filter(e => e.repl && e.d >= d90);
   /* 주문 흐름 · 미수금 */
   const oc = st => live.filter(o => st.includes(o.st)), oAmt = L => money(sum(L, o => o.amt || 0));
-  let arTot = 0, ar90 = 0, arN = 0; if (arAll && arAll.stores) { arAll.stores.forEach(st => { let net = 0; (st.invs || []).forEach(v => { net += v.bal; if (v.bal > 0 && (v.bk || 0) >= 4) ar90 += v.bal; }); if (net > 0.005) { arTot += net; arN++; } }); }
+  /* 미수금 — 미수금 화면과 같은 계산 (기준일 이후 받은 돈을 빼고, 잔액 있는 가게만) */
+  let arTot = 0, ar90 = 0, arN = 0;
+  if (arAll && arAll.stores) { const paid = {}; C.ents.forEach(e => { if (e.d <= arAll.asOf || e.repl) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
+    arAll.stores.forEach(st => { let net = 0, n90 = 0; (st.invs || []).forEach(v => { const b = R2(v.bal - (paid[st.acct + '|' + v.inv] || 0)); net += b; if (b > 0 && (v.bk || 0) >= 4) n90 += b; }); if (net > 0.005) { arTot = R2(arTot + net); ar90 = R2(ar90 + n90); arN++; } }); }
   const cmp = (a, b) => b ? ' <b class="' + (a >= b ? 'ok' : 'warn') + '">' + ((a - b) / b * 100 >= 0 ? '+' : '') + Math.round((a - b) / b * 100) + '%</b>' : '';
   let h = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📈 현황 — ' + esc(ptxt) + '</h2><div class="chips" style="margin:0 0 8px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (NP.p === c[0] ? 'on' : '') + '" data-np="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (MAIN.includes(NP.p) ? '' : 'on') + '" id="npCal">📅 날짜 선택</button></div>' +
     '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="npPrev">◀</button><div style="text-align:center;font-weight:800">' + esc(ptxt) + '</div><button class="b-ghost b-sm" id="npNext">▶</button></div></div>';
