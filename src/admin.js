@@ -8,7 +8,7 @@ import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
 import { roleLabel, JOBS, jobLabel } from './main.js';
 import { seedImport } from './mg.js';
 import { dropBossCache } from './boss.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey } from './catalog.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs } from './catalog.js';
 import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM } from './invoicing.js';
 
 let S = null, TAB = 'users';
@@ -677,6 +677,8 @@ async function treeAdmin() {
     '<div class="card"><h2>🔎 코드로 아이템 분류 바꾸기</h2><div class="muted">아이템 코드(또는 바코드)를 치면 지금 분류가 보이고 Group · Level 1 · 2 · 3 을 바로 고칠 수 있습니다. 아이템을 다른 Level 1 로 옮기거나, 새 Level 이름을 만들 때 쓰세요.</div><div class="fg" style="margin-top:8px"><input id="tCode" placeholder="예: AHG103" autocomplete="off" style="text-transform:uppercase"></div><div id="tCodeOut"></div>' +
     '<div class="card"><h2>✨ 자주 나가는 아이템</h2><div class="muted">주문 화면 맨 위 "✨ 자주 나가는" 칸의 순서입니다. 가게가 최근에 산 것이 먼저 나오고, 그 다음 이 목록 순서입니다. 이전 시스템의 <b>Sales Report by Item</b>(엑셀) 처럼 <b>Item</b>(코드) 과 <b>Qty</b>(수량) 열이 있는 파일을 올리면 많이 나간 순으로 저장됩니다.' + (popularCodes().length ? ' 지금 <b>' + popularCodes().length + '개</b> 올라와 있음.' : ' 아직 없음.') + '</div>' +
     '<div class="fg" style="margin-top:8px"><input type="file" id="popFile" accept=".xlsx,.csv"></div><div id="popOut"></div></div>' +
+    '<div class="card"><h2>📍 창고 위치 가져오기 — 재고 사이트 통로</h2><div class="muted">재고 · UPS 사이트(theonecorp.vercel.app) → 재고 → 상품 → <b>내보내기</b> 로 받은 파일(CSV · 엑셀)을 그대로 고르세요. <b>상품 코드</b>와 <b>통로(Corredor)</b> 두 칸만 읽고, 가격 · 설명 같은 다른 칸은 건드리지 않습니다. 아이템마다 위치가 들어가 픽킹 리스트가 통로 순으로 나옵니다. 분류 대부분이 한 통로에 있으면 그 분류의 기본 위치도 같이 채워 새 아이템도 자동으로 그 통로를 따릅니다.</div>' +
+    '<div class="fg" style="margin-top:8px"><input type="file" id="locFile" accept=".csv,.xlsx,.xls,.txt"></div><div id="locOut"></div></div>' +
     sbmCard(C) + dupeCard(C) +
     '<div class="card"><h2>📄 일괄 변경 파일 — 이전 시스템 편의 파일 그대로</h2><div class="muted">이전 시스템에서 쓰던 <b>LEVEL_1_AND_2</b> (ITEM CODE · LEVEL 1 · LEVEL 2) 와 <b>GROUP_NAME_CHANGE</b> (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) 파일을 그대로 올리면 됩니다. 아래에서 지금 상태를 같은 모양으로 받아 엑셀에서 고친 뒤 다시 올리세요. 이전 시스템 내보내기에서 칸이 깨진 줄(줄바꿈 · 탭)도 알아서 살려 읽습니다.<br>' +
     'LEVEL 파일에서 <b>LEVEL 1 이 빈 줄은 🙈 숨김</b>(이전 시스템처럼 세일즈맨 주문 화면에서 빠짐), 레벨이 있으면 보임으로 바뀝니다. Level 1 이름의 앞글자로 Group(인보이스 A · P · W)이 정해집니다: 보통 이름 → Jewelry(A), [ ] → Other(P), "" → Set &amp; Display(W). GROUP NAME 은 Level 3 으로 들어갑니다 (NEW 가 비어 있으면 CURRENT 그대로).<br>' +
@@ -806,6 +808,36 @@ async function treeAdmin() {
   $('tDlLevel').onclick = () => dlXlsx(sbmLevelRows(), 'LEVEL_1_AND_2_' + today() + '.xlsx');
   $('tDlGroup').onclick = () => dlXlsx(sbmGroupRows(), 'GROUP_NAME_CHANGE_' + today() + '.xlsx');
   $('tCsv').onclick = () => { const blob = new Blob([catalogCsv()], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'the-one-items-' + today() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
+  $('locFile').onchange = async () => {
+    const file = $('locFile').files[0]; if (!file) return; const out = $('locOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
+    try {
+      let t;
+      if (/\.(csv|txt)$/i.test(file.name)) { const text = (await file.text()).replace(/^\ufeff/, ''); const first = text.split(/\r?\n/)[0] || ''; const dl = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : (first.match(/\t/g) || []).length > (first.match(/,/g) || []).length ? '\t' : ','; t = parseCsv(text, dl); }
+      else { const { XLSX, wb } = await readBook(file); t = aoa(XLSX, wb, wb.SheetNames[0]); }
+      const r = parseLocSheet(t);
+      const rows = catalog().rows.map(x => x.slice()), cats = catalog().cats.map(x => x.slice()), sets = JSON.parse(JSON.stringify(catalog().sets || {}));
+      const sum = applyBulk(rows, cats, sets, r.patches);
+      const sug = suggestCatLocs(rows), cur = catLocs(), newSug = Object.keys(sug).filter(k => cur[k] !== sug[k]);
+      const aisles = {}; r.patches.forEach(p => { const a = p.set.loc.split(/[-.\s/]/)[0]; aisles[a] = (aisles[a] || 0) + 1; });
+      const al = Object.keys(aisles).sort(new Intl.Collator('en', { numeric: true }).compare);
+      out.innerHTML = '<div class="alert a-blu">파일 위치 <b>' + r.patches.length.toLocaleString() + '</b>줄 · 목록에 있는 아이템 중 바뀌는 것 <b>' + sum.changed.toLocaleString() + '</b>개 · 통로 ' + al.length + '개 (' + esc(al.slice(0, 30).join(' · ')) + (al.length > 30 ? ' …' : '') + ')' + (r.blank ? '<br>통로가 비어 있는 줄 ' + r.blank + '개는 건너뜀' : '') + '</div>' +
+        (sum.missing.length ? '<div class="alert a-amb">우리 아이템 목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 12).join(', ')) + '</div>' : '') +
+        (newSug.length ? '<label class="pick on" id="locCat" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>분류 기본 위치도 채우기 · ' + newSug.length + '개 분류</b><small>' + esc(newSug.slice(0, 8).map(k => k.split('\u0001').join(' › ') + ' → ' + sug[k]).join(' / ')) + (newSug.length > 8 ? ' …' : '') + '</small></span></label>' : '') +
+        (sum.changed || newSug.length ? '<button class="b-blue" id="locGo" style="margin-top:8px">이대로 적용</button>' : '<div class="none">바뀌는 것이 없습니다</div>');
+      if ($('locCat')) $('locCat').onclick = () => $('locCat').classList.toggle('on');
+      if ($('locGo')) $('locGo').onclick = async () => {
+        const withCat = $('locCat') && $('locCat').classList.contains('on');
+        if (!(await confirmBox(sum.changed.toLocaleString() + '개 아이템 위치' + (withCat ? ' + 분류 ' + newSug.length + '개 기본 위치' : '') + '를 저장할까요? 모든 폰의 픽킹 리스트에 반영됩니다.', '적용'))) return;
+        busy(true);
+        try {
+          if (sum.changed) await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches));
+          if (withCat) { const app = (await S.DB.get('settings', 'app')) || {}; const m = Object.assign({}, app.catLoc || {}); newSug.forEach(k => { m[k] = sug[k]; }); app.catLoc = m; await S.DB.set('settings', 'app', app); S.settings.catLoc = m; setLocs(m); }
+          toast('📍 위치 저장 — 아이템 ' + sum.changed + (withCat ? ' · 분류 ' + newSug.length : ''), 'good'); treeAdmin();
+        } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+        busy(false);
+      };
+    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+  };
   $('tFile').onchange = async () => {
     const file = $('tFile').files[0]; if (!file) return;
     const out = $('tOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
@@ -860,13 +892,14 @@ async function readSheetTab(id, tab) {
   if (/<html/i.test(text.substring(0, 200))) throw new Error('시트가 공개돼 있지 않거나 탭 이름이 다릅니다');
   return parseCsv(text);
 }
-export function parseCsv(text) {
+export function parseCsv(text, dl) {
+  dl = dl || ',';
   const rows = []; let row = [], cell = '', q = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
     else if (ch === '"') q = true;
-    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === dl) { row.push(cell); cell = ''; }
     else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
     else cell += ch;
   }

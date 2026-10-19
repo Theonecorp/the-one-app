@@ -474,6 +474,28 @@ export function parseBulkSheet(aoa, opts) {
   const cols = has.filter(k => k !== 'gN' && k !== 'gC'); if (blankHides && !cols.includes('h')) cols.push('h');
   return { patches: out, cols, broken, fixed, blankHides };
 }
+/**
+ * 📍 창고 위치 파일 — 재고 사이트(통로 · Corredor) 내보내기나 아무 표에서 "코드 + 통로" 두 칸만 읽음.
+ *   가격 · 설명 같은 다른 칸은 일부러 무시 (재고 사이트 값으로 덮어쓰지 않게). 머리글은 위 10줄 안에서 찾음
+ *   통로 숫자는 두 자리로 (0 → 00, 7 → 07) — 엑셀이 앞 0 을 지우므로
+ */
+export function parseLocSheet(aoa) {
+  const isCode = h => /^(code|item ?code|item|sku|c[oó]digo|c[oó]d\.?|product ?code|상품 ?코드|아이템 ?코드|코드)$/i.test(h);
+  const isLoc = h => /^(corredor|aisle|location|loc|bin|통로|위치|창고 ?위치|localiza[cç][aã]o)$/i.test(h);
+  let hi = -1, ci = -1, li = -1;
+  for (let i = 0; i < Math.min(10, aoa.length); i++) { const h = (aoa[i] || []).map(x => String(x == null ? '' : x).trim()); const c = h.findIndex(isCode), l = h.findIndex(isLoc); if (c >= 0 && l >= 0) { hi = i; ci = c; li = l; break; } }
+  if (hi < 0) throw new Error('머리글에서 "코드"(Code · Código · 상품 코드) 칸과 "통로"(Corredor · Aisle · Location) 칸을 찾지 못했습니다');
+  const fix = v => { if (v == null) return ''; if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 100) return String(v).padStart(2, '0'); const s = String(v).trim().toUpperCase(); return /^\d$/.test(s) ? '0' + s : s; };
+  const patches = [], seen = {}; let blank = 0;
+  for (let i = hi + 1; i < aoa.length; i++) { const r = aoa[i] || []; const code = String(r[ci] == null ? '' : r[ci]).trim().toUpperCase(); if (!code || seen[code]) continue; seen[code] = 1; const loc = fix(r[li]); if (!loc) { blank++; continue; } patches.push({ code, set: { loc } }); }
+  return { patches, blank, cols: ['loc'] };
+}
+/** 위치가 들어간 아이템으로 분류 기본 위치 추천 — Level 1 › 2 (없으면 Level 1) 안에서 한 통로가 70% 이상이면 그 통로 */
+export function suggestCatLocs(rows) {
+  const by = {}; rows.forEach(r => { const loc = r[11]; if (!loc) return; const a = aisleOf(loc); [[r[6]], [r[6], r[7]]].forEach(p => { if (!p[p.length - 1]) return; const k = locKey(p); (by[k] = by[k] || {})[a] = (by[k][a] || 0) + 1; }); });
+  const out = {}; Object.keys(by).forEach(k => { const m = by[k], tot = Object.values(m).reduce((x, y) => x + y, 0), best = Object.keys(m).sort((x, y) => m[y] - m[x])[0]; if (tot >= 3 && m[best] / tot >= 0.7) out[k] = best; });
+  return out;
+}
 /** 패치 적용 — rows 와 sets 를 바꾸고 요약 돌려줌 */
 export function applyBulk(rows, cats, sets, patches) {
   const at = {}; rows.forEach((r, i) => { at[r[0]] = i; });
