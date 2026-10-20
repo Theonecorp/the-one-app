@@ -9,6 +9,7 @@
 import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi } from './ui.js';
 import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf } from './catalog.js';
 import { typeOfItem, invTypes } from './invoicing.js';
+import { can } from './main.js';
 
 let S = null;
 /* 화면 상태 — 탭을 오가도 유지 */
@@ -16,6 +17,8 @@ const IT = { mode: 'all', path: [], q: '', page: 100, sel: new Set() };
 export function register(state) { S = state; Router.on('items', page); }
 const isStaff = () => S.role !== 'salesman';
 const isAdmin = () => S.role === 'admin';
+/** 창고 매니저 · 창고 직원 — 아이템은 찾아보고 📍 위치만 바꿈 (가격 · 이름 · 숨김 · 등록은 오피스 · 인보이스 쪽) */
+const locOnly = () => S.role !== 'admin' && !can('newOrder') && !can('invoice');
 const LV = ['Group', 'Level 1', 'Level 2', 'Level 3'];
 const pathOf = x => [x.g, x.l1, x.l2, x.l3];
 const inPath = (x, path) => { const L = pathOf(x); return path.every((p, i) => L[i] === p); };
@@ -49,7 +52,7 @@ function paint() {
   const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
   $('page').innerHTML = '<div class="card"><h2>🏷 ' + bi('아이템 관리', 'Items') + ' <span class="muted" style="font-weight:400;font-size:12px">' + nAll.toLocaleString() + '개 · 👁 보임 ' + (nAll - nHid).toLocaleString() + ' · 🙈 숨김 ' + nHid.toLocaleString() + '</span></h2>' +
     '<div class="muted">분류를 눌러 내려가거나 검색해서 전체를 훑어보세요. 체크해서 여러 개를 한 번에 <b>숨기기 · 보이기 · 분류 옮기기 · 삭제</b>. 🙈 숨김 아이템은 목록엔 있지만 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연). 저장하면 모든 폰에 반영됩니다.</div>' +
-    '<div style="display:flex;gap:6px;margin-top:10px"><input id="itQ" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1"><button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button></div>' +
+    '<div style="display:flex;gap:6px;margin-top:10px"><input id="itQ" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
     '<div class="seg" style="margin-top:8px">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()]].map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
     crumbs + tiles + '</div>' +
     '<div class="card"><div id="itList"></div></div>' + (isAdmin() ? '<div id="itSbm"></div>' : '') +
@@ -58,7 +61,7 @@ function paint() {
   document.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => { IT.path = IT.path.slice(0, Number(b.dataset.ip)); IT.page = 100; paint(); });
   document.querySelectorAll('[data-ik]').forEach(b => b.onclick = () => { IT.path = IT.path.concat([b.dataset.ik]); IT.page = 100; paint(); });
   $('itQ').oninput = debounce(() => { IT.q = $('itQ').value; IT.page = 100; list(); }, 150);
-  $('itNew').onclick = () => form(null, IT.q.trim().toUpperCase());
+  if ($('itNew')) $('itNew').onclick = () => form(null, IT.q.trim().toUpperCase());
   list();
   if (isAdmin()) sbmCard();
 }
@@ -83,7 +86,7 @@ function row(it) {
     (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:8px" alt="">' : '') +
     '<div class="ct tap" data-it="' + esc(it.c) + '"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a">🧩 세트</span>' : '') + (it.h ? ' <span class="tag t-x">🙈 숨김</span>' : '') + (locOf(it) ? ' <span class="loc"' + (it.loc ? '' : ' style="background:#64748b" title="분류 기본 위치"') + '>📍' + esc(locOf(it)) + '</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + esc(pathOf(it).filter(Boolean).map(cleanName).join(' › ') || '분류 없음') + (it.b ? ' · ' + esc(it.b) : '') + '</small></div>' +
     '<div class="pa"><b>' + money(it.p) + '</b>' + (it.s ? '<small>SRP ' + money(it.s) + '</small>' : '') + '</div>' +
-    (it.virt ? '' : '<button class="b-ghost b-sm" data-ih="' + esc(it.c) + '" data-on="' + (it.h ? '0' : '1') + '" title="' + (it.h ? '보이기' : '숨기기') + '" style="margin-left:6px">' + (it.h ? '👁' : '🙈') + '</button>') + '</div>';
+    (it.virt || locOnly() ? '' : '<button class="b-ghost b-sm" data-ih="' + esc(it.c) + '" data-on="' + (it.h ? '0' : '1') + '" title="' + (it.h ? '보이기' : '숨기기') + '" style="margin-left:6px">' + (it.h ? '👁' : '🙈') + '</button>') + '</div>';
 }
 /** 아래 고정 — 선택한 것들에 한 번에 */
 function bulk() {
@@ -91,14 +94,14 @@ function bulk() {
   const n = IT.sel.size;
   bar.style.display = n ? '' : 'none';
   if (!n) return;
-  bar.innerHTML = '<b>' + n.toLocaleString() + '개 선택</b><button class="b-ghost b-sm" id="bkHide">🙈 숨기기</button><button class="b-ghost b-sm" id="bkShow">👁 보이기</button><button class="b-ghost b-sm" id="bkMove">➡️ 분류 옮기기</button><button class="b-ghost b-sm" id="bkLoc">📍 위치</button>' + (isAdmin() ? '<button class="b-ghost b-sm" id="bkDel" style="color:#991b1b">🗑 삭제</button>' : '') + '<button class="b-ghost b-sm" id="bkClr">✕ 선택 해제</button>';
-  $('bkHide').onclick = () => applyHidden(Array.from(IT.sel), true);
+  bar.innerHTML = '<b>' + n.toLocaleString() + '개 선택</b>' + (locOnly() ? '' : '<button class="b-ghost b-sm" id="bkHide">🙈 숨기기</button><button class="b-ghost b-sm" id="bkShow">👁 보이기</button><button class="b-ghost b-sm" id="bkMove">➡️ 분류 옮기기</button>') + '<button class="b-ghost b-sm" id="bkLoc">📍 위치</button>' + (isAdmin() ? '<button class="b-ghost b-sm" id="bkDel" style="color:#991b1b">🗑 삭제</button>' : '') + '<button class="b-ghost b-sm" id="bkClr">✕ 선택 해제</button>';
+  if ($('bkHide')) $('bkHide').onclick = () => applyHidden(Array.from(IT.sel), true);
   $('bkLoc').onclick = () => { const codes = Array.from(IT.sel), C = catalog(), now = (C.byCode[codes[0]] || {}).loc || '';
     openModal('<h2>📍 ' + codes.length + '개 창고 위치</h2><div class="muted">통로-선반-칸 처럼 적으세요 (예: <b>A-03-2</b>, <b>12-4</b>). 픽킹 리스트가 이 순서로 정렬됩니다. 비우면 분류 기본 위치(관리 → 🗂 분류 → 📍)를 따릅니다.</div><div class="fg" style="margin-top:8px"><input id="lcIn" value="' + esc(now) + '" autocapitalize="characters" style="text-transform:uppercase;font-size:20px;font-weight:800;text-align:center" placeholder="A-03-2"></div><div class="btns"><button class="b-ghost" id="lcX">취소</button><button class="b-blue" id="lcOk">저장</button></div>');
     $('lcX').onclick = closeModal; setTimeout(() => $('lcIn') && $('lcIn').focus(), 50);
     $('lcOk').onclick = async () => { const v = $('lcIn').value.trim().toUpperCase(); closeModal(); await save(rows => setLoc(rows, codes, v), n => n + '개 위치 ' + (v || '비움 (분류 기본)')); IT.sel.clear(); }; };
-  $('bkShow').onclick = () => applyHidden(Array.from(IT.sel), false);
-  $('bkMove').onclick = () => moveForm(Array.from(IT.sel));
+  if ($('bkShow')) $('bkShow').onclick = () => applyHidden(Array.from(IT.sel), false);
+  if ($('bkMove')) $('bkMove').onclick = () => moveForm(Array.from(IT.sel));
   if ($('bkDel')) $('bkDel').onclick = async () => {
     const codes = Array.from(IT.sel);
     if (!(await confirmBox(codes.length + '개 아이템을 목록에서 뺄까요? 지난 주문 · 인보이스 기록은 그대로 남습니다. 다시 팔 수도 있는 아이템이면 삭제 대신 🙈 숨기기를 쓰세요.', '삭제'))) return;
@@ -175,6 +178,11 @@ function form(it, newCode) {
     '<div class="sumbox" id="fType"></div>' +
     '<div class="btns">' + (isNew ? '' : '<button class="b-ghost" id="fDel" style="color:#991b1b">🗑 삭제</button>') + '<button class="b-ghost" id="fX">취소</button><button class="b-blue" id="fOk">' + (isNew ? '등록' : '저장') + '</button></div>');
   let vis = !x.h;
+  if (locOnly()) {   /* 창고: 위치 칸만 고칠 수 있음 */
+    document.querySelectorAll('#mbox input, #mbox select').forEach(el => { if (el.id !== 'fLoc') { el.readOnly = true; el.disabled = el.tagName === 'SELECT'; el.style.background = '#f1f5f9'; } });
+    if ($('fDel')) $('fDel').remove(); if ($('fVis')) $('fVis').style.pointerEvents = 'none';
+    $('fOk').textContent = '📍 위치 저장';
+  }
   if ($('fVis')) $('fVis').onclick = () => { vis = !vis; $('fVis').classList.toggle('on', vis); };
   const cur = () => ({ c: $('fC').value.trim().toUpperCase(), d: $('fD').value.trim(), p: R2(num($('fP').value)), s: R2(num($('fS').value)) || 0, b: $('fB').value.trim().replace(/\.0+$/, ''), g: $('fG').value.trim(), l1: $('fL1').value.trim(), l2: $('fL2').value.trim(), l3: $('fL3').value.trim(), ph: $('fPh').value.trim() });
   const showType = () => { const v = cur(); const t = typeOfItem(S, v), tt = invTypes(S).find(z => z.c === t); $('fType').innerHTML = '🧾 인보이스 종류: <b>' + esc(t) + '</b> ' + esc(tt ? tt.n : '') + ' <span class="muted">(분류 이름으로 자동 결정 · 관리 → 설정 → 인보이스 종류)</span>' + (v.g || v.l1 ? '' : '<br><span class="warn">분류가 없으면 주문 화면의 분류 버튼에서 찾을 수 없고 검색으로만 나옵니다</span>'); };
@@ -188,6 +196,7 @@ function form(it, newCode) {
     await save((rows, cats, sets) => { const i = rows.findIndex(r => r[0] === x.c); if (i >= 0) rows.splice(i, 1); if (sets[x.c]) delete sets[x.c]; return 1; }, () => x.c + ' 삭제');
   };
   $('fOk').onclick = async () => {
+    if (locOnly()) { const lv = ($('fLoc') ? $('fLoc').value : '').trim().toUpperCase(); closeModal(); IT.q = x.c; await save(rows => setLoc(rows, [x.c], lv), n => x.c + ' 위치 ' + (lv || '비움 (분류 기본)')); return; }
     const v = cur();
     if (!v.c) return toast('코드를 넣어 주세요', 'bad');
     if (!/^[A-Z0-9][A-Z0-9\-_.\/ ]{0,29}$/.test(v.c)) return toast('코드는 영문 · 숫자 · - _ . / 만 (30자 이내)', 'bad');

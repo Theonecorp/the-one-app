@@ -18,7 +18,7 @@ import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 
-export const VER = 'v0.8.40';
+export const VER = 'v0.8.41';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -28,14 +28,30 @@ const ADMIN_EMAILS = ['luke@theonefl.com'];
  *   admin     관리자: 전부 */
 const NAV = {
   salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '주문', 'Orders'], ['entry', '✍️', '수금 입력', 'Payment'], ['stores', '🏬', '거래처', 'Customers'], ['ar', '💰', '미수금', 'A/R'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
-  office:   [['order', '🛒', '주문', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['stores', '🏬', '거래처', 'Customers'], ['ach', '🏦', 'ACH', 'ACH']],
-  invoice:  [['order', '🧾', '주문·인보이스', 'Orders'], ['stores', '🏬', '거래처', 'Customers'], ['verify', '💵', '수금 확인', 'Payments']],
-  pick:     [['order', '📦', '픽킹', 'Picking'], ['stores', '🏬', '거래처', 'Customers']],
-  acct:     [['verify', '💵', '수금 확인', 'Payments'], ['order', '🧾', '인보이스', 'Invoices'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['stores', '🏬', '거래처', 'Customers']],
+  office:   [['order', '🛒', '주문', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['items', '🏷', '아이템', 'Items'], ['stores', '🏬', '거래처', 'Customers']],
+  acct:     [['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['order', '🧾', '인보이스', 'Invoices'], ['stores', '🏬', '거래처', 'Customers']],
+  pickinv:  [['order', '📦', '주문·출고', 'Fulfillment'], ['items', '🏷', '아이템·위치', 'Items'], ['stores', '🏬', '거래처', 'Customers']],
+  invoice:  [['order', '🧾', '주문·인보이스', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['stores', '🏬', '거래처', 'Customers']],
+  whmgr:    [['order', '📦', '창고 작업', 'Warehouse'], ['items', '🏷', '재고·위치', 'Inventory'], ['stores', '🏬', '거래처', 'Customers']],
+  pick:     [['order', '📦', '내 작업', 'My Work'], ['items', '🏷', '재고·위치', 'Inventory'], ['stores', '🏬', '거래처', 'Customers']],
   admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '주문', 'Orders'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
 };
 NAV.manager = NAV.office;
-export const JOBS = [['office', '오피스', 'Office'], ['invoice', '인보이스', 'Invoicing'], ['pick', '픽킹 · 포장', 'Picking & Packing'], ['acct', '회계', 'Accounting']];
+/* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자(루크)는 전부 */
+export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct', '회계 담당', 'Accounting'], ['pickinv', '출고 · 인보이스', 'Fulfillment & Invoicing'], ['invoice', '인보이스 담당', 'Invoicing'], ['whmgr', '창고 매니저', 'Warehouse Manager'], ['pick', '창고 직원', 'Warehouse Staff']];
+/** 일별 할 수 있는 것 — newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
+ *  · verify 수금 확인 · cod COD·카드 · ach ACH · items 아이템 · 재고 위치 · bo 백오더 */
+export const CAN = {
+  office:  ['newOrder', 'invoice', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
+  acct:    ['verify', 'cod', 'ach', 'invLookup'],
+  pickinv: ['invoice', 'assign', 'pick', 'ship', 'items', 'bo'],
+  invoice: ['newOrder', 'invoice', 'verify', 'bo'],
+  whmgr:   ['assign', 'pick', 'ship', 'items', 'bo'],
+  pick:    ['pick', 'ship', 'items']
+};
+export const jobCan = (job, cap) => (CAN[job] || CAN.office).includes(cap);
+/** 지금 사용자가 이걸 할 수 있나 — 관리자는 전부, 세일즈맨은 없음 */
+export function can(cap) { if (S.role === 'admin') return true; if (S.role !== 'manager') return false; return jobCan(jobOf(), cap); }
 /** 지금 화면의 일 — 담당자는 사용자 기록의 job (없으면 office), 그 외는 역할 그대로 */
 export function jobOf() { if (S.role !== 'manager') return S.role; const j = S.me && S.me.job; return JOBS.some(x => x[0] === j) ? j : 'office'; }
 export function jobLabel(j) { const x = JOBS.find(k => k[0] === j); return x ? x[1] + ' ' + x[2] : j; }
