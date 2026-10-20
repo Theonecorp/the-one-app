@@ -15,6 +15,7 @@
  *        UPS_CLIENT_SECRET  = UPS My Apps 의 Client Secret
  *        UPS_ACCOUNT        = UPS 배송 계정 번호 (6자리, 예: Y9620E)
  *        UPS_ENV            = test   (처음엔 test = UPS 시험 서버, 가짜 라벨 · 요금 안 나감. 확인 뒤 live 로 바꿈)
+ *        UPS_QV_NAME        = (선택) Quantum View 구독 이름 — 직원 앱 등 다른 곳에서 찍은 UPS 출고도 앱 주문에 붙이려면
  *   3. 함수 목록에서 setup 고르고 ▶ 실행 → 권한 허용 → 로그에 "UPS 연결 OK" 가 나오면 끝
  *      (1분마다 도는 트리거가 생깁니다)
  *
@@ -27,6 +28,7 @@ const SHIP_FROM_DEFAULT = { name: 'THE ONE CORP', attn: 'SHIPPING', phone: '4078
 function setup() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('run').timeBased().everyMinutes(1).create();
+  if (prop_('UPS_QV_NAME')) { ScriptApp.newTrigger('qvSync').timeBased().everyHours(1).create(); Logger.log('Quantum View 구독 "' + prop_('UPS_QV_NAME') + '" — 1시간마다 출고 · 배달 기록을 받아옵니다'); }
   const tok = upsToken_();
   const r = UrlFetchApp.fetch(FS + '/settings/app', { headers: fsHeaders_(), muteHttpExceptions: true }), c = r.getResponseCode();
   Logger.log('UPS 연결 OK (' + env_() + ') · 토큰 받음 ' + String(tok).substring(0, 6) + '…');
@@ -108,6 +110,75 @@ function ship_(q, from) {
   return { shipId: R.ShipmentIdentificationNumber, charge, labels: pk.map(p => ({ trk: p.TrackingNumber, img: (p.ShippingLabel || {}).GraphicImage || '' })) };
 }
 function voidShip_(shipId) { if (!shipId) throw new Error('취소할 출고 번호가 없습니다'); upsFetch_('/api/shipments/v2403/void/cancel/' + encodeURIComponent(shipId), 'delete'); }
+
+/* ============================================================
+ *  📡 Quantum View — 회사 UPS 계정으로 나간 모든 출고(어느 프로그램에서 찍었든) · 배달 기록을 받아 앱 주문에 붙임
+ *   ups.com 에서 Quantum View 구독(Outbound)을 만들고 그 이름을 스크립트 속성 UPS_QV_NAME 에 넣으면 1시간마다 돎.
+ *   · 출고(Manifest): 참조 번호에 인보이스(A41921 · P-008312) · 주문 번호가 있으면 그 주문, 없으면 받는 가게 이름 + 날짜로 찾음
+ *     → 주문에 트래킹 추가, "인보이스 발행 · 포장 대기" 였으면 "출고 완료" 로
+ *   · 배달(Delivery): 그 트래킹의 주문에 배달 완료 표시
+ *   · 기록은 upsLog/{트래킹} 에 (못 찾은 것도 — 관리 → 설정 → 🚚 UPS 에서 보임)
+ * ============================================================ */
+function qvSync() {
+  const name = prop_('UPS_QV_NAME'); if (!name) { Logger.log('UPS_QV_NAME 이 없습니다'); return; }
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
+  try {
+    let bookmark = '', n = 0, ship = 0, deliv = 0, matched = 0, guard = 0;
+    do {
+      const body = { QuantumViewRequest: { Request: { RequestAction: 'QVEvents', TransactionReference: { CustomerContext: 'THEONE' } }, SubscriptionRequest: [{ Name: name }] } };
+      if (bookmark) body.QuantumViewRequest.Bookmark = bookmark;
+      const j = upsFetch_(prop_('UPS_QV_PATH') || '/api/quantumview/v3/events', 'post', body);
+      const R = j.QuantumViewResponse || {}, ev = R.QuantumViewEvents || {};
+      [].concat(ev.SubscriptionEvents || []).forEach(se => [].concat(se.SubscriptionFile || []).forEach(f => {
+        [].concat(f.Manifest || []).forEach(m => { n++; ship++; if (qvManifest_(m)) matched++; });
+        [].concat(f.Delivery || []).forEach(d => { n++; deliv++; qvDelivery_(d); });
+      }));
+      bookmark = R.Bookmark || '';
+    } while (bookmark && ++guard < 20);
+    Logger.log('Quantum View — 출고 ' + ship + '건 (주문에 붙음 ' + matched + ') · 배달 ' + deliv + '건');
+    fsPatchDoc_('settings', 'upsSync', { at: iso_(), ship, deliv, matched });
+  } finally { lock.releaseLock(); }
+}
+const qvArr_ = x => [].concat(x || []);
+function qvRefs_(m) { const out = []; qvArr_(m.ReferenceNumber).forEach(r => r && r.Value && out.push(String(r.Value))); qvArr_(m.Package).forEach(p => qvArr_(p.ReferenceNumber).forEach(r => r && r.Value && out.push(String(r.Value)))); return out; }
+function qvManifest_(m) {
+  const pk = qvArr_(m.Package), trks = pk.map(p => p.TrackingNumber).filter(Boolean); if (!trks.length) return false;
+  const to = m.ShipTo || {}, a = to.Address || {}, refs = qvRefs_(m);
+  const d = String(m.PickupDate || m.ScheduledDeliveryDate || '').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3') || iso_().substring(0, 10);
+  const store = String(to.CompanyName || to.AttentionName || '').trim();
+  const orderId = qvFindOrder_(refs, store, d);
+  const log = { trk: trks.join(' '), refs: refs.join(' '), store, city: a.City || '', state: a.StateProvinceCode || '', d, svc: (m.Service || {}).Code || '', boxes: trks.length, orderId: orderId || '', src: 'qv', at: iso_() };
+  trks.forEach(t => fsPatchDoc_('upsLog', t, log));
+  if (!orderId) return false;
+  const o = fsGet_('orders', orderId) || {};
+  const have = String(o.track || '').split(/\s+/).filter(Boolean), add = trks.filter(t => have.indexOf(t) < 0);
+  const patch = { updatedAt: iso_() };
+  if (add.length) { patch.track = have.concat(add).join(' '); patch.shipVia = 'UPS'; patch.boxes = have.length + add.length; }
+  if (o.st === 'done') { patch.st = 'shipped'; patch.shipAt = iso_(); patch.shipBy = 'UPS 기록 (자동)'; }
+  if (Object.keys(patch).length > 1) fsPatchDoc_('orders', orderId, patch);
+  return true;
+}
+function qvDelivery_(d) {
+  const t = d.TrackingNumber; if (!t) return;
+  const log = fsGet_('upsLog', t), when = String(d.Date || '').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3');
+  fsPatchDoc_('upsLog', t, { delivered: when || iso_().substring(0, 10), deliveredTo: String(d.DeliveryLocation && d.DeliveryLocation.SignedForByName || '') });
+  if (log && log.orderId) fsPatchDoc_('orders', log.orderId, { deliveredAt: when || iso_().substring(0, 10) });
+}
+/** 참조 번호 → 인보이스(invoices/{번호}.orderId) · 주문(orders/{번호}) · 없으면 받는 가게 이름 + 7일 안 "인보이스 발행" 주문 하나 */
+function qvFindOrder_(refs, store, d) {
+  for (const r of refs) for (const tok of String(r).toUpperCase().split(/[\s,;/]+/)) {
+    if (!/^[A-Z]{1,3}-?\d{3,7}$|^O\d{6}/.test(tok)) continue;
+    const inv = fsGet_('invoices', tok); if (inv && inv.orderId) return inv.orderId;
+    const o = fsGet_('orders', tok); if (o) return tok;
+  }
+  if (!store) return '';
+  const norm = x => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const cand = fsQuery_('orders', 'st', 'done', 300).filter(o => norm(o.store) === norm(store) || (norm(store).length > 6 && norm(o.store).indexOf(norm(store)) === 0));
+  const near = cand.filter(o => Math.abs((new Date(o.d) - new Date(d)) / 86400000) <= 7);
+  return near.length === 1 ? near[0]._id : '';
+}
+/** 없으면 만들고 있으면 고침 (PATCH + updateMask) */
+function fsPatchDoc_(col, id, data) { fsPatch_(col, id, data); }
 
 /* ---------- 보내는 곳 (앱 설정 settings/app.ups.from) ---------- */
 function settingsFrom_() { const s = fsGet_('settings', 'app') || {}; return Object.assign({}, SHIP_FROM_DEFAULT, (s.ups && s.ups.from) || {}); }
