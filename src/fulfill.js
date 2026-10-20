@@ -7,7 +7,7 @@
  *  backorders/{orderId} = { id, order, acct, store, sm, d, lines:[{c,d,q,p,lp,t}], qty, amt, st:'open'|'used'|'closed', newOrders:[], createdAt }
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords } from './ui.js';
-import { jobOf } from './main.js';
+import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM } from './invoicing.js';
 import { storeInfo } from './store.js';
@@ -59,24 +59,24 @@ export function manage(o, lines) {
   const dk = {}; Object.keys(ad).concat(Object.keys(o.disc || {})).forEach(k => { dk[k] = 1; });
   const dchg = Object.keys(dk).filter(k => Number((o.disc || {})[k] || 0) !== Number(ad[k] || 0));
   if (dchg.length) h += '<div class="alert a-amb">🏷 할인 변경: ' + dchg.map(k => '<b>' + esc(k) + '</b> 주문 ' + ((o.disc || {})[k] || 0) + '% · 가게 기본 ' + (ad[k] || 0) + '%').join(' · ') +
-    (o.acct && jobOf() !== 'pick' ? ' <button class="b-ghost b-sm" id="mDiscSave">이 할인을 가게 기본으로 · set as store default</button>' : '') + '</div>';
+    (o.acct && can('invoice') ? ' <button class="b-ghost b-sm" id="mDiscSave">이 할인을 가게 기본으로 · set as store default</button>' : '') + '</div>';
   h += '</div>';
   /* 버튼 */
   /* 픽킹·팩킹 담당은 픽킹까지만 — 인보이스 확정 · 주문 취소 · 할인 저장은 인보이스 · 오피스 담당이 */
-  const J = jobOf(), canInv = J !== 'pick';
+  const J = jobOf(), canInv = can('invoice');
   const B = [];
   const isPicker = o.picker === S.user.email;
   if (o.st === 'draft') B.push('<button class="b-green" id="mSend">📤 ' + bi('접수로 보내기', 'Submit order') + '</button>');
-  if (o.st === 'sent') B.push('<button class="b-blue" id="mAssign">👷 ' + bi('작업 배정', 'Assign Picker') + '</button><button class="b-ghost" id="mPick">🖨 ' + bi('직접 작업 시작', 'Start Myself') + '</button>');
+  if (o.st === 'sent') B.push((can('assign') ? '<button class="b-blue" id="mAssign">👷 ' + bi('작업 배정', 'Assign Picker') + '</button>' : '') + (can('pick') ? '<button class="b-ghost" id="mPick">🖨 ' + bi('직접 작업 시작', 'Start Myself') + '</button>' : ''));
   if (o.st === 'pick' || o.st === 'ok') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('작업 저장', 'Save Progress') + '</button><button class="b-green" id="mPickDone">✅ ' + bi('작업 완료', 'Complete Picking') + '</button>');
   if (o.st === 'picked') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('수량 저장', 'Save') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 발행', 'Issue invoice') + '</button>' : '<span class="muted" style="align-self:center">' + bi('인보이스 발행은 사무실에서 합니다', 'Office issues the invoice') + '</span>'));
-  if (o.st === 'done') B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · 출고 완료', 'Packed & shipped') + '</button>');
+  if (o.st === 'done' && can('ship')) B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · 출고 완료', 'Packed & shipped') + '</button>');
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
     (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 ' + bi('가게 기록', 'Store') + '</button>' : '') +
-    (o.st !== 'x' && J !== 'pick' ? '<button class="b-ghost b-sm" id="mStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>' : '') +
+    (o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>' : '') +
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
-    (o.st === 'pick' || o.st === 'ok' ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
+    (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
     (o.st === 'picked' ? '<button class="b-ghost b-sm" id="mRepick">↩️ ' + bi('출고 작업으로 되돌리기', 'Return to Fulfillment') + '</button>' : '') +
     (o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('출고 취소', 'Undo shipping') + '</button>' : '') +
     ((o.st === 'sent' || o.st === 'pick' || o.st === 'ok') && !o.cfOk ? '<button class="b-ghost b-sm" id="mCfReq">❓ ' + bi(o.cfReq ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman') + '</button>' : '') +
@@ -94,7 +94,7 @@ export function manage(o, lines) {
   let MF = 'all';
   const sumNow = () => { $('mSum').innerHTML = (picking ? '<div class="muted" style="margin-top:8px">🧾 픽킹한 수량 기준 — 확정하면 종류마다 인보이스가 따로 나옵니다 <span class="en">Based on picked qty; one invoice per type on confirm</span></div>' : '<div class="muted" style="margin-top:8px">🧾 주문 수량 기준 미리보기 — 픽킹 후 확정 <span class="en">Preview by ordered qty; split after picking</span></div>') + typeSummary(splitByType(lines, o.disc, picking ? 'pq' : 'q')) + (picking ? boLine() : ''); };
   const boLine = () => { const b = lines.filter(l => (l.pq || 0) < l.q), u = lines.filter(l => !l.ok); return (u.length ? '<div class="alert a-amb">○ 아직 두드리지 않은 줄 <b>' + u.length + '</b> / ' + lines.length + ' <span class="en">not yet checked</span></div>' : '') + (b.length ? '<div class="alert a-red">⏳ 백오더 ' + b.length + '줄 · ' + b.reduce((a, l) => a + l.q - (l.pq || 0), 0) + '개</div>' : u.length ? '' : '<div class="alert a-grn">✓ 모두 픽킹됨</div>'); };
-  const types = invTypes(S), office = picking && o.st === 'picked' && J !== 'pick';   // 인보이스 종류는 사무실 확인 단계에서만 바꿈
+  const types = invTypes(S), office = picking && o.st === 'picked' && canInv;   // 인보이스 종류는 사무실 확인 단계에서만 바꿈
   /* 픽킹 입력은 두드려서: 처음 한 번 = ✓ 통과(주문 수량), 다시 = ⏳ 백오더(0), 다시 = ✓ … · ✎ 수량 으로 일부만 담았을 때 숫자 입력 */
   const pkBtn = l => { const pq = l.pq || 0, st = !l.ok ? 'u' : pq >= l.q ? 'ok' : pq === 0 ? 'bo' : 'part'; const ic = st === 'u' ? '○' : st === 'ok' ? '✓' : st === 'bo' ? '⏳' : '◐'; return '<button class="pkb ' + st + '" data-pkt="' + l._i + '">' + ic + ' <b>' + pq + '</b><span>/' + l.q + '</span></button><button class="b-ghost pkq" data-pkq="' + l._i + '">✎ ' + bi('수량', 'Qty') + '</button>'; };
   const paint = () => {
@@ -384,7 +384,7 @@ export function monthEnd(d) { const y = Number(d.substring(0, 4)), m = Number(d.
 let PICKERS = null;
 export async function pickers() {
   if (PICKERS) return PICKERS;
-  try { PICKERS = (await S.DB.list('users', {})).filter(u => u.active !== false && (u.job === 'pick' || u.role === 'manager')).map(u => ({ email: u.email || u.id, name: u.name || (u.email || u.id).split('@')[0], pick: u.job === 'pick' })).sort((a, b) => (a.pick === b.pick ? 0 : a.pick ? -1 : 1)); }
+  try { PICKERS = (await S.DB.list('users', {})).filter(u => u.active !== false && u.role === 'manager' && jobCan(u.job || 'office', 'pick')).map(u => ({ email: u.email || u.id, name: u.name || (u.email || u.id).split('@')[0], pick: u.job === 'pick' || u.job === 'whmgr' })).sort((a, b) => (a.pick === b.pick ? 0 : a.pick ? -1 : 1)); }
   catch (e) { PICKERS = []; }
   return PICKERS;
 }
