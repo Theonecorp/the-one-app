@@ -19,7 +19,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.44';
+export const VER = 'v0.8.45';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -70,7 +70,7 @@ function navFor(r) {
 function shell() {
   document.head.insertAdjacentHTML('beforeend', '<style>' + CSS + '</style>');
   document.body.innerHTML =
-    '<header><button class="hb" id="hBack" title="뒤로">‹</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
+    '<header><button class="hb" id="hBack" title="뒤로">‹</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb hlang" id="hLang" translate="no" title="Language">🌐 ' + LANG.toUpperCase() + '</button><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
     '<div class="wrap" id="page"><div class="load">불러오는 중…</div></div>' +
     '<nav id="nav"></nav>' +
     '<div id="busy"><div class="spin"></div></div>' +
@@ -80,6 +80,9 @@ function shell() {
   $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
   $('prtClose').onclick = printClose;
   $('hMenu').onclick = userMenu;
+  /* 🌐 언어 — 앱 위쪽 버튼으로 바로 (이 폰 · 컴퓨터에 저장, 로그인한 사람과 상관없이) */
+  $('hLang').onclick = () => { openModal('<h2 translate="no">🌐 Language · 언어 · Idioma</h2><div class="langpick" translate="no">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'b-blue' : 'b-ghost') + '" data-lang="' + l[0] + '">' + ({ ko: '🇰🇷 ', en: '🇺🇸 ', pt: '🇧🇷 ' })[l[0]] + l[1] + '</button>').join('') + '</div>');
+    document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { closeModal(); if (b.dataset.lang !== LANG) setLang(b.dataset.lang); }); };
   $('hBack').onclick = () => Router.back();
   const net = () => { const d = $('hNet'); if (d) { d.classList.toggle('off', navigator.onLine === false); d.title = navigator.onLine === false ? '오프라인 — 저장한 것은 폰에 보관됩니다' : '온라인'; } };
   window.addEventListener('online', net); window.addEventListener('offline', net); net();
@@ -111,7 +114,7 @@ function userMenu() {
     '<div class="btns"><button class="b-ghost" id="mOut">로그아웃 <span class="en">Sign out</span></button><button class="b-blue" id="mReload">새로고침 <span class="en">Reload</span></button></div>' +
     '<button class="b-ghost b-sm" id="mDiag" style="margin-top:10px">🔎 연결 · 권한 점검 <span class="en">Check connection</span></button><div id="diagOut"></div>');
   $('mDiag').onclick = diag;
-  document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = async () => { const l = b.dataset.lang; if (l === LANG) return; busy(true); try { if (S.me) await S.DB.update('users', S.user.email, { lang: l }); } catch (e) {} setLang(l); });
+  document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
   document.querySelectorAll('#mbox [data-r]').forEach(b => b.onclick = () => { switchRole(b.dataset.r); closeModal(); });
   document.querySelectorAll('#mbox [data-j]').forEach(b => b.onclick = () => { S.me.job = b.dataset.j; switchRole('manager'); closeModal(); });
   $('mOut').onclick = () => { closeModal(); S.AUTH.signOut(); };
@@ -182,7 +185,6 @@ async function afterLogin(user) {
     try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
   }
   S.me = me; S.role = me.role || 'salesman';
-  if (me.lang && me.lang !== LANG && LANGS.some(l => l[0] === me.lang)) { setLang(me.lang); return; }   // 🌐 관리 → 사용자에서 정한 언어로
   busy(true);
   try {
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] });
