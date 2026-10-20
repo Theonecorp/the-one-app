@@ -182,13 +182,7 @@ export function manage(o, lines) {
   };
   if ($('mRepick')) $('mRepick').onclick = async () => { busy(true); try { await saveLines({ st: 'pick' }); toast('출고 작업으로 되돌림 · Back to Fulfillment'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mCfReq')) $('mCfReq').onclick = async () => { if (!(await confirmBox(o.sm + ' 에게 이 주문 내용 확인을 요청할까요? 세일즈맨 앱 홈에 "확인 요청" 으로 뜹니다.', '요청'))) return; busy(true); try { await S.DB.update('orders', o.id, { cfReq: true, cfReqAt: new Date().toISOString(), cfReqBy: S.user.email, cfOk: false }); toast('확인 요청 보냄', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-  if ($('mShip')) $('mShip').onclick = () => {
-    openModal('<h2>🚚 ' + bi('포장 · 출고 완료', 'Packed & shipped') + '</h2><div class="muted">' + esc(o.store) + ' · ' + (o.invs || []).join(', ') + '</div><div class="two" style="margin-top:8px"><div class="fg"><label>' + bi('운송', 'Carrier') + '</label>' + sel('shVia', [['UPS', 'UPS'], ['FEDEX', 'FedEx'], ['USPS', 'USPS'], ['PICKUP', '픽업 · Pickup'], ['DELIVERY', '직접 배달 · Delivery']], o.shipVia || 'UPS') + '</div><div class="fg"><label>' + bi('박스 수', 'Boxes') + '</label><input id="shBox" type="number" inputmode="numeric" value="' + (o.boxes || 1) + '"></div></div>' +
-      '<div class="fg"><label>' + bi('추적 번호 (UPS 라벨에서 · 선택)', 'Tracking # (optional)') + '</label><input id="shTrack" value="' + esc(o.track || '') + '" autocomplete="off"></div>' +
-      '<div class="btns"><button class="b-ghost" id="shX">취소</button><button class="b-green" id="shOk">출고 완료</button></div>');
-    $('shX').onclick = closeModal;
-    $('shOk').onclick = async () => { const d = { st: 'shipped', shipAt: new Date().toISOString(), shipBy: S.user.email, shipVia: $('shVia').value, boxes: Math.max(1, Number($('shBox').value) || 1), track: $('shTrack').value.trim(), updatedAt: new Date().toISOString() }; closeModal(); busy(true); try { await S.DB.update('orders', o.id, d); toast('🚚 출고 완료', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-  };
+  if ($('mShip')) $('mShip').onclick = () => shipModal(o);
   if ($('mUnship')) $('mUnship').onclick = async () => { if (!(await confirmBox('출고 완료를 취소할까요? (포장 대기로 돌아감)', '취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'done', updatedAt: new Date().toISOString() }); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mPickPrint')) $('mPickPrint').onclick = () => printPicking(o, lines);
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
@@ -279,6 +273,57 @@ export function changeStore(o, done) {
   };
   $('csOk').onclick = () => apply();
   body();
+}
+
+/* ============================================================
+ *  🚚 포장 · 출고 — UPS 라벨 (apps-script/UPS.gs 가 shipq/{주문ID} 를 1분마다 처리) 또는 다른 운송 · 직접 입력
+ *   shipq = { orderId, no, st: wait → working → done | error · void → voided, svc, boxes:[{w}], to:{…}, ref, labels:[{trk,img}], track, charge, shipId }
+ * ============================================================ */
+const UPS_SVC = [['03', 'UPS Ground'], ['12', 'UPS 3 Day Select'], ['02', 'UPS 2nd Day Air'], ['01', 'UPS Next Day Air']];
+function upsTo(o) {
+  const a = acctOf(o.acct) || {}, t = o.shipTo || {};
+  return { name: t.store || o.store || a.store || '', attn: t.store || o.store || '', phone: a.tel || '', addr1: t.addr || a.addr || '', addr2: '', city: t.city || a.city || '', state: t.state || a.state || '', zip: t.zip || a.zip || '' };
+}
+export function printLabels(q) {
+  printOpen('<style>@page{size:4in 6in;margin:0}.lbl{width:4in;height:6in;display:flex;align-items:center;justify-content:center;overflow:hidden;page-break-after:always;break-after:page}.lbl img{width:6in;height:4in;transform:rotate(90deg)}</style>' +
+    (q.labels || []).map(l => '<div class="lbl"><img src="data:image/gif;base64,' + l.img + '" alt="' + esc(l.trk) + '"></div>').join(''));
+}
+async function shipModal(o) {
+  let q = null; try { q = await S.DB.get('shipq', o.id); } catch (e) {}
+  const ups = (S.settings && S.settings.ups) || {}, to = upsTo(o), defW = Number(ups.defW) || 5;
+  const paint = () => {
+    const done = q && q.st === 'done', busyQ = q && (q.st === 'wait' || q.st === 'working'), voidQ = q && q.st === 'void';
+    const upsBox = done ? '<div class="sumbox" style="background:#ecfdf5"><b>✅ UPS 라벨 ' + (q.labels || []).length + '장</b>' + (q.env === 'test' ? ' <span class="tag t-c">시험 라벨</span>' : '') + '<br>' + (q.labels || []).map(l => '📦 ' + esc(l.trk)).join('<br>') + (q.charge ? '<br>요금 ' + money(q.charge) : '') + '</div><div class="btns" style="margin-top:6px"><button class="b-blue" id="upPrint">🖨 ' + bi('라벨 인쇄', 'Print labels') + '</button><button class="b-ghost" id="upVoid" style="color:#991b1b">✕ ' + bi('라벨 취소', 'Void') + '</button></div>'
+      : busyQ || voidQ ? '<div class="alert a-blu">⏳ ' + (voidQ ? 'UPS 라벨 취소 중' : 'UPS 라벨 만드는 중') + '… 1~2분 걸립니다 <span class="en">working</span></div>'
+      : '<div class="fg"><label>' + bi('서비스', 'Service') + '</label>' + sel('upSvc', UPS_SVC, (q && q.svc) || ups.svc || '03') + '</div>' +
+        '<div class="fg"><label>' + bi('박스 수 · 무게 (lb)', 'Boxes · weight (lb)') + '</label><div style="display:flex;gap:6px;align-items:center"><input id="upN" type="number" min="1" max="20" inputmode="numeric" value="' + ((q && q.boxes && q.boxes.length) || o.boxes || 1) + '" style="width:80px"><div id="upW" style="display:flex;gap:4px;flex-wrap:wrap;flex:1"></div></div></div>' +
+        '<div class="sumbox" style="font-size:13px">📍 ' + esc(to.name) + '<br>' + esc([to.addr1, to.city, to.state, to.zip].filter(Boolean).join(', ')) + (to.phone ? ' · ' + esc(to.phone) : '') + (!to.addr1 || !to.zip ? '<br><span class="warn">주소가 비었습니다 — 🏬 가게 바꾸기 → 이름 · 주소만 에서 넣으세요</span>' : '') + '</div>' +
+        (q && q.st === 'error' ? '<div class="alert a-red">UPS 오류: ' + esc(q.err || '') + '</div>' : '') + (q && q.st === 'voided' ? '<div class="muted">이전 라벨은 취소됐습니다 (' + esc(q.track || '') + ')</div>' : '') +
+        '<button class="b-blue" id="upGo" style="margin-top:8px;padding:14px">📦 ' + bi('UPS 라벨 만들기', 'Create UPS label') + '</button>';
+    $('mbox').innerHTML = '<h2>🚚 ' + bi('포장 · 출고', 'Pack & ship') + '</h2><div class="muted">' + esc(o.store) + ' · ' + esc((o.invs || []).join(', ') || o.no) + '</div>' +
+      '<div class="card" style="margin:10px 0;padding:12px;border:2px solid #fde68a"><h2 style="margin:0 0 6px">UPS</h2>' + upsBox + '</div>' +
+      '<div class="two"><div class="fg"><label>' + bi('운송', 'Carrier') + '</label>' + sel('shVia', [['UPS', 'UPS'], ['FEDEX', 'FedEx'], ['USPS', 'USPS'], ['PICKUP', '픽업 · Pickup'], ['DELIVERY', '직접 배달 · Delivery']], o.shipVia || 'UPS') + '</div><div class="fg"><label>' + bi('박스 수', 'Boxes') + '</label><input id="shBox" type="number" inputmode="numeric" value="' + ((done && q.labels.length) || o.boxes || 1) + '"></div></div>' +
+      '<div class="fg"><label>' + bi('추적 번호', 'Tracking #') + '</label><input id="shTrack" value="' + esc((done && q.track) || o.track || '') + '" autocomplete="off"></div>' +
+      '<div class="btns"><button class="b-ghost" id="shX">닫기</button><button class="b-green" id="shOk">' + bi('출고 완료', 'Mark shipped') + '</button></div>';
+    const wbox = () => { const n = Math.max(1, Math.min(20, Number($('upN').value) || 1)), cur = Array.from(document.querySelectorAll('[data-upw]')).map(x => x.value); $('upW').innerHTML = Array.from({ length: n }, (_, i) => '<input data-upw="' + i + '" type="number" inputmode="decimal" value="' + (cur[i] || (q && q.boxes && q.boxes[i] ? q.boxes[i].w : defW)) + '" style="width:64px" title="박스 ' + (i + 1) + ' lb">').join(''); };
+    if ($('upN')) { wbox(); $('upN').oninput = wbox; }
+    $('shX').onclick = () => { stop = true; closeModal(); };
+    $('shOk').onclick = async () => { const d = { st: 'shipped', shipAt: new Date().toISOString(), shipBy: S.user.email, shipVia: $('shVia').value, boxes: Math.max(1, Number($('shBox').value) || 1), track: $('shTrack').value.trim(), updatedAt: new Date().toISOString() }; if (done && q.charge) d.shipCost = q.charge; stop = true; closeModal(); busy(true); try { await S.DB.update('orders', o.id, d); toast('🚚 출고 완료', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+    if ($('upPrint')) $('upPrint').onclick = () => printLabels(q);
+    if ($('upVoid')) $('upVoid').onclick = async () => { if (!(await confirmBox('UPS 라벨 ' + (q.labels || []).length + '장(' + (q.track || '') + ')을 취소할까요? 붙인 라벨은 버려 주세요.', '라벨 취소'))) return shipModal(o); try { await S.DB.update('shipq', o.id, { st: 'void', voidBy: S.user.email, voidAt: new Date().toISOString() }); q.st = 'void'; openModal(''); paint(); poll(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } };
+    if ($('upGo')) $('upGo').onclick = async () => {
+      if (!to.addr1 || !to.city || !to.state || !to.zip) return toast('받는 주소가 부족합니다', 'bad');
+      const boxes = Array.from(document.querySelectorAll('[data-upw]')).map(x => ({ w: Math.max(1, Number(x.value) || defW) }));
+      const svc = $('upSvc').value, svcName = (UPS_SVC.find(x => x[0] === svc) || [])[1];
+      if (!(await confirmBox(svcName + ' · 박스 ' + boxes.length + '개 (' + boxes.map(b => b.w + 'lb').join(', ') + ')\n→ ' + to.name + ', ' + [to.addr1, to.city, to.state, to.zip].join(', ') + '\nUPS 라벨을 만들까요? 요금이 회사 UPS 계정으로 청구됩니다.', '라벨 만들기'))) return shipModal(o);
+      const doc = { id: o.id, orderId: o.id, no: o.no, st: 'wait', svc, boxes, to, ref: ((o.invs || []).join(' ') || o.no).substring(0, 35), store: o.store, sm: o.sm, by: S.user.email, createdAt: new Date().toISOString() };
+      try { await S.DB.set('shipq', o.id, doc); q = doc; openModal(''); paint(); poll(); } catch (e) { toast('실패: ' + (e.code || e.message) + (String(e.code || e.message).includes('permission') ? ' — Firestore 규칙에 shipq 를 게시해야 합니다' : ''), 'bad'); shipModal(o); }
+    };
+  };
+  let stop = false;
+  const poll = async () => { for (let i = 0; i < 60 && !stop; i++) { await new Promise(r => setTimeout(r, 4000)); if (stop || !$('mbox')) return; let x = null; try { x = await S.DB.get('shipq', o.id); } catch (e) {} if (x && x.st !== q.st) { q = x; paint(); if (x.st === 'done') { try { await S.DB.update('orders', o.id, { track: x.track, shipVia: 'UPS', boxes: (x.labels || []).length, shipCost: x.charge || 0, updatedAt: new Date().toISOString() }); } catch (e) {} toast('✅ UPS 라벨 ' + (x.labels || []).length + '장 — 인쇄하세요', 'good'); printLabels(x); } return; } } };
+  openModal(''); paint();
+  if (q && (q.st === 'wait' || q.st === 'working' || q.st === 'void')) poll();
 }
 
 async function printPicking(o, lines) {
