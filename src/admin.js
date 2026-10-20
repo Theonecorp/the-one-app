@@ -1,7 +1,7 @@
 /* ============================================================
  *  관리 — 사용자 · 세일즈맨(요율) · 설정 · 옛 시트에서 가져오기
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz } from './ui.js';
+import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA } from './ui.js';
 import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
@@ -111,6 +111,17 @@ async function settings() {
     '<div class="card"><h2>📊 월별 매출 요약</h2><div class="muted">현황 · 주문 대시보드의 분기 · 올해 보기는 인보이스 수천 장 대신 월별 요약을 읽습니다. 발행 · 취소 · 가져오기 때 자동으로 갱신되지만, 숫자가 이상하면 여기서 다시 만듭니다 (최근 36개월 인보이스를 한 번 읽음).</div><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="smRebuild">다시 만들기</button></div><div id="smOut"></div></div>';
   $('smRebuild').onclick = async () => { busy(true); try { const ms = []; const d = new Date(); for (let i = 0; i < 36; i++) { ms.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } const n = await rebuildSalesM(S, ms); $('smOut').innerHTML = '<div class="alert a-grn">' + n + '개월 요약을 다시 만들었습니다</div>'; } catch (e) { $('smOut').innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; } busy(false); };
   bindInvTypes();
+  /* 📧 Daily Report 메일 상태 — apps-script/Code.gs 가 1분마다 mail:'wait' 을 보내고 'sent' / 'error' 로 바꿈 */
+  const mailCard = document.createElement('div'); mailCard.className = 'card'; mailCard.innerHTML = '<h2>📧 Daily Report 메일</h2><div class="load">읽는 중…</div>'; $('adminBody').appendChild(mailCard);
+  (async () => {
+    let reps = []; try { reps = sortBy(await S.DB.list('reports', { where: [['d', '>=', addDaysA(today(), -10)]] }), r => r.sentAt || '', true).slice(0, 25); } catch (e) { mailCard.innerHTML = '<h2>📧 Daily Report 메일</h2><div class="alert a-red">' + esc(e.code || e.message) + '</div>'; return; }
+    const st = r => r.mail === 'sent' ? '<span class="tag t-k">✓ 보냄 ' + esc(String(r.mailAt || '').substring(5, 16).replace('T', ' ')) + '</span>' : r.mail === 'error' ? '<span class="tag" style="background:#fee2e2;color:#991b1b">✕ 실패</span>' : r.mail === 'wait' ? '<span class="tag t-c">⏳ 대기</span>' : '<span class="tag t-x">— (이전 방식)</span>';
+    const waitOld = reps.filter(r => r.mail === 'wait' && r.sentAt && Date.now() - Date.parse(r.sentAt) > 5 * 60000).length;
+    mailCard.innerHTML = '<h2>📧 Daily Report 메일 — 최근 10일</h2><div class="muted">세일즈맨이 Daily Report 를 전송하면 1~2분 안에 예전 모양의 메일이 <b>보낸 사람</b> + <b>' + esc(s.reportTo || 'check@theonefl.com') + '</b>(위 담당자 알림 이메일, 쉼표로 여러 명)로 갑니다. 메일은 구글 Apps Script(luke@ 계정)가 보냅니다 — 설치 방법은 저장소 <b>apps-script/Code.gs</b> 맨 위.</div>' +
+      (waitOld ? '<div class="alert a-amb" style="margin-top:8px">⏳ 5분 넘게 대기 중인 리포트 ' + waitOld + '건 — 메일 스크립트가 아직 설치되지 않았거나 멈췄습니다. script.google.com → THE ONE Mail → setup 실행</div>' : '') +
+      (reps.length ? reps.map(r => '<div class="pr"><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.d) + ' ' + st(r) + '</b><small>' + (r.n || 0) + '건 · ' + money(r.total || 0) + ' · ' + esc(r.mailTo || r.by || '') + (r.mailErr ? ' · <span class="warn">' + esc(r.mailErr) + '</span>' : '') + '</small></div>' + (r.rows ? '<button class="b-ghost b-sm" data-remail="' + esc(r.id) + '">↻ 다시 보내기</button>' : '') + '</div>').join('') : '<div class="none">최근 리포트가 없습니다</div>');
+    mailCard.querySelectorAll('[data-remail]').forEach(b => b.onclick = async () => { busy(true); try { await S.DB.update('reports', b.dataset.remail, { mail: 'wait', mailErr: '' }); toast('1~2분 안에 다시 보냅니다', 'good'); settings(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
+  })();
   $('stSave').onclick = async () => { const doc = Object.assign({}, s, { discLimit: num($('stDisc').value) / 100, specialKeywords: $('stKw').value.trim(), specialTitle: $('stTitle').value.trim(), reportTo: $('stMail').value.trim(), idleMin: Math.max(0, Math.floor(num($('stIdle').value))), co: { name: $('coName').value.trim(), addr1: $('coA1').value.trim(), addr2: $('coA2').value.trim(), tel: $('coTel').value.trim(), thanks: $('coThx').value.trim() } }); busy(true); try { await S.DB.set('settings', 'app', doc); S.settings = doc; toast('저장'); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 

@@ -408,7 +408,9 @@ async function sendReport(pend) {
   try {
     const now = new Date().toISOString(), id = me() + '_' + TODAY_D + '_' + now.substring(11, 19).replace(/:/g, '');
     let bytes = 0; const photos = []; for (const p of PHOTOS) { bytes += p.length; if (bytes > 850000) { toast('사진 용량이 많아 ' + photos.length + '장까지만 첨부됩니다', ''); break; } photos.push(p); }
-    try { await S.DB.set('reports', id, { id, sm: me(), d: TODAY_D, n: pend.length, total: R2(sum(pend, r => r.total)), entries: pend.map(r => r.id), photos, to: REPORT_TO(), sentAt: now, by: S.user.email }); }
+    /* 📧 메일용 표 — 구글 Apps Script(apps-script/Code.gs)가 1분마다 mail:'wait' 을 찾아 보낸 사람 + 담당자 알림 이메일로 보냄 */
+    const rows = pend.map(r => { const a = (S.accounts.byCode && S.accounts.byCode[r.acct]) || {}; const pays = r.pays || [], ck = pays.filter(p => p.m === 'CHECK'); return { store: r.store || '', acct: r.acct || '', addr: [a.addr || r.addr || '', [a.city, a.state].filter(Boolean).join(', ') + (a.zip ? ' ' + a.zip : '')].filter(Boolean).join(', '), pay: Array.from(new Set(pays.map(p => p.m))).join(', '), ref: pays.map(p => p.ref).filter(Boolean).join(', '), amt: R2(r.total || 0), invs: (r.invs || []).map(v => ({ no: v.no, amt: R2(v.amt || 0) })), memo: r.memo || '', rcv: r.d || TODAY_D, dep: (ck.find(p => p.dep) || {}).dep || '' }; });
+    try { await S.DB.set('reports', id, { id, sm: me(), d: TODAY_D, n: pend.length, total: R2(sum(pend, r => r.total)), entries: pend.map(r => r.id), rows, photos, to: REPORT_TO(), sentAt: now, by: S.user.email, mail: 'wait' }); }
     catch (e) { if (String(e.code).includes('permission')) throw new Error('리포트 저장 권한이 없습니다 — Firestore 규칙에 reports 를 추가해야 합니다 (루크)'); throw e; }
     for (const r of pend) await S.DB.update('entries', r.id, { rep: true, repAt: now, repId: id });
     clearEntryCache(); PHOTOS = [];
@@ -416,7 +418,7 @@ async function sendReport(pend) {
     const lines = pend.map(r => r.store + (r.acct ? ' (' + r.acct + ')' : '') + ' — ' + (r.pays || []).map(p => p.m + (p.ref ? ' #' + p.ref : '')).join(', ') + ' ' + money(r.total) + ((r.invs || []).length ? ' → ' + r.invs.map(v => v.no).join(', ') : ''));
     const body = encodeURIComponent('Daily Report ' + TODAY_D + ' — ' + me() + '\n' + pend.length + '건 · ' + money(sum(pend, r => r.total)) + '\n\n' + lines.join('\n') + (photos.length ? '\n\n체크 사진 ' + photos.length + '장은 THE ONE 앱(수금 확인)에 있습니다.' : ''));
     toast('전송했습니다 · Sent — ' + pend.length + '건', 'good');
-    openModal('<h2>📧 Daily Report 전송됨</h2><div class="muted">' + esc(TODAY_D) + ' · ' + pend.length + '건 · ' + money(sum(pend, r => r.total)) + (photos.length ? ' · 사진 ' + photos.length + '장' : '') + '<br>담당자 화면(수금 확인)에 바로 보입니다. 이메일로도 보내려면 아래를 누르세요.</div>' +
+    openModal('<h2>📧 Daily Report 전송됨</h2><div class="muted">' + esc(TODAY_D) + ' · ' + pend.length + '건 · ' + money(sum(pend, r => r.total)) + (photos.length ? ' · 사진 ' + photos.length + '장' : '') + '<br>담당자 화면(수금 확인)에 바로 보이고, 1~2분 안에 Daily Collection Report 메일이 ' + esc(S.user.email) + ' 와 ' + esc(REPORT_TO()) + ' 로 갑니다.<br><span style="font-size:12px">메일이 안 오면 아래 버튼으로 직접 보낼 수 있습니다.</span></div>' +
       '<div class="btns"><button class="b-ghost" id="rpX">닫기</button><a class="b-blue" style="display:block;text-align:center;text-decoration:none" href="mailto:' + esc(REPORT_TO()) + '?subject=' + encodeURIComponent('Daily Report ' + TODAY_D + ' ' + me()) + '&body=' + body + '">📧 이메일 앱으로 보내기</a></div>');
     $('rpX').onclick = () => { closeModal(); paintToday(); };
   } catch (e) { toast('전송 실패: ' + (e.message || e.code), 'bad'); }
