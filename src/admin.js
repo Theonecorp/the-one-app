@@ -39,7 +39,6 @@ function userForm(u) {
   openModal('<h2>' + (u.email ? esc(u.email) : '＋ 사용자') + '</h2>' +
     '<div class="fg"><label>구글 이메일</label><input id="uEmail" value="' + esc(u.email || '') + '" ' + (u.email ? 'readonly' : '') + ' placeholder="name@gmail.com"></div>' +
     '<div class="two"><div class="fg"><label>이름</label><input id="uName" value="' + esc(u.name || '')+ '"></div><div class="fg"><label>역할</label>' + sel('uRole', [['salesman', '세일즈맨'], ['manager', '담당자'], ['admin', '관리자']], u.role || 'salesman') + '</div></div>' +
-    '<div class="fg"><label>🌐 언어 · Language — 그 사람 폰의 앱 글씨</label>' + sel('uLang', [['ko', '한국어'], ['en', 'English'], ['pt', 'Português (Brasil)']], u.lang || 'ko') + '</div>' +
     '<div class="fg"><label>담당자의 일 (담당자만) — 화면이 달라집니다</label>' + sel('uJob', JOBS.map(j => [j[0], j[1] + ' · ' + j[2]]), u.job || 'office') + '<small class="muted">오피스 매니저: 주문 · 인보이스 · 출고 · 재고 · 수금 · COD · ACH 거의 전부 / 회계: 수금 확인 · COD · 카드 · ACH · 인보이스 조회 / 출고 · 인보이스: 작업 배정 · 피킹 · 인보이스 발행 · 포장 · UPS · 재고 / 인보이스: 주문 · 인보이스 발행 · 수금 확인 / 창고 매니저: 작업 배정 · 피킹 · 포장 · UPS · 재고 · 위치 / 창고 직원: 내 작업 피킹 · 포장 · UPS · 재고 · 위치. ACH 은행 정보는 아래 "ACH 은행 정보 보기" 를 따로 켠 사람만.</small></div>' +
     '<div class="two"><div class="fg"><label>세일즈맨 코드</label><input id="uSm" list="uSmList" value="' + esc(u.sm || '') + '" placeholder="예: BRANDON" style="text-transform:uppercase" autocomplete="off"><datalist id="uSmList">' + S.sms.map(s => '<option value="' + esc(s.code) + '">').join('') + '</datalist><small class="muted">목록에 없으면 그대로 입력 — 저장할 때 세일즈맨도 같이 만듭니다</small></div><div class="fg"><label>옵션</label><label class="muted" style="display:flex;gap:6px;align-items:center;padding:8px 0"><input type="checkbox" id="uAch" style="width:18px;height:18px" ' + (u.achAccess ? 'checked' : '') + '> ACH 은행 정보 접근</label><label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="uAct" style="width:18px;height:18px" ' + (u.active !== false ? 'checked' : '') + '> 활성</label></div></div>' +
     '<div class="btns">' + (u.email && u.email !== S.user.email ? '<button class="b-ghost" id="uDel">삭제</button>' : '') + '<button class="b-blue" id="uSave">저장</button></div>');
@@ -47,7 +46,7 @@ function userForm(u) {
     const email = $('uEmail').value.trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('이메일을 확인하세요', 'bad');
     let smv = $('uSm').value.trim().toUpperCase().replace(/\s+/g, ' ');
     if (!smv && $('uRole').value === 'salesman' && $('uName').value.trim()) smv = $('uName').value.trim().toUpperCase().split(/\s+/)[0];
-    const doc = { email, name: $('uName').value.trim(), role: $('uRole').value, job: $('uJob').value, lang: $('uLang').value, sm: smv, achAccess: $('uAch').checked, active: $('uAct').checked, updatedAt: new Date().toISOString() };
+    const doc = { email, name: $('uName').value.trim(), role: $('uRole').value, job: $('uJob').value, sm: smv, achAccess: $('uAch').checked, active: $('uAct').checked, updatedAt: new Date().toISOString() };
     if (doc.role === 'salesman' && !doc.sm) return toast('세일즈맨 코드(또는 이름)를 넣으세요', 'bad');
     busy(true); try {
       let made = '';

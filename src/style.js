@@ -284,4 +284,6 @@ input.past{border-color:var(--amber);background:#fffbeb}input.later{border-color
   .wrap{max-width:1120px}.hgrid{grid-template-columns:repeat(4,1fr)}.grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}.cats{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
   .two{gap:14px}.kpi{gap:10px}.htile{min-height:140px}
 }
+.hb.hlang{white-space:nowrap;flex:0 0 auto;width:auto;min-width:0;padding:0 9px;font-size:12.5px;font-weight:800;letter-spacing:.3px;margin-right:6px}.langpick{display:grid;gap:10px;margin-top:10px}.langpick button{font-size:18px;padding:16px}
+header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 `;
