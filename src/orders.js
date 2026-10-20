@@ -27,7 +27,7 @@ export function register(state) {
 }
 
 /* 주문 상태 흐름: draft(저장됨) → sent(접수) → pick(픽킹 중 · picker 할당) → picked(픽킹 완료 · 사무실 확인 대기) → done(인보이스 발행 · 포장 대기) → shipped(출고 완료) · x(취소) */
-export const ST = { draft: ['저장됨', 'Saved', 't-g'], sent: ['접수', 'Received', 't-b'], ok: ['픽킹 중', 'Picking', 't-c'], pick: ['픽킹 중', 'Picking', 't-c'], picked: ['픽킹 완료', 'Picked', 't-a'], done: ['인보이스 발행', 'Invoiced', 't-k'], shipped: ['출고 완료', 'Shipped', 't-g'], x: ['취소', 'Cancelled', 't-r'], local: ['전송 대기', 'Not sent yet', 't-r'] };
+export const ST = { draft: ['임시 저장', 'Draft', 't-g'], sent: ['주문 접수', 'Received', 't-b'], ok: ['출고 작업', 'In Fulfillment', 't-c'], pick: ['출고 작업', 'In Fulfillment', 't-c'], picked: ['검수 대기', 'Ready for Review', 't-a'], done: ['인보이스 발행', 'Invoiced', 't-k'], shipped: ['출고 완료', 'Shipped', 't-g'], x: ['취소', 'Cancelled', 't-r'], local: ['전송 대기', 'Pending Upload', 't-r'] };
 export const stName = st => { const x = ST[st] || ST.draft; return x[0] + ' · ' + x[1]; };
 export const stTag = st => { const x = ST[st] || ST.draft; return '<span class="tag ' + x[2] + '" title="' + x[1] + '">' + x[0] + '</span>'; };
 const isStaff = () => S.role !== 'salesman';
@@ -155,7 +155,7 @@ async function pageOrder(arg) {
   const bulk = isStaff() && (LF.st === 'sent' || LF.st === 'pick' || LF.st === 'mine') && rows.length;
   if (bulk) h += '<div class="card" style="padding:10px 14px"><div class="chips" style="margin:0"><button class="' + (LF.grp !== 'day' ? 'on' : '') + '" data-grp="sm">👤 ' + bi('세일즈맨별', 'By salesman') + '</button><button class="' + (LF.grp === 'day' ? 'on' : '') + '" data-grp="day">📅 ' + bi('날짜별', 'By day') + '</button><button data-ckall="1">☑ ' + bi('모두 선택', 'Select all') + '</button><button data-ckall="0">☐ ' + bi('선택 해제', 'Clear') + '</button></div>' +
     (LF.st === 'sent' && PK.length ? '<div class="qasg"><span>👷 ' + bi('빠른 할당', 'Quick assign') + '</span><div class="chips" style="margin:0">' + PK.map(p => '<button class="' + (LF.qp === p.email ? 'on' : '') + '" data-qp="' + esc(p.email) + '">' + (p.me ? '🙋 ' : p.pick ? '👷 ' : '🧑‍💼 ') + esc(p.name) + (p.me ? ' (나)' : '') + '</button>').join('') + '</div><div class="muted" style="font-size:12px">' + bi('직원을 고른 뒤 주문 줄의 <b>👷 할당</b> 을 누르면 바로 그 직원 픽킹으로 넘어갑니다 (확인창 없음). 여러 건은 체크 → 픽킹 할당(인쇄 선택)', 'Pick a person, then tap 👷 on an order to assign it instantly. For many: check → Assign picking') + '</div></div>' : '') +
-    '<div id="bulkBar" class="muted" style="margin-top:6px">' + bi('주문를 체크한 뒤 → 픽킹 할당 또는 세일즈맨 확인 요청', 'Check orders, then assign picking or ask the salesman to confirm') + '</div><div class="btns" style="margin-top:6px;flex-wrap:wrap">' + (jobOf() !== 'acct' ? '<button class="b-blue b-sm" id="bkAssign">👷 ' + bi('픽킹 할당', 'Assign picking') + '</button>' : '') + (LF.st === 'sent' ? '<button class="b-ghost b-sm" id="bkCf">❓ ' + bi('세일즈맨 확인 요청', 'Ask salesman to confirm') + '</button>' : '') + '</div></div>';
+    '<div id="bulkBar" class="muted" style="margin-top:6px">' + bi('주문을 체크한 뒤 → 작업 배정 또는 세일즈맨 확인 요청', 'Check orders, then assign picking or ask the salesman to confirm') + '</div><div class="btns" style="margin-top:6px;flex-wrap:wrap">' + (jobOf() !== 'acct' ? '<button class="b-blue b-sm" id="bkAssign">👷 ' + bi('작업 배정', 'Assign Picker') + '</button>' : '') + (LF.st === 'sent' ? '<button class="b-ghost b-sm" id="bkCf">❓ ' + bi('세일즈맨 확인 요청', 'Ask salesman to confirm') + '</button>' : '') + '</div></div>';
   h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' + (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문가 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead(); fillStrip();
@@ -190,11 +190,11 @@ async function pageOrder(arg) {
   };
 }
 /* 담당자의 일(job) 에 따라 보이는 칩이 다름 — 픽킹: 들어온 주문 · 픽킹 중 · 백오더 / 인보이스: 픽킹 중(확정 대기) · 완료 · 인보이스 찾기 · 백오더 */
-const CHIPS = [['mine', '👷 내 픽킹', 'My picking'], ['sent', '📥 접수', 'Received'], ['pick', '📦 픽킹 중', 'Picking'], ['picked', '✅ 픽킹 완료', 'Picked'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · to pack'], ['shipped', '🚚 출고 완료', 'Shipped'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoices'], ['draft', '💾 저장됨', 'Saved'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체', 'All']];
+const CHIPS = [['mine', '👷 내 배정 작업', 'My Assignments'], ['sent', '📥 신규 주문', 'New Orders'], ['pick', '📦 출고 작업', 'In Fulfillment'], ['picked', '✅ 검수 대기', 'Ready for Review'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'], ['shipped', '🚚 출고 완료', 'Shipped'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoice Lookup'], ['draft', '💾 임시 저장', 'Drafts'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체 주문', 'All Orders']];
 const JOB_CHIPS = { pick: ['mine', 'sent', 'pick', 'picked', 'bo'], invoice: ['picked', 'pick', 'sent', 'done', 'shipped', 'inv', 'bo', 'draft', 'all'], acct: ['inv', 'done', 'shipped', 'bo', 'all'] };
 const LIVE_ST = ['sent', 'pick', 'ok', 'picked', 'done'];   // 아직 끝나지 않은 주문 (출고 전)
 export function chipsFor() { const j = jobOf(); const keys = JOB_CHIPS[j]; return keys ? keys.map(k => CHIPS.find(c => c[0] === k)) : CHIPS; }
-export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 접수 · Received</span></div><div><b>…</b><span>📦 픽킹 중 · Picking</span></div><div><b>…</b><span>✅ 픽킹 완료 · Picked</span></div><div><b>…</b><span>🧾 포장 대기 · To pack</span></div></div>'; }
+export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div><div><b>…</b><span>🧾 포장 대기 · Packing</span></div></div>'; }
 export async function fillStrip() {
   const el = $('oStrip'); if (!el) return;
   try {
@@ -218,10 +218,10 @@ async function staffHome() {
     '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="hPrev" title="앞 기간">◀</button><div style="text-align:center;font-weight:800">' + esc(ptxt) + '</div><button class="b-ghost b-sm" id="hNext" title="다음 기간">▶</button></div>';
   /* 일 타일 — 기간에 따라 숫자가 바뀜 (들어온 · 인보이스 완료 · 매출), 지금 상태 (픽킹 중 · 백오더) */
   const T = [];
-  if (j === 'pick') T.push(tile('mine', '👷', bi('내 픽킹', 'My picking'), '읽는 중…', 'blue'));
-  if (j !== 'acct') T.push(tile('sent', '📥', bi('접수된 주문', 'Received'), '읽는 중…', j === 'pick' ? '' : 'blue'), tile('pick', '📦', bi('픽킹 중', 'Picking'), '읽는 중…'));
-  if (j !== 'acct') T.push(tile('picked', '✅', bi('픽킹 완료 · 확인 대기', 'Picked · to check'), '읽는 중…'));
-  if (j !== 'pick') T.push(tile('done', '🧾', bi('인보이스 발행 · 포장 대기', 'Invoiced · to pack'), '읽는 중…'));
+  if (j === 'pick') T.push(tile('mine', '👷', bi('내 배정 작업', 'My Assignments'), '읽는 중…', 'blue'));
+  if (j !== 'acct') T.push(tile('sent', '📥', bi('신규 주문', 'New Orders'), '읽는 중…', j === 'pick' ? '' : 'blue'), tile('pick', '📦', bi('출고 작업', 'In Fulfillment'), '읽는 중…'));
+  if (j !== 'acct') T.push(tile('picked', '✅', bi('작업 완료 · 검수 대기', 'Ready for Review'), '읽는 중…'));
+  if (j !== 'pick') T.push(tile('done', '🧾', bi('인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'), '읽는 중…'));
   T.push(tile('shipped', '🚚', bi('출고 완료', 'Shipped'), '읽는 중…'));
   if (j !== 'acct') T.push(tile('bo', '⏳', bi('백오더', 'Backorders'), '읽는 중…'));
   const A = [];
@@ -259,7 +259,7 @@ async function staffHome() {
     const put = (id, v) => { const el = $('ht-' + id); if (el) el.innerHTML = v; };
     const nm = (L, f) => L.length ? L.length + '건 · ' + money(L.reduce((a, o) => a + (f ? f(o) : o.amt || 0), 0)) : '없음 · none';
     put('mine', nm(mine));
-    put('sent', nm(sentIn) + (wait.length ? '<br><b style="color:#b91c1c">픽킹 할당 대기 ' + wait.length + '건</b>' : '<br>대기 없음 · none waiting'));
+    put('sent', nm(sentIn) + (wait.length ? '<br><b style="color:#b91c1c">작업 배정 대기 · Unassigned ' + wait.length + '건</b>' : '<br>대기 없음 · none waiting'));
     put('pick', nm(pk) + (wait.filter(o => o.cfReq && !o.cfOk).length + pk.filter(o => o.cfReq && !o.cfOk).length ? '<br>❓ 세일즈맨 확인 대기 ' + (wait.filter(o => o.cfReq && !o.cfOk).length + pk.filter(o => o.cfReq && !o.cfOk).length) + '건' : ''));
     put('picked', nm(pkd));
     put('done', nm(doneIn) + (topack.length ? '<br><b style="color:#b45309">포장 대기 ' + topack.length + '건</b>' : ''));
@@ -292,10 +292,13 @@ function listHead() {
   const j = jobOf();
   const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto);
   const per = (LF.st === 'all' || LF.st === 'done' || LF.st === 'x' || LF.st === 'shipped') ? '<div class="chips" style="margin-top:0">' + Fulfill.PERIODS.filter(c => ['today', 'week', 'month', 'quarter', 'year'].includes(c[0])).map(c => '<button class="' + ((LF.hp || 'today') === c[0] ? 'on' : '') + '" data-hp2="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (['today', 'week', 'month', 'quarter', 'year'].includes(LF.hp || 'today') ? '' : 'on') + '" id="hCal2">📅 ' + esc(md(pr[0]) + (pr[0] !== pr[1] ? ' ~ ' + md(pr[1]) : '')) + '</button></div>' : '';
-  return statusStrip() + '<div class="chips"><button data-lf="home">🏠 ' + bi('홈', 'Home') + '</button>' + chipsFor().map(c => '<button class="' + (LF.st === c[0] ? 'on' : '') + '" data-lf="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' + per +
+  /* 위쪽 메뉴(상태 칩 · 기간)는 화면 위에 고정 — 아래로 내려가도 바로 다른 목록으로 */
+  const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '"><span class="ci">' + ic + '</span>' + ko + ' <span class="en">' + en + '</span></button>';
+  return statusStrip() + '<div class="ohead"><div class="chips ochips">' + chip('home', '🏠', '홈', 'Home', false) + chipsFor().map(c => { const i = c[1].indexOf(' '); return chip(c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2], LF.st === c[0]); }).join('') + '</div>' + per + '</div>' +
     '<div class="two" style="margin-bottom:10px">' + sel('lfSm', [['', '세일즈맨 전체 · All salesmen']].concat(S.sms.map(s => [s.code, s.code])), LF.sm) + (j === 'pick' ? '<span></span>' : '<button class="b-blue" id="oNew">＋ ' + bi('주문 만들기', 'New order') + '</button>') + '</div>';
 }
 function bindHead() {
+  { const row = document.querySelector('.ochips'), on = row && row.querySelector('.on'); if (on) row.scrollLeft = Math.max(0, on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2); }   // 고른 칩이 보이게
   document.querySelectorAll('[data-hp2]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp2; pageOrder(''); });
   if ($('hCal2')) $('hCal2').onclick = async () => { const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto), r = await pickDates({ from: pr[0], to: pr[1], quick: Fulfill.quickRanges() }); if (!r) return; LF.hp = 'custom'; LF.hfrom = r[0]; LF.hto = r[1]; pageOrder(''); };
   if ($('oNew')) $('oNew').onclick = () => { if (readWip() && !confirm('작성 중인 주문가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); Router.go('order', 'new'); };
