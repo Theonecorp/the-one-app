@@ -8,6 +8,7 @@ import { searchAccounts, dropAccountCache } from './accounts.js';
 import { invType } from './comm.js';
 import { stageText } from './sales.js';
 import { storeSheet } from './store.js';
+import { renderMap, nearMe, smColor } from './map.js';
 
 let S = null;
 export function register(state) {
@@ -228,7 +229,7 @@ function codForm(r) {
  *  ④ 거래처
  * ============================================================ */
 let STQ = '';
-let STM = { mode: '', sm: '', state: '', city: '' };
+let STM = { mode: '', sm: '', state: '', city: '', msm: null };
 async function pageStores() {
   const isSales = S.role === 'salesman', mine = (S.me && S.me.sm) ? String(S.me.sm).toUpperCase() : '';
   if (!STM.mode) { STM.mode = isSales ? 'sm' : 'q'; if (isSales) STM.sm = mine; }
@@ -244,6 +245,13 @@ async function pageStores() {
     sub = '<div class="chips" style="margin-top:8px">' + sms.map(k => '<button class="' + (STM.sm === k ? 'on' : '') + '" data-stsm="' + esc(k) + '">' + (k === mine ? '👤 ' : '') + esc(k) + ' <span class="en">' + bySm[k] + '</span></button>').join('') + '</div>';
     const list = sortBy(A.filter(a => String(a.sm || '').toUpperCase() === (STM.sm || '—') || (STM.sm === '—' && !a.sm)), a => a.store);
     body = STM.sm ? (list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.sm) + ' · ' + list.length + '곳 · 이름순</div>' + list.map(row).join('') : '<div class="none">없음</div>') : '<div class="none">세일즈맨을 고르세요</div>';
+  } else if (STM.mode === 'map') {
+    /* 🗺 지도 — 세일즈맨은 내 가게가 먼저 (전체도 볼 수 있음), 담당자는 세일즈맨별 색 */
+    if (STM.msm == null) STM.msm = isSales ? mine : '';
+    const smsAll = Object.keys(cnt(A, a => String(a.sm || '').toUpperCase())).filter(k => k !== '—').sort();
+    sub = '<div class="chips" style="margin-top:8px"><button class="' + (STM.msm === '' ? 'on' : '') + '" data-msm="">' + bi('전체', 'All') + ' <span class="en">' + A.length + '</span></button>' + smsAll.map(k => '<button class="' + (STM.msm === k ? 'on' : '') + '" data-msm="' + esc(k) + '"><i class="dot" style="background:' + smColor(k, smsAll) + '"></i>' + (k === mine ? '👤 ' : '') + esc(k) + '</button>').join('') + '</div>' +
+      '<div class="btns" style="justify-content:flex-start;margin-top:4px"><button class="b-ghost b-sm" id="mapMe">📍 ' + bi('내 위치 · 가까운 가게', 'My location · nearby') + '</button></div>';
+    body = '<div id="stMap" class="mapbox"></div><div class="muted" id="mapInfo" style="margin-top:6px"></div><div id="mapNear"></div>';
   } else {
     const byState = cnt(A, a => String(a.state || '').toUpperCase()), states = Object.keys(byState).sort();
     sub = '<div class="chips" style="margin-top:8px">' + states.map(k => '<button class="' + (STM.state === k ? 'on' : '') + '" data-stst="' + esc(k) + '">' + esc(k) + ' <span class="en">' + byState[k] + '</span></button>').join('') + '</div>';
@@ -255,10 +263,17 @@ async function pageStores() {
     } else body = '<div class="none">주(State)를 고르세요</div>';
   }
   $('page').innerHTML = '<div class="card"><h2>🏬 ' + bi('거래처', 'Customers') + ' <span class="muted" style="font-size:12px;font-weight:400">' + A.length + '곳</span></h2>' +
-    '<div class="seg">' + [['q', '🔎 ' + bi('검색', 'Search')], ['sm', '👤 ' + bi('세일즈맨별', 'By salesman')], ['geo', '🗺 ' + bi('주 · 도시별', 'By state · city')]].map(t => '<button class="' + (STM.mode === t[0] ? 'on' : '') + '" data-stm="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' + sub +
+    '<div class="seg" style="flex-wrap:wrap">' + [['q', '🔎 ' + bi('검색', 'Search')], ['sm', '👤 ' + bi('세일즈맨별', 'By salesman')], ['geo', '🏙 ' + bi('주 · 도시별', 'By state · city')], ['map', '🗺 ' + bi('지도', 'Map')]].map(t => '<button class="' + (STM.mode === t[0] ? 'on' : '') + '" data-stm="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' + sub +
     (!isSales ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button></div>' : '') + '</div>' +
     '<div class="card">' + body + '</div>';
   Router.refreshBack();
+  if (STM.mode === 'map') {
+    const smsAll = Object.keys(cnt(A, a => String(a.sm || '').toUpperCase())).filter(k => k !== '—').sort();
+    const list = STM.msm ? A.filter(a => String(a.sm || '').toUpperCase() === STM.msm) : A;
+    renderMap('stMap', list, smsAll, S);
+    document.querySelectorAll('[data-msm]').forEach(b => b.onclick = () => { STM.msm = b.dataset.msm; pageStores(); });
+    $('mapMe').onclick = () => nearMe(list, 'mapNear');
+  }
   document.querySelectorAll('[data-stm]').forEach(b => b.onclick = () => { STM.mode = b.dataset.stm; pageStores(); });
   document.querySelectorAll('[data-stsm]').forEach(b => b.onclick = () => { STM.sm = b.dataset.stsm; pageStores(); });
   document.querySelectorAll('[data-stst]').forEach(b => b.onclick = () => { STM.state = b.dataset.stst; STM.city = ''; pageStores(); });

@@ -5,6 +5,7 @@
  *          이 스크립트가 1분마다 그걸 UPS Shipping API 로 보내 라벨(GIF) · 트래킹 번호 · 요금을 받아 같은 문서에 적음(st:'done').
  *          앱은 그걸 보고 라벨을 인쇄하고 주문에 트래킹을 붙임. 실패하면 st:'error' + 이유.
  *          취소(void)도 같은 방식 — 앱에서 라벨 취소 → st:'void' → UPS 에 취소 요청 → st:'voided'.
+ *          🗺 가게 지도: geoSync 가 1시간마다 거래처 주소를 구글 지도(Apps Script Maps)로 좌표(lat · lng)로 바꿔 accounts 에 넣음 — 새 · 바뀐 주소만.
  *          주소 확인: 앱에서 "✅ UPS 주소 확인" → upsAv/{id} (st:'wait') → UPS Address Validation API → 추천 주소(cands) 를 적음(st:'done').
  *
  * 설치 (한 번만, luke@theonefl.com):
@@ -29,6 +30,7 @@ const SHIP_FROM_DEFAULT = { name: 'THE ONE CORP', attn: 'SHIPPING', phone: '4078
 function setup() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('run').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('geoSync').timeBased().everyHours(1).create(); Logger.log('🗺 가게 지도 좌표 — 1시간마다 새 · 바뀐 주소를 찾습니다 (처음 한 번은 지금 geoSync 를 직접 실행하면 빠릅니다)');
   if (prop_('UPS_QV_NAME')) { ScriptApp.newTrigger('qvSync').timeBased().everyHours(1).create(); Logger.log('Quantum View 구독 "' + prop_('UPS_QV_NAME') + '" — 1시간마다 출고 · 배달 기록을 받아옵니다'); }
   const tok = upsToken_();
   const r = UrlFetchApp.fetch(FS + '/settings/app', { headers: fsHeaders_(), muteHttpExceptions: true }), c = r.getResponseCode();
@@ -179,6 +181,34 @@ function qvDelivery_(d) {
   fsPatchDoc_('upsLog', t, { delivered: when || iso_().substring(0, 10), deliveredTo: String(d.DeliveryLocation && d.DeliveryLocation.SignedForByName || '') });
   if (log && log.orderId) fsPatchDoc_('orders', log.orderId, { deliveredAt: when || iso_().substring(0, 10) });
 }
+/* ============================================================
+ *  🗺 geoSync — 거래처 주소 → 좌표 (앱 거래처 → 🗺 지도). 주소가 바뀌면 다시 찾음 (geoQ = 찾을 때 쓴 주소)
+ *    구글 하루 한도에 걸리면 멈췄다가 다음 시간에 이어서. 바뀐 게 있으면 settings/app.accountsVer 를 올려 폰들이 새로 받게
+ * ============================================================ */
+const geoQ_ = a => { const p = [a.addr, a.city, a.state, a.zip].map(x => String(x || '').trim()).filter(Boolean); return a.addr && p.length >= 3 ? p.join(', ') + ', USA' : ''; };
+function geoSync() {
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
+  const t0 = Date.now();
+  try {
+    const all = fsListAll_('accounts'), todo = all.filter(a => { const q = geoQ_(a); return q && a.geoQ !== q; });
+    const g = Maps.newGeocoder().setRegion('us');
+    let ok = 0, bad = 0, stop = '';
+    for (const a of todo) {
+      if (Date.now() - t0 > 4.5 * 60 * 1000) { stop = '시간'; break; }
+      const q = geoQ_(a);
+      try {
+        const r = g.geocode(q);
+        if (r.status === 'OK' && r.results && r.results.length) { const l = r.results[0].geometry.location; fsPatch_('accounts', a._id, { lat: l.lat, lng: l.lng, geoQ: q, geoErr: '', geoAt: iso_() }); ok++; }
+        else if (r.status === 'OVER_QUERY_LIMIT') { stop = '구글 한도'; break; }
+        else { fsPatch_('accounts', a._id, { geoQ: q, geoErr: String(r.status || '?'), lat: null, lng: null }); bad++; }
+      } catch (e) { if (/too many|quota|limit/i.test(String(e.message))) { stop = '구글 하루 한도'; break; } bad++; }
+      Utilities.sleep(120);
+    }
+    if (ok || bad) fsPatch_('settings', 'app', { accountsVer: String(Date.now()) });
+    Logger.log('🗺 좌표 — 거래처 ' + all.length + '곳 중 찾을 것 ' + todo.length + ' · 찾음 ' + ok + ' · 못 찾음 ' + bad + (stop ? ' · 멈춤(' + stop + ') — 다음 시간에 이어서' : ' · 끝'));
+  } finally { lock.releaseLock(); }
+}
+
 /** 참조 번호 → 인보이스(invoices/{번호}.orderId) · 주문(orders/{번호}) · 없으면 받는 가게 이름 + 7일 안 "인보이스 발행" 주문 하나 */
 function qvFindOrder_(refs, store, d) {
   for (const r of refs) for (const tok of String(r).toUpperCase().split(/[\s,;/]+/)) {
@@ -206,6 +236,16 @@ function fsQuery_(col, field, val, limit) {
   const r = UrlFetchApp.fetch(FS + ':runQuery', { method: 'post', contentType: 'application/json', payload: JSON.stringify(body), headers: fsHeaders_(), muteHttpExceptions: true });
   if (r.getResponseCode() !== 200) throw new Error('Firestore 읽기 실패 ' + r.getResponseCode() + ': ' + r.getContentText().substring(0, 200));
   return JSON.parse(r.getContentText()).filter(x => x.document).map(x => fromDoc_(x.document));
+}
+/** 컬렉션 전부 (300개씩) */
+function fsListAll_(col) {
+  const out = []; let tok = '';
+  do {
+    const r = UrlFetchApp.fetch(FS + '/' + col + '?pageSize=300' + (tok ? '&pageToken=' + encodeURIComponent(tok) : ''), { headers: fsHeaders_(), muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) throw new Error('Firestore 읽기 실패 ' + r.getResponseCode() + ': ' + r.getContentText().substring(0, 200));
+    const j = JSON.parse(r.getContentText()); (j.documents || []).forEach(d => out.push(fromDoc_(d))); tok = j.nextPageToken || '';
+  } while (tok);
+  return out;
 }
 function fsPatch_(col, id, data) {
   const mask = Object.keys(data).map(k => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&'), fields = {};

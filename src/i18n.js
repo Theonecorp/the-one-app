@@ -61,14 +61,19 @@ export function tr(t, enHint) {
   const lead = t.match(/^\s*/)[0], trail = t.match(/\s*$/)[0];
   let s = t.trim();
   /* 바로 옆에 원래 영어 꼬리표가 있으면 그 영어(또는 그 영어의 포르투갈어)가 가장 정확 */
-  if (enHint && LANG !== 'ko') { const pre = (s.match(LEAD) || [''])[0], rest = s.slice(pre.length); if (!/[0-9]/.test(rest)) { const x = LANG === 'en' ? enHint.trim() : ptOfEn(enHint); if (x) return lead + pre + x + trail; } }
+  if (enHint && LANG !== 'ko') { const pre = (s.match(LEAD) || [''])[0], rest = s.slice(pre.length); if (!/[0-9]/.test(rest)) { const k = rest.replace(TAIL, ''), K = D.p[k] || D.r[k]; const x = LANG === 'en' ? enHint.trim() : (K && K[1]) || ptOfEn(enHint); if (x) return lead + pre + x + trail; } }
   if (LANG !== 'ko') {
     const pre = (s.match(LEAD) || [''])[0], rest = s.slice(pre.length), post = (rest.match(TAIL) || [''])[0], key = rest.slice(0, rest.length - post.length);
     const P = D.p[key]; if (P && P[IDX()]) return lead + pre + P[IDX()] + post + trail;
   }
   /* "한글 / English" 통째 — 한쪽만 */
   const bi = s.match(/^([^]*[가-힣][^]*?)\s+\/\s+([^가-힣]*[A-Za-z][^가-힣]*)$/);
-  if (bi) { if (LANG === 'en') return lead + bi[2] + trail; s = bi[1]; if (LANG !== 'ko') { const P = D.p[s.replace(LEAD, '').replace(TAIL, '')]; if (P && P[1]) return lead + P[1] + trail; const x = ptOfEn(bi[2]); if (x) return lead + x + trail; } }
+  if (bi) {
+    const pre = bi[1].match(/^[^가-힣]*/)[0];   // 앞의 숫자 · 이모지 (예: "4 / 4 곳 …", "📋 가게 창") 는 살림
+    if (LANG === 'en') return lead + pre + bi[2] + trail;
+    s = bi[1];
+    if (LANG !== 'ko') { const k = s.slice(pre.length).replace(TAIL, ''), P = D.p[k] || D.r[k]; if (P && P[1]) return lead + pre + P[1] + trail; const x = ptOfEn(bi[2]); if (x) return lead + pre + x + trail; }
+  }
   if (LANG !== 'ko') s = dates(s);
   let out = '', i = 0, m; RUN.lastIndex = 0;
   while ((m = RUN.exec(s))) {
