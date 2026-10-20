@@ -106,7 +106,7 @@ async function pageOrder(arg) {
   if (arg) return openOrder(arg);
   if (!isStaff() && !mySm()) { $('page').innerHTML = '<div class="card"><div class="none">이 계정에 세일즈맨 코드가 연결돼 있지 않습니다.</div></div>'; return; }
   O = null;
-  if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(); LF.st = { invoice: 'picked', acct: 'inv', pick: 'mine', whmgr: 'sent', pickinv: 'sent' }[j] || 'sent'; }
+  if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(), first = { invoice: 'picked', acct: 'inv', pick: 'mine', whmgr: 'sent', pickinv: 'sent' }[j]; if (first) LF.st = first; }
   if (isStaff() && !LF.list) return staffHome();
   if (isStaff() && !chipsFor().some(c => c[0] === LF.st)) LF.st = chipsFor()[0][0];
   if (isStaff() && (LF.st === 'bo' || LF.st === 'inv')) return Fulfill.pageLists(LF, listHead());
