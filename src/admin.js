@@ -111,6 +111,19 @@ async function settings() {
     '<div class="card"><h2>📊 월별 매출 요약</h2><div class="muted">현황 · 주문 대시보드의 분기 · 올해 보기는 인보이스 수천 장 대신 월별 요약을 읽습니다. 발행 · 취소 · 가져오기 때 자동으로 갱신되지만, 숫자가 이상하면 여기서 다시 만듭니다 (최근 36개월 인보이스를 한 번 읽음).</div><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="smRebuild">다시 만들기</button></div><div id="smOut"></div></div>';
   $('smRebuild').onclick = async () => { busy(true); try { const ms = []; const d = new Date(); for (let i = 0; i < 36; i++) { ms.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } const n = await rebuildSalesM(S, ms); $('smOut').innerHTML = '<div class="alert a-grn">' + n + '개월 요약을 다시 만들었습니다</div>'; } catch (e) { $('smOut').innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; } busy(false); };
   bindInvTypes();
+  /* 🚚 UPS 출고 — 보내는 곳 · 기본 서비스 · 기본 박스 무게 (apps-script/UPS.gs 가 settings/app.ups 를 읽음) */
+  const U = Object.assign({ svc: '03', defW: 5 }, s.ups || {}), F = Object.assign({ name: 'THE ONE CORP', attn: 'SHIPPING', phone: '4078787274', addr1: '4265 CHURCH STREET', addr2: 'UNIT 1009', city: 'SANFORD', state: 'FL', zip: '32771' }, U.from || {});
+  const upsCard = document.createElement('div'); upsCard.className = 'card';
+  const uf = (id, lab, v, w) => '<div class="fg"' + (w ? ' style="flex:' + w + '"' : '') + '><label>' + lab + '</label><input id="' + id + '" value="' + esc(v || '') + '"></div>';
+  upsCard.innerHTML = '<h2>🚚 UPS 출고 <span class="en">UPS shipping</span></h2><div class="muted">주문 → 🚚 포장 · 출고 → <b>📦 UPS 라벨 만들기</b> 를 누르면 1~2분 안에 라벨 · 트래킹이 나옵니다. 라벨은 구글 Apps Script(<b>apps-script/UPS.gs</b>, luke@ 계정)가 UPS 에서 받아 옵니다 — UPS 키는 그 스크립트의 스크립트 속성에만 있습니다.</div>' +
+    '<div class="two" style="margin-top:8px">' + uf('upFName', '보내는 곳 이름', F.name) + uf('upFAttn', '담당 (Attention)', F.attn) + '</div>' +
+    '<div class="two">' + uf('upFA1', '주소', F.addr1) + uf('upFA2', '주소 2 (Unit 등)', F.addr2) + '</div>' +
+    '<div class="two">' + uf('upFCity', 'City', F.city) + '<div class="two">' + uf('upFSt', 'State', F.state) + uf('upFZip', 'ZIP', F.zip) + '</div></div>' +
+    '<div class="two">' + uf('upFPh', '전화', F.phone) + '<div class="two"><div class="fg"><label>기본 서비스</label>' + sel('upSvcD', [['03', 'UPS Ground'], ['12', '3 Day Select'], ['02', '2nd Day Air'], ['01', 'Next Day Air']], U.svc) + '</div>' + uf('upDefW', '기본 박스 무게 lb', U.defW) + '</div></div>' +
+    '<div class="btns"><button class="b-blue" id="upSave">저장</button></div>';
+  $('adminBody').appendChild(upsCard);
+  $('upSave').onclick = async () => { const v = id => $(id).value.trim(); const ups = { svc: $('upSvcD').value, defW: Math.max(1, num(v('upDefW')) || 5), from: { name: v('upFName').toUpperCase(), attn: v('upFAttn').toUpperCase(), addr1: v('upFA1').toUpperCase(), addr2: v('upFA2').toUpperCase(), city: v('upFCity').toUpperCase(), state: v('upFSt').toUpperCase(), zip: v('upFZip'), phone: v('upFPh') } };
+    busy(true); try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.ups = ups; await S.DB.set('settings', 'app', cur); S.settings.ups = ups; toast('🚚 UPS 설정 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   /* 📧 Daily Report 메일 상태 — apps-script/Code.gs 가 1분마다 mail:'wait' 을 보내고 'sent' / 'error' 로 바꿈 */
   const mailCard = document.createElement('div'); mailCard.className = 'card'; mailCard.innerHTML = '<h2>📧 Daily Report 메일</h2><div class="load">읽는 중…</div>'; $('adminBody').appendChild(mailCard);
   (async () => {

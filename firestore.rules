@@ -90,6 +90,7 @@ service cloud.firestore {
     }
     match /backorders/{id} { allow read, write: if isStaff(); }
     match /counters/{id} { allow read, write: if isStaff(); }
+    match /shipq/{id} { allow read, write: if isStaff(); }                                                                            // 🚚 UPS 라벨 요청 (apps-script/UPS.gs 가 처리)
 
     // ---------- 경영 (루크만) ----------
     match /factories/{id} { allow read, write: if isAdmin(); }
