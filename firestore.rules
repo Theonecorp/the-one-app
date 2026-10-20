@@ -18,6 +18,7 @@ service cloud.firestore {
       allow read: if signedIn() && (uid == email() || isStaff());
       allow create: if isAdminEmail() && uid == email();   // 루크 첫 로그인
       allow write: if isAdmin();
+      allow update: if signedIn() && uid == email() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lang']);   // 🌐 내 언어만 내가 바꿈
     }
     // ---------- 기준 자료 ----------
     match /salesmen/{id} { allow read: if registered(); allow write: if isAdmin(); }   // 요율 · 캐쉬 보관은 루크만
