@@ -8,6 +8,8 @@
  *
  * 설치 (한 번만, luke@theonefl.com):
  *   1. script.google.com → 새 프로젝트 "THE ONE UPS" → 이 내용을 Code.gs 에 붙여넣기 → 저장
+ *   1-1. ⚙️ 프로젝트 설정 → "appsscript.json 매니페스트 파일 표시" 켜기 → 편집기의 appsscript.json 에 UPS.appsscript.json 내용 붙여넣기
+ *        (Firestore 읽기 · 쓰기 권한 — 이게 없으면 "Firestore 읽기 실패")
  *   2. ⚙️ 프로젝트 설정 → 맨 아래 "스크립트 속성" → 속성 추가 (값은 채팅 · 메일에 쓰지 마세요):
  *        UPS_CLIENT_ID      = UPS My Apps 의 Client ID
  *        UPS_CLIENT_SECRET  = UPS My Apps 의 Client Secret
@@ -26,7 +28,10 @@ function setup() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('run').timeBased().everyMinutes(1).create();
   const tok = upsToken_();
-  Logger.log('UPS 연결 OK (' + env_() + ') · 토큰 받음 ' + String(tok).substring(0, 6) + '… · Firestore ' + (fsGet_('settings', 'app') ? 'OK' : '읽기 실패'));
+  const r = UrlFetchApp.fetch(FS + '/settings/app', { headers: fsHeaders_(), muteHttpExceptions: true }), c = r.getResponseCode();
+  Logger.log('UPS 연결 OK (' + env_() + ') · 토큰 받음 ' + String(tok).substring(0, 6) + '…');
+  Logger.log(c === 200 ? 'Firestore OK' : 'Firestore 읽기 실패 ' + c + ': ' + r.getContentText().substring(0, 300) +
+    (c === 403 || c === 401 ? '\n→ ⚙️ 프로젝트 설정에서 "appsscript.json 매니페스트 파일 표시" 를 켜고 UPS.appsscript.json 내용을 붙여넣은 뒤 setup 을 다시 실행해 권한을 허용하세요' : ''));
 }
 /** 시험: 앱 없이 라벨 하나 만들어 보기 (test 환경에서만) */
 function testLabel() {
