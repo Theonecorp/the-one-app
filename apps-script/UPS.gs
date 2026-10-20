@@ -5,6 +5,7 @@
  *          이 스크립트가 1분마다 그걸 UPS Shipping API 로 보내 라벨(GIF) · 트래킹 번호 · 요금을 받아 같은 문서에 적음(st:'done').
  *          앱은 그걸 보고 라벨을 인쇄하고 주문에 트래킹을 붙임. 실패하면 st:'error' + 이유.
  *          취소(void)도 같은 방식 — 앱에서 라벨 취소 → st:'void' → UPS 에 취소 요청 → st:'voided'.
+ *          주소 확인: 앱에서 "✅ UPS 주소 확인" → upsAv/{id} (st:'wait') → UPS Address Validation API → 추천 주소(cands) 를 적음(st:'done').
  *
  * 설치 (한 번만, luke@theonefl.com):
  *   1. script.google.com → 새 프로젝트 "THE ONE UPS" → 이 내용을 Code.gs 에 붙여넣기 → 저장
@@ -52,6 +53,10 @@ function run() {
         const r = ship_(q, from);
         fsPatch_('shipq', q._id, { st: 'done', at: iso_(), env: env_(), shipId: r.shipId, charge: r.charge, track: r.labels.map(x => x.trk).join(' '), labels: r.labels, err: '' });
       } catch (e) { fsPatch_('shipq', q._id, { st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+    });
+    fsQuery_('upsAv', 'st', 'wait', 10).forEach(q => {
+      try { fsPatch_('upsAv', q._id, Object.assign({ st: 'done', at: iso_(), err: '' }, xav_(q.to || {}))); }
+      catch (e) { fsPatch_('upsAv', q._id, { st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
     });
     fsQuery_('shipq', 'st', 'void', 10).forEach(q => {
       try { voidShip_(q.shipId); fsPatch_('shipq', q._id, { st: 'voided', at: iso_(), err: '' }); }
@@ -109,6 +114,15 @@ function ship_(q, from) {
   const charge = Number(((R.ShipmentCharges || {}).TotalCharges || {}).MonetaryValue || 0);
   return { shipId: R.ShipmentIdentificationNumber, charge, labels: pk.map(p => ({ trk: p.TrackingNumber, img: (p.ShippingLabel || {}).GraphicImage || '' })) };
 }
+/** 📍 주소 확인 (UPS Address Validation — Street Level). 돌려주는 값: { valid, ambiguous, none, cls, cands:[{addr1, addr2, city, state, zip, zip4}] }
+ *  시험 서버(UPS_ENV=test)는 UPS 규정상 뉴욕(NY) · 캘리포니아(CA) 주소만 확인해 줍니다 — 실제 확인은 live 에서 */
+function xav_(a) {
+  const body = { XAVRequest: { AddressKeyFormat: { ConsigneeName: clip_(a.name, 35), AddressLine: [clip_(a.addr1, 35), clip_(a.addr2, 35)].filter(Boolean), PoliticalDivision2: clip_(a.city, 30), PoliticalDivision1: clip_(a.state, 2), PostcodePrimaryLow: String(a.zip || '').replace(/[^0-9]/g, '').substring(0, 5), CountryCode: 'US' } } };
+  const j = upsFetch_('/api/addressvalidation/v2/3?maximumcandidatelistsize=5', 'post', body), R = j.XAVResponse || {};
+  const cls = R.AddressClassification ? String(R.AddressClassification.Description || R.AddressClassification.Code || '') : '';
+  const cands = [].concat(R.Candidate || []).map(c => { const k = c.AddressKeyFormat || {}, L = [].concat(k.AddressLine || []); return { addr1: L[0] || '', addr2: L[1] || '', city: k.PoliticalDivision2 || '', state: k.PoliticalDivision1 || '', zip: k.PostcodePrimaryLow || '', zip4: k.PostcodeExtendedLow || '', cls: c.AddressClassification ? String(c.AddressClassification.Description || '') : '' }; });
+  return { valid: 'ValidAddressIndicator' in R, ambiguous: 'AmbiguousAddressIndicator' in R, none: 'NoCandidatesIndicator' in R, cls, cands };
+}
 function voidShip_(shipId) { if (!shipId) throw new Error('취소할 출고 번호가 없습니다'); upsFetch_('/api/shipments/v2403/void/cancel/' + encodeURIComponent(shipId), 'delete'); }
 
 /* ============================================================
@@ -147,10 +161,11 @@ function qvManifest_(m) {
   const d = String(m.PickupDate || m.ScheduledDeliveryDate || '').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3') || iso_().substring(0, 10);
   const store = String(to.CompanyName || to.AttentionName || '').trim();
   const orderId = qvFindOrder_(refs, store, d);
-  const log = { trk: trks.join(' '), refs: refs.join(' '), store, city: a.City || '', state: a.StateProvinceCode || '', d, svc: (m.Service || {}).Code || '', boxes: trks.length, orderId: orderId || '', src: 'qv', at: iso_() };
+  const o = orderId ? (fsGet_('orders', orderId) || {}) : {};
+  const L = qvArr_(a.AddressLine);
+  const log = { trk: trks.join(' '), refs: refs.join(' '), store, addr1: L[0] || '', addr2: L[1] || '', city: a.City || '', state: a.StateProvinceCode || '', zip: a.PostalCode || '', d, svc: (m.Service || {}).Code || '', boxes: trks.length, orderId: orderId || '', acct: o.acct || '', src: 'qv', at: iso_() };
   trks.forEach(t => fsPatchDoc_('upsLog', t, log));
   if (!orderId) return false;
-  const o = fsGet_('orders', orderId) || {};
   const have = String(o.track || '').split(/\s+/).filter(Boolean), add = trks.filter(t => have.indexOf(t) < 0);
   const patch = { updatedAt: iso_() };
   if (add.length) { patch.track = have.concat(add).join(' '); patch.shipVia = 'UPS'; patch.boxes = have.length + add.length; }

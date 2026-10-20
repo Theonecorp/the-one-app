@@ -91,6 +91,7 @@ service cloud.firestore {
     match /backorders/{id} { allow read, write: if isStaff(); }
     match /counters/{id} { allow read, write: if isStaff(); }
     match /shipq/{id} { allow read, write: if isStaff(); }
+    match /upsAv/{id} { allow read, write: if isStaff(); }                                                                            // 📍 UPS 주소 확인 요청 (UPS.gs 가 처리)
     match /upsLog/{id} { allow read, write: if isStaff(); }                                                                           // 📡 Quantum View 출고 · 배달 기록 (UPS.gs qvSync)                                                                            // 🚚 UPS 라벨 요청 (apps-script/UPS.gs 가 처리)
 
     // ---------- 경영 (루크만) ----------

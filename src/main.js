@@ -42,10 +42,10 @@ export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct
 /** 일별 할 수 있는 것 — newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
  *  · verify 수금 확인 · cod COD·카드 · ach ACH · items 아이템 · 재고 위치 · bo 백오더 */
 export const CAN = {
-  office:  ['newOrder', 'invoice', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
+  office:  ['newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
   acct:    ['verify', 'cod', 'ach', 'invLookup'],
-  pickinv: ['invoice', 'assign', 'pick', 'ship', 'items', 'bo'],
-  invoice: ['newOrder', 'invoice', 'verify', 'bo'],
+  pickinv: ['invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],
+  invoice: ['newOrder', 'invoice', 'void', 'verify', 'bo'],
   whmgr:   ['assign', 'pick', 'ship', 'items', 'bo'],
   pick:    ['pick', 'ship', 'items']
 };
@@ -151,6 +151,8 @@ function switchRole(r) {
 /* 아래 메뉴의 실제 높이를 CSS 변수로 — 고정 바(.sticky) 와 본문 여백이 메뉴에 가리지 않게 */
 function navH() { const n = $('nav'); const h = n && getComputedStyle(n).position === 'fixed' ? n.offsetHeight : 0; document.documentElement.style.setProperty('--navh', h + 'px'); const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
 window.addEventListener('resize', () => setTimeout(navH, 50));
+/* 아래로 내리면 위 고정 메뉴(주문 상태 아이콘)는 글씨를 접고 아이콘만 — 화면을 덜 가림 */
+window.addEventListener('scroll', () => { const y = window.scrollY, was = document.body.classList.contains('oscr'), on = was ? y > 60 : y > 160; if (document.body.classList.contains('oscr') !== on) document.body.classList.toggle('oscr', on); }, { passive: true });
 function paintNav() {
   const items = navFor(S.role);
   Router.home = items.length ? items[0][0] : '';

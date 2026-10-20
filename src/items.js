@@ -6,15 +6,21 @@
  *    엑셀(Item Master) 전체 올리기는 관리 → 📦 아이템. 저장하면 카탈로그를 다시 발행해 모든 폰이 새 목록을 받음
  *  행 모양: [code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide]
  * ============================================================ */
-import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi } from './ui.js';
-import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf } from './catalog.js';
+import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt } from './ui.js';
+import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf } from './catalog.js';
 import { typeOfItem, invTypes } from './invoicing.js';
 import { can } from './main.js';
 
 let S = null;
 /* 화면 상태 — 탭을 오가도 유지 */
-const IT = { mode: 'all', path: [], q: '', page: 100, sel: new Set() };
-export function register(state) { S = state; Router.on('items', page); }
+const IT = { mode: 'all', path: [], q: '', page: 100, sel: new Set(), aisle: '', showA: false };
+const COLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+export function register(state) {
+  S = state; Router.on('items', page);
+  /* ‹ 뒤로: 분류 한 단계 위로 · 통로 거르기 풀기 */
+  Router.up.items = arg => { if (arg) return false; if (IT.path.length) { IT.path.pop(); IT.page = 100; paint(); return true; } if (IT.aisle) { IT.aisle = ''; paint(); return true; } return false; };
+  Router.upHas.items = () => !!(IT.path.length || IT.aisle);
+}
 const isStaff = () => S.role !== 'salesman';
 const isAdmin = () => S.role === 'admin';
 /** 창고 매니저 · 창고 직원 — 아이템은 찾아보고 📍 위치만 바꿈 (가격 · 이름 · 숨김 · 등록은 오피스 · 인보이스 쪽) */
@@ -34,7 +40,11 @@ async function page(arg) {
 /** 지금 조건(분류 경로 · 걸러보기 · 검색)에 맞는 아이템 — 코드 순 */
 function current() {
   const C = catalog();
-  let list = IT.q.trim() ? searchItems(IT.q, [], 100000, 'g', true) : C.items;
+  const qU = IT.q.trim().toUpperCase();
+  let list = qU ? searchItems(IT.q, [], 100000, 'g', true) : C.items;
+  /* 위치로도 찾기 — "A-03" 이라고 치면 그 위치로 시작하는 아이템도 */
+  if (qU && !/\s/.test(qU)) { const have = new Set(list.map(x => x.c)), byLoc = C.items.filter(x => !have.has(x.c) && locOf(x).toUpperCase().startsWith(qU)); if (byLoc.length) list = list.concat(byLoc); }
+  if (IT.aisle) list = list.filter(x => (aisleOf(locOf(x)) || '—') === IT.aisle).sort((a, b) => COLL.compare(locOf(a), locOf(b)) || COLL.compare(a.c, b.c));
   if (IT.path.length) list = list.filter(x => inPath(x, IT.path));
   if (IT.mode === 'vis') list = list.filter(x => !x.h); else if (IT.mode === 'hid') list = list.filter(x => x.h);
   return list;
@@ -52,13 +62,16 @@ function paint() {
   const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
   $('page').innerHTML = '<div class="card"><h2>🏷 ' + bi('아이템 관리', 'Items') + ' <span class="muted" style="font-weight:400;font-size:12px">' + nAll.toLocaleString() + '개 · 👁 보임 ' + (nAll - nHid).toLocaleString() + ' · 🙈 숨김 ' + nHid.toLocaleString() + '</span></h2>' +
     '<div class="muted">분류를 눌러 내려가거나 검색해서 전체를 훑어보세요. 체크해서 여러 개를 한 번에 <b>숨기기 · 보이기 · 분류 옮기기 · 삭제</b>. 🙈 숨김 아이템은 목록엔 있지만 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연). 저장하면 모든 폰에 반영됩니다.</div>' +
-    '<div style="display:flex;gap:6px;margin-top:10px"><input id="itQ" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
+    '<div style="display:flex;gap:6px;margin-top:10px"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
     '<div class="seg" style="margin-top:8px">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()]].map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
-    crumbs + tiles + '</div>' +
+    crumbs + tiles + aisleRow(C) + '</div>' +
     '<div class="card"><div id="itList"></div></div>' + (isAdmin() ? '<div id="itSbm"></div>' : '') +
     '<div class="bulkbar" id="itBulk" style="display:none"></div>';
+  Router.refreshBack();
   document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { IT.mode = b.dataset.im; IT.page = 100; paint(); });
   document.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => { IT.path = IT.path.slice(0, Number(b.dataset.ip)); IT.page = 100; paint(); });
+  document.querySelectorAll('[data-ia]').forEach(b => b.onclick = () => { IT.aisle = IT.aisle === b.dataset.ia ? '' : b.dataset.ia; IT.page = 100; paint(); });
+  if ($('itAisT')) $('itAisT').onclick = () => { IT.showA = !IT.showA; paint(); };
   document.querySelectorAll('[data-ik]').forEach(b => b.onclick = () => { IT.path = IT.path.concat([b.dataset.ik]); IT.page = 100; paint(); });
   $('itQ').oninput = debounce(() => { IT.q = $('itQ').value; IT.page = 100; list(); }, 150);
   if ($('itNew')) $('itNew').onclick = () => form(null, IT.q.trim().toUpperCase());
@@ -66,10 +79,19 @@ function paint() {
   if (isAdmin()) sbmCard();
 }
 
+/** 📍 통로별로 보기 — 통로를 누르면 그 통로 아이템만 위치 순으로 */
+function aisleRow(C) {
+  const m = {}; C.items.forEach(x => { if (x.virt) return; const a = aisleOf(locOf(x)) || '—'; m[a] = (m[a] || 0) + 1; });
+  const keys = Object.keys(m).filter(k => k !== '—').sort(COLL.compare); if (m['—']) keys.push('—');
+  if (!keys.length || (keys.length === 1 && keys[0] === '—')) return '';
+  const open = IT.showA || IT.aisle;
+  return '<div style="margin-top:8px"><button class="b-ghost b-sm" id="itAisT">📍 ' + bi('통로별 보기', 'By aisle') + ' ' + (IT.aisle ? '· <b>' + esc(IT.aisle === '—' ? bt('위치 없음', 'No location') : IT.aisle) + '</b>' : '(' + keys.filter(k => k !== '—').length + ')') + ' ' + (open ? '▴' : '▾') + '</button>' +
+    (open ? '<div class="chips">' + keys.map(k => '<button class="' + (IT.aisle === k ? 'on' : '') + '" data-ia="' + esc(k) + '">' + (k === '—' ? bt('위치 없음', 'No location') : esc(k)) + ' <span class="en">' + m[k] + '</span></button>').join('') + '</div>' : '') + '</div>';
+}
 function list() {
   const C = catalog(), all = current(), res = all.slice(0, IT.page), q = IT.q.trim();
-  const showList = q || IT.path.length || IT.mode !== 'all';
-  const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + (showList ? all.length.toLocaleString() + '개 (코드 순)' : '전체 ' + all.length.toLocaleString() + '개 — 분류를 고르거나 검색하면 목록이 나옵니다') + '</span>' +
+  const showList = q || IT.path.length || IT.mode !== 'all' || IT.aisle;
+  const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + (showList ? all.length.toLocaleString() + (IT.aisle ? '개 (위치 순)' : '개 (코드 순)') : '전체 ' + all.length.toLocaleString() + '개 — 분류를 고르거나 검색하면 목록이 나옵니다') + '</span>' +
     (showList && all.length ? '<label class="tap" style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex:0 0 auto"><input type="checkbox" id="itAll" ' + (all.length && all.every(x => IT.sel.has(x.c)) ? 'checked' : '') + '> ' + bi('모두 선택', 'All') + ' ' + Math.min(all.length, 2000).toLocaleString() + '</label>' : '') + '</div>';
   $('itList').innerHTML = head + (showList ? (res.length ? res.map(row).join('') + (all.length > res.length ? '<button class="b-ghost" id="itMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') :
     '<div class="none">맞는 아이템이 없습니다' + (q ? ' — <a href="#" id="itMk">＋ "' + esc(q.toUpperCase()) + '" 로 새 아이템 등록</a>' : '') + '</div>') : '');
