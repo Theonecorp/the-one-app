@@ -17,8 +17,9 @@ import * as Reports from './reports.js';
 import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
+import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.43';
+export const VER = 'v0.8.44';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -42,10 +43,10 @@ export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct
 /** 일별 할 수 있는 것 — newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
  *  · verify 수금 확인 · cod COD·카드 · ach ACH · items 아이템 · 재고 위치 · bo 백오더 */
 export const CAN = {
-  office:  ['newOrder', 'invoice', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
+  office:  ['newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
   acct:    ['verify', 'cod', 'ach', 'invLookup'],
-  pickinv: ['invoice', 'assign', 'pick', 'ship', 'items', 'bo'],
-  invoice: ['newOrder', 'invoice', 'verify', 'bo'],
+  pickinv: ['invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],
+  invoice: ['newOrder', 'invoice', 'void', 'verify', 'bo'],
   whmgr:   ['assign', 'pick', 'ship', 'items', 'bo'],
   pick:    ['pick', 'ship', 'items']
 };
@@ -88,7 +89,9 @@ function loginScreen(msg) {
   $('nav').innerHTML = ''; $('hWho').textContent = '';
   $('page').innerHTML = '<div class="card login"><div class="logo"><img src="logo.png" alt="ONE"></div><h1>THE ONE</h1><p>회사 구글 계정으로 로그인하세요<br><span class="en">Sign in with your company Google account</span></p>' +
     '<button class="b-blue" id="btnLogin">Google 로 로그인 · Sign in with Google</button>' + (msg ? '<div class="alert a-red" style="margin-top:12px">' + esc(msg) + '</div>' : '') +
+    '<div class="seg" style="margin-top:16px">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '" translate="no">' + l[1] + '</button>').join('') + '</div>' +
     '<p class="muted" style="margin-top:18px">' + VER + '</p></div>';
+  document.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
   $('btnLogin').onclick = async () => { try { await S.AUTH.signIn(); } catch (e) { loginScreen(e.code + ' — ' + e.message); } };
 }
 function waitScreen(email) {
@@ -104,9 +107,11 @@ function userMenu() {
   openMenu('<h2>' + esc(S.user.name || S.user.email) + '</h2><p class="muted">' + esc(S.user.email) + ' · ' + (S.role === 'manager' ? jobLabel(jobOf()) : roleLabel(S.role)) + ' · ' + VER + '</p>' +
     (roles.length ? '<div class="fg"><label>화면 보기 (관리자) <span class="en">Preview as</span></label><div class="seg">' + roles.map(r => '<button class="' + (S.role === r ? 'on' : '') + '" data-r="' + r + '">' + roleLabel(r) + '</button>').join('') + '</div>' +
       (S.role === 'manager' ? '<div class="seg">' + JOBS.map(j => '<button class="' + (jobOf() === j[0] ? 'on' : '') + '" data-j="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div>' : '') + '</div>' : '') +
+    '<div class="fg"><label>🌐 언어 · Language · Idioma</label><div class="seg">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '" translate="no">' + l[1] + '</button>').join('') + '</div></div>' +
     '<div class="btns"><button class="b-ghost" id="mOut">로그아웃 <span class="en">Sign out</span></button><button class="b-blue" id="mReload">새로고침 <span class="en">Reload</span></button></div>' +
     '<button class="b-ghost b-sm" id="mDiag" style="margin-top:10px">🔎 연결 · 권한 점검 <span class="en">Check connection</span></button><div id="diagOut"></div>');
   $('mDiag').onclick = diag;
+  document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = async () => { const l = b.dataset.lang; if (l === LANG) return; busy(true); try { if (S.me) await S.DB.update('users', S.user.email, { lang: l }); } catch (e) {} setLang(l); });
   document.querySelectorAll('#mbox [data-r]').forEach(b => b.onclick = () => { switchRole(b.dataset.r); closeModal(); });
   document.querySelectorAll('#mbox [data-j]').forEach(b => b.onclick = () => { S.me.job = b.dataset.j; switchRole('manager'); closeModal(); });
   $('mOut').onclick = () => { closeModal(); S.AUTH.signOut(); };
@@ -151,13 +156,15 @@ function switchRole(r) {
 /* 아래 메뉴의 실제 높이를 CSS 변수로 — 고정 바(.sticky) 와 본문 여백이 메뉴에 가리지 않게 */
 function navH() { const n = $('nav'); const h = n && getComputedStyle(n).position === 'fixed' ? n.offsetHeight : 0; document.documentElement.style.setProperty('--navh', h + 'px'); const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
 window.addEventListener('resize', () => setTimeout(navH, 50));
+/* 아래로 내리면 위 고정 메뉴(주문 상태 아이콘)는 글씨를 접고 아이콘만 — 화면을 덜 가림 */
+window.addEventListener('scroll', () => { const y = window.scrollY, was = document.body.classList.contains('oscr'), on = was ? y > 60 : y > 160; if (document.body.classList.contains('oscr') !== on) document.body.classList.toggle('oscr', on); }, { passive: true });
 function paintNav() {
   const items = navFor(S.role);
   Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '<span class="en">' + (x[3] || '') + '</span></button>').join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => Router.go(b.dataset.go));
   navH();
-  $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? jobLabel(jobOf()).split(' ')[0] : roleLabel(S.role).split(' ')[0]);
+  $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
 }
 
 async function afterLogin(user) {
@@ -175,6 +182,7 @@ async function afterLogin(user) {
     try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
   }
   S.me = me; S.role = me.role || 'salesman';
+  if (me.lang && me.lang !== LANG && LANGS.some(l => l[0] === me.lang)) { setLang(me.lang); return; }   // 🌐 관리 → 사용자에서 정한 언어로
   busy(true);
   try {
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] });
@@ -198,7 +206,7 @@ setInterval(() => { const m = Number(S && S.settings && S.settings.idleMin) || 0
 
 async function boot() {
   shell();
-  const { DB, AUTH } = await connect();
+  const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Sales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); Reports.register(S);
   Router.on('', () => {});

@@ -49,31 +49,34 @@ export function confirmBox(msg, okLabel) {
     $('cfOk').onclick = () => { closeModal(); res(true); };
   });
 }
-/* 📅 달력 기간 선택 — 날짜 하나를 누르면 시작, 또 하나 누르면 끝 (같은 날 두 번 = 하루). quick: [[label, from, to], ...]
+/* 📅 달력 — 날짜를 누르면 바로 바뀜. 「하루」: 한 번 누르면 그 날로 · 「기간」: 시작 · 끝 두 번 누르면 바로 그 기간으로. quick: [[label, from, to], ...]
  *  pickDates({ from, to, quick }) → Promise<[from, to] | null> */
 export function pickDates(o) {
   o = o || {};
   return new Promise(res => {
-    const t = today(); let from = o.from || t, to = o.to || from, view = (o.to || t).substring(0, 7), stage = 0;
+    const t = today(); let from = o.from || t, to = o.to || from, view = (o.to || t).substring(0, 7), stage = 0, mode = 'day';
     const WD = ['월', '화', '수', '목', '금', '토', '일'];
+    const fin = r => { closeModal(); res(r); };
     const paint = () => {
       const y = Number(view.substring(0, 4)), m = Number(view.substring(5, 7)), first = new Date(y, m - 1, 1), nd = new Date(y, m, 0).getDate(), off = (first.getDay() + 6) % 7;
       let cells = ''; for (let i = 0; i < off; i++) cells += '<i></i>';
       for (let d = 1; d <= nd; d++) { const ds = view + '-' + String(d).padStart(2, '0'); const inR = ds >= from && ds <= to, edge = ds === from || ds === to; cells += '<b class="' + (inR ? 'in' : '') + (edge ? ' edge' : '') + (ds === t ? ' tdy' : '') + (ds > t ? ' fut' : '') + '" data-cd="' + ds + '">' + d + '</b>'; }
       const nextM = addDays(view + '-28', 7).substring(0, 7), prevM = addDays(view + '-01', -1).substring(0, 7);
-      $('mbox').innerHTML = '<h2>📅 기간 고르기 <span class="en">Pick dates</span></h2>' +
+      $('mbox').innerHTML = '<h2>📅 ' + bi('날짜 고르기', 'Pick a date') + '</h2>' +
+        '<div class="seg"><button class="' + (mode === 'day' ? 'on' : '') + '" data-cmo="day">' + bi('하루', 'One day') + '</button><button class="' + (mode === 'range' ? 'on' : '') + '" data-cmo="range">' + bi('기간', 'Range') + '</button></div>' +
         (o.quick && o.quick.length ? '<div class="chips">' + o.quick.map((q, i) => '<button data-cq="' + i + '">' + q[0] + '</button>').join('') + '</div>' : '') +
-        '<div class="cal"><div class="calhd"><button data-cm="' + prevM + '">‹</button><b>' + y + '년 ' + m + '월</b><button data-cm="' + nextM + '">›</button></div><div class="calwd">' + WD.map(w => '<span>' + w + '</span>').join('') + '</div><div class="calgrid">' + cells + '</div></div>' +
-        '<div class="sumbox" style="display:flex;justify-content:space-between;align-items:center"><span>' + md(from) + ' ~ ' + md(to) + ' <span class="muted">(' + (daysBetween(from, to) + 1) + '일)</span></span><span class="muted">' + (stage === 0 ? '시작 날짜를 누르세요' : '끝 날짜를 누르세요') + '</span></div>' +
-        '<div class="two"><input type="date" id="cdF" value="' + from + '"><input type="date" id="cdT" value="' + to + '"></div>' +
-        '<div class="btns"><button class="b-ghost" id="cdX">취소</button><button class="b-blue" id="cdOk">보기</button></div>';
+        '<div class="cal"><div class="calhd"><button data-cm="' + prevM + '">‹</button><b class="calym">' + y + '-' + String(m).padStart(2, '0') + '</b><button data-cm="' + nextM + '">›</button></div><div class="calwd">' + WD.map(w => '<span>' + w + '</span>').join('') + '</div><div class="calgrid">' + cells + '</div></div>' +
+        '<div class="sumbox" style="display:flex;justify-content:space-between;align-items:center"><span>' + md(from) + (from !== to ? ' ~ ' + md(to) : '') + '</span><span class="muted">' + (mode === 'day' ? bt('날짜를 누르면 바로 바뀝니다', 'Tap a day') : stage === 0 ? bt('시작 날짜를 누르세요', 'Tap the first day') : bt('끝 날짜를 누르세요', 'Tap the last day')) + '</span></div>' +
+        (mode === 'range' ? '<div class="two"><input type="date" id="cdF" value="' + from + '"><input type="date" id="cdT" value="' + to + '"></div>' : '<input type="date" id="cdF" value="' + from + '">') +
+        '<div class="btns"><button class="b-ghost" id="cdX">' + bt('취소', 'Cancel') + '</button>' + (mode === 'range' ? '<button class="b-blue" id="cdOk">' + bt('보기', 'Show') + '</button>' : '') + '</div>';
+      document.querySelectorAll('[data-cmo]').forEach(b => b.onclick = () => { mode = b.dataset.cmo; stage = 0; paint(); });
       document.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { view = b.dataset.cm; paint(); });
-      document.querySelectorAll('[data-cd]').forEach(b => b.onclick = () => { const d = b.dataset.cd; if (stage === 0) { from = d; to = d; stage = 1; } else { if (d < from) { to = from; from = d; } else to = d; stage = 0; } paint(); });
-      document.querySelectorAll('[data-cq]').forEach(b => b.onclick = () => { const q = o.quick[+b.dataset.cq]; from = q[1]; to = q[2]; view = to.substring(0, 7); stage = 0; paint(); });
-      $('cdF').onchange = () => { if ($('cdF').value) { from = $('cdF').value; if (to < from) to = from; view = from.substring(0, 7); paint(); } };
-      $('cdT').onchange = () => { if ($('cdT').value) { to = $('cdT').value; if (to < from) from = to; paint(); } };
-      $('cdX').onclick = () => { closeModal(); res(null); };
-      $('cdOk').onclick = () => { closeModal(); res([from, to]); };
+      document.querySelectorAll('[data-cd]').forEach(b => b.onclick = () => { const d = b.dataset.cd; if (mode === 'day') return fin([d, d]); if (stage === 0) { from = d; to = d; stage = 1; paint(); } else { if (d < from) { to = from; from = d; } else to = d; fin([from, to]); } });
+      document.querySelectorAll('[data-cq]').forEach(b => b.onclick = () => { const q = o.quick[+b.dataset.cq]; fin([q[1], q[2]]); });
+      $('cdF').onchange = () => { if (!$('cdF').value) return; if (mode === 'day') return fin([$('cdF').value, $('cdF').value]); from = $('cdF').value; if (to < from) to = from; view = from.substring(0, 7); paint(); };
+      if ($('cdT')) $('cdT').onchange = () => { if ($('cdT').value) { to = $('cdT').value; if (to < from) from = to; paint(); } };
+      $('cdX').onclick = () => fin(null);
+      if ($('cdOk')) $('cdOk').onclick = () => fin([from, to]);
     };
     openModal(''); paint();
   });
@@ -90,21 +93,19 @@ export const Router = {
   routes: {}, cur: '', stack: [], home: '',
   on(name, fn) { this.routes[name] = fn; },
   go(name, arg) { location.hash = '#/' + name + (arg ? '/' + encodeURIComponent(arg) : ''); },
-  /** ‹ 뒤로 — 열린 창이 있으면 닫고, 앱 안에서 온 길이 있으면 브라우저 뒤로, 없으면 그 탭의 첫 화면 → 홈 */
+  /** 화면마다 "한 단계 위" 가 따로 있으면 — up[name](arg) 가 처리하고 true, upHas[name]() 는 위가 있는지 */
+  up: {}, upHas: {},
+  /** ‹ 뒤로 = 한 단계 위로 (바로 전에 본 화면이 아님) — 열린 창 → 닫기, 상세 → 그 목록, 목록 → 그 탭의 첫 화면, 탭 → 홈 */
   back() {
     const m = $('modal'); if (m && m.classList.contains('on')) { closeModal(); return; }
     const v = document.getElementById('viewer'); if (v) { v.remove(); return; }
     const p = $('prt'); if (p && p.classList.contains('on')) { printClose(); return; }
     const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
-    /* 우리 기록(stack)대로 바로 전 화면으로 — 브라우저 history 에 기대지 않음 (iOS PWA · 역할 바꿈 · 새로고침 뒤에도 같게) */
-    if (this.stack.length > 1) {
-      this.stack.pop();
-      const prev = this.stack[this.stack.length - 1];
-      if (prev && prev !== h) { this._back = true; location.replace(location.href.split('#')[0] + '#/' + prev); return; }   // 같은 문서 안에서 해시만 바꿈 (기록은 안 늘어남)
-    }
-    if (!arg && this.home && name === this.home) return;   // 홈에서는 더 갈 곳이 없음
+    const up = this.up[name]; if (up && up(arg ? decodeURIComponent(arg) : '')) { this.refreshBack(); return; }
     if (arg) this.go(name); else if (this.home && name !== this.home) this.go(this.home);
   },
+  hasUp() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); return !!arg || !!(this.home && name !== this.home) || !!(this.upHas[name] && this.upHas[name]()); },
+  refreshBack() { const bk = $('hBack'); if (bk) bk.classList.toggle('show', this.hasUp()); },
   start() {
     const run = () => {
       const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
@@ -114,7 +115,7 @@ export const Router = {
       else if (this.stack[this.stack.length - 1] !== h) { this.stack.push(h); if (this.stack.length > 60) this.stack.shift(); }
       const fn = this.routes[name] || this.routes['']; if (fn) fn(arg ? decodeURIComponent(arg) : '');
       document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === name));
-      const bk = $('hBack'); if (bk) bk.classList.toggle('show', !!arg || this.stack.length > 1 || !!(this.home && name !== this.home));
+      this.refreshBack();
       window.scrollTo(0, 0);
     };
     if (!this._bound) { this._bound = true; window.addEventListener('hashchange', run); }

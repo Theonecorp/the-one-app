@@ -37,7 +37,7 @@ const path = require('path'), fs = require('fs');
   const back = async () => { const r = await pg.$eval('#hBack', e => { const b = e.getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; }); await pg.mouse.click(r[0], r[1]); };
   await back(); await pg.waitForTimeout(400); const b1 = await pg.evaluate(() => location.hash);
   await back(); await pg.waitForTimeout(400); const b2 = await pg.evaluate(() => location.hash);
-  log('back chain: entry→ar →back', b1, '→back', b2); if (b1 !== '#/entry' || b2 !== h0) errs.push('back should go entry then home, got ' + b1 + ' ' + b2);
+  log('back chain: entry→ar →back', b1, '→back', b2); if (b1 !== h0 || b2 !== h0) errs.push('back should go up to home (tab → home), got ' + b1 + ' ' + b2);   // v0.8.44: 뒤로 = 한 단계 위
   /* 새 오더 → 저장만 있어야 함 */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
   await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(200); }

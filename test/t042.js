@@ -93,7 +93,7 @@ const path = require('path'), fs = require('fs');
   await pg.click('[data-hg="sent"]'); await pg.waitForSelector('#oStrip'); await pg.waitForTimeout(600); await shot('h2b_staff_list');
   log('strip:', (await pg.textContent('#oStrip')).replace(/\s+/g, ' '));
   /* 3. 📄 인보이스 찾기 */
-  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="inv"]'); await pg.click('[data-lf="inv"]'); await pg.waitForSelector('#iqQ'); await pg.waitForSelector('.iday'); await shot('h3_inv_month');
+  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="inv"]'); await pg.click('[data-lf="inv"]'); await pg.waitForSelector('[data-im="date"]'); await pg.click('[data-im="date"]'); await pg.waitForSelector('#iqQ'); await pg.waitForSelector('.iday'); await shot('h3_inv_month');
   const dayHeads = () => pg.$$eval('.iday b', els => els.map(e => e.textContent));
   log('month days:', (await dayHeads()).join(' | '), '| kpi:', (await pg.textContent('#iList .kpi')).replace(/\s+/g, ' '));
   const rowsN = () => pg.$$eval('#iList [data-go]', els => els.length);
@@ -112,7 +112,7 @@ const path = require('path'), fs = require('fs');
   if (nAcc !== 3) errs.push('acct mode should be 3, got ' + nAcc);
   await pg.fill('#iqQ', 'G00002'); await pg.waitForTimeout(700); log('by no:', await rowsN());
   await pg.click('#iqX'); await pg.waitForTimeout(300);
-  await pg.click('[data-ip="custom"]'); await pg.waitForTimeout(300); log('custom inputs:', !!(await pg.$('#iFrom')));
+  await pg.click('#iCal'); await pg.waitForSelector('[data-cd]'); log('calendar opens:', !!(await pg.$('[data-cd]'))); await pg.click('#cdX');   // v0.8.44: 기간 직접 = 📅 달력
   await pg.click('#iList [data-go]'); await pg.waitForSelector('#iBack'); await pg.click('#iBack'); await pg.waitForSelector('#iqQ'); log('back to browser ok');
   await shot('h5_inv_back');
   log('ERRORS:', errs.length ? errs : 'none');

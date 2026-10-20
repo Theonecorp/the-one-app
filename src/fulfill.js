@@ -6,10 +6,10 @@
  *    ④ 백오더는 매니저가 골라서 새 주문로 만들거나 닫음
  *  backorders/{orderId} = { id, order, acct, store, sm, d, lines:[{c,d,q,p,lp,t}], qty, amt, st:'open'|'used'|'closed', newOrders:[], createdAt }
  * ============================================================ */
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM, invoicesBetween } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
@@ -81,6 +81,7 @@ export function manage(o, lines) {
     (o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('출고 취소', 'Undo shipping') + '</button>' : '') +
     ((o.st === 'sent' || o.st === 'pick' || o.st === 'ok') && !o.cfOk ? '<button class="b-ghost b-sm" id="mCfReq">❓ ' + bi(o.cfReq ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman') + '</button>' : '') +
     (o.st === 'done' || o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 ' + bi('인보이스 인쇄', 'Print invoice') + '</button>' : '') +
+    ((o.st === 'done' || o.st === 'shipped') && can('void') ? '<button class="b-ghost b-sm" id="mVoid" style="color:#991b1b">🚫 ' + bi('인보이스 VOID', 'Void invoice') + '</button>' : '') +
     '<button class="b-ghost b-sm" id="mCsv">⬇️ CSV</button>' +
     (o.st !== 'done' && o.st !== 'shipped' && o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mCancel" style="color:#991b1b">✕ ' + bi('주문 취소', 'Cancel order') + '</button>' : '') +
     '</div>' + (B.length ? '<div class="btns">' + B.join('') + '</div>' : '') +
@@ -194,6 +195,7 @@ export function manage(o, lines) {
   if ($('mCancel')) $('mCancel').onclick = async () => { if (!(await confirmBox('이 주문를 취소할까요?', '주문 취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'x', updatedAt: new Date().toISOString(), cancelBy: S.user.email }); toast('취소했습니다'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mInvPrint')) $('mInvPrint').onclick = async () => { busy(true); try { const invs = []; for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (x) invs.push(x); } if (invs.length) await printInvoices(invs, acctOf(o.acct)); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mInv')) $('mInv').onclick = () => confirmInvoice(o, lines);
+  if ($('mVoid')) $('mVoid').onclick = async () => { busy(true); const invs = []; try { for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (x) invs.push(x); } } catch (e) {} busy(false); voidModal(invs, () => goOrder(o.id)); };
 }
 
 /* ============================================================
@@ -281,23 +283,48 @@ export function changeStore(o, done) {
  * ============================================================ */
 const UPS_SVC = [['03', 'UPS Ground'], ['12', 'UPS 3 Day Select'], ['02', 'UPS 2nd Day Air'], ['01', 'UPS Next Day Air']];
 function upsTo(o) {
-  const a = acctOf(o.acct) || {}, t = o.shipTo || {};
-  return { name: t.store || o.store || a.store || '', attn: t.store || o.store || '', phone: a.tel || '', addr1: t.addr || a.addr || '', addr2: '', city: t.city || a.city || '', state: t.state || a.state || '', zip: t.zip || a.zip || '' };
+  const a = acctOf(o.acct) || {}, t = o.shipTo || {}, T = o.shipTo ? t : a;
+  return { name: t.store || o.store || a.store || '', attn: t.store || o.store || '', phone: a.tel || '', addr1: T.addr || '', addr2: T.addr2 || '', city: T.city || '', state: T.state || '', zip: T.zip || '' };
+}
+const adrKey = a => String((a.addr1 || a.addr || '') + ' ' + String(a.zip || '').substring(0, 5)).toUpperCase().replace(/\bSTREET\b/g, 'ST').replace(/\bAVENUE\b/g, 'AVE').replace(/\bROAD\b/g, 'RD').replace(/\bBOULEVARD\b/g, 'BLVD').replace(/\bDRIVE\b/g, 'DR').replace(/\bSUITE\b/g, 'STE').replace(/[^A-Z0-9]/g, '');
+/** 📍 받는 주소 저장 — toAcct: 거래처 기록(모든 주문에 적용) · 아니면 이 주문(과 인보이스)만 */
+async function saveShipAddr(o, v, toAcct) {
+  const now = new Date().toISOString(), ops = [];
+  let shipTo = null;
+  if (toAcct) {
+    const acc = acctOf(o.acct); if (!acc) throw new Error('계정코드가 없는 주문입니다 — "이 주문만" 을 쓰세요');
+    await S.DB.update('accounts', acc.acct, { addr: v.addr1, addr2: v.addr2 || '', city: v.city, state: v.state, zip: v.zip, updatedAt: now, addrBy: S.user.email });
+    await bumpAccountsVer();
+  } else shipTo = { store: v.name || o.store, addr: v.addr1, addr2: v.addr2 || '', city: v.city, state: v.state, zip: v.zip };
+  ops.push({ op: 'update', col: 'orders', id: o.id, data: { shipTo, updatedAt: now } });
+  for (const n of (o.invs || [])) ops.push({ op: 'update', col: 'invoices', id: n, data: { shipTo, updatedAt: now } });
+  await S.DB.batch(ops); if ((o.invs || []).length) dropInvCache();
+  o.shipTo = shipTo;
+}
+/** UPS 주소 확인 요청 → UPS.gs 가 1분 안에 upsAv/{id} 에 결과를 적음 */
+async function upsValidate(to, orderId) {
+  const id = (orderId || 'x') + '-' + Date.now().toString(36);
+  await S.DB.set('upsAv', id, { st: 'wait', to, orderId: orderId || '', by: S.user.email, createdAt: new Date().toISOString() });
+  for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 3000)); let x = null; try { x = await S.DB.get('upsAv', id); } catch (e) {} if (x && x.st !== 'wait' && x.st !== 'working') return x; if (!$('upAvBox')) return null; }
+  return { st: 'error', err: '응답이 없습니다 — UPS 스크립트(UPS.gs)를 새 버전으로 바꾸고 setup 을 실행했는지 확인하세요' };
 }
 export function printLabels(q) {
   printOpen('<style>@page{size:4in 6in;margin:0}.lbl{width:4in;height:6in;display:flex;align-items:center;justify-content:center;overflow:hidden;page-break-after:always;break-after:page}.lbl img{width:6in;height:4in;transform:rotate(90deg)}</style>' +
     (q.labels || []).map(l => '<div class="lbl"><img src="data:image/gif;base64,' + l.img + '" alt="' + esc(l.trk) + '"></div>').join(''));
 }
-async function shipModal(o) {
+export async function shipModal(o, after) {
+  const fin = () => { if (after) after(); else goOrder(o.id); };
   let q = null; try { q = await S.DB.get('shipq', o.id); } catch (e) {}
-  const ups = (S.settings && S.settings.ups) || {}, to = upsTo(o), defW = Number(ups.defW) || 5;
+  const ups = (S.settings && S.settings.ups) || {}, defW = Number(ups.defW) || 5;
+  let to = upsTo(o), edit = null, av = null, KW = null;
   const paint = () => {
+    { const w = document.querySelectorAll('#mbox [data-upw]'); if (w.length) KW = Array.from(w).map(x => x.value); }
     const done = q && q.st === 'done', busyQ = q && (q.st === 'wait' || q.st === 'working'), voidQ = q && q.st === 'void';
     const upsBox = done ? '<div class="sumbox" style="background:#ecfdf5"><b>✅ UPS 라벨 ' + (q.labels || []).length + '장</b>' + (q.env === 'test' ? ' <span class="tag t-c">시험 라벨</span>' : '') + '<br>' + (q.labels || []).map(l => '📦 ' + esc(l.trk)).join('<br>') + (q.charge ? '<br>요금 ' + money(q.charge) : '') + '</div><div class="btns" style="margin-top:6px"><button class="b-blue" id="upPrint">🖨 ' + bi('라벨 인쇄', 'Print labels') + '</button><button class="b-ghost" id="upVoid" style="color:#991b1b">✕ ' + bi('라벨 취소', 'Void') + '</button></div>'
       : busyQ || voidQ ? '<div class="alert a-blu">⏳ ' + (voidQ ? 'UPS 라벨 취소 중' : 'UPS 라벨 만드는 중') + '… 1~2분 걸립니다 <span class="en">working</span></div>'
       : '<div class="fg"><label>' + bi('서비스', 'Service') + '</label>' + sel('upSvc', UPS_SVC, (q && q.svc) || ups.svc || '03') + '</div>' +
         '<div class="fg"><label>' + bi('박스 수 · 무게 (lb)', 'Boxes · weight (lb)') + '</label><div style="display:flex;gap:6px;align-items:center"><input id="upN" type="number" min="1" max="20" inputmode="numeric" value="' + ((q && q.boxes && q.boxes.length) || o.boxes || 1) + '" style="width:80px"><div id="upW" style="display:flex;gap:4px;flex-wrap:wrap;flex:1"></div></div></div>' +
-        '<div class="sumbox" style="font-size:13px">📍 ' + esc(to.name) + '<br>' + esc([to.addr1, to.city, to.state, to.zip].filter(Boolean).join(', ')) + (to.phone ? ' · ' + esc(to.phone) : '') + (!to.addr1 || !to.zip ? '<br><span class="warn">주소가 비었습니다 — 🏬 가게 바꾸기 → 이름 · 주소만 에서 넣으세요</span>' : '') + '</div>' +
+        addrBlock() +
         (q && q.st === 'error' ? '<div class="alert a-red">UPS 오류: ' + esc(q.err || '') + '</div>' : '') + (q && q.st === 'voided' ? '<div class="muted">이전 라벨은 취소됐습니다 (' + esc(q.track || '') + ')</div>' : '') +
         '<button class="b-blue" id="upGo" style="margin-top:8px;padding:14px">📦 ' + bi('UPS 라벨 만들기', 'Create UPS label') + '</button>';
     $('mbox').innerHTML = '<h2>🚚 ' + bi('포장 · 출고', 'Pack & ship') + '</h2><div class="muted">' + esc(o.store) + ' · ' + esc((o.invs || []).join(', ') || o.no) + '</div>' +
@@ -305,25 +332,123 @@ async function shipModal(o) {
       '<div class="two"><div class="fg"><label>' + bi('운송', 'Carrier') + '</label>' + sel('shVia', [['UPS', 'UPS'], ['FEDEX', 'FedEx'], ['USPS', 'USPS'], ['PICKUP', '픽업 · Pickup'], ['DELIVERY', '직접 배달 · Delivery']], o.shipVia || 'UPS') + '</div><div class="fg"><label>' + bi('박스 수', 'Boxes') + '</label><input id="shBox" type="number" inputmode="numeric" value="' + ((done && q.labels.length) || o.boxes || 1) + '"></div></div>' +
       '<div class="fg"><label>' + bi('추적 번호', 'Tracking #') + '</label><input id="shTrack" value="' + esc((done && q.track) || o.track || '') + '" autocomplete="off"></div>' +
       '<div class="btns"><button class="b-ghost" id="shX">닫기</button><button class="b-green" id="shOk">' + bi('출고 완료', 'Mark shipped') + '</button></div>';
-    const wbox = () => { const n = Math.max(1, Math.min(20, Number($('upN').value) || 1)), cur = Array.from(document.querySelectorAll('[data-upw]')).map(x => x.value); $('upW').innerHTML = Array.from({ length: n }, (_, i) => '<input data-upw="' + i + '" type="number" inputmode="decimal" value="' + (cur[i] || (q && q.boxes && q.boxes[i] ? q.boxes[i].w : defW)) + '" style="width:64px" title="박스 ' + (i + 1) + ' lb">').join(''); };
+    const wbox = () => { const n = Math.max(1, Math.min(20, Number($('upN').value) || 1)), cur = document.querySelectorAll('[data-upw]').length ? Array.from(document.querySelectorAll('[data-upw]')).map(x => x.value) : (KW || []); $('upW').innerHTML = Array.from({ length: n }, (_, i) => '<input data-upw="' + i + '" type="number" inputmode="decimal" value="' + (cur[i] || (q && q.boxes && q.boxes[i] ? q.boxes[i].w : defW)) + '" style="width:64px" title="박스 ' + (i + 1) + ' lb">').join(''); };
     if ($('upN')) { wbox(); $('upN').oninput = wbox; }
     $('shX').onclick = () => { stop = true; closeModal(); };
-    $('shOk').onclick = async () => { const d = { st: 'shipped', shipAt: new Date().toISOString(), shipBy: S.user.email, shipVia: $('shVia').value, boxes: Math.max(1, Number($('shBox').value) || 1), track: $('shTrack').value.trim(), updatedAt: new Date().toISOString() }; if (done && q.charge) d.shipCost = q.charge; stop = true; closeModal(); busy(true); try { await S.DB.update('orders', o.id, d); toast('🚚 출고 완료', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+    $('shOk').onclick = async () => { const d = { st: 'shipped', shipAt: new Date().toISOString(), shipBy: S.user.email, shipVia: $('shVia').value, boxes: Math.max(1, Number($('shBox').value) || 1), track: $('shTrack').value.trim(), updatedAt: new Date().toISOString() }; if (done && q.charge) d.shipCost = q.charge; stop = true; closeModal(); busy(true); try { await S.DB.update('orders', o.id, d); toast('🚚 출고 완료', 'good'); fin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
     if ($('upPrint')) $('upPrint').onclick = () => printLabels(q);
-    if ($('upVoid')) $('upVoid').onclick = async () => { if (!(await confirmBox('UPS 라벨 ' + (q.labels || []).length + '장(' + (q.track || '') + ')을 취소할까요? 붙인 라벨은 버려 주세요.', '라벨 취소'))) return shipModal(o); try { await S.DB.update('shipq', o.id, { st: 'void', voidBy: S.user.email, voidAt: new Date().toISOString() }); q.st = 'void'; openModal(''); paint(); poll(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } };
+    bindAddr();
+    if ($('upVoid')) $('upVoid').onclick = async () => { if (!(await confirmBox('UPS 라벨 ' + (q.labels || []).length + '장(' + (q.track || '') + ')을 취소할까요? 붙인 라벨은 버려 주세요.', '라벨 취소'))) return shipModal(o, after); try { await S.DB.update('shipq', o.id, { st: 'void', voidBy: S.user.email, voidAt: new Date().toISOString() }); q.st = 'void'; openModal(''); paint(); poll(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } };
     if ($('upGo')) $('upGo').onclick = async () => {
       if (!to.addr1 || !to.city || !to.state || !to.zip) return toast('받는 주소가 부족합니다', 'bad');
       const boxes = Array.from(document.querySelectorAll('[data-upw]')).map(x => ({ w: Math.max(1, Number(x.value) || defW) }));
       const svc = $('upSvc').value, svcName = (UPS_SVC.find(x => x[0] === svc) || [])[1];
-      if (!(await confirmBox(svcName + ' · 박스 ' + boxes.length + '개 (' + boxes.map(b => b.w + 'lb').join(', ') + ')\n→ ' + to.name + ', ' + [to.addr1, to.city, to.state, to.zip].join(', ') + '\nUPS 라벨을 만들까요? 요금이 회사 UPS 계정으로 청구됩니다.', '라벨 만들기'))) return shipModal(o);
+      if (!(await confirmBox(svcName + ' · 박스 ' + boxes.length + '개 (' + boxes.map(b => b.w + 'lb').join(', ') + ')\n→ ' + to.name + ', ' + [to.addr1, to.city, to.state, to.zip].join(', ') + '\nUPS 라벨을 만들까요? 요금이 회사 UPS 계정으로 청구됩니다.', '라벨 만들기'))) return shipModal(o, after);
       const doc = { id: o.id, orderId: o.id, no: o.no, st: 'wait', svc, boxes, to, ref: ((o.invs || []).join(' ') || o.no).substring(0, 35), store: o.store, sm: o.sm, by: S.user.email, createdAt: new Date().toISOString() };
-      try { await S.DB.set('shipq', o.id, doc); q = doc; openModal(''); paint(); poll(); } catch (e) { toast('실패: ' + (e.code || e.message) + (String(e.code || e.message).includes('permission') ? ' — Firestore 규칙에 shipq 를 게시해야 합니다' : ''), 'bad'); shipModal(o); }
+      try { await S.DB.set('shipq', o.id, doc); q = doc; openModal(''); paint(); poll(); } catch (e) { toast('실패: ' + (e.code || e.message) + (String(e.code || e.message).includes('permission') ? ' — Firestore 규칙에 shipq 를 게시해야 합니다' : ''), 'bad'); shipModal(o, after); }
     };
+  };
+  /* 📍 받는 주소 — 보기 · 바꾸기(이 주문만 / 거래처 기록) · UPS 주소 확인 */
+  const addrBlock = () => {
+    if (edit) { const f = (k, lab, w) => '<div class="fg" style="' + (w ? 'flex:' + w : '') + '"><label>' + lab + '</label><input data-ae="' + k + '" value="' + esc(edit[k] || '') + '"' + (k === 'state' ? ' maxlength="2" style="text-transform:uppercase"' : '') + '></div>';
+      return '<div class="sumbox" style="font-size:13px"><b>✏️ ' + bi('받는 주소', 'Ship-to address') + '</b>' + f('name', bt('받는 이름', 'Name')) + f('addr1', bt('주소', 'Address')) + f('addr2', bt('주소 2 (Suite · Unit)', 'Address 2')) + '<div style="display:flex;gap:6px">' + f('city', 'City', 3) + f('state', 'State', 1) + f('zip', 'ZIP', 2) + '</div>' +
+        '<div class="btns" style="flex-wrap:wrap"><button class="b-blue b-sm" id="aeOrd">📦 ' + bi('이 주문만 이 주소로', 'This order only') + '</button>' + (acctOf(o.acct) ? '<button class="b-ghost b-sm" id="aeAcc">🏬 ' + bi('거래처 주소도 바꾸기', 'Update customer record') + '</button>' : '') + '<button class="b-ghost b-sm" id="aeX">' + bt('취소', 'Cancel') + '</button></div></div>'; }
+    const acc = acctOf(o.acct), diff = o.shipTo && acc && adrKey(o.shipTo) !== adrKey(acc);
+    return '<div class="sumbox" style="font-size:13px">📍 <b>' + esc(to.name) + '</b>' + (o.shipTo ? ' <span class="tag t-c">' + bt('이 주문만 다른 주소', 'One-time address') + '</span>' : '') + '<br>' + esc([to.addr1, to.addr2, to.city, to.state, to.zip].filter(Boolean).join(', ')) + (to.phone ? ' · ' + esc(to.phone) : '') +
+      (diff ? '<div class="muted">' + bt('거래처 기록', 'Customer record') + ': ' + esc([acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ')) + '</div>' : '') +
+      (!to.addr1 || !to.zip ? '<br><span class="warn">' + bt('주소가 비었습니다 — ✏️ 주소 바꾸기에서 넣으세요', 'Address missing — use Edit') + '</span>' : '') + '</div>' +
+      '<div class="btns" style="margin-top:4px;flex-wrap:wrap"><button class="b-ghost b-sm" id="upEd">✏️ ' + bi('주소 바꾸기 · 새 주소', 'Edit · new address') + '</button>' + (o.shipTo && acc ? '<button class="b-ghost b-sm" id="upRs">↩️ ' + bi('거래처 주소로', 'Use customer address') + '</button>' : '') + '<button class="b-ghost b-sm" id="upAv">✅ ' + bi('UPS 주소 확인', 'Verify with UPS') + '</button></div><div id="upAvBox">' + avHtml() + '</div>';
+  };
+  const avHtml = () => {
+    if (!av) return '';
+    if (av.st === 'wait') return '<div class="alert a-blu">⏳ ' + bt('UPS 에 주소 확인 중… (최대 1분)', 'Asking UPS… (up to 1 min)') + '</div>';
+    if (av.st === 'error') return '<div class="alert a-red">UPS: ' + esc(av.err || '') + '</div>';
+    const same = (av.cands || []).some(c => adrKey(c) === adrKey(to));
+    return (av.valid && same ? '<div class="alert a-grn">✅ ' + bt('UPS 확인 — 맞는 주소입니다', 'UPS: address is valid') + (av.cls ? ' · ' + esc(av.cls) : '') + '</div>' : av.none ? '<div class="alert a-red">⚠️ ' + bt('UPS 가 이 주소를 찾지 못했습니다 — 주소를 다시 확인하세요', 'UPS could not find this address') + '</div>' : '<div class="alert a-amb">📮 ' + bt('UPS 추천 주소 — 누르면 고치는 창에 들어갑니다', 'UPS suggests — tap to use') + '</div>') +
+      (av.valid && same ? '' : (av.cands || []).map((c, i) => '<div class="pr tap" data-avc="' + i + '"><div class="ct"><b>' + esc([c.addr1, c.addr2].filter(Boolean).join(', ')) + '</b><small>' + esc(c.city + ', ' + c.state + ' ' + c.zip + (c.zip4 ? '-' + c.zip4 : '')) + (c.cls ? ' · ' + esc(c.cls) : '') + '</small></div><div class="pa">' + bt('쓰기', 'Use') + ' ›</div></div>').join(''));
+  };
+  const bindAddr = () => {
+    const ed = v => { edit = Object.assign({ name: to.name, addr1: to.addr1, addr2: to.addr2, city: to.city, state: to.state, zip: to.zip }, v || {}); paint(); };
+    if ($('upEd')) $('upEd').onclick = () => ed();
+    document.querySelectorAll('[data-avc]').forEach(el => el.onclick = () => { const c = av.cands[+el.dataset.avc]; ed({ addr1: c.addr1, addr2: c.addr2, city: c.city, state: c.state, zip: c.zip }); });
+    document.querySelectorAll('[data-ae]').forEach(inp => inp.oninput = () => { edit[inp.dataset.ae] = inp.value; });
+    if ($('aeX')) $('aeX').onclick = () => { edit = null; paint(); };
+    const save = async toAcct => {
+      const v = {}; document.querySelectorAll('[data-ae]').forEach(inp => { v[inp.dataset.ae] = inp.value.trim().toUpperCase(); });
+      if (!v.addr1 || !v.city || !v.state || !v.zip) return toast(bt('주소 · City · State · ZIP 을 모두 넣으세요', 'Fill address, city, state, ZIP'), 'bad');
+      const acc = acctOf(o.acct);
+      if (!(await confirmBox((toAcct ? '🏬 거래처 주소를 바꿀까요? (이 가게의 모든 주문에 적용)\n' : '📦 이 주문만 이 주소로 보낼까요? (거래처 기록은 그대로)\n') + (toAcct && acc ? '\n전: ' + [acc.addr, acc.city, acc.state, acc.zip].filter(Boolean).join(', ') : '') + '\n후: ' + [v.addr1, v.addr2, v.city, v.state, v.zip].filter(Boolean).join(', '), toAcct ? '거래처 주소 저장' : '이 주문에 저장'))) return shipModal(o, after);
+      busy(true); try { await saveShipAddr(o, v, toAcct); toast('📍 ' + bt('주소 저장', 'Address saved'), 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
+      openModal(''); edit = null; av = null; to = upsTo(o); paint();
+    };
+    if ($('aeOrd')) $('aeOrd').onclick = () => save(false);
+    if ($('aeAcc')) $('aeAcc').onclick = () => save(true);
+    if ($('upRs')) $('upRs').onclick = async () => { busy(true); try { const now = new Date().toISOString(); await S.DB.batch([{ op: 'update', col: 'orders', id: o.id, data: { shipTo: null, updatedAt: now } }].concat((o.invs || []).map(n => ({ op: 'update', col: 'invoices', id: n, data: { shipTo: null, updatedAt: now } })))); o.shipTo = null; to = upsTo(o); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); paint(); };
+    if ($('upAv')) $('upAv').onclick = async () => { if (!to.addr1 || !to.zip) return toast(bt('주소가 비었습니다', 'Address missing'), 'bad'); av = { st: 'wait' }; $('upAvBox').innerHTML = avHtml(); try { av = await upsValidate(to, o.id); } catch (e) { av = { st: 'error', err: String(e.code || e.message) + (String(e.code || e.message).includes('permission') ? ' — Firestore 규칙에 upsAv 를 게시해야 합니다' : '') }; } if (av && $('upAvBox')) { $('upAvBox').innerHTML = avHtml(); bindAddr(); } };
   };
   let stop = false;
   const poll = async () => { for (let i = 0; i < 60 && !stop; i++) { await new Promise(r => setTimeout(r, 4000)); if (stop || !$('mbox')) return; let x = null; try { x = await S.DB.get('shipq', o.id); } catch (e) {} if (x && x.st !== q.st) { q = x; paint(); if (x.st === 'done') { try { await S.DB.update('orders', o.id, { track: x.track, shipVia: 'UPS', boxes: (x.labels || []).length, shipCost: x.charge || 0, updatedAt: new Date().toISOString() }); } catch (e) {} toast('✅ UPS 라벨 ' + (x.labels || []).length + '장 — 인쇄하세요', 'good'); printLabels(x); } return; } } };
   openModal(''); paint();
   if (q && (q.st === 'wait' || q.st === 'working' || q.st === 'void')) poll();
+}
+
+/* ============================================================
+ *  🚚 UPS 출고 탭 — 인보이스가 나와 포장을 기다리는 주문을 한 화면에서 바로 UPS 라벨로
+ *    · 라벨 대기 (인보이스 발행 · 포장 대기) — 주소 확인 · 라벨 만들기 · 인쇄 · 출고 완료
+ *    · 최근 출고 (3일) — 트래킹 · 라벨 다시 인쇄
+ *    · 주소 차이 — UPS 출고 기록(다른 프로그램 포함)의 받는 주소가 거래처 주소와 다르면 바로 고치기
+ * ============================================================ */
+const qTag = q => !q ? '' : q.st === 'done' ? ' <span class="tag t-k">🏷 라벨 ' + (q.labels || []).length + '</span>' : q.st === 'wait' || q.st === 'working' ? ' <span class="tag t-b">⏳ 라벨 만드는 중</span>' : q.st === 'error' ? ' <span class="tag t-r">UPS 오류</span>' : q.st === 'voided' ? ' <span class="tag t-g">라벨 취소됨</span>' : '';
+async function upsPage(LF, head) {
+  $('page').innerHTML = head + '<div class="load">읽는 중…</div>';
+  const t = today();
+  let wait = [], recent = [], logs = [], qs = {}, err = '';
+  try {
+    [wait, recent] = await Promise.all([S.DB.list('orders', { where: [['st', '==', 'done']] }), S.DB.list('orders', { where: [['d', '>=', addD(t, -45)]] })]);
+    recent = recent.filter(o => o.st === 'shipped' && o.shipAt && localDay(o.shipAt) >= addD(t, -2));
+    if (LF.sm) { wait = wait.filter(o => o.sm === LF.sm); recent = recent.filter(o => o.sm === LF.sm); }
+    await Promise.all(wait.concat(recent).map(o => S.DB.get('shipq', o.id).then(q => { if (q) qs[o.id] = q; }).catch(() => {})));
+    try { logs = await S.DB.list('upsLog', { where: [['d', '>=', addD(t, -30)]] }); } catch (e) {}
+  } catch (e) { err = String(e.code || e.message); }
+  if (!$('page')) return;
+  wait = sortBy(wait, o => o.doneAt || o.updatedAt || '');
+  recent = sortBy(recent, o => o.shipAt || '', true);
+  const adr = o => { const a = upsTo(o); return [a.addr1, a.city, a.state, a.zip].filter(Boolean).join(', '); };
+  const row = (o, isWait) => { const q = qs[o.id], a = upsTo(o), bad = !a.addr1 || !a.zip;
+    return '<div class="pr"><div class="ct tap" data-uo="' + esc(o.id) + '"><b>' + esc(o.store) + qTag(q) + (o.shipTo ? ' <span class="tag t-c">' + bt('다른 주소', 'Other address') + '</span>' : '') + '</b><small>' + esc((o.invs || []).join(', ') || o.no) + ' · ' + esc(o.sm) + ' · ' + money(o.amt) + '</small><small class="' + (bad ? 'warn' : '') + '">📍 ' + esc(adr(o) || '주소 없음 · no address') + '</small>' + (!isWait && o.track ? '<small>🚚 ' + esc(o.track) + (o.deliveredAt ? ' · ✅ ' + esc(md(o.deliveredAt)) : '') + '</small>' : '') + '</div>' +
+      (isWait ? '<button class="b-green b-sm" data-us="' + esc(o.id) + '">🚚 ' + bi('출고', 'Ship') + '</button>' : q && q.st === 'done' ? '<button class="b-ghost b-sm" data-ul="' + esc(o.id) + '">🖨 ' + bi('라벨', 'Label') + '</button>' : '') + '</div>'; };
+  let h = err ? '<div class="alert a-red">' + esc(err) + '</div>' : '';
+  h += '<div class="card"><h2>🚚 ' + bi('라벨 대기 — 인보이스 발행 · 포장 대기', 'To ship — invoiced, awaiting packing') + ' ' + wait.length + '건</h2><div class="muted">' + bi('<b>🚚 출고</b>를 누르면 주소 확인 → UPS 라벨 → 인쇄 → 출고 완료까지 한 창에서 합니다. 주소는 그 창에서 이 주문만 바꾸거나 거래처 주소를 고칠 수 있습니다.', 'Tap Ship to check the address, create the UPS label, print and mark shipped.') + '</div>' +
+    (wait.length ? wait.map(o => row(o, true)).join('') : '<div class="none">' + bt('포장 대기 주문이 없습니다', 'Nothing waiting') + '</div>') + '</div>';
+  h += '<div class="card"><h2>📬 ' + bi('최근 출고 (3일)', 'Recently shipped (3 days)') + ' ' + recent.length + '건</h2>' + (recent.length ? recent.map(o => row(o, false)).join('') : '<div class="none">' + bt('없음', 'None') + '</div>') + '</div>';
+  h += '<div id="upDiff"></div>';
+  $('page').innerHTML = head + h;
+  bindListHead(LF, head);
+  const all = wait.concat(recent), byId = id => all.find(o => o.id === id);
+  document.querySelectorAll('[data-uo]').forEach(el => el.onclick = () => Router.go('order', el.dataset.uo));
+  document.querySelectorAll('[data-us]').forEach(b => b.onclick = () => shipModal(byId(b.dataset.us), () => upsPage(LF, head)));
+  document.querySelectorAll('[data-ul]').forEach(b => b.onclick = () => printLabels(qs[b.dataset.ul]));
+  addrDiffs(logs, () => upsPage(LF, head));
+}
+function bindListHead(LF, head) {
+  document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') LF.list = false; else LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+  if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageLists(LF, head); };
+  fillStrip();
+}
+/** 📮 UPS 기록 주소 ≠ 거래처 주소 — UPS 출고 기록(직원 앱 등에서 찍은 것 포함)에 적힌 받는 주소가 거래처 기록과 다르면 한 번에 고치기 */
+function addrDiffs(logs, refresh) {
+  const box = $('upDiff'); if (!box) return;
+  const by = {};
+  logs.forEach(l => { if (!l.acct || !l.addr1 || l.addrOk) return; const a = acctOf(l.acct); if (!a || adrKey(l) === adrKey(a)) return; if (!by[l.acct] || (l.d || '') > (by[l.acct].d || '')) by[l.acct] = l; });
+  const L = Object.values(by); if (!L.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="card" style="border:2px solid #fde68a"><h2>📮 ' + bi('UPS 기록과 거래처 주소가 다릅니다', 'UPS address differs from customer record') + ' ' + L.length + '</h2><div class="muted">' + bi('UPS 로 실제 보낸 주소(다른 프로그램에서 찍은 라벨 포함)와 앱의 거래처 주소가 다른 가게입니다. 맞는 쪽을 고르세요.', 'Shipments on the UPS account went to a different address than the customer record.') + '</div>' +
+    L.map(l => { const a = acctOf(l.acct); return '<div class="sumbox" style="font-size:13px"><b>' + esc(a.store) + '</b> <span class="muted">' + esc(a.acct) + '</span><br>UPS (' + esc(md(l.d)) + '): <b>' + esc([l.addr1, l.addr2, l.city, l.state, l.zip].filter(Boolean).join(', ')) + '</b><br>' + bt('거래처', 'Record') + ': ' + esc([a.addr, a.city, a.state, a.zip].filter(Boolean).join(', ') || '—') +
+      '<div class="btns" style="flex-wrap:wrap"><button class="b-blue b-sm" data-adu="' + esc(l.acct) + '">🏬 ' + bi('거래처 주소를 UPS 주소로', 'Use the UPS address') + '</button><button class="b-ghost b-sm" data-adn="' + esc(l.acct) + '">' + bi('거래처 주소가 맞음', 'Record is right') + '</button></div></div>'; }).join('') + '</div>';
+  const mark = async acct => { const ops = logs.filter(l => l.acct === acct && l.trk).map(l => ({ op: 'update', col: 'upsLog', id: String(l.id || l.trk.split(' ')[0]), data: { addrOk: true } })); if (ops.length) await S.DB.batch(ops); };
+  box.querySelectorAll('[data-adu]').forEach(b => b.onclick = async () => { const l = by[b.dataset.adu], a = acctOf(l.acct);
+    if (!(await confirmBox(a.store + ' 거래처 주소를 바꿀까요?\n전: ' + [a.addr, a.city, a.state, a.zip].filter(Boolean).join(', ') + '\n후: ' + [l.addr1, l.addr2, l.city, l.state, l.zip].filter(Boolean).join(', '), '바꾸기'))) return;
+    busy(true); try { await S.DB.update('accounts', a.acct, { addr: String(l.addr1).toUpperCase(), addr2: String(l.addr2 || '').toUpperCase(), city: String(l.city).toUpperCase(), state: String(l.state).toUpperCase(), zip: String(l.zip).substring(0, 5), updatedAt: new Date().toISOString(), addrBy: 'UPS ' + S.user.email }); await bumpAccountsVer(); await mark(l.acct); toast('🏬 ' + a.store + ' — ' + bt('주소 바꿈', 'address updated'), 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); refresh(); });
+  box.querySelectorAll('[data-adn]').forEach(b => b.onclick = async () => { busy(true); try { await mark(b.dataset.adn); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); refresh(); });
 }
 
 async function printPicking(o, lines) {
@@ -397,6 +522,7 @@ async function confirmInvoice(o, lines) {
  * ============================================================ */
 export async function pageLists(LF, head) {
   if (LF.st === 'inv') return invBrowser(LF, head);
+  if (LF.st === 'ups') return upsPage(LF, head);
   $('page').innerHTML = head + '<div class="load">읽는 중…</div>';
   let rows = [];
   try { rows = await S.DB.list('backorders', { where: [['st', '==', 'open']] }); }
@@ -474,18 +600,23 @@ export function periodRange(p, from, to) {
   return [from || addD(t, -7), to || t];
 }
 export async function invBrowser(LF, head) {
-  LF.ip = LF.ip || 'month'; LF.iq = LF.iq || ''; LF.it = LF.it || '';
+  LF.ip = LF.ip || 'month'; LF.iq = LF.iq || ''; LF.it = LF.it || ''; LF.im = LF.im || 'acct';
   const types = invTypes(S);
   const q = LF.iq.trim();
-  /* 가게로 찾나? (어카운트 번호 · 가게 이름) — 인보이스 번호 · 주문 번호 모양이면 아님 */
+  /* 인보이스 번호 · 주문 번호 모양이면 번호로 바로 찾기 */
   const isNo = /^[A-Z]{1,2}\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);
-  const accs = q && !isNo ? searchAccounts(S.accounts, q, 6) : [];
-  const acc = accs.length === 1 || (accs.length && accs[0].acct === q) ? accs[0] : null;
+  /* 🏬 거래처별(기본): 전체 거래처 목록 → 검색으로 거르기 → 가게를 누르면 그 가게 인보이스 전부 · 📅 기간별: 예전처럼 */
+  const byAcct = LF.im === 'acct';
+  let accs = [], acc = null;
+  if (byAcct) acc = LF.iacct ? (S.accounts.byCode || {})[LF.iacct] || null : null;
+  else { accs = q && !isNo ? searchAccounts(S.accounts, q, 6) : []; acc = accs.length === 1 || (accs.length && accs[0].acct === q) ? accs[0] : null; }
   const [from, to] = periodRange(LF.ip, LF.ifrom, LF.ito);
-  const top = '<div class="card" style="padding-bottom:8px"><div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 주문 # / Store · Acct · Invoice · Order" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>' +
+  const modeSeg = '<div class="seg" style="margin-bottom:8px"><button class="' + (byAcct ? 'on' : '') + '" data-im="acct">🏬 ' + bi('거래처별', 'By customer') + '</button><button class="' + (byAcct ? '' : 'on') + '" data-im="date">📅 ' + bi('기간별', 'By date') + '</button></div>';
+  if (byAcct && !acc && !isNo) return acctList(LF, head, modeSeg);
+  const top = '<div class="card" style="padding-bottom:8px">' + modeSeg + (byAcct && acc ? '<button class="b-ghost b-sm" id="iqBackA" style="margin-bottom:6px">‹ ' + bi('거래처 목록', 'All customers') + '</button>' : '') +
+    (byAcct && acc ? '' : '<div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 주문 # / Store · Acct · Invoice · Order" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>') +
     (accs.length > 1 && !acc ? '<div class="chips">' + accs.map(a => '<button data-iqa="' + esc(a.acct) + '">' + esc(a.acct) + ' ' + esc(a.store) + '</button>').join('') + '</div>' : '') +
-    (acc ? '' : '<div class="chips">' + PERIODS.map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
-      (LF.ip === 'custom' ? '<div class="two" style="margin:6px 0"><input type="date" id="iFrom" value="' + esc(from) + '"><input type="date" id="iTo" value="' + esc(to) + '"></div>' : '')) +
+    (acc || byAcct ? '' : '<div class="chips">' + PERIODS.filter(c => c[0] !== 'custom').map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (LF.ip === 'custom' ? 'on' : '') + '" id="iCal">📅 ' + esc(md(from) + (from !== to ? ' ~ ' + md(to) : '')) + '</button></div>') +
     '<div class="chips" style="margin-top:4px"><button class="' + (LF.it ? '' : 'on') + '" data-it="">' + bi('종류 전체', 'All types') + '</button>' + types.map(t => '<button class="' + (LF.it === t.c ? 'on' : '') + '" data-it="' + esc(t.c) + '">' + esc(t.c) + ' ' + esc(t.n) + '</button>').join('') + '<button class="' + (LF.ivoid ? 'on' : '') + '" data-ivoid="1">VOID ' + bi('포함', 'incl.') + '</button></div></div>';
   $('page').innerHTML = head + top + '<div id="iList"><div class="load">읽는 중…</div></div>';
   bind(); fillStrip();
@@ -522,15 +653,39 @@ export async function invBrowser(LF, head) {
     if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; invBrowser(LF, head); };
     if ($('oNew')) $('oNew').onclick = () => Router.go('order', 'new');
     const inp = $('iqQ');
-    inp.oninput = debounce(() => { if (!$('iqQ')) return; LF.iq = $('iqQ').value; const pos = inp.selectionStart; invBrowser(LF, head).then(() => { const n = $('iqQ'); if (n && document.activeElement !== n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }); }, 350);
-    inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); LF.iq = inp.value; invBrowser(LF, head); } };
+    if (inp) inp.oninput = debounce(() => { if (!$('iqQ')) return; LF.iq = $('iqQ').value; const pos = inp.selectionStart; invBrowser(LF, head).then(() => { const n = $('iqQ'); if (n && document.activeElement !== n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }); }, 350);
+    if (inp) inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); LF.iq = inp.value; invBrowser(LF, head); } };
     if ($('iqX')) $('iqX').onclick = () => { LF.iq = ''; invBrowser(LF, head); };
     document.querySelectorAll('[data-iqa]').forEach(b => b.onclick = () => { LF.iq = b.dataset.iqa; invBrowser(LF, head); });
     document.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => { LF.ip = b.dataset.ip; invBrowser(LF, head); });
     document.querySelectorAll('[data-it]').forEach(b => b.onclick = () => { LF.it = b.dataset.it; invBrowser(LF, head); });
     const vb = document.querySelector('[data-ivoid]'); if (vb) vb.onclick = () => { LF.ivoid = !LF.ivoid; invBrowser(LF, head); };
-    if ($('iFrom')) { $('iFrom').onchange = () => { LF.ifrom = $('iFrom').value; invBrowser(LF, head); }; $('iTo').onchange = () => { LF.ito = $('iTo').value; invBrowser(LF, head); }; }
+    if ($('iCal')) $('iCal').onclick = async () => { const r = await pickDates({ from, to, quick: quickRanges() }); if (!r) return; LF.ip = 'custom'; LF.ifrom = r[0]; LF.ito = r[1]; invBrowser(LF, head); };
+    if ($('iqBackA')) $('iqBackA').onclick = () => { LF.iacct = ''; invBrowser(LF, head); };
+    document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { LF.im = b.dataset.im; LF.iacct = ''; LF.iq = ''; invBrowser(LF, head); });
   }
+}
+/** 🏬 거래처별 인보이스 — 전체 거래처를 이름순으로, 치는 대로 걸러짐. 인보이스 번호를 치면 Enter 로 바로 찾기 */
+function acctList(LF, head, modeSeg) {
+  $('page').innerHTML = head + '<div class="card" style="padding-bottom:8px">' + modeSeg + '<input id="iqQ" placeholder="가게 이름 · 어카운트 # · 도시 · 인보이스 # / Store · Acct · City · Invoice" value="' + esc(LF.iq) + '" autocomplete="off"></div><div class="card"><div id="iaList"></div></div>';
+  bindListHead(LF, head);
+  let lim = 300;
+  const paint = () => {
+    const q = LF.iq.trim(), hits = q ? searchAccounts(S.accounts, q, 100000) : sortBy(S.accounts, a => a.store), show = hits.slice(0, lim);
+    const isNo = /^[A-Z]{1,2}\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);
+    $('iaList').innerHTML = (isNo ? '<button class="b-blue" id="iaNo" style="margin-bottom:8px">🔎 ' + bi('인보이스 · 주문 번호로 찾기', 'Find by number') + ': ' + esc(q.toUpperCase()) + '</button>' : '') +
+      '<div class="muted" style="margin:0 0 6px">' + (q ? bt('찾음', 'Found') : bt('전체 거래처 · 이름순', 'All customers · by name')) + ' ' + hits.length.toLocaleString() + ' — ' + bt('가게를 누르면 인보이스 전부', 'tap a store for its invoices') + '</div>' +
+      (show.length ? show.map(a => '<div class="pr tap" data-ia="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</small></div><div class="pa">›</div></div>').join('') : '<div class="none">없음 · no match</div>') +
+      (hits.length > show.length ? '<button class="b-ghost" id="iaMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (hits.length - show.length).toLocaleString() + ')</button>' : '');
+    $('iaList').querySelectorAll('[data-ia]').forEach(el => el.onclick = () => { LF.iacct = el.dataset.ia; invBrowser(LF, head); });
+    if ($('iaMore')) $('iaMore').onclick = () => { lim += 300; paint(); };
+    if ($('iaNo')) $('iaNo').onclick = () => invBrowser(LF, head);
+  };
+  $('iqQ').oninput = debounce(() => { LF.iq = $('iqQ').value; lim = 300; paint(); }, 150);
+  $('iqQ').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); LF.iq = $('iqQ').value; const q = LF.iq.trim(); if (/^[A-Z]{1,2}\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q)) invBrowser(LF, head); } };
+  document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { LF.im = b.dataset.im; LF.iacct = ''; LF.iq = ''; invBrowser(LF, head); });
+  paint();
+  if (!('ontouchstart' in window)) $('iqQ').focus();
 }
 function invRow(r) {
   const bal = r.bal != null ? r.bal : r.total;
@@ -573,9 +728,62 @@ export async function openInvoice(no) {
   if (!x) { $('page').innerHTML = '<div class="card"><div class="none">인보이스를 찾지 못했습니다</div></div>'; return; }
   $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between"><div><h2 style="margin:0">📄 ' + esc(x.no) + (x.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(x.store) + '</div><div class="muted">' + esc(x.sm) + ' · ' + esc(x.d) + ' · 주문 <a href="#/order/' + esc(x.orderId) + '">' + esc(x.order) + '</a></div></div><button class="b-ghost b-sm" id="iBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     '<div class="kpi"><div><b>' + x.qty + '</b><span>수량</span></div><div><b>' + money(x.sub) + '</b><span>금액</span></div><div><b>' + (x.disc ? x.disc + '%' : '—') + '</b><span>할인</span></div><div><b>' + money(x.total) + '</b><span>합계</span></div></div>' +
-    '<div class="btns"><button class="b-blue" id="iPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' + (S.me && S.me.role === 'admin' && x.st !== 'x' ? '<button class="b-ghost" id="iVoid" style="color:#991b1b">VOID</button>' : '') + '</div></div>' +
+    '<div class="btns"><button class="b-blue" id="iPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' + (can('void') && x.st !== 'x' ? '<button class="b-ghost" id="iVoid" style="color:#991b1b">🚫 VOID</button>' : '') + '</div>' + (x.st === 'x' ? '<div class="alert a-red">🚫 VOID · ' + esc(String(x.voidAt || '').substring(0, 10)) + ' · ' + esc(String(x.voidBy || '').split('@')[0]) + (x.voidReason ? ' — ' + esc(x.voidReason) : '') + '</div>' : '') + '</div>' +
     '<div class="card"><table><tr><th>코드</th><th class="r">수량</th><th class="r">가격</th><th class="r">금액</th></tr>' + x.lines.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table></div>';
   $('iBack').onclick = () => Router.go('order');
   $('iPrint').onclick = () => printInvoices([x], acctOf(x.acct));
-  if ($('iVoid')) $('iVoid').onclick = async () => { if (!(await confirmBox(x.no + ' 인보이스를 VOID 할까요? 번호는 다시 쓰지 않습니다.', 'VOID'))) return; busy(true); try { await S.DB.update('invoices', no, { st: 'x', bal: 0, voidAt: new Date().toISOString(), voidBy: S.user.email }); dropInvCache(); await bumpSalesM(S, [x], -1); toast('VOID'); openInvoice(no); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('iVoid')) $('iVoid').onclick = () => voidModal([x], () => openInvoice(no));
+}
+
+/* ============================================================
+ *  🚫 인보이스 VOID — 잘못 만든 · 중복 · 가게가 틀린 인보이스 (오피스 매니저 · 인보이스 담당 · 관리자만)
+ *    번호는 다시 쓰지 않음 (VOID 로 남음). 이유를 꼭 남김. 매출 집계에서 빠짐
+ *    주문의 인보이스가 모두 VOID 되면 주문을: ↩️ 검수 대기로 되돌려 다시 발행 · ✕ 주문 취소 · 그대로 둠
+ * ============================================================ */
+const VOID_WHY = [['중복 인보이스', 'Duplicate'], ['잘못 발행 (수량 · 가격 · 종류)', 'Wrong qty / price / type'], ['가게 · 주소 잘못', 'Wrong store / address'], ['주문 취소', 'Order cancelled']];
+export async function voidModal(invs, done) {
+  if (!can('void')) return toast('VOID 는 오피스 매니저 · 인보이스 담당 · 관리자만 할 수 있습니다', 'bad');
+  invs = invs.filter(x => x && x.st !== 'x'); if (!invs.length) return toast('VOID 할 인보이스가 없습니다', 'bad');
+  let o = null; const oid = invs[0].orderId; if (oid) { try { o = await S.DB.get('orders', oid); } catch (e) {} }
+  const pick = invs.map(() => true);
+  let why = '', what = 'redo';
+  const paint = () => {
+    const sel1 = invs.filter((_, i) => pick[i]), left = o ? (o.invs || []).filter(n => !sel1.some(x => x.no === n)) : [];
+    let liveLeft = left.length;   // 남는 인보이스 (이미 VOID 된 것은 아래에서 빼고 셈)
+    if (o && o.voidedInvs) liveLeft = left.filter(n => !o.voidedInvs.includes(n)).length;
+    const allGone = o && liveLeft === 0, paid = sel1.filter(x => x.bal != null && Math.abs(x.bal - x.total) > 0.005);
+    $('mbox').innerHTML = '<h2>🚫 ' + bi('인보이스 VOID', 'Void invoice') + '</h2><div class="muted">' + bi('VOID 한 번호는 다시 쓰지 않고 VOID 로 남습니다. 매출 · 미수 집계에서 빠집니다.', 'The number stays as VOID and is never reused.') + '</div>' +
+      invs.map((x, i) => '<label class="pick ' + (pick[i] ? 'on' : '') + '" data-vi="' + i + '" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>' + esc(x.no) + ' · ' + money(x.total) + '</b><small>' + esc(x.store) + ' · ' + esc(x.d) + ' · ' + esc(x.t || '') + '</small></span></label>').join('') +
+      (paid.length ? '<div class="alert a-amb">💵 ' + paid.map(x => esc(x.no)).join(', ') + ' — ' + bt('이미 수금이 들어간 인보이스입니다. 수금 기록은 따로 정리하세요.', 'Payments were already applied — fix them separately.') + '</div>' : '') +
+      '<div class="fg" style="margin-top:8px"><label>' + bi('이유 (꼭)', 'Reason (required)') + '</label><div class="chips" style="flex-wrap:wrap">' + VOID_WHY.map(w => '<button class="' + (why === w[0] ? 'on' : '') + '" data-vw="' + esc(w[0]) + '">' + w[0] + ' <span class="en">' + w[1] + '</span></button>').join('') + '</div><input id="vwTxt" placeholder="' + esc(bt('직접 쓰기 · 메모', 'Other / note')) + '" value="' + esc(VOID_WHY.some(w => w[0] === why) ? '' : why) + '"></div>' +
+      (allGone ? '<div class="fg"><label>' + bi('주문 ' + o.no + ' 은 어떻게 할까요?', 'What about the order?') + '</label><div class="seg" style="flex-wrap:wrap">' + [['redo', '↩️ ' + bi('검수 대기로 — 다시 발행', 'Back to review — re-issue')], ['cancel', '✕ ' + bi('주문 취소', 'Cancel order')], ['keep', bi('그대로', 'Leave as is')]].map(c => '<button class="' + (what === c[0] ? 'on' : '') + '" data-vo="' + c[0] + '">' + c[1] + '</button>').join('') + '</div></div>' : '') +
+      '<div class="btns"><button class="b-ghost" id="vX">' + bt('닫기', 'Close') + '</button><button class="b-red" id="vOk">🚫 VOID ' + sel1.length + '</button></div>';
+    document.querySelectorAll('[data-vi]').forEach(el => el.onclick = e => { e.preventDefault(); pick[+el.dataset.vi] = !pick[+el.dataset.vi]; paint(); });
+    document.querySelectorAll('[data-vw]').forEach(b => b.onclick = () => { why = b.dataset.vw; paint(); });
+    document.querySelectorAll('[data-vo]').forEach(b => b.onclick = () => { what = b.dataset.vo; paint(); });
+    $('vwTxt').oninput = () => { why = $('vwTxt').value; };
+    $('vX').onclick = closeModal;
+    $('vOk').onclick = async () => {
+      const L = invs.filter((_, i) => pick[i]); if (!L.length) return toast('인보이스를 고르세요', 'bad');
+      const reason = ($('vwTxt').value.trim() || why).trim(); if (!reason) return toast('VOID 이유를 고르거나 쓰세요', 'bad');
+      const act = allGone ? what : 'keep';
+      if (!(await confirmBox(L.map(x => x.no).join(', ') + ' — VOID?\n' + reason + (allGone ? '\n' + ({ redo: '주문 → 검수 대기 (다시 발행)', cancel: '주문 취소', keep: '주문은 그대로' })[act] : ''), 'VOID'))) return paint();
+      busy(true);
+      try {
+        const now = new Date().toISOString(), ops = L.map(x => ({ op: 'update', col: 'invoices', id: x.no, data: { st: 'x', bal: 0, voidAt: now, voidBy: S.user.email, voidReason: reason } }));
+        if (o) {
+          const vd = (o.voidedInvs || []).concat(L.map(x => x.no)), p = { voidedInvs: vd, updatedAt: now };
+          if (act === 'redo') Object.assign(p, { st: 'picked', invs: [], doneAt: null, bo: '' });
+          if (act === 'cancel') Object.assign(p, { st: 'x', cancelBy: S.user.email, cancelWhy: reason });
+          ops.push({ op: 'update', col: 'orders', id: o.id, data: p });
+          if ((act === 'redo' || act === 'cancel') && o.bo) { const b = await S.DB.get('backorders', o.id).catch(() => null); if (b && b.st === 'open') ops.push(act === 'redo' ? { op: 'del', col: 'backorders', id: o.id } : { op: 'update', col: 'backorders', id: o.id, data: { st: 'closed', closedAt: now, closedBy: S.user.email } }); }
+        }
+        await S.DB.batch(ops); dropInvCache(); await bumpSalesM(S, L, -1);
+        toast('🚫 VOID ' + L.map(x => x.no).join(', ') + (act === 'redo' ? ' — 주문이 검수 대기로 돌아갔습니다' : ''), 'good');
+        closeModal(); if (done) done(act, o);
+      } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  };
+  openModal(''); paint();
 }
