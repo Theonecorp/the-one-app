@@ -22,6 +22,7 @@ function methodTag(p) { return p.m === 'CHECK' ? '#' + esc(p.ref) : p.m === 'CAS
  *  ① 확인 — 세일즈맨이 넣은 수금을 보며 ① 접수 확인, 실물 체크 오면 수령 ✓
  * ============================================================ */
 let VF = { f: 'todo', sm: '', q: '', grp: 'sm', acct: '' };
+const VSEL = new Set();   // ☑ 체크해서 한 번에 ① 접수 확인 · ② 체크 수령
 /* ---- 앱 인보이스에 입금 반영 (이전 시스템 입력을 대신함) ----
  *  invoices/{no}.pays = { [수금 id]: 금액 } · bal = total − Σpays  — 같은 수금을 두 번 넣어도 한 번만 잡힘, 취소하면 되돌아옴 */
 export async function applyToInvoices(key, invs, on) {
@@ -58,17 +59,46 @@ async function pageVerify() {
     /* 📬 체크 맞추기 — 우편으로 온 체크 번호를 치면 그 수금을 찾아 수령 ✓ */
     '<div class="card" style="border:2px solid #bfdbfe"><h2>📬 들어온 체크 맞추기 <span class="en">Match incoming checks</span></h2><div class="muted">봉투에서 꺼낸 체크 번호를 치고 엔터 — 세일즈맨이 입력한 수금을 찾아 바로 <b>② 체크 수령 ✓</b>. 금액이 다르면 알려 줍니다. <span class="en">Type the check number + Enter.</span></div>' +
     '<div class="two" style="margin-top:8px;grid-template-columns:1fr auto"><input id="ckNo" inputmode="numeric" placeholder="체크 번호 · check #" autocomplete="off"><input id="ckAmt" inputmode="decimal" placeholder="금액 (선택)" style="width:120px"></div><div id="ckOut"></div></div>';
-  const row = r => '<div class="pr tap ' + (r.v ? 'v' : r.rc ? 'rc' : r.sb ? 'sb' : '') + (r.mismatch && !r.v ? ' bad' : '') + '" data-vid="' + r.id + '"><div class="mk">' + (r.rc ? '✓' : r.sb ? '①' : '·') + '</div><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + (r.repl ? ' <span class="tag t-r">대체</span>' : '') + (r.newStore ? ' <span class="tag t-c">신규</span>' : '') + '</b><small>' + md(r.d) + ' · ' + (r.pays || []).map(p => methodTag(p) + ' ' + money(p.amt)).join(' · ') + (r.invs && r.invs.length ? ' · ' + r.invs.map(v => v.no).join(',') : '') + (r.mismatch ? ' · ⚠️' : '') + (r.settled ? ' · 📁 ' + esc(r.settled) : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + stageText(r) + '</small></div></div>';
+  const row = r => '<div class="pr tap ' + (r.v ? 'v' : r.rc ? 'rc' : r.sb ? 'sb' : '') + (r.mismatch && !r.v ? ' bad' : '') + '" data-vid="' + r.id + '">' + (!r.settled && !(r.sb && r.rc) ? '<input type="checkbox" class="vck" data-vck="' + r.id + '"' + (VSEL.has(r.id) ? ' checked' : '') + ' style="width:22px;height:22px;margin-right:8px;flex:0 0 auto">' : '') + '<div class="mk">' + (r.rc ? '✓' : r.sb ? '①' : '·') + '</div><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + (r.repl ? ' <span class="tag t-r">대체</span>' : '') + (r.newStore ? ' <span class="tag t-c">신규</span>' : '') + '</b><small>' + md(r.d) + ' · ' + (r.pays || []).map(p => methodTag(p) + ' ' + money(p.amt)).join(' · ') + (r.invs && r.invs.length ? ' · ' + r.invs.map(v => v.no).join(',') : '') + (r.mismatch ? ' · ⚠️' : '') + (r.settled ? ' · 📁 ' + esc(r.settled) : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + stageText(r) + '</small></div></div>';
   if (!list.length) h += '<div class="card"><div class="none">없음 · none</div></div>';
   else if (VF.grp === 'sm' && VF.f !== 'done') {
     const by = groupBy(list, r => r.sm || '—');
     Object.keys(by).sort().forEach(sm => { const L = by[sm], t = L.filter(r => !r.sb).length, w = L.filter(r => r.sb && !r.rc).length;
-      h += '<div class="card smgrp"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff;margin-top:0"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(sum(L, r => r.total)) + (t ? ' · <span class="warn">접수 확인 ' + t + '</span>' : '') + (w ? ' · 체크 대기 ' + w : '') + ' ▾</span></div><div class="smbody">' + (t ? '<button class="b-ghost b-sm" data-sball="' + esc(sm) + '" style="margin:6px 0">✓ ' + esc(sm) + ' 접수 확인 대기 ' + t + '건 모두 확인 · Review all</button>' : '') + L.map(row).join('') + '</div></div>'; });
+      h += '<div class="card smgrp"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff;margin-top:0"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(sum(L, r => r.total)) + (t ? ' · <span class="warn">접수 확인 ' + t + '</span>' : '') + (w ? ' · 체크 대기 ' + w : '') + ' ▾</span></div><div class="smbody">' + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button class="b-ghost b-sm" data-vckall="' + esc(sm) + '">☑ ' + esc(sm) + ' 전체 선택 · Select all</button>' + (t ? '<button class="b-ghost b-sm" data-sball="' + esc(sm) + '">✓ 접수 확인 대기 ' + t + '건 모두 확인 · Review all</button>' : '') + '</div>' + L.map(row).join('') + '</div></div>'; });
   } else {
     const by = groupBy(list, r => r.d), days = Object.keys(by).sort().reverse();
-    days.forEach(d => { const L = by[d]; h += '<div class="card"><div class="dayhd"><span>' + dlabel(d) + '</span><span>' + money(sum(L, r => r.total)) + ' · ' + L.length + '건</span></div>' + L.map(row).join('') + '</div>'; });
+    days.forEach(d => { const L = by[d]; h += '<div class="card"><div class="dayhd"><span>' + dlabel(d) + ' <button class="b-ghost b-sm" data-vckday="' + d + '" style="margin-left:6px;padding:3px 8px">☑ 전체</button></span><span>' + money(sum(L, r => r.total)) + ' · ' + L.length + '건</span></div>' + L.map(row).join('') + '</div>'; });
   }
+  h += '<div class="bulkbar" id="vBulk" style="display:none"></div>';
   $('page').innerHTML = h;
+  /* ☑ 선택 → 아래 막대에서 한 번에 ① 접수 확인 · ② 체크 수령 */
+  const selRows = () => rows.filter(r => VSEL.has(r.id) && !r.settled);
+  const paint = () => {
+    const S2 = selRows(), bar = $('vBulk'); Array.from(VSEL).forEach(id => { if (!rows.some(r => r.id === id && !r.settled)) VSEL.delete(id); });
+    if (!S2.length) { bar.style.display = 'none'; return; }
+    const nT = S2.filter(r => !r.sb).length, nW = S2.filter(r => !r.rc).length;
+    bar.style.display = ''; bar.innerHTML = '<b>' + S2.length + '건 · ' + money(sum(S2, r => r.total)) + '</b>' + (nT ? '<button class="b-ghost b-sm" id="vbSb">① 접수 확인 ' + nT + '</button>' : '') + (nW ? '<button class="b-ghost b-sm" id="vbRc">② 체크 수령 ' + nW + '</button>' : '') + '<button class="b-ghost b-sm" id="vbClr">✕ 선택 해제</button>';
+    if ($('vbSb')) $('vbSb').onclick = () => bulkApply(S2.filter(r => !r.sb), false);
+    if ($('vbRc')) $('vbRc').onclick = () => bulkApply(S2.filter(r => !r.rc), true);
+    $('vbClr').onclick = () => { VSEL.clear(); document.querySelectorAll('[data-vck]').forEach(c => { c.checked = false; }); paint(); };
+  };
+  const bulkApply = async (L, rc) => {
+    const bad = L.filter(r => r.mismatch), noInv = L.filter(r => !(r.invs || []).length), tot = sum(L, r => r.total);
+    if (!(await confirmBox((rc ? '② 체크 수령' : '① 접수 확인') + ' — ' + L.length + '건 · ' + money(tot) + ' 를 한 번에 처리할까요?' + (rc ? '\n(아직 ① 접수 확인 안 된 건은 ① 도 같이 처리됩니다)' : '') + '\n인보이스 번호가 있는 건은 앱 인보이스에 입금이 반영됩니다.' + (bad.length ? '\n⚠️ 차액 있는 건 ' + bad.length + '건 포함: ' + bad.slice(0, 5).map(r => r.store).join(', ') : '') + (noInv.length ? '\n· 인보이스 번호 없는 건 ' + noInv.length + '건' : ''), rc ? '② 수령 처리' : '① 확인 처리'))) return;
+    busy(true); let n = 0;
+    try { for (const r of L) { const patch = { updatedAt: new Date().toISOString() };
+        if (!r.sb) { patch.sb = true; patch.sbAt = today(); if (!rc && !(r.pays || []).some(p => p.m === 'CHECK' || p.m === 'CASH' || p.m === 'ZELLE')) patch.rc = true; }
+        if (rc) { patch.rc = true; patch.rcAt = today(); }
+        await S.DB.update('entries', r.id, patch); if (!r.sb) await applyToInvoices(r.id, r.invs, true); n++; VSEL.delete(r.id); }
+      toast((rc ? '② 수령 ' : '① 확인 ') + n + '건 처리', 'good'); }
+    catch (e) { toast('실패 (' + n + '건까지 처리됨): ' + e.message, 'bad'); }
+    busy(false); pageVerify();
+  };
+  document.querySelectorAll('[data-vck]').forEach(c => { c.onclick = e => e.stopPropagation(); c.onchange = () => { if (c.checked) VSEL.add(c.dataset.vck); else VSEL.delete(c.dataset.vck); paint(); }; });
+  const tick = L => { const ids = L.filter(r => !r.settled && !(r.sb && r.rc)).map(r => r.id), all = ids.every(id => VSEL.has(id)); ids.forEach(id => { if (all) VSEL.delete(id); else VSEL.add(id); }); document.querySelectorAll('[data-vck]').forEach(c => { c.checked = VSEL.has(c.dataset.vck); }); paint(); };
+  document.querySelectorAll('[data-vckall]').forEach(b => b.onclick = e => { e.stopPropagation(); tick(list.filter(r => (r.sm || '—') === b.dataset.vckall)); });
+  document.querySelectorAll('[data-vckday]').forEach(b => b.onclick = e => { e.stopPropagation(); tick(list.filter(r => r.d === b.dataset.vckday)); });
+  paint();
   document.querySelectorAll('[data-vf]').forEach(b => b.onclick = () => { VF.f = b.dataset.vf; pageVerify(); });
   document.querySelectorAll('[data-vg]').forEach(b => b.onclick = () => { VF.grp = b.dataset.vg; pageVerify(); });
   document.querySelectorAll('[data-smhd]').forEach(el => el.onclick = () => el.parentElement.classList.toggle('fold'));
