@@ -158,7 +158,8 @@ async function importer() {
 async function loadXlsx() { if (window.XLSX) return window.XLSX; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); return window.XLSX; }
 async function readBook(file) { const XLSX = await loadXlsx(); const buf = await file.arrayBuffer(); return { XLSX, wb: XLSX.read(buf, { type: 'array', cellDates: true }) }; }
 function aoa(XLSX, wb, name) { const ws = wb.Sheets[name]; if (!ws) return null; return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }); }
-function dstr(v) { if (v instanceof Date) { const d = new Date(v.getTime() - v.getTimezoneOffset() * 60000); return d.toISOString().substring(0, 10); } const s = String(v || '').trim(); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10); const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0'); return ''; }
+function dstr(v) { if (v instanceof Date) { const d = new Date(v.getTime() - v.getTimezoneOffset() * 60000); return d.toISOString().substring(0, 10); } const s = String(v || '').trim(); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10); if (typeof v === 'number' && v > 30000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().substring(0, 10); }   /* 엑셀 날짜 숫자 */
+  const m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0'); return ''; }
 function hdrIdx(row, names) { const idx = {}; row = row.map(x => String(x || '').trim()); Object.keys(names).forEach(k => { const j = row.findIndex(h => names[k].test(h)); idx[k] = j; }); return idx; }
 const say = (h) => { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-blu">' + h + '</div>'); };
 
@@ -205,11 +206,16 @@ async function importSales(file) {
   if (!file) return; busy(true); $('impOut').innerHTML = '';
   try {
     const { XLSX, wb } = await readBook(file);
-    const ops = []; let nC = 0, nF = 0, missing = 0;
+    const ops = []; let nC = 0, nF = 0, missing = 0, nShift = 0;
     const cod = aoa(XLSX, wb, 'COD 입력');
     if (cod) {
       const H = hdrIdx(cod[0], { sm: /세일즈맨/, d: /날짜/, acct: /계정코드/, store: /가게/, method: /결제 방법/, ref: /참조/, amt: /^금액/, invA: /^A 인보이스/, amtA: /^A 금액/, invP: /^P 인보이스/, amtP: /^P 금액/, invCM: /^CM 인보이스/, amtCM: /^CM 금액/, invW: /^W 인보이스/, amtW: /^W 금액/, disc: /디스카운트/, note: /^메모/, id: /^ID$/, v: /정산 확인/, vn: /확인 메모/ });
-      for (let i = 1; i < cod.length; i++) { const r = cod[i]; const d = dstr(r[H.d]); if (!d || !r[H.sm]) continue; const invs = []; ['A', 'P', 'CM', 'W'].forEach(t => { const no = String(r[H['inv' + t]] || '').trim().toUpperCase(), a = R2(num(r[H['amt' + t]])); if (no) no.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: x, t, amt: j === 0 ? a : 0 })); });
+
+      for (let i = 1; i < cod.length; i++) { const r0 = cod[i] || [];
+        /* 칸 밀린 옛 줄 (대시보드 b21 과 같은 규칙): ID 칸이 비고 "디스카운트 %" 칸에 D######-… → 그게 ID, "W 인보이스" 칸의 10% 가 디스카운트 */
+        const shifted = !String(r0[H.id] || '').trim() && H.disc >= 0 && /^D\d{6}-/.test(String(r0[H.disc] || '').trim());
+        const r = shifted ? Object.assign([], r0, { [H.id]: r0[H.disc], [H.disc]: r0[H.invW], [H.invW]: '' }) : r0; if (shifted) nShift++;
+        const d = dstr(r[H.d]); if (!d || !r[H.sm]) continue; const invs = []; ['A', 'P', 'CM', 'W'].forEach(t => { const no = String(r[H['inv' + t]] || '').trim().toUpperCase(), a = R2(num(r[H['amt' + t]])); if (no) no.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: x, t, amt: j === 0 ? a : 0 })); });
         const id = String(r[H.id] || '').trim() || newId('C'); const method = String(r[H.method] || 'COD').trim().toUpperCase();
         ops.push({ op: 'set', col: 'cod', id, data: { id, d, ym: ym(d), sm: String(r[H.sm]).trim().toUpperCase(), acct: pad4(r[H.acct]), store: String(r[H.store] || '').trim(), method: /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', ref: String(r[H.ref] || '').trim(), amt: R2(num(r[H.amt])), invs, disc: r[H.disc] === '' ? '' : num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1), note: String(r[H.note] || '').trim(), v: r[H.v] === true || /TRUE/i.test(String(r[H.v])), vn: String(r[H.vn] || '').trim(), settled: '', void: false, imported: true } }); nC++; }
     }
@@ -228,7 +234,7 @@ async function importSales(file) {
     Object.values(ents).forEach(e => { if (e._p) ops.push({ op: 'update', col: 'entries', id: e.id, data: e._p }); });
     await S.DB.batch(ops);
     dropBossCache();
-    say('COD·카드·ACH ' + nC + '건 · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
+    say('COD·카드·ACH ' + nC + '건' + (nShift ? ' (칸 밀린 옛 줄 ' + nShift + '건 바로잡음)' : '') + ' · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
   } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
 }
@@ -353,6 +359,9 @@ export function parseBossBook(XLSX, wb) {
   /* 커미션 공제 · 공제 기록 */
   const dd = get('커미션 공제'); if (dd) for (let i = 1; i < dd.length; i++) { const id = sv(dd[i][0]); if (!id) continue; out.ded.push({ id, sm: sv(dd[i][1]).toUpperCase(), acct: sv(dd[i][2]), store: sv(dd[i][3]), why: sv(dd[i][4]) || '기타', total: R2(num(dd[i][5])), per: R2(num(dd[i][6])) || R2(num(dd[i][5])), start: dcell(dd[i][7]) || today(), st: sv(dd[i][8]), note: sv(dd[i][9]), invs: sv(dd[i][10]) }); }
   const dh = get('공제 기록'); if (dh) for (let i = 1; i < dh.length; i++) { const id = sv(dh[i][2]); if (!id) continue; out.dedHist.push({ id, d: dcell(dh[i][0]), amt: R2(num(dh[i][4])), ref: sv(dh[i][5]) }); }
+  /* b21: 정산 미룸(다음 정산으로 넘긴 줄) · 정산 제외(종이 정산 등 이미 지급 — 정산 화면에서 뺌): 1칸 ID · 6칸 날짜 */
+  out.defer = []; out.excl = [];
+  [['정산 미룸', 'defer'], ['정산 제외', 'excl']].forEach(([n, k]) => { const t = get(n); if (t) for (let i = 1; i < t.length; i++) { const r = t[i] || []; const id = sv(r[0]); if (id) out[k].push({ id, d: dcell(r[5]) || today() }); } });
   /* 세일즈맨 정산 옵션 */
   const so = get('세일즈맨 정산 옵션'); if (so) for (let i = 1; i < so.length; i++) { const sm = sv(so[i][0]).toUpperCase(); if (sm) out.opts.push({ sm, cashKeep: /^Y/i.test(sv(so[i][1])), defaultPer: R2(num(so[i][2])) }); }
   return out;
@@ -378,7 +387,14 @@ async function importBoss(file) {
         const hist = {}; P.dedHist.forEach(h => { (hist[h.id] = hist[h.id] || []).push({ d: h.d, amt: h.amt, ref: h.ref }); });
         P.ded.forEach(d => { const h = hist[d.id] || [], used = R2(h.reduce((a, x) => a + x.amt, 0)); ops.push({ op: 'set', col: 'deductions', id: d.id, data: Object.assign({}, d, { used, hist: h, st: d.st || (used >= d.total - 0.005 ? '완료' : ''), seed: true, createdBy: S.user.email, createdAt: now, updatedAt: now }) }); });
         P.opts.forEach(o => { if (S.smByCode[o.sm]) ops.push({ op: 'update', col: 'salesmen', id: o.sm, data: { cashKeep: o.cashKeep, defaultPer: o.defaultPer } }); });
-        await S.DB.batch(ops); dropBossCache();
+        await S.DB.batch(ops);
+        /* 정산 미룸 → deferred(다음 정산에 같이 올라옴) · 정산 제외 → settled(이미 지급) — entries 에 없으면 cod */
+        let nDf = 0, nEx = 0;
+        for (const x of (P.defer || []).map(x => ({ id: x.id, data: { deferred: 'sheet', deferredAt: x.d }, k: 'd' })).concat((P.excl || []).map(x => ({ id: x.id, data: { settled: 'sheet-excl:' + x.d, settledAt: x.d }, k: 'e' })))) {
+          try { await S.DB.update('entries', x.id, x.data); } catch (e) { try { await S.DB.update('cod', x.id, x.data); } catch (e2) { continue; } }
+          if (x.k === 'd') nDf++; else nEx++; }
+        if (nDf || nEx) toast('정산 미룸 ' + nDf + ' · 정산 제외 ' + nEx + '건 반영', 'good');
+        dropBossCache();
         out.innerHTML = '<div class="alert a-grn">넣었습니다 — ' + ops.length + '건. 경영 탭에서 확인하세요.</div>'; toast('경영 자료 ' + ops.length + '건', 'good');
       } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
       busy(false);
@@ -392,14 +408,22 @@ async function importComm(file) {
     const rt = aoa(XLSX, wb, '세일즈맨 요율');
     if (rt) { const H = hdrIdx(rt[0], { sm: /세일즈맨/, a: /A 인보이스/, disc: /할인/, w: /W 인보이스/, p: /P 인보이스/, ex: /EXCHANGE/, dp: /DP/, office: /OFFICE/ });
       for (let i = 1; i < rt.length; i++) { const r = rt[i]; const code = String(r[H.sm] || '').trim().toUpperCase(); if (!code) continue; const rates = {}; ['a', 'disc', 'w', 'p', 'ex', 'dp', 'office'].forEach(kk => { if (H[kk] >= 0 && r[H[kk]] !== '') { let v = num(r[H[kk]]); if (v > 1) v = v / 100; rates[kk] = v; } }); const cur = S.smByCode[code] || { code, name: code, active: true }; ops.push({ op: 'set', col: 'salesmen', id: code, data: Object.assign({}, cur, { rates: Object.assign({}, RATE_DEFAULT, cur.rates || {}, rates) }) }); nR++; } }
-    const lg = aoa(XLSX, wb, '정산 기록');
-    if (lg) { for (let i = 1; i < lg.length; i++) { const r = lg[i]; const id = String(r[2] || '').trim().split('@')[0]; if (!id) continue; ops.push({ op: 'update', col: 'entries', id, data: { settled: 'sheet:' + dstr(r[0]) + ':' + String(r[5] || ''), settledAt: dstr(r[0]) } }); nL++; } }
-    /* update 는 없는 문서에 실패하므로 하나씩 */
-    let ok = 0, fail = 0;
-    for (const o of ops) { try { if (o.op === 'update') await S.DB.update(o.col, o.id, o.data); else await S.DB.set(o.col, o.id, o.data); ok++; } catch (e) { fail++; } }
+    /* 정산 기록 (대시보드가 확정할 때 쓰는 장부): 정산일 · 세일즈맨 · ID · 가게 · 금액 · 보관 탭 · 지급액
+     *  · ID 가 현장 수금(C…)이면 entries, COD · ACH · 카드(D… · ACH-…)면 cod 를 정산됨으로
+     *  · 보관 탭마다 📁 정산 완료 한 줄(settlements, src:'sheet') — 기간은 그 보관 탭 첫 줄 "M/D/YYYY ~ M/D/YYYY" 에서 */
+    const lg = aoa(XLSX, wb, '정산 기록'), grp = {}, ledger = [];
+    if (lg) for (let i = 1; i < lg.length; i++) { const r = lg[i] || []; const id = String(r[2] || '').trim().split('@')[0]; if (!id) continue; ledger.push({ d: dstr(r[0]), sm: String(r[1] || '').trim().toUpperCase(), id, amt: num(r[4]), tab: String(r[5] || '').trim(), pay: r[6] === '' || r[6] == null ? null : num(r[6]) }); nL++; }
+    ledger.forEach(x => { const k = x.tab || (x.sm + ' ' + x.d); const g = grp[k] = grp[k] || { tab: k, sm: x.sm, day: x.d, n: 0, total: 0, pay: 0 }; g.n++; g.total = R2(g.total + x.amt); if (x.pay != null) g.pay = R2(g.pay + x.pay); });
+    const md2 = s => { const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s); return m ? m[3] + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0') : ''; };
+    Object.values(grp).forEach(g => { const t = aoa(XLSX, wb, g.tab), a1 = t && t[0] ? String(t[0][0] || '') : '', pr = a1.split('~'), id = 'SH-' + g.tab.replace(/[^A-Za-z0-9-]/g, '_');
+      ops.push({ op: 'set', col: 'settlements', id, data: { id, sm: g.sm, day: g.day, from: pr.length > 1 ? md2(pr[0]) : '', to: pr.length > 1 ? md2(pr[1]) : '', n: g.n, total: g.total, pay: g.pay, finalPay: g.pay, src: 'sheet', tab: g.tab, createdAt: g.day } }); });
+    /* update 는 없는 문서에 실패하므로 하나씩 — 수금(entries)에 없으면 COD(cod)에서 찾음 */
+    let ok = 0, fail = 0, okCod = 0;
+    for (const x of ledger) { const data = { settled: 'sheet:' + x.d + ':' + x.tab, settledAt: x.d }; try { await S.DB.update('entries', x.id, data); ok++; } catch (e) { try { await S.DB.update('cod', x.id, data); okCod++; } catch (e2) { fail++; } } }
+    for (const o of ops) { try { if (o.op === 'update') await S.DB.update(o.col, o.id, o.data); else await S.DB.set(o.col, o.id, o.data); } catch (e) { fail++; } }
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] }); S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
     dropBossCache();
-    say('요율 ' + nR + '명 · 정산 기록 ' + nL + '줄 (반영 ' + ok + ' · 못 찾음 ' + fail + ')<br><b>가져오기 끝</b>');
+    say('요율 ' + nR + '명 · 정산 기록 ' + nL + '줄 (현장 수금 ' + ok + ' · COD·ACH·카드 ' + okCod + ' 정산됨 · 못 찾음 ' + fail + ') · 📁 정산 완료 ' + Object.keys(grp).length + '건<br><b>가져오기 끝</b> — ④ 대시보드 파일도 올리면 정산 미룸 · 정산 제외가 반영됩니다');
   } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
 }
