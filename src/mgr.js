@@ -4,7 +4,8 @@
 import { invTypes } from './invoicing.js';
 import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt } from './ui.js';
 import { newId } from './db.js';
-import { searchAccounts, dropAccountCache } from './accounts.js';
+import { searchAccounts, dropAccountCache, activeOnly } from './accounts.js';
+import { inactiveTool, reactivate, register as regInactive } from './inactive.js';
 import { invType } from './comm.js';
 import { stageText } from './sales.js';
 import { storeSheet } from './store.js';
@@ -14,7 +15,7 @@ let S = null;
 export function register(state) {
   Router.up.stores = arg => { if (arg) return false; if (STM.city) { STM.city = ''; pageStores(); return true; } if (STM.state) { STM.state = ''; pageStores(); return true; } return false; };
   Router.upHas.stores = () => !!(STM.city || STM.state);
-  S = state;
+  S = state; regInactive(state);
   Router.on('verify', pageVerify); Router.on('cod', pageCod); Router.on('stores', pageStores); Router.on('arup', pageArUp);
 }
 function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
@@ -233,8 +234,9 @@ let STM = { mode: '', sm: '', state: '', city: '', msm: null };
 async function pageStores() {
   const isSales = S.role === 'salesman', mine = (S.me && S.me.sm) ? String(S.me.sm).toUpperCase() : '';
   if (!STM.mode) { STM.mode = isSales ? 'sm' : 'q'; if (isSales) STM.sm = mine; }
-  const A = S.accounts;
-  const row = a => '<div class="pr tap" data-st="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.tel ? ' · ' + esc(a.tel) : '') + '</small></div>' + (!isSales ? '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' : '') + '</div>';
+  const A = activeOnly(S.accounts), Z = S.accounts.filter(a => a.inactive);   // 💤 비활성은 목록 · 지도에서 빼고 따로
+  const canZ = S.role === 'admin' || (!isSales && (S.me && (S.me.job || 'office') === 'office'));
+  const row = a => '<div class="pr tap" data-st="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + (a.inactive ? ' <span class="tag t-g">💤 ' + bt('비활성', 'Inactive') + '</span>' : '') + '</b><small>' + esc(a.acct) + ' · ' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.tel ? ' · ' + esc(a.tel) : '') + '</small></div>' + (!isSales ? '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' : '') + '</div>';
   const cnt = (list, f) => { const m = {}; list.forEach(a => { const k = f(a) || '—'; m[k] = (m[k] || 0) + 1; }); return m; };
   let body = '', sub = '';
   if (STM.mode === 'q') {
@@ -245,6 +247,10 @@ async function pageStores() {
     sub = '<div class="chips" style="margin-top:8px">' + sms.map(k => '<button class="' + (STM.sm === k ? 'on' : '') + '" data-stsm="' + esc(k) + '">' + (k === mine ? '👤 ' : '') + esc(k) + ' <span class="en">' + bySm[k] + '</span></button>').join('') + '</div>';
     const list = sortBy(A.filter(a => String(a.sm || '').toUpperCase() === (STM.sm || '—') || (STM.sm === '—' && !a.sm)), a => a.store);
     body = STM.sm ? (list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.sm) + ' · ' + list.length + '곳 · 이름순</div>' + list.map(row).join('') : '<div class="none">없음</div>') : '<div class="none">세일즈맨을 고르세요</div>';
+  } else if (STM.mode === 'z') {
+    /* 💤 비활성 — 3년 거래 없는 곳. 다시 활성 가능 */
+    sub = '<div class="muted" style="margin-top:8px">' + bi('최근 3년 동안 거래가 없어 목록 · 지도 · 가게 찾기 맨 뒤로 뺀 거래처입니다. 다시 거래하면 앱에서 인보이스를 발행할 때 자동으로 활성으로 돌아갑니다.', 'No activity for 3 years — removed from lists and the map. Issuing an invoice makes them active again.') + '</div>' + (canZ ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="stZscan">🔎 ' + bi('3년 거래 없는 곳 다시 찾기', 'Scan again') + '</button></div>' : '');
+    body = Z.length ? '<div class="muted" style="margin:0 0 6px">💤 ' + Z.length + '</div>' + sortBy(Z, a => a.store).map(a => '<div class="pr"><div class="ct tap" data-st="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.lastTx ? ' · ' + bt('마지막 거래', 'last activity') + ' ' + esc(a.lastTx) : '') + '</small></div>' + (!isSales ? '<button class="b-ghost b-sm" data-zre="' + esc(a.acct) + '">↩️ ' + bi('다시 활성', 'Re-activate') + '</button>' : '') + '</div>').join('') : '<div class="none">' + bt('비활성 거래처가 없습니다', 'No inactive accounts') + (canZ ? ' — ' + bt('위 버튼으로 3년 거래 없는 곳을 찾으세요', 'scan with the button above') : '') + '</div>';
   } else if (STM.mode === 'map') {
     /* 🗺 지도 — 세일즈맨은 내 가게가 먼저 (전체도 볼 수 있음), 담당자는 세일즈맨별 색 */
     if (STM.msm == null) STM.msm = isSales ? mine : '';
@@ -263,8 +269,8 @@ async function pageStores() {
     } else body = '<div class="none">주(State)를 고르세요</div>';
   }
   $('page').innerHTML = '<div class="card"><h2>🏬 ' + bi('거래처', 'Customers') + ' <span class="muted" style="font-size:12px;font-weight:400">' + A.length + '곳</span></h2>' +
-    '<div class="seg" style="flex-wrap:wrap">' + [['q', '🔎 ' + bi('검색', 'Search')], ['sm', '👤 ' + bi('세일즈맨별', 'By salesman')], ['geo', '🏙 ' + bi('주 · 도시별', 'By state · city')], ['map', '🗺 ' + bi('지도', 'Map')]].map(t => '<button class="' + (STM.mode === t[0] ? 'on' : '') + '" data-stm="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' + sub +
-    (!isSales ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button></div>' : '') + '</div>' +
+    '<div class="seg" style="flex-wrap:wrap">' + [['q', '🔎 ' + bi('검색', 'Search')], ['sm', '👤 ' + bi('세일즈맨별', 'By salesman')], ['geo', '🏙 ' + bi('주 · 도시별', 'By state · city')], ['map', '🗺 ' + bi('지도', 'Map')], ['z', '💤 ' + bi('비활성', 'Inactive') + ' ' + Z.length]].map(t => '<button class="' + (STM.mode === t[0] ? 'on' : '') + '" data-stm="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' + sub +
+    (!isSales ? '<div class="btns" style="justify-content:flex-start;flex-wrap:wrap"><button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button>' + (canZ ? '<button class="b-ghost b-sm" id="stZ">💤 ' + bi('비활성 정리 (3년 거래 없음)', 'Clean up inactive (3 yrs)') + '</button>' : '') + '</div>' : '') + '</div>' +
     '<div class="card">' + body + '</div>';
   Router.refreshBack();
   if (STM.mode === 'map') {
@@ -282,7 +288,7 @@ async function pageStores() {
   if ($('stQ')) {
     let lim = 300;
     const paintList = () => {
-      const hits = STQ.trim() ? searchAccounts(A, STQ, 100000) : sortBy(A, a => a.store), show = hits.slice(0, lim);
+      const hits = STQ.trim() ? searchAccounts(S.accounts, STQ, 100000) : sortBy(A, a => a.store), show = hits.slice(0, lim);   // 검색하면 💤 비활성도 맨 뒤에
       $('stList').innerHTML = '<div class="muted" style="margin:0 0 6px">' + (STQ.trim() ? bt('찾음', 'Found') + ' ' : bt('전체 · 이름순', 'All · by name') + ' ') + hits.length.toLocaleString() + '</div>' + (show.length ? show.map(row).join('') : '<div class="none">없음 · no match</div>') + (hits.length > show.length ? '<button class="b-ghost" id="stMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (hits.length - show.length).toLocaleString() + ')</button>' : '');
       $('stList').querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeSheet(el.dataset.st));
       $('stList').querySelectorAll('[data-ste]').forEach(el => el.onclick = e => { e.stopPropagation(); storeForm(S.accounts.byCode[el.dataset.ste]); });
@@ -292,6 +298,9 @@ async function pageStores() {
     paintList();
   }
   if ($('stNew')) $('stNew').onclick = () => storeForm(null);
+  if ($('stZ')) $('stZ').onclick = () => inactiveTool(() => { STM.mode = 'z'; pageStores(); });
+  if ($('stZscan')) $('stZscan').onclick = () => inactiveTool(() => pageStores());
+  document.querySelectorAll('[data-zre]').forEach(b => b.onclick = () => reactivate(b.dataset.zre, () => pageStores()));
   document.querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeSheet(el.dataset.st));
   document.querySelectorAll('[data-ste]').forEach(el => el.onclick = e => { e.stopPropagation(); storeForm(S.accounts.byCode[el.dataset.ste]); });
 }
@@ -305,13 +314,17 @@ export function storeForm(a) {
     '<div class="two"><div class="fg"><label>전화</label><input id="sTel" value="' + esc(a.tel || '') + '"></div><div class="fg"><label>조건 (N30 · ACH60 …)</label><input id="sTerms" value="' + esc(a.terms || '') + '"></div></div>' +
     '<div class="fg"><label>메모 (주문 화면에 보임)</label><input id="sNote" value="' + esc(a.note || '') + '"></div>' +
     '<div class="fg"><label>기본 할인 % (인보이스 종류별 — 주문에 자동으로 들어감)</label><div class="three">' + invTypes(S).map(t => '<div><small class="muted">' + esc(t.c) + ' ' + esc(t.n) + '</small><input type="number" inputmode="decimal" min="0" max="100" data-sd="' + esc(t.c) + '" value="' + esc((a.disc || {})[t.c] || '') + '" placeholder="0"></div>').join('') + '</div></div>' +
+    (a.acct ? '<label class="pick ' + (a.inactive ? 'on' : '') + '" id="sInact" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>💤 ' + bi('비활성 (목록 · 지도에서 뺌)', 'Inactive (hide from lists)') + '</b><small>' + (a.lastTx ? bt('마지막 거래', 'last activity') + ' ' + esc(a.lastTx) : '') + '</small></span></label>' : '') +
     '<div class="btns"><button class="b-blue" id="sSave">저장</button></div>');
+  if ($('sInact')) $('sInact').onclick = e => { e.preventDefault(); $('sInact').classList.toggle('on'); };
   $('sSave').onclick = async () => {
     const acct = pad4($('sAcct').value.trim()), store = $('sStore').value.trim().toUpperCase();
     if (!acct || !store) return toast('계정코드와 이름을 넣으세요', 'bad');
     const doc = { acct, store, sm: $('sSm').value, addr: $('sAddr').value.trim(), city: $('sCity').value.trim().toUpperCase(), state: $('sState').value.trim().toUpperCase(), zip: $('sZip').value.trim(), tel: $('sTel').value.trim(), terms: $('sTerms').value.trim().toUpperCase(), note: $('sNote').value.trim(), updatedAt: new Date().toISOString() };
     const disc = {}; document.querySelectorAll('[data-sd]').forEach(inp => { const v = Math.max(0, Math.min(100, Number(inp.value) || 0)); if (v) disc[inp.dataset.sd] = v; }); doc.disc = disc;
     Object.keys(a).forEach(k => { if (doc[k] === undefined && k !== 'id' && k[0] !== '_') doc[k] = a[k]; });
+    if (!a.acct) doc.createdAt = new Date().toISOString();   // 새 거래처 — 3년 안에 만든 곳은 비활성 정리에서 빠짐
+    if ($('sInact')) { const z = $('sInact').classList.contains('on'); if (z !== !!a.inactive) { doc.inactive = z; if (z) { doc.inactiveAt = new Date().toISOString(); doc.inactiveBy = S.user.email; doc.keepActive = false; } else doc.keepActive = true; } }
     busy(true);
     try { await S.DB.set('accounts', acct, doc); await bumpAccountsVer(); closeModal(); toast('저장'); pageStores(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
   };

@@ -28,16 +28,18 @@ function index(rows) {
 export function searchAccounts(rows, q, limit) {
   q = String(q || '').trim(); if (!q) return [];
   const words = q.split(/\s+/).map(nz).filter(Boolean), qn = nz(q);
-  const first = [], rest = [];
+  const first = [], rest = [], zz = [];   // zz = 💤 비활성 (맨 뒤)
   if (/^\d{1,4}$/.test(q)) { const a = rows.byCode[pad4(q)]; if (a) first.push(a); }
   for (const a of rows) {
     if (first.includes(a)) continue;
     if (!a._all) a._all = nz([a.store, a.city, a.state, a.addr, a.acct, a.tel, a.sm].filter(Boolean).join(' '));
     if (!words.every(w => a._all.includes(w))) continue;
-    (a._n.startsWith(qn) || a._n.startsWith(words[0]) ? first : rest).push(a);
+    (a.inactive ? zz : a._n.startsWith(qn) || a._n.startsWith(words[0]) ? first : rest).push(a);
   }
-  const all = first.concat(rest), out = all.slice(0, limit || 200);
+  const all = first.concat(rest, zz), out = all.slice(0, limit || 200);
   out.total = all.length;
   return out;
 }
-export function accountLabel(a) { return a ? a.store + (a.state ? ' (' + a.state + ')' : '') : ''; }
+export function accountLabel(a) { return a ? a.store + (a.state ? ' (' + a.state + ')' : '') + (a.inactive ? ' 💤' : '') : ''; }
+/** 💤 비활성 거래처 — 3년 동안 거래가 없어 목록에서 뺀 곳 (관리자 · 오피스가 정리, 다시 활성 가능) */
+export const activeOnly = rows => rows.filter(a => !a.inactive);
