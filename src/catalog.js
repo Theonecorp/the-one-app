@@ -162,6 +162,7 @@ export async function loadCatalog(S, force) {
 
 async function readSets(S) { try { const d = await S.DB.get('catalog', 'sets'); return d && d.j ? JSON.parse(d.j) : {}; } catch (e) { return {}; } }
 export const SET_GROUP = '🧩 세트 · 인서트';
+export const SET_L1 = '"🧩 SETS"', NO_L1 = '*NO LEVEL*';
 const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function index(pack) {
   const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
@@ -184,6 +185,9 @@ function index(pack) {
     if (st.old && st.old !== code) { it.old = st.old; if (oldIt) { oldIt.gone = true; if (oldIt.b && byBar[oldIt.b] === oldIt) byBar[oldIt.b] = it; } byCode[st.old] = it; byNorm[norm(st.old)] = it; }
   });
   for (let i = items.length - 1; i >= 0; i--) if (items[i].gone) items.splice(i, 1);
+  /* Level 1 이 빈 보이는 아이템도 주문 화면 분류에 나오게 — 세트(세트북에서 새로 생긴 코드)는 "🧩 SETS", 그 밖은 맨 뒤 "NO LEVEL"
+   *  (화면용 lv1 만 채움 — 저장된 l1 · 인보이스 종류는 그대로) */
+  items.forEach(x => { x.lv1 = x.l1 || (x.h ? '' : x.virt ? SET_L1 : NO_L1); });
   items.sort((a, b) => COLL.compare(a.c, b.c));   // 분류 안에서는 코드 순 (Collator — localeCompare 보다 20배 빠름)
   /* 카테고리 트리: 📌 위 고정 → ABC → 📌 아래 고정 (sortTree)
    *  tree  = Group → Level 1 → Level 2 → Level 3   (4단계)
@@ -201,7 +205,7 @@ function index(pack) {
   (pack.cats || []).forEach(p => { add(tree, p); add(tree1, p.slice(1)); add(treeA, p); });
   const count = (root, path, hid) => { let node = root; if (hid) node.nh++; else node.n++; path.forEach(name => { if (!name) return; node = node.map[name]; if (hid) node.nh++; else node.n++; }); };
   items.forEach(x => {
-    const P = [x.g, x.l1, x.l2, x.l3];
+    const P = [x.g, x.lv1, x.l2, x.l3];
     add(treeA, P); count(treeA, P, x.h);
     if (x.h) return;
     add(tree, P); count(tree, P); add(tree1, P.slice(1)); count(tree1, P.slice(1));
@@ -216,7 +220,7 @@ function index(pack) {
 /** 주문 화면이 어느 단계부터 보이나 — 'l1'(기본, SBMGo 처럼 ANKLET · EARRING …) 또는 'g'(Jewelry · Beauty … 부터) */
 export function catStart(S) { return S && S.settings && S.settings.catStart === 'g' ? 'g' : 'l1'; }
 export function treeFor(S) { return catStart(S) === 'g' ? CAT.tree : CAT.tree1; }
-export function levelsOf(x, start) { return start === 'g' ? [x.g, x.l1, x.l2, x.l3] : [x.l1, x.l2, x.l3]; }
+export function levelsOf(x, start) { const l1 = x.lv1 == null ? x.l1 : x.lv1; return start === 'g' ? [x.g, l1, x.l2, x.l3] : [l1, x.l2, x.l3]; }
 
 /** 코드 · 바코드가 정확히 맞는 것 (스캐너 입력) */
 export function exactItem(q) {
@@ -364,7 +368,9 @@ export function setLoc(rows, codes, loc) { const set = new Set(codes.map(c => St
 /** 숨김 · 보임 일괄 — codes 의 아이템을 on(true=숨김) 으로. 돌려주는 값: 바뀐 수 */
 export function setHidden(rows, codes, on) { const want = on ? 1 : 0, set = new Set(codes.map(c => String(c).toUpperCase())); let k = 0; rows.forEach(r => { if (set.has(r[0]) && (r[10] ? 1 : 0) !== want) { r[10] = want; k++; } }); return k; }
 /** 아이템 분류 일괄 바꾸기 — codes 를 to = [g, l1, l2, l3] 로 */
-export function setLevels(rows, cats, codes, to) { const set = new Set(codes.map(c => String(c).toUpperCase())); let k = 0; rows.forEach(r => { if (set.has(r[0])) { for (let i = 0; i < 4; i++) r[5 + i] = to[i] || ''; k++; } }); ensureCats(rows, cats); return k; }
+/** 세트북에서 생긴 세트(아이템 목록에 줄이 없음)에 분류를 주려면 목록에 줄을 만들어 둠 — 구성은 세트북 그대로 붙음 */
+function virtRow(code) { const it = CAT && CAT.byCode[code]; if (!it || !it.virt || it.c !== code) return null; return [code, it.kn || it.d || code, it.p || 0, it.s || 0, it.b || '', '', '', '', '', it.ph || '', 0, '']; }
+export function setLevels(rows, cats, codes, to) { const set = new Set(codes.map(c => String(c).toUpperCase())); const have = new Set(rows.map(r => r[0])); set.forEach(c => { if (!have.has(c)) { const r = virtRow(c); if (r) rows.push(r); } }); let k = 0; rows.forEach(r => { if (set.has(r[0])) { for (let i = 0; i < 4; i++) r[5 + i] = to[i] || ''; k++; } }); ensureCats(rows, cats); return k; }
 /** 지금 목록을 바꿔서 다시 올림 — fn(rows, cats, sets) 가 바꾸고 요약을 돌려줌 */
 export async function editCatalog(S, fn) {
   if (!CAT) await loadCatalog(S);
@@ -505,9 +511,11 @@ export function applyBulk(rows, cats, sets, patches) {
     let i = at[pt.code];
     if (i == null) {
       /* 없는 코드 — 디스크립션 · 가격이 다 있으면 새 아이템으로 추가 */
-      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0, pt.set.loc || '']; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; }
-      else sum.missing.push(pt.code);
-      return;
+      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0, pt.set.loc || '']; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; return; }
+      /* 세트북 세트 — Level 1 을 줄 때만 줄을 만듦 (빈 Level 1 = 숨김 뜻이라 그대로 두면 세트가 사라지지 않게) */
+      const vr = pt.set.l1 ? virtRow(pt.code) : null;
+      if (!vr) { if (!(CAT && CAT.byCode[pt.code] && CAT.byCode[pt.code].virt)) sum.missing.push(pt.code); return; }
+      rows.push(vr); i = at[pt.code] = rows.length - 1; sum.sets = (sum.sets || 0) + 1;
     }
     const r = rows[i];
     if (pt.del) { del[pt.code] = 1; sum.deleted++; return; }
@@ -528,7 +536,7 @@ export function applyBulk(rows, cats, sets, patches) {
 }
 /** 지금 아이템 전체를 CSV 로 (엑셀에서 고쳐서 다시 올리는 용) */
 /** 이전 시스템 편의 파일 모양으로 내려받기 — LEVEL_1_AND_2 (ITEM CODE · LEVEL 1 · LEVEL 2) / GROUP_NAME_CHANGE (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) */
-export function sbmLevelRows() { return [['ITEM CODE', 'LEVEL 1', 'LEVEL 2']].concat(CAT.items.filter(x => !x.virt).map(x => x.h ? [x.c, '', ''] : [x.c, x.l1 || '', x.l2 || ''])); }   // 숨김은 옛 시스템처럼 레벨을 비워서 내보냄
+export function sbmLevelRows() { return [['ITEM CODE', 'LEVEL 1', 'LEVEL 2']].concat(CAT.items.map(x => x.h ? [x.c, '', ''] : [x.c, x.l1 || '', x.l2 || ''])); }   // 숨김은 옛 시스템처럼 레벨을 비워서 내보냄
 export function sbmGroupRows() { return [['ITEM CODE', 'CURRENT GROUP NAME', 'NEW GROUP NAME']].concat(CAT.items.filter(x => !x.virt).map(x => [x.c, x.l3 || '', ''])); }
 export function catalogCsv() {
   const q = s => { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };

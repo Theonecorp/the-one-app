@@ -318,4 +318,5 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 .gp{display:inline-block;margin-top:2px;padding:2px 6px;border-radius:7px;background:#f1f5f9;font-size:12.5px;cursor:pointer}.gp s,.pedit s{color:#94a3b8;font-weight:400}.chgp{color:#b45309}.gt .gp b,.gt .gp s{display:inline;font-size:inherit}
 .pedit{border:1px solid var(--line);background:#f8fafc;border-radius:7px;padding:2px 7px;font-size:13px;font-weight:700;color:var(--ink)}
 #instBar{position:fixed;left:10px;right:10px;bottom:calc(var(--navh,64px) + 10px + env(safe-area-inset-bottom,0px));z-index:60;display:flex;align-items:center;gap:8px;background:var(--navy);color:#fff;border-radius:14px;padding:10px 10px 10px 14px;box-shadow:0 10px 24px rgba(15,23,42,.35);font-size:14px;font-weight:700}#instBar span{flex:1}#instBar button{border:0;border-radius:10px;padding:9px 14px;font-weight:800}#instGo{background:#22c55e;color:#fff}#instNo{background:rgba(255,255,255,.15);color:#fff}
+.lvdiff{max-height:46vh;overflow:auto;border:1px solid #e5e7eb;border-radius:10px;padding:0 8px;margin-top:8px}.lvdiff .pr{padding:6px 0}
 `;
