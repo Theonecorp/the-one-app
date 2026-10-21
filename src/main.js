@@ -21,7 +21,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.49';
+export const VER = 'v0.8.50';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -75,11 +75,13 @@ function shell() {
     '<header><button class="hb" id="hBack" title="뒤로">‹</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb hlang" id="hLang" translate="no" title="Language">🌐 ' + LANG.toUpperCase() + '</button><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
     '<div class="wrap" id="page"><div class="load">불러오는 중…</div></div>' +
     '<nav id="nav"></nav>' +
-    '<div id="busy"><div class="spin"></div></div>' +
+    '<div id="busy"><div class="spin"></div></div><div id="topbar"></div>' +
     '<div id="toast"></div>' +
     '<div id="modal"><div class="box" id="mbox"></div></div>' +
     '<div id="prt"><div id="prtbar"><button onclick="window.print()">🖨 인쇄 / PDF</button><button id="prtClose">닫기</button></div><div id="prtbody"></div></div>';
   $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+  /* ⏳ 서버에서 읽는 동안 화면 맨 위에 진행 막대 (0.15초 넘게 걸릴 때만) */
+  let tbT = 0; window.addEventListener('dbbusy', e => { const n = e.detail, tb = $('topbar'); if (!tb) return; clearTimeout(tbT); if (n > 0) tbT = setTimeout(() => tb.classList.add('on'), 150); else tb.classList.remove('on'); });
   $('prtClose').onclick = printClose;
   $('hMenu').onclick = userMenu;
   /* 🌐 언어 — 앱 위쪽 버튼으로 바로 (이 폰 · 컴퓨터에 저장, 로그인한 사람과 상관없이) */
@@ -189,9 +191,9 @@ async function afterLogin(user) {
   S.me = me; S.role = me.role || 'salesman';
   busy(true);
   try {
-    S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] });
-    S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
-    S.settings = (await S.DB.get('settings', 'app')) || {};
+    const [sms, st] = await Promise.all([S.DB.list('salesmen', { order: ['code', 'asc'] }), S.DB.get('settings', 'app')]);   // 동시에 읽기
+    S.sms = sms; S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
+    S.settings = st || {};
     setInvTypeMap(invTypes(S));
     S.accounts = await loadAccounts(S);
   } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
