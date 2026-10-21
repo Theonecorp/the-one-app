@@ -33,13 +33,17 @@ const path = require('path'), fs = require('fs');
   const pend = await pg.textContent('.pendbar'); log('pend:', pend.replace(/\s+/g, ' ').slice(0, 80));
   /* Daily Report 전송 */
   await pg.click('#btnSend'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(900); await shot('c3_report');
-  log('after send modal:', ((await pg.textContent('#modal')) || '').replace(/\s+/g, ' ').slice(0, 100));
-  await pg.click('#rpX'); await pg.waitForTimeout(600);
+  const modalOn = await pg.evaluate(() => document.getElementById('modal').classList.contains('on')); log('modal after send (want false):', modalOn); if (modalOn) errs.push('email modal still shown');
   const sentPills = await pg.$$eval('.pill.sent', e => e.length); log('sent pills:', sentPills); if (!sentPills) errs.push('no sent pill');
   /* 3. 기록 */
   await pg.click('[data-ct="hist"]'); await pg.waitForSelector('#hQ'); await pg.fill('#hQ', '1111'); await pg.click('#hGo'); await pg.waitForSelector('.hent'); await shot('c4_hist');
   log('hist:', (await pg.textContent('#hSum')).replace(/\s+/g, ' ').slice(0, 120), '| rows', await pg.$$eval('.hent', e => e.length));
   await pg.fill('#hQ', 'ali'); await pg.click('#hGo'); await pg.waitForTimeout(400); log('hist ali:', (await pg.textContent('#hSum')).replace(/\s+/g, ' ').slice(0, 90));
+  /* 📧 보낸 Daily Report — 실패한 메일 다시 보내기 */
+  await pg.evaluate(() => { const M = window.__MOCK_STORE__.reports; Object.values(M).forEach(r => { r.mail = 'error'; r.mailErr = 'TEST quota'; }); });
+  await pg.click('#rpBox summary'); await pg.waitForSelector('[data-rsend]'); log('reports:', (await pg.textContent('#rpList')).replace(/\s+/g, ' ').slice(0, 140)); await shot('c4b_reports');
+  await pg.click('[data-rsend]'); await pg.waitForTimeout(700);
+  const mails = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.reports).map(r => r.mail)); log('mail after resend:', mails); if (!mails.includes('wait')) errs.push('resend did not set wait');
   await pg.click('#pPrev'); await pg.waitForTimeout(500); log('period report:', !!(await pg.$('#prt')), ((await pg.textContent('#prtbody')) || '').replace(/\s+/g, ' ').slice(0, 100)); if (await pg.$('#prtX')) await pg.click('#prtX'); else await pg.evaluate(() => { const p = document.getElementById('prt'); if (p) p.remove(); });
   /* 4. 미수금 */
   await pg.click('[data-ct="ar"]'); await pg.waitForSelector('.arbk'); await shot('c5_ar');
