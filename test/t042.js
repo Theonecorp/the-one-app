@@ -33,13 +33,13 @@ const path = require('path'), fs = require('fs');
   const mid = tiles.slice(2, -1); if (mid.join() !== mid.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).join()) errs.push('not ABC: ' + mid.join('|'));
   /* ✨ 자주 나가는: 이 가게(3001) 가 최근 산 AHG100 · AHG101 먼저, 그 다음 GM104 EB103 */
   await pg.click('[data-pop]'); await pg.waitForTimeout(300); await shot('h1_pop');
-  const pop = await pg.$$eval('#eRes .gcard b, #eRes .irow .ct > b', els => els.map(e => e.textContent.trim().split(' ')[0]));
+  const pop = await pg.$$eval('#eRes .gcard .gt > b, #eRes .irow .ct > b', els => els.map(e => e.textContent.trim().split(' ')[0]));
   log('pop:', pop.slice(0, 6).join(' '), '|', (await pg.textContent('#eRes .muted')).trim());
   if (pop[0] !== 'AHG100' || pop[1] !== 'AHG101' || pop[2] !== 'GM104') errs.push('pop order wrong: ' + pop.slice(0, 4).join(','));
   await pg.click('[data-pop]'); await pg.waitForTimeout(200);
   /* 분류 안은 코드 순 */
   await pg.click('[data-ck="Wax"]'); await pg.waitForTimeout(300);
-  const codes = await pg.$$eval('#eRes .gcard b, #eRes .irow .ct > b', els => els.map(e => e.textContent.trim().split(' ')[0]).slice(0, 5));
+  const codes = await pg.$$eval('#eRes .gcard .gt > b, #eRes .irow .ct > b', els => els.map(e => e.textContent.trim().split(' ')[0]).slice(0, 5));
   log('Wax codes:', codes.join(' '));
   if (codes.join() !== codes.slice().sort((a, b) => a.localeCompare(b, 'en', { numeric: true })).join()) errs.push('codes not sorted');
   /* 2. 관리 → 분류 📌 */

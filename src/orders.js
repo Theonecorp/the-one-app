@@ -451,12 +451,16 @@ function totals() { const by = splitByType(O.lines, O.disc, 'q'); let qty = 0, a
 function paintEditor() {
   const t = totals();
   const acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
-  let h = '<div class="card">' + (O.id ? '<div class="alert a-amb" style="margin:0 0 10px">✏️ ' + esc(O.no) + ' 수정 중 ' + stTag(O.st) + '</div>' : '') + '<h2>' + bi('가게', 'Store') + '</h2>';
-  if (O.store) h += '<div class="pick on"><div class="pm"><b>' + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : (O.acct || '계정 없음')) + '</small>' + (acc && acc.note ? '<small>📝 ' + esc(acc.note) + '</small>' : '') + '<small id="eStoreBal"></small><div id="eStoreNotes"></div></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI">📋 미수금 · 기록</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">바꾸기</button></div>';
-  else h += '<input id="eStoreQ" placeholder="가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div>';
-  if (isStaff()) h += '<div class="fg" style="margin-top:8px"><label>세일즈맨 <span class="en">Salesman</span></label>' + sel('eSm', [['', '— 선택 — select —']].concat(S.sms.map(s => [s.code, s.code])), O.sm) + '</div>';
-  h += '</div>';
-  h += '<div class="seg big"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + (O.memo ? ' <span class="cnt">1</span>' : '') + '</button></div>';
+  /* 위 고정 (SBMGo 처럼) — 가게 한 줄 · 주문 / 주문 확인 / 메모 · (담기 화면이면) 검색 + 분류 경로. 아래 내용만 움직임 */
+  let h = '<div class="ehead" id="eHead"><div class="etop"><div class="erow">';
+  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.city, acc.state].filter(Boolean).join(', ') : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="미수금 · 기록">📋</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + bi('바꾸기', 'Change') + '</button></div>';
+  else h += '<div style="flex:1;min-width:0;position:relative"><input id="eStoreQ" placeholder="🏬 가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div></div>';
+  h += '</div><div class="etabs"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + (O.memo ? ' •' : '') + '</button></div></div><div id="eTop"></div></div>';
+  /* 고정 칸 밖: 수정 중 표시 · 메모 · 고정 노트 · (담당자) 세일즈맨 */
+  if (O.id) h += '<div class="alert a-amb" style="margin:0 0 8px">✏️ ' + esc(O.no) + ' 수정 중 ' + stTag(O.st) + '</div>';
+  if (acc && acc.note) h += '<div class="alert a-blu" style="margin:0 0 8px">📝 ' + esc(acc.note) + '</div>';
+  h += '<div id="eStoreNotes"></div>';
+  if (isStaff()) h += '<div class="fg" style="margin:0 0 8px"><label>세일즈맨 <span class="en">Salesman</span></label>' + sel('eSm', [['', '— 선택 — select —']].concat(S.sms.map(s => [s.code, s.code])), O.sm) + '</div>';
   h += '<div id="eBody"></div>';
   const isSentEdit = O.st && O.st !== 'draft';
   /* 아래 고정 바: 가게 이름 · 지금까지 금액(크게) · 종류별(A/P/W) 소계 · 저장
@@ -467,6 +471,7 @@ function paintEditor() {
     (!isSentEdit ? '<button class="b-ghost" id="eClose" style="flex:0 0 96px">' + bi('닫기', 'Close') + '</button><button class="b-green" id="eDraft" style="flex:1 1 auto;min-width:0">💾 ' + bi('저장', 'Save') + '</button>' :
       '<button class="b-ghost" id="eQuit">' + bi('닫기', 'Close') + '</button><button class="b-green" id="eSave">💾 ' + bi('저장', 'Save') + '</button>') + '</div></div>';
   $('page').innerHTML = h;
+  eHeadH();
   if ($('eStoreX')) $('eStoreX').onclick = async () => { if (O.lines.length && !(await confirmBox('가게를 바꿀까요? 담은 아이템 ' + O.lines.length + '줄은 그대로 두고 가게만 바뀝니다 (할인은 새 가게 기본으로). / Change store?', '바꾸기'))) return; O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
   if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct);
   if (O.acct) { loadInfo(O.acct); Notes.fillPinned('eStoreNotes', O.acct); }
@@ -503,8 +508,11 @@ function paintEditor() {
   if ($('eClose')) $('eClose').onclick = async () => { if (!(await confirmBox('저장하지 않고 닫을까요? 작성 중인 내용은 폰에 남아 있어 주문 목록에서 이어서 할 수 있습니다. / Close without saving?', '닫기 Close'))) return; saveWip(); Router.go('order'); };
   if ($('eSave')) $('eSave').onclick = () => saveOrder(O.st);
   if ($('eQuit')) $('eQuit').onclick = async () => { if (await confirmBox('저장하지 않고 닫을까요?', '닫기')) { const id = O.id; O = null; clearWip(); if (id) goOrder(id); else Router.go('order'); } };
-  if (O.view === 'add') paintAdd(); else if (O.view === 'memo') paintMemo(); else paintCart();
+  if (O.view === 'add') paintAdd(); else { if ($('eTop')) $('eTop').innerHTML = ''; eHeadH(); if (O.view === 'memo') paintMemo(); else paintCart(); }
 }
+/** 위 고정 칸의 높이 — 검색 결과 위 여백 등에 CSS 변수로 */
+function eHeadH() { const e = $('eHead'); if (e) document.documentElement.style.setProperty('--eh', e.offsetHeight + 'px'); }
+if (typeof window !== 'undefined') window.addEventListener('resize', () => setTimeout(eHeadH, 60));
 /* 📝 메모 탭 — 배송 · 특이사항 · 할인 요청 + 주문 요약 */
 function paintMemo() {
   const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
@@ -581,9 +589,10 @@ function paintAdd() {
   const popTile = popN ? '<button class="pop' + (O.pop ? ' on' : '') + '" data-pop="1"><b>✨ 자주 나가는 <span class="en">Popular</span></b><span>' + (INFO && Object.keys(INFO.hist).length ? '이 가게 최근 구매 + 많이 나가는 순 · recent + best sellers' : '많이 나가는 순 · best sellers') + ' · ' + popN + '</span></button>' : '';
   const kids = node.kids.length || popTile ? '<div class="cats">' + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
   /* 검색 + 분류 경로는 카드 밖 sticky — 아래로 아무리 내려가도 맨 위에 붙어 있어 바로 상위로 돌아감 */
-  $('eBody').innerHTML = '<div class="ordtop"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
-    '<button class="b-ghost ib" id="eVM" title="보기 바꾸기">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost ib" id="eShow" title="손님 보기">🖼</button></div>' + crumbs + '</div>' +
-    '<div class="card">' + kids + '<div id="eRes"></div></div>';
+  $('eTop').innerHTML = '<div class="ordtop"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
+    '<button class="b-ghost ib" id="eVM" title="보기 바꾸기">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost ib" id="eShow" title="손님 보기">🖼</button></div>' + crumbs + '</div>';
+  $('eBody').innerHTML = '<div class="card ecard">' + kids + '<div id="eRes"></div></div>';
+  eHeadH();
   const sb = $('eQuick'); if (sb) { sb.innerHTML = quickBar(); bindQuick(sb); }
   const q = $('eQ1');
   const run = () => { if (!O || !$('eQ1')) return; O.q = q.value; PAGE = 60; paintResults(); };
@@ -610,7 +619,7 @@ function itemRow(it) {
   return '<div class="pr irow' + (cur ? ' v' : '') + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
     (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
     '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') + '</b><small class="desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</small>' + (it.k ? '<small>' + esc(kitLine(it)) + '</small>' : '') +
-    '<small><b>' + money(it.p) + '</b>' + (dc ? ' → 할인가 ' + money(it.p * (1 - dc / 100)) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · 지난번 ' + money(lp) : '') + (it.s ? ' · SRP ' + money(it.s) : '') + '</small>' +
+    '<small><button class="pedit" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</button>' + (dc ? ' → 할인가 ' + money(it.p * (1 - dc / 100)) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · 지난번 ' + money(lp) : '') + (it.s ? ' · SRP ' + money(it.s) : '') + '</small>' +
     (hist ? '<small class="hist">🕘 ' + esc(hist) + '</small>' : '') + '</div>' +
     qtyBox(it.c, cur) + '</div>';
 }
@@ -627,11 +636,14 @@ function itemCard(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const name = it.k ? (it.kn || it.d) : it.d;
   return '<div class="gcard' + (cur ? ' on' : '') + (it.k ? ' kit' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
-    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span>' + esc(it.c.substring(0, 6)) + '</span>\'">' : it.k ? kitMosaic(it) : '<span>' + esc(it.c.substring(0, 6)) + '</span>') + '</div>' +
+    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'">' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + '</div>' +
     (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') +
     '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
-    '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span>' + money(it.p) + '</span></div></div>';
+    '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</span></div></div>';
 }
+/** 담은 줄의 가격 (바꿨으면 그 가격 · 목록가 줄긋기) — ✎ 누르면 가격 · 수량 */
+function priceTxt(it) { const l = IDX[it.c], p = l ? l.p : it.p, chg = l && Math.abs(l.p - it.p) > 0.0001; return (chg ? '<s>' + money(it.p) + '</s> ' : '') + '<b' + (chg ? ' class="chgp"' : '') + '>' + money(p) + '</b> ✎'; }
+function refreshRowPrice(c) { const it = catalog().byCode[c]; if (!it) return; document.querySelectorAll('[data-pe="' + CSS.escape(c) + '"]').forEach(el => { el.innerHTML = priceTxt(it); }); }
 const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data-d="-1">−</button><input type="number" inputmode="numeric" min="0" data-qi="' + esc(c) + '" value="' + (v || '') + '" placeholder="0"><button data-dq="' + esc(c) + '" data-d="1">＋</button></div>';
 function paintResults() {
   if (!O || !$('eRes')) return;
@@ -659,6 +671,7 @@ function paintResults() {
   root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = setQty(c, tapQty(c)); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
   root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
   root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); });
+  root.querySelectorAll('[data-pe]').forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); qtyPad(b.dataset.pe, true); });
   root.querySelectorAll('[data-gq]').forEach(b => b.onclick = e => { if (!b.textContent) return; e.stopPropagation(); qtyPad(b.dataset.gq); });
   root.querySelectorAll('[data-gc]').forEach(el => {
     let t = null, long = false;
@@ -678,19 +691,22 @@ function refreshCard(c) {
   if (!n && m) m.remove();
 }
 /** 수량 직접 입력 */
-function qtyPad(c) {
+function qtyPad(c, focusPrice) {
   const it = catalog().byCode[c]; if (!it) return;
   const cur = IDX[c] ? IDX[c].q : 0;
   openModal('<h2>' + esc(it.c) + '</h2><div class="muted">' + esc(it.d) + ' · ' + money(it.p) + '</div>' +
     '<div class="qty" style="justify-content:center;margin:14px 0"><button id="qpM" style="width:56px;height:56px">−</button><input id="qpV" type="number" inputmode="numeric" min="0" value="' + cur + '" style="width:110px;font-size:26px"><button id="qpP" style="width:56px;height:56px">＋</button></div>' +
     '<div class="chips" style="justify-content:center">' + [1, 2, 3, 6, 12, 24].map(n => '<button data-qp="' + n + '" style="min-width:48px;font-size:15px">' + n + '</button>').join('') + '</div><div class="muted" style="text-align:center">그 밖의 수량은 위 칸에 직접 입력 · or type a quantity</div>' +
+    '<div class="fg" style="margin-top:10px"><label>💲 ' + bi('가격', 'Price') + ' <span class="muted">(' + bt('목록', 'list') + ' ' + money(it.p) + (INFO && Store.lastPrice(INFO, c) != null ? ' · ' + bt('지난번', 'last') + ' ' + money(Store.lastPrice(INFO, c)) : '') + ')</span></label><div style="display:flex;gap:6px"><input id="qpPr" type="number" step="0.01" inputmode="decimal" value="' + (IDX[c] ? IDX[c].p : it.p) + '" style="font-size:20px;font-weight:800"><button class="b-ghost b-sm" id="qpPrR" style="flex:0 0 auto;width:auto">' + bt('목록가로', 'Reset') + '</button></div></div>' +
     '<div class="btns"><button class="b-ghost" id="qpX">닫기</button><button class="b-blue" id="qpOk">확인</button></div>');
-  const v = $('qpV'); setTimeout(() => { v.focus(); v.select(); }, 50);
+  const v = $('qpV'), pr = $('qpPr'); setTimeout(() => { const f = focusPrice ? pr : v; f.focus(); f.select(); }, 50);
+  $('qpPrR').onclick = () => { pr.value = it.p; };
   $('qpM').onclick = () => { v.value = Math.max(0, (Number(v.value) || 0) - 1); };
   $('qpP').onclick = () => { v.value = (Number(v.value) || 0) + 1; };
   document.querySelectorAll('[data-qp]').forEach(b => b.onclick = () => { v.value = b.dataset.qp; });
-  const ok = () => { setQty(c, v.value); closeModal(); if (O.view === 'add') refreshCard(c); else paintCart(); };
-  $('qpOk').onclick = ok; v.onkeydown = e => { if (e.key === 'Enter') ok(); };
+  /* 가격만 고치러 왔는데 아직 안 담은 아이템이면 1개(프리셋)로 담고 가격 적용 */
+  const ok = () => { let q = Math.max(0, Math.floor(Number(v.value) || 0)); const np = R2(pr.value); const pchg = pr.value !== '' && Math.abs(np - (IDX[c] ? IDX[c].p : it.p)) > 0.0001; if (!q && pchg) q = tapQty(c) || 1; setQty(c, q); if (IDX[c] && pr.value !== '') { IDX[c].p = np; saveWip(); refreshTotals(); } closeModal(); if (O.view === 'add') { refreshCard(c); refreshRowPrice(c); } else paintCart(); };
+  $('qpOk').onclick = ok; v.onkeydown = e => { if (e.key === 'Enter') ok(); }; pr.onkeydown = e => { if (e.key === 'Enter') ok(); };
   $('qpX').onclick = closeModal;
 }
 /** 세트 구성 보기 — 세트로 담기 / 풀어서 담기 */
