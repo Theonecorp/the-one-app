@@ -120,6 +120,7 @@ async function settings() {
     '<div class="two">' + uf('upFA1', '주소', F.addr1) + uf('upFA2', '주소 2 (Unit 등)', F.addr2) + '</div>' +
     '<div class="two">' + uf('upFCity', 'City', F.city) + '<div class="two">' + uf('upFSt', 'State', F.state) + uf('upFZip', 'ZIP', F.zip) + '</div></div>' +
     '<div class="two">' + uf('upFPh', '전화', F.phone) + '<div class="two"><div class="fg"><label>기본 서비스</label>' + sel('upSvcD', [['03', 'UPS Ground'], ['12', '3 Day Select'], ['02', '2nd Day Air'], ['01', 'Next Day Air']], U.svc) + '</div>' + uf('upDefW', '기본 박스 무게 lb', U.defW) + '</div></div>' +
+    '<div class="two">' + uf('upAcct', 'UPS 계정 번호 (픽업 요약 인쇄용, 6자리)', U.acct) + uf('upPickT', '매일 UPS 픽업 시간 (예: 4:30 PM)', U.pickT) + '</div>' +
     '<div class="btns"><button class="b-blue" id="upSave">저장</button></div>';
   upsCard.insertAdjacentHTML('beforeend', '<div id="qvBox" style="margin-top:10px"></div>');
   $('adminBody').appendChild(upsCard);
@@ -133,7 +134,7 @@ async function settings() {
         const o = await S.DB.get('orders', oid); const have = String(o.track || '').split(/\s+/).filter(Boolean), trks = String(l.trk).split(/\s+/).filter(t => !have.includes(t)); const patch = { track: have.concat(trks).join(' '), shipVia: 'UPS', updatedAt: new Date().toISOString() }; if (o.st === 'done') { patch.st = 'shipped'; patch.shipAt = new Date().toISOString(); patch.shipBy = S.user.email; } if (l.delivered) patch.deliveredAt = l.delivered;
         await S.DB.update('orders', oid, patch); for (const t of String(l.trk).split(/\s+/)) await S.DB.update('upsLog', t, { orderId: oid }); toast('연결 — ' + (o.store || oid), 'good'); settings(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
   })();
-  $('upSave').onclick = async () => { const v = id => $(id).value.trim(); const ups = { svc: $('upSvcD').value, defW: Math.max(1, num(v('upDefW')) || 5), from: { name: v('upFName').toUpperCase(), attn: v('upFAttn').toUpperCase(), addr1: v('upFA1').toUpperCase(), addr2: v('upFA2').toUpperCase(), city: v('upFCity').toUpperCase(), state: v('upFSt').toUpperCase(), zip: v('upFZip'), phone: v('upFPh') } };
+  $('upSave').onclick = async () => { const v = id => $(id).value.trim(); const ups = { svc: $('upSvcD').value, defW: Math.max(1, num(v('upDefW')) || 5), acct: v('upAcct').toUpperCase(), pickT: v('upPickT'), from: { name: v('upFName').toUpperCase(), attn: v('upFAttn').toUpperCase(), addr1: v('upFA1').toUpperCase(), addr2: v('upFA2').toUpperCase(), city: v('upFCity').toUpperCase(), state: v('upFSt').toUpperCase(), zip: v('upFZip'), phone: v('upFPh') } };
     busy(true); try { const cur = (await S.DB.get('settings', 'app')) || {}; cur.ups = ups; await S.DB.set('settings', 'app', cur); S.settings.ups = ups; toast('🚚 UPS 설정 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   /* 📧 Daily Report 메일 상태 — apps-script/Code.gs 가 1분마다 mail:'wait' 을 보내고 'sent' / 'error' 로 바꿈 */
   const mailCard = document.createElement('div'); mailCard.className = 'card'; mailCard.innerHTML = '<h2>📧 Daily Report 메일</h2><div class="load">읽는 중…</div>'; $('adminBody').appendChild(mailCard);

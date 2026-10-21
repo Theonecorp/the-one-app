@@ -17,8 +17,8 @@ export function register(state) {
   Router.upHas.cat = () => !!(CP.path.length || CP.q);
 }
 const loadScript = (src, test) => test() ? Promise.resolve() : new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('불러오지 못했습니다 (인터넷 확인)')); document.head.appendChild(s); });
-const loadJsBarcode = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js', () => !!window.JsBarcode);
-const loadScanner = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js', () => !!window.Html5Qrcode);
+export const loadJsBarcode = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js', () => !!window.JsBarcode);
+export const loadScanner = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js', () => !!window.Html5Qrcode);
 const loadXlsx = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', () => !!window.XLSX);
 
 async function page(arg) {

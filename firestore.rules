@@ -95,6 +95,7 @@ service cloud.firestore {
       allow create: if registered() && request.resource.data.st == 'trk' && request.resource.data.by == email();   // 세일즈맨: 배송 조회만
       allow read: if registered() && resource.data.by == email();
     }
+    match /pickups/{id} { allow read, write: if isStaff(); }                                                                         // 📮 UPS 트럭 인계 기록
     match /shipments/{id} {                                                                                                          // 📦 박스별 배송 기록 — 세일즈맨은 자기 가게 것
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
       allow write: if isStaff();

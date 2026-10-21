@@ -27,11 +27,14 @@ export function register(state) {
   Router.upHas.order = () => isStaff() && !!LF.list;
   /* 인터넷이 다시 되면 · 앱을 다시 열면 보낼 함을 비움 */
   window.addEventListener('online', () => syncOutbox(true));
+  /* 다른 화면에서 주문 목록의 칸 하나를 바로 열기 (예: 📮 UPS 픽업) */
+  window.addEventListener('theone:list', e => { LF.st = e.detail; LF.list = true; pageOrder(''); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncOutbox(true); });
 }
 
-/* 주문 상태 흐름: draft(저장됨) → sent(접수) → pick(픽킹 중 · picker 할당) → picked(픽킹 완료 · 사무실 확인 대기) → done(인보이스 발행 · 포장 대기) → shipped(출고 완료) · x(취소) */
-export const ST = { draft: ['임시 저장', 'Draft', 't-g'], sent: ['주문 접수', 'Received', 't-b'], ok: ['출고 작업', 'In Fulfillment', 't-c'], pick: ['출고 작업', 'In Fulfillment', 't-c'], picked: ['검수 대기', 'Ready for Review', 't-a'], done: ['인보이스 발행', 'Invoiced', 't-k'], shipped: ['출고 완료', 'Shipped', 't-g'], x: ['취소', 'Cancelled', 't-r'], local: ['전송 대기', 'Pending Upload', 't-r'] };
+/* 주문 상태 흐름: draft(저장됨) → sent(접수 — 화면에선 📥 신규 · ❓ 확인 대기(cfReq) · 👍 확인 완료(cfOk) 로 나눔) → … → done(인보이스 · 포장 대기) → packed(UPS 라벨 부착 · 픽업 대기) → shipped(UPS 트럭에 인계)
+ * 예전 설명: draft(저장됨) → sent(접수) → pick(픽킹 중 · picker 할당) → picked(픽킹 완료 · 사무실 확인 대기) → done(인보이스 발행 · 포장 대기) → shipped(출고 완료) · x(취소) */
+export const ST = { draft: ['임시 저장', 'Draft', 't-g'], sent: ['주문 접수', 'Received', 't-b'], ok: ['출고 작업', 'In Fulfillment', 't-c'], pick: ['출고 작업', 'In Fulfillment', 't-c'], picked: ['검수 대기', 'Ready for Review', 't-a'], done: ['인보이스 발행', 'Invoiced', 't-k'], packed: ['픽업 대기', 'Awaiting Pickup', 't-c'], shipped: ['출고 완료', 'Shipped', 't-g'], x: ['취소', 'Cancelled', 't-r'], local: ['전송 대기', 'Pending Upload', 't-r'] };
 export const stName = st => { const x = ST[st] || ST.draft; return x[0] + ' · ' + x[1]; };
 export const stTag = st => { const x = ST[st] || ST.draft; return '<span class="tag ' + x[2] + '" title="' + x[1] + '">' + x[0] + '</span>'; };
 const isStaff = () => S.role !== 'salesman';
@@ -100,6 +103,9 @@ async function pageHome() {
  *  목록
  * ============================================================ */
 let LF = { st: 'sent', sm: '' };
+/* 접수(sent) 를 세 칸으로 — 📥 신규(확인 요청 전) · ❓ 확인 대기(세일즈맨 답 기다림) · 👍 확인 완료(배정 대기) */
+const NEWK = { sent: 1, cfw: 1, cfok: 1 };
+const subOf = o => o.cfOk ? 'cfok' : o.cfReq ? 'cfw' : 'sent';
 let PK = [];   // 👷 빠른 할당용 픽킹 직원 목록 (나 먼저) · LF.qp = 고른 직원 email
 /** 다른 화면(관리자 현황)에서 주문 목록을 바로 열기 — st: sent · pick · picked · done · shipped · bo · inv · all, 기간은 선택 */
 export function openList(st, from, to) { LF.init = true; LF.list = true; LF.st = st; if (from) { LF.hp = 'custom'; LF.hfrom = from; LF.hto = to; LF.ip = 'custom'; LF.ifrom = from; LF.ito = to; LF.im = 'date'; } if (location.hash === '#/order') pageOrder(''); else Router.go('order'); }
@@ -110,14 +116,14 @@ async function pageOrder(arg) {
   if (arg) return openOrder(arg);
   if (!isStaff() && !mySm()) { $('page').innerHTML = '<div class="card"><div class="none">이 계정에 세일즈맨 코드가 연결돼 있지 않습니다.</div></div>'; return; }
   O = null; Router.refreshBack();
-  if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(), first = { invoice: 'picked', acct: 'inv', pick: 'mine', whmgr: 'sent', pickinv: 'sent' }[j]; if (first) LF.st = first; }
+  if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(), first = { invoice: 'picked', acct: 'inv', pick: 'mine', whmgr: 'cfok', pickinv: 'cfok' }[j]; if (first) LF.st = first; }
   if (isStaff() && !LF.list) return staffHome();
   if (isStaff() && !chipsFor().some(c => c[0] === LF.st)) LF.st = chipsFor()[0][0];
-  if (isStaff() && (LF.st === 'bo' || LF.st === 'inv' || LF.st === 'ups')) return Fulfill.pageLists(LF, listHead());
+  if (isStaff() && (LF.st === 'bo' || LF.st === 'inv' || LF.st === 'ups' || LF.st === 'packed')) return Fulfill.pageLists(LF, listHead());
   $('page').innerHTML = listHead() + '<div class="load">주문 읽는 중…</div>';
   bindHead();
   syncOutbox(true);
-  if (isStaff() && LF.st === 'sent' && can('assign')) { try { const me = S.user.email, L = await Fulfill.pickers(); PK = [{ email: me, name: (S.user.name || me.split('@')[0]), me: true, pick: true }].concat(L.filter(p => p.email !== me)); } catch (e) { PK = []; } if (!LF.qp || !PK.some(p => p.email === LF.qp)) LF.qp = S.user.email; }
+  if (isStaff() && (LF.st === 'sent' || LF.st === 'cfok') && can('assign')) { try { const me = S.user.email, L = await Fulfill.pickers(); PK = [{ email: me, name: (S.user.name || me.split('@')[0]), me: true, pick: true }].concat(L.filter(p => p.email !== me)); } catch (e) { PK = []; } if (!LF.qp || !PK.some(p => p.email === LF.qp)) LF.qp = S.user.email; }
   let rows = [], err = '';
   try {
     if (isStaff()) {
@@ -131,8 +137,8 @@ async function pageOrder(arg) {
         const [from, to] = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto);
         rows = (await S.DB.list('orders', { where: [['d', '>=', addDays(from, -30)], ['d', '<=', to]] })).filter(o => o.st === 'shipped' && o.shipAt && localDay(o.shipAt) >= from && localDay(o.shipAt) <= to);
       } else if (LF.st === 'mine') rows = (await S.DB.list('orders', { where: [['st', 'in', ['pick', 'ok']]] })).filter(o => o.picker === S.user.email);
-      else rows = await S.DB.list('orders', { where: [['st', 'in', LF.st === 'pick' ? ['pick', 'ok'] : [LF.st]]] });
-      if (LF.st !== 'all' && LF.st !== 'mine' && LF.st !== 'shipped') rows = rows.filter(o => LF.st === 'pick' ? (o.st === 'pick' || o.st === 'ok') : o.st === LF.st);
+      else rows = await S.DB.list('orders', { where: [['st', 'in', LF.st === 'pick' ? ['pick', 'ok'] : NEWK[LF.st] ? ['sent'] : [LF.st]]] });
+      if (LF.st !== 'all' && LF.st !== 'mine' && LF.st !== 'shipped') rows = rows.filter(o => LF.st === 'pick' ? (o.st === 'pick' || o.st === 'ok') : NEWK[LF.st] ? (o.st === 'sent' && subOf(o) === LF.st) : o.st === LF.st);
       if (LF.sm) rows = rows.filter(o => o.sm === LF.sm);
     } else rows = await S.DB.list('orders', { where: [['sm', '==', mySm()], ['ym', 'in', recentYms(2)]] });
   } catch (e) { err = String(e.code || e.message); }
@@ -156,10 +162,10 @@ async function pageOrder(arg) {
     '<button class="b-green" id="oSendAll" style="margin-top:10px;padding:15px">📤 체크한 주문 회사로 보내기</button></div>';
   const tot = rows.reduce((a, o) => a + (o.amt || 0), 0);
   const chip = CHIPS.find(c => c[0] === LF.st);
-  const bulk = isStaff() && (LF.st === 'sent' || LF.st === 'pick' || LF.st === 'mine') && rows.length;
+  const bulk = isStaff() && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine') && rows.length;
   if (bulk) h += '<div class="card" style="padding:10px 14px"><div class="chips" style="margin:0"><button class="' + (LF.grp !== 'day' ? 'on' : '') + '" data-grp="sm">👤 ' + bi('세일즈맨별', 'By salesman') + '</button><button class="' + (LF.grp === 'day' ? 'on' : '') + '" data-grp="day">📅 ' + bi('날짜별', 'By day') + '</button><button data-ckall="1">☑ ' + bi('모두 선택', 'Select all') + '</button><button data-ckall="0">☐ ' + bi('선택 해제', 'Clear') + '</button></div>' +
-    (LF.st === 'sent' && PK.length ? '<div class="qasg"><span>👷 ' + bi('빠른 할당', 'Quick assign') + '</span><div class="chips" style="margin:0">' + PK.map(p => '<button class="' + (LF.qp === p.email ? 'on' : '') + '" data-qp="' + esc(p.email) + '">' + (p.me ? '🙋 ' : p.pick ? '👷 ' : '🧑‍💼 ') + esc(p.name) + (p.me ? ' (나)' : '') + '</button>').join('') + '</div><div class="muted" style="font-size:12px">' + bi('직원을 고른 뒤 주문 줄의 <b>👷 할당</b> 을 누르면 바로 그 직원 픽킹으로 넘어갑니다 (확인창 없음). 여러 건은 체크 → 픽킹 할당(인쇄 선택)', 'Pick a person, then tap 👷 on an order to assign it instantly. For many: check → Assign picking') + '</div></div>' : '') +
-    '<div id="bulkBar" class="muted" style="margin-top:6px">' + bi('주문을 체크한 뒤 → 작업 배정 또는 세일즈맨 확인 요청', 'Check orders, then assign picking or ask the salesman to confirm') + '</div><div class="btns" style="margin-top:6px;flex-wrap:wrap">' + (can('assign') ? '<button class="b-blue b-sm" id="bkAssign">👷 ' + bi('작업 배정', 'Assign Picker') + '</button>' : '') + (LF.st === 'sent' ? '<button class="b-ghost b-sm" id="bkCf">❓ ' + bi('세일즈맨 확인 요청', 'Ask salesman to confirm') + '</button>' : '') + '</div></div>';
+    ((LF.st === 'sent' || LF.st === 'cfok') && PK.length ? '<div class="qasg"><span>👷 ' + bi('빠른 할당', 'Quick assign') + '</span><div class="chips" style="margin:0">' + PK.map(p => '<button class="' + (LF.qp === p.email ? 'on' : '') + '" data-qp="' + esc(p.email) + '">' + (p.me ? '🙋 ' : p.pick ? '👷 ' : '🧑‍💼 ') + esc(p.name) + (p.me ? ' (나)' : '') + '</button>').join('') + '</div><div class="muted" style="font-size:12px">' + bi('직원을 고른 뒤 주문 줄의 <b>👷 할당</b> 을 누르면 바로 그 직원 픽킹으로 넘어갑니다 (확인창 없음). 여러 건은 체크 → 픽킹 할당(인쇄 선택)', 'Pick a person, then tap 👷 on an order to assign it instantly. For many: check → Assign picking') + '</div></div>' : '') +
+    '<div id="bulkBar" class="muted" style="margin-top:6px">' + bi('주문을 체크한 뒤 → 작업 배정 또는 세일즈맨 확인 요청', 'Check orders, then assign picking or ask the salesman to confirm') + '</div><div class="btns" style="margin-top:6px;flex-wrap:wrap">' + (can('assign') ? '<button class="b-blue b-sm" id="bkAssign">👷 ' + bi('작업 배정', 'Assign Picker') + '</button>' : '') + (LF.st === 'sent' || LF.st === 'cfw' ? '<button class="b-ghost b-sm" id="bkCf">❓ ' + bi(LF.st === 'cfw' ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman to confirm') + '</button><button class="b-ghost b-sm" id="bkCfOk">👍 ' + bi('확인 완료로 (전화 등)', 'Mark confirmed') + '</button>' : '') + '</div></div>';
   h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' + (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문가 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead(); fillStrip();
@@ -177,6 +183,7 @@ async function pageOrder(arg) {
   });
   if ($('bkAssign')) $('bkAssign').onclick = () => { const ids = picked(); if (!ids.length) return toast('주문를 체크하세요', 'bad'); Fulfill.assignPicker(rows.filter(o => ids.includes(o.id)), () => pageOrder('')); };
   if ($('bkCf')) $('bkCf').onclick = async () => { const ids = picked(); if (!ids.length) return toast('주문를 체크하세요', 'bad'); if (!(await confirmBox(ids.length + '건을 세일즈맨에게 확인 요청할까요? 세일즈맨 앱 홈에 "확인 요청" 으로 뜹니다.', '요청'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.batch(ids.map(id => ({ op: 'update', col: 'orders', id, data: { cfReq: true, cfReqAt: now, cfReqBy: S.user.email, cfOk: false } }))); toast('확인 요청 ' + ids.length + '건', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); pageOrder(''); };
+  if ($('bkCfOk')) $('bkCfOk').onclick = async () => { const ids = picked(); if (!ids.length) return toast('주문를 체크하세요', 'bad'); if (!(await confirmBox(ids.length + bt('건을 세일즈맨 확인 완료로 바꿀까요? (전화 · 문자로 확인한 경우)', ' orders → confirmed?'), '👍'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.batch(ids.map(id => ({ op: 'update', col: 'orders', id, data: { cfReq: true, cfOk: true, cfAt: now, cfBy: S.user.email, cfHow: 'staff' } }))); toast('👍 ' + ids.length, 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); pageOrder(''); };
   if ($('oWip')) $('oWip').onclick = () => openEditor(null, wip);
   if ($('oSync')) $('oSync').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast(navigator.onLine === false ? '인터넷이 안 됩니다 — 폰에 그대로 있습니다' : '보내지 못했습니다 — 잠시 뒤 다시', 'bad'); pageOrder(''); };
   document.querySelectorAll('[data-oid]').forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); Router.go('order', el.dataset.oid); });
@@ -194,19 +201,19 @@ async function pageOrder(arg) {
   };
 }
 /* 담당자의 일(job) 에 따라 보이는 칩이 다름 — 픽킹: 들어온 주문 · 픽킹 중 · 백오더 / 인보이스: 픽킹 중(확정 대기) · 완료 · 인보이스 찾기 · 백오더 */
-const CHIPS = [['mine', '👷 내 배정 작업', 'My Assignments'], ['sent', '📥 신규 주문', 'New Orders'], ['pick', '📦 출고 작업', 'In Fulfillment'], ['picked', '✅ 검수 대기', 'Ready for Review'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'], ['ups', '🚚 UPS 출고', 'UPS Shipping'], ['shipped', '📬 출고 완료', 'Shipped'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoice Lookup'], ['draft', '💾 임시 저장', 'Drafts'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체 주문', 'All Orders']];
-const JOB_CHIPS = { pick: ['mine', 'pick', 'picked', 'done', 'ups', 'shipped', 'bo'], whmgr: ['sent', 'mine', 'pick', 'picked', 'done', 'ups', 'shipped', 'bo', 'all'], pickinv: ['sent', 'mine', 'pick', 'picked', 'done', 'ups', 'shipped', 'inv', 'bo', 'all'], invoice: ['picked', 'pick', 'sent', 'done', 'shipped', 'inv', 'bo', 'draft', 'all'], acct: ['inv', 'done', 'shipped', 'bo', 'all'] };
-const LIVE_ST = ['sent', 'pick', 'ok', 'picked', 'done'];   // 아직 끝나지 않은 주문 (출고 전)
+const CHIPS = [['mine', '👷 내 배정 작업', 'My Assignments'], ['sent', '📥 신규 주문', 'New Orders'], ['cfw', '❓ 확인 대기', 'Awaiting Salesman'], ['cfok', '👍 확인 완료 · 배정 대기', 'Confirmed · To Assign'], ['pick', '📦 출고 작업', 'In Fulfillment'], ['picked', '✅ 검수 대기', 'Ready for Review'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'], ['ups', '🚚 UPS 출고', 'UPS Shipping'], ['packed', '📮 UPS 픽업', 'UPS Pickup'], ['shipped', '📬 출고 완료', 'Shipped'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoice Lookup'], ['draft', '💾 임시 저장', 'Drafts'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체 주문', 'All Orders']];
+const JOB_CHIPS = { pick: ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo'], whmgr: ['cfok', 'sent', 'cfw', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo', 'all'], pickinv: ['sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'inv', 'bo', 'all'], invoice: ['sent', 'cfw', 'cfok', 'picked', 'pick', 'done', 'packed', 'shipped', 'inv', 'bo', 'draft', 'all'], acct: ['inv', 'done', 'packed', 'shipped', 'bo', 'all'] };
+const LIVE_ST = ['sent', 'pick', 'ok', 'picked', 'done', 'packed'];   // 아직 끝나지 않은 주문 (출고 전)
 export function chipsFor() { const j = jobOf(); const keys = JOB_CHIPS[j]; return (keys ? keys.map(k => CHIPS.find(c => c[0] === k)) : CHIPS).filter(c => c[0] !== 'ups' || can('ship')); }
-export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div><div><b>…</b><span>🧾 포장 대기 · Packing</span></div></div>'; }
+export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div><div><b>…</b><span>🧾 포장 대기 · Packing</span></div><div><b>…</b><span>📮 픽업 대기 · Pickup</span></div></div>'; }
 export async function fillStrip() {
   const el = $('oStrip'); if (!el) return;
   try {
     const live = await S.DB.list('orders', { where: [['st', 'in', LIVE_ST]] });
     if (!$('oStrip')) return;
     const b = el.querySelectorAll('b');
-    b[0].textContent = live.filter(o => o.st === 'sent').length; b[1].textContent = live.filter(o => o.st === 'pick' || o.st === 'ok').length; b[2].textContent = live.filter(o => o.st === 'picked').length; b[3].textContent = live.filter(o => o.st === 'done').length;
-    el.querySelectorAll('div').forEach((d, i) => { d.onclick = () => { LF.st = ['sent', 'pick', 'picked', 'done'][i]; LF.list = true; if (i === 3) LF.hp = 'year'; pageOrder(''); }; d.classList.add('tap'); });
+    b[0].textContent = live.filter(o => o.st === 'sent').length; b[1].textContent = live.filter(o => o.st === 'pick' || o.st === 'ok').length; b[2].textContent = live.filter(o => o.st === 'picked').length; b[3].textContent = live.filter(o => o.st === 'done').length; if (b[4]) b[4].textContent = live.filter(o => o.st === 'packed').length;
+    el.querySelectorAll('div').forEach((d, i) => { d.onclick = () => { LF.st = ['sent', 'pick', 'picked', 'done', 'packed'][i]; LF.list = true; if (i === 3) LF.hp = 'year'; pageOrder(''); }; d.classList.add('tap'); });
   } catch (e) { el.querySelectorAll('b').forEach(x => { x.textContent = '—'; }); }
 }
 /* 담당자 · 관리자의 주문 첫 화면 — 세일즈맨 홈처럼 큰 버튼 (건수는 읽은 뒤 채움) */
@@ -224,10 +231,10 @@ async function staffHome() {
   const T = [];
   const W = can('pick') || can('assign') || can('invoice');   // 출고 흐름을 보는 일
   if (can('pick') && !can('invoice')) T.push(tile('mine', '👷', bi('내 배정 작업', 'My Assignments'), '읽는 중…', 'blue'));
-  if (W) T.push(tile('sent', '📥', bi('신규 주문', 'New Orders'), '읽는 중…', can('assign') || can('invoice') ? 'blue' : ''), tile('pick', '📦', bi('출고 작업', 'In Fulfillment'), '읽는 중…'));
+  if (W) T.push(tile('sent', '📥', bi('신규 주문', 'New Orders'), '읽는 중…', can('assign') || can('invoice') ? 'blue' : ''), tile('cfw', '❓', bi('세일즈맨 확인 대기', 'Awaiting Salesman'), '읽는 중…', 'amber'), tile('cfok', '👍', bi('확인 완료 · 배정 대기', 'Confirmed · To Assign'), '읽는 중…'), tile('pick', '📦', bi('출고 작업', 'In Fulfillment'), '읽는 중…'));
   if (W) T.push(tile('picked', '✅', bi('작업 완료 · 검수 대기', 'Ready for Review'), '읽는 중…'));
   if (can('invoice') || can('ship') || can('invLookup')) T.push(tile('done', '🧾', bi('인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'), '읽는 중…'));
-  if (can('ship')) T.push(tile('ups', '🚚', bi('UPS 출고', 'UPS Shipping'), '읽는 중…', 'green'));
+  if (can('ship')) T.push(tile('ups', '🚚', bi('UPS 출고', 'UPS Shipping'), '읽는 중…', 'green'), tile('packed', '📮', bi('UPS 픽업 · 트럭 인계', 'UPS Pickup'), '읽는 중…'));
   T.push(tile('shipped', '📬', bi('출고 완료', 'Shipped'), '읽는 중…'));
   if (can('bo')) T.push(tile('bo', '⏳', bi('백오더', 'Backorders'), '읽는 중…'));
   const A = [];
@@ -269,7 +276,11 @@ async function staffHome() {
     const put = (id, v) => { const el = $('ht-' + id); if (el) el.innerHTML = v; };
     const nm = (L, f) => L.length ? L.length + '건 · ' + money(L.reduce((a, o) => a + (f ? f(o) : o.amt || 0), 0)) : '없음 · none';
     put('mine', nm(mine));
-    put('sent', nm(sentIn) + (wait.length ? '<br><b style="color:#b91c1c">작업 배정 대기 · Unassigned ' + wait.length + '건</b>' : '<br>대기 없음 · none waiting'));
+    const nw = wait.filter(o => subOf(o) === 'sent'), cw = wait.filter(o => subOf(o) === 'cfw'), ck2 = wait.filter(o => subOf(o) === 'cfok'), pkd2 = live.filter(o => o.st === 'packed');
+    put('sent', nm(sentIn) + (nw.length ? '<br><b style="color:#b91c1c">' + bt('확인할 신규', 'To review') + ' ' + nw.length + '</b>' : '<br>' + bt('대기 없음', 'none waiting')));
+    put('cfw', cw.length ? '<b>' + cw.length + '</b> · ' + bt('세일즈맨 답 기다림', 'waiting for salesman') : bt('없음', 'none'));
+    put('cfok', ck2.length ? '<b style="color:#b91c1c">' + ck2.length + ' ' + bt('배정 대기', 'to assign') + '</b>' : bt('없음', 'none'));
+    put('packed', pkd2.length ? '<b>' + pkd2.length + bt('건', ' orders') + ' · ' + pkd2.reduce((a, o) => a + (o.boxes || 1), 0) + ' ' + bt('박스', 'boxes') + '</b>' : bt('픽업 대기 없음', 'nothing waiting'));
     put('pick', nm(pk) + (wait.filter(o => o.cfReq && !o.cfOk).length + pk.filter(o => o.cfReq && !o.cfOk).length ? '<br>❓ 세일즈맨 확인 대기 ' + (wait.filter(o => o.cfReq && !o.cfOk).length + pk.filter(o => o.cfReq && !o.cfOk).length) + '건' : ''));
     put('picked', nm(pkd));
     put('done', nm(doneIn) + (topack.length ? '<br><b style="color:#b45309">포장 대기 ' + topack.length + '건</b>' : ''));
@@ -318,8 +329,8 @@ function bindHead() {
 /** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */
 function dayGroups(rows) {
   if (!isStaff()) return rows.map(o => orderRow(o)).join('');
-  const ck = (LF.st === 'sent' || LF.st === 'pick' || LF.st === 'mine');
-  if (LF.grp !== 'day' && (LF.st === 'sent' || LF.st === 'pick' || LF.st === 'picked' || LF.st === 'mine')) {
+  const ck = (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine');
+  if (LF.grp !== 'day' && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'picked' || LF.st === 'mine')) {
     const by = {}; rows.forEach(o => { const k = o.sm || '—'; (by[k] = by[k] || []).push(o); });
     return Object.keys(by).sort().map(sm => { const L = by[sm], cf = L.filter(o => o.cfReq && !o.cfOk).length; return '<div class="smgrp"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + (cf ? ' · <span class="warn">확인 대기 ' + cf + '</span>' : '') + ' ▾</span></div><div class="smbody">' + L.map(o => orderRow(o, false, '', ck)).join('') + '</div></div>'; }).join('');
   }
@@ -332,7 +343,7 @@ export const cfTag = o => o.cfOk ? ' <span class="tag t-k" title="Confirmed by s
 function orderRow(o, local, err, ck) {
   const flags = (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '') + (isStaff() ? cfTag(o) : (o.cfReq && !o.cfOk ? ' <span class="tag t-c">❓ 확인 요청</span>' : o.cfOk ? ' <span class="tag t-k">✅ 확인함</span>' : ''));
   const who = o.pickerName || o.picker ? ' · 👷 ' + esc(o.pickerName || String(o.picker).split('@')[0]) : '';
-  return '<div class="pr tap" data-oid="' + esc(o.id) + '">' + (ck ? '<input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '" style="margin-right:8px">' : '') + '<div class="ct"><b>' + esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + flags + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.sm) + ' · ' + esc(o.no) + who + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.track ? ' · 🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : '') + (o.deliveredAt ? ' · <b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : '') + '</small>' + (err ? '<small class="warn">' + esc(err) + '</small>' : '') + '</div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div>' + (ck && o.st === 'sent' && PK.length && LF.st === 'sent' ? '<button class="b-blue b-sm qa" data-qa="' + esc(o.id) + '">👷 ' + bi('할당', 'Assign') + '</button>' : '') + '</div>';
+  return '<div class="pr tap" data-oid="' + esc(o.id) + '">' + (ck ? '<input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '" style="margin-right:8px">' : '') + '<div class="ct"><b>' + esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + flags + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.sm) + ' · ' + esc(o.no) + who + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.track ? ' · 🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : '') + (o.deliveredAt ? ' · <b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : '') + '</small>' + (err ? '<small class="warn">' + esc(err) + '</small>' : '') + '</div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div>' + (ck && o.st === 'sent' && PK.length && (LF.st === 'sent' || LF.st === 'cfok') ? '<button class="b-blue b-sm qa" data-qa="' + esc(o.id) + '">👷 ' + bi('할당', 'Assign') + '</button>' : '') + '</div>';
 }
 
 /* ============================================================
