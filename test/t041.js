@@ -39,6 +39,8 @@ const path = require('path'), fs = require('fs');
   log('types:', (await pg.textContent('#eTypes')).replace(/\s+/g, ' '));
   /* v0.8.14: 편집 화면은 저장만 → 주문 확인(보낼 오더)에서 보내기 → 들어온 오더 열기 */
   await pg.click('#eDraft'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(900);
+  /* v0.8.55: 저장 뒤에는 홈으로 — 보낼 주문 목록은 따로 열기 */
+  log('after save hash:', await pg.evaluate(() => location.hash)); await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(500); await pg.evaluate(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'draft' }))); await pg.waitForTimeout(500);
   log('review card (staff):', !!(await pg.$('#oSendAll')));
   await pg.click('#oSendAll'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(900);
   await pg.click('[data-lf="sent"]'); await pg.waitForTimeout(600); log('sent oids:', await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid + '|' + x.className)), await pg.evaluate(() => location.hash), (await pg.textContent('#page')).replace(/\s+/g, ' ').slice(0, 200)); await pg.click('#page [data-oid]'); await pg.waitForSelector('#mPick');

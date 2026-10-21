@@ -414,13 +414,9 @@ async function sendReport(pend) {
     catch (e) { if (String(e.code).includes('permission')) throw new Error('리포트 저장 권한이 없습니다 — Firestore 규칙에 reports 를 추가해야 합니다 (루크)'); throw e; }
     for (const r of pend) await S.DB.update('entries', r.id, { rep: true, repAt: now, repId: id });
     clearEntryCache(); PHOTOS = [];
-    /* 이메일 앱으로도 요약을 보낼 수 있게 (사진은 앱 안에 저장됨) */
-    const lines = pend.map(r => r.store + (r.acct ? ' (' + r.acct + ')' : '') + ' — ' + (r.pays || []).map(p => p.m + (p.ref ? ' #' + p.ref : '')).join(', ') + ' ' + money(r.total) + ((r.invs || []).length ? ' → ' + r.invs.map(v => v.no).join(', ') : ''));
-    const body = encodeURIComponent('Daily Report ' + TODAY_D + ' — ' + me() + '\n' + pend.length + '건 · ' + money(sum(pend, r => r.total)) + '\n\n' + lines.join('\n') + (photos.length ? '\n\n체크 사진 ' + photos.length + '장은 THE ONE 앱(수금 확인)에 있습니다.' : ''));
-    toast('전송했습니다 · Sent — ' + pend.length + '건', 'good');
-    openModal('<h2>📧 Daily Report 전송됨</h2><div class="muted">' + esc(TODAY_D) + ' · ' + pend.length + '건 · ' + money(sum(pend, r => r.total)) + (photos.length ? ' · 사진 ' + photos.length + '장' : '') + '<br>담당자 화면(수금 확인)에 바로 보이고, 1~2분 안에 Daily Collection Report 메일이 ' + esc(S.user.email) + ' 와 ' + esc(REPORT_TO()) + ' 로 갑니다.<br><span style="font-size:12px">메일이 안 오면 아래 버튼으로 직접 보낼 수 있습니다.</span></div>' +
-      '<div class="btns"><button class="b-ghost" id="rpX">닫기</button><a class="b-blue" style="display:block;text-align:center;text-decoration:none" href="mailto:' + esc(REPORT_TO()) + '?subject=' + encodeURIComponent('Daily Report ' + TODAY_D + ' ' + me()) + '&body=' + body + '">📧 이메일 앱으로 보내기</a></div>');
-    $('rpX').onclick = () => { closeModal(); paintToday(); };
+    /* 메일은 Apps Script 가 1~2분 안에 자동으로 보냄 — 안 갔으면 기록 탭 "📧 보낸 Daily Report" 에서 다시 보내기 */
+    toast('전송했습니다 · Sent — ' + pend.length + '건 · 메일은 자동으로 갑니다', 'good');
+    paintToday();
   } catch (e) { toast('전송 실패: ' + (e.message || e.code), 'bad'); }
   busy(false);
 }
@@ -434,11 +430,40 @@ async function paintHist() {
     '<div class="hint">예) <b>4001</b> (계정코드) · <b>ali fl</b> (가게 이름) · <b>10432</b> (체크번호). 가게 이름은 <b>일부만 쳐도</b> 됩니다. 그 가게의 수금 · COD · ACH · 카드 기록이 모두 나오고, 합계 · 마지막 수금일이 위에 표시됩니다.<br><span class="en">e.g. account #, store name words, or check #</span></div>' +
     '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600"><input type="checkbox" id="hOther" style="width:20px;height:20px" checked> COD · ACH · 카드도 같이 <span class="en">incl. COD / ACH / card</span></label></div>' +
     '<div id="hSum"></div><div id="hList"></div>' +
+    '<div class="card"><details id="rpBox"><summary><label style="display:inline">📧 보낸 Daily Report <span class="en">Sent daily reports</span></label> <span class="muted">— 최근 10일 · 메일이 안 갔으면 다시 보내기</span></summary><div id="rpList" style="margin-top:8px"></div></details></div>' +
     '<div class="card"><label>🧾 기간 리포트 <span class="en">Period report</span> <span style="font-weight:400">(회사에 체크 · 캐쉬 보낼 때)</span></label><div class="two"><div class="fg"><label>시작 From</label><input id="pFrom" type="date" value="' + from + '"></div><div class="fg"><label>끝 To</label><input id="pTo" type="date" value="' + today() + '"></div></div>' +
     '<button type="button" class="b-ghost" id="pPrev">🖨 미리보기 · Preview / Print</button><button type="button" class="b-ghost" id="pMail" style="margin-top:8px">📧 이메일로 보내기 · Email</button><div class="hint" style="margin-top:8px">받은 날짜 기준입니다. 날짜별 소계와 CHECK · CASH · ZELLE 합계, 서명란이 들어갑니다.<br><span class="en">By received date — daily subtotals, totals by type, and signature lines.</span></div></div>';
   $('hGo').onclick = histSearch; $('hQ').onkeydown = e => { if (e.key === 'Enter') histSearch(); }; $('hOther').onchange = () => { if ($('hQ').value.trim()) histSearch(); };
   $('pPrev').onclick = () => periodReport(false); $('pMail').onclick = () => periodReport(true);
+  $('rpBox').ontoggle = () => { if ($('rpBox').open) sentReports(); };
   if (HQ) histSearch();
+}
+/** 📧 내가 보낸 Daily Report — 메일 상태 (⏳ 보내는 중 · ✅ 보냄 · ⚠️ 실패) 와 다시 보내기 · 이메일 앱으로 */
+async function sentReports() {
+  const box = $('rpList'); if (!box) return; box.innerHTML = '<div class="load">읽는 중…</div>';
+  const days = []; for (let i = 0; i < 10; i++) { const d = new Date(); d.setDate(d.getDate() - i); days.push(d.toISOString().slice(0, 10)); }
+  let list = [];
+  try { list = sortBy(await S.DB.list('reports', { where: [['sm', '==', me()], ['d', 'in', days]] }), r => r.sentAt || '', true); }
+  catch (e) { box.innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; return; }
+  if (!list.length) { box.innerHTML = '<div class="none">최근 10일 동안 보낸 리포트가 없습니다 · No reports</div>'; return; }
+  const hm = t => t ? new Date(t).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  const stat = r => r.mail === 'sent' ? '<span class="tag t-k">✅ 메일 보냄 · Sent ' + esc(hm(r.mailAt)) + '</span>' : r.mail === 'error' ? '<span class="tag t-r">⚠️ 메일 실패 · Failed</span><div class="warn" style="font-size:12px">' + esc(r.mailErr || '') + '</div>' : '<span class="tag t-c">⏳ 보내는 중 · Sending</span>';
+  box.innerHTML = list.map(r => '<div class="pr"><div class="ct"><b>' + esc(r.d) + ' · ' + (r.n || 0) + '건 · ' + money(r.total || 0) + '</b><small>전송 ' + esc(hm(r.sentAt)) + ((r.photos || []).length ? ' · 📷 ' + r.photos.length : '') + (r.mailTo ? ' · ' + esc(r.mailTo) : '') + '</small><div style="margin-top:4px">' + stat(r) + '</div></div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto"><button type="button" class="b-ghost b-sm" data-rsend="' + esc(r.id) + '">📧 다시 보내기</button><button type="button" class="b-ghost b-sm" data-rapp="' + esc(r.id) + '">✉️ 이메일 앱</button></div></div>').join('');
+  box.querySelectorAll('[data-rsend]').forEach(b => b.onclick = async () => {
+    const r = list.find(x => x.id === b.dataset.rsend); if (!r) return;
+    if (r.mail === 'sent' && !(await confirmBox(r.d + ' 리포트는 이미 메일로 보냈습니다. 한 번 더 보낼까요?', '다시 보내기'))) return;
+    busy(true);
+    try { await S.DB.update('reports', r.id, { mail: 'wait', mailErr: '', resendAt: new Date().toISOString(), resendBy: S.user.email }); toast('1~2분 안에 다시 보냅니다 · Resending', 'good'); sentReports(); }
+    catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  });
+  box.querySelectorAll('[data-rapp]').forEach(b => b.onclick = () => {
+    const r = list.find(x => x.id === b.dataset.rapp); if (!r) return;
+    const lines = (r.rows || []).map(x => x.store + (x.acct ? ' (' + x.acct + ')' : '') + ' — ' + (x.pay || '') + (x.ref ? ' #' + x.ref : '') + ' ' + money(x.amt || 0) + ((x.invs || []).length ? ' → ' + x.invs.map(v => v.no).join(', ') : ''));
+    const body = 'Daily Report ' + r.d + ' — ' + r.sm + '\n' + (r.n || 0) + '건 · ' + money(r.total || 0) + '\n\n' + lines.join('\n') + ((r.photos || []).length ? '\n\n체크 사진 ' + r.photos.length + '장은 THE ONE 앱(수금 확인)에 있습니다.' : '');
+    location.href = 'mailto:' + (r.to || REPORT_TO()) + '?subject=' + encodeURIComponent('Daily Report ' + r.d + ' ' + r.sm) + '&body=' + encodeURIComponent(body);
+  });
 }
 async function allMine() {
   const yms = []; const d = new Date(); for (let i = 0; i < 24; i++) { yms.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); }

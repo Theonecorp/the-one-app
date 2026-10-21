@@ -842,7 +842,6 @@ async function saveOrder(st) {
   busy(true); const r = await syncOutbox(true); busy(false);
   const left = !!readOut()[id];
   toast(left ? '📱 폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다' : (st === 'sent' ? '보냈습니다 📤' : '저장했습니다 — 수정 · 추가는 보내기 전까지 자유, 하루 치는 "보낼 주문"에서 한 번에 보냅니다'), left ? '' : 'good');
-  /* 저장 뒤에는 주문 목록의 "주문 확인 · 보낼 주문" 로 — 거기서 받은 주문를 훑어보고 회사로 보냄 */
-  if (isStaff()) { LF.list = true; LF.st = 'draft'; }
-  Router.go('order');
+  /* 저장 · 보내기 뒤에는 홈으로 */
+  Router.go(Router.home || 'order');
 }
