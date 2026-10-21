@@ -7,6 +7,10 @@
  *          취소(void)도 같은 방식 — 앱에서 라벨 취소 → st:'void' → UPS 에 취소 요청 → st:'voided'.
  *          🗺 가게 지도: geoSync 가 1시간마다 거래처 주소를 구글 지도(Apps Script Maps)로 좌표(lat · lng)로 바꿔 accounts 에 넣음 — 새 · 바뀐 주소만.
  *          주소 확인: 앱에서 "✅ UPS 주소 확인" → shipq/{id} (st:'av') → UPS Address Validation API → 추천 주소(cands) 를 적음(st:'avdone').
+ *          요금 보기: st:'rate' → UPS Rating(Shop) API → 서비스별 요금(rates) (st:'ratedone').
+ *          배송 조회: st:'trk' → UPS Tracking API → 상태 · 스캔 기록(res) (st:'trkdone') + shipments/{트래킹} 갱신.
+ *          📦 shipments/{트래킹} = 박스 한 개: { trk, orderId, no, acct, store, sm, invs:[이 박스의 인보이스], box, boxes, w, dims, svc, shipDate, status, events, delivered, deliveredAt, receivedBy, trkSt:'open'|'done' }
+ *             라벨을 만들 때 · Quantum View 로 다른 프로그램 출고를 받을 때 생기고, trackSync 가 3시간마다 배달 안 된 것을 조회함.
  *          Firestore 무료 한도(하루 읽기 5만)를 아끼려고 1분에 읽기 1번만 함.
  *
  * 설치 (한 번만, luke@theonefl.com):
@@ -32,11 +36,12 @@ function setup() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('run').timeBased().everyMinutes(1).create();
   ScriptApp.newTrigger('geoSync').timeBased().everyHours(6).create(); Logger.log('🗺 가게 지도 좌표 — 6시간마다, 거래처가 바뀌었을 때만 새 · 바뀐 주소를 찾습니다 (처음 한 번은 지금 geoSync 를 직접 실행하면 빠릅니다)');
+  ScriptApp.newTrigger('trackSync').timeBased().everyHours(3).create(); Logger.log('📦 배송 조회 — 3시간마다 배달 안 된 박스를 UPS 에서 조회합니다');
   if (prop_('UPS_QV_NAME')) { ScriptApp.newTrigger('qvSync').timeBased().everyHours(1).create(); Logger.log('Quantum View 구독 "' + prop_('UPS_QV_NAME') + '" — 1시간마다 출고 · 배달 기록을 받아옵니다'); }
   const tok = upsToken_();
   const r = UrlFetchApp.fetch(FS + '/settings/app', { headers: fsHeaders_(), muteHttpExceptions: true }), c = r.getResponseCode();
   Logger.log('UPS 연결 OK (' + env_() + ') · 토큰 받음 ' + String(tok).substring(0, 6) + '…');
-  Logger.log(c === 200 ? 'Firestore OK' : 'Firestore 읽기 실패 ' + c + ': ' + r.getContentText().substring(0, 300) +
+  Logger.log(c === 200 ? 'Firestore OK' : 'Firestore 읽기 실패 ' + c + ': ' + r.getContentText().substring(0, 900) +
     (c === 403 || c === 401 ? '\n→ ⚙️ 프로젝트 설정에서 "appsscript.json 매니페스트 파일 표시" 를 켜고 UPS.appsscript.json 내용을 붙여넣은 뒤 setup 을 다시 실행해 권한을 허용하세요' : ''));
 }
 /** 시험: 앱 없이 라벨 하나 만들어 보기 (test 환경에서만) */
@@ -51,20 +56,28 @@ function run() {
   try {
     /* 1분에 Firestore 읽기 1번만 — 라벨(wait) · 취소(void) · 주소 확인(av) 을 한 번에 찾음. 설정은 라벨이 있을 때만 */
     let jobs = [];
-    try { jobs = fsQueryIn_('shipq', 'st', ['wait', 'void', 'av'], 20); }
+    try { jobs = fsQueryIn_('shipq', 'st', ['wait', 'void', 'av', 'rate', 'trk'], 20); }
     catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면(밤 12시 태평양 시간) 저절로 이어집니다'); return; } throw e; }
     if (!jobs.length) return;
-    const from = jobs.some(q => q.st === 'wait') ? settingsFrom_() : null;
+    const from = jobs.some(q => q.st === 'wait' || q.st === 'rate') ? settingsFrom_() : null;
     jobs.forEach(q => {
       if (q.st === 'wait') {
         try {
           fsPatch_('shipq', q._id, { st: 'working', at: iso_() });
           const r = ship_(q, from);
           fsPatch_('shipq', q._id, { st: 'done', at: iso_(), env: env_(), shipId: r.shipId, charge: r.charge, track: r.labels.map(x => x.trk).join(' '), labels: r.labels, err: '' });
+          saveShipments_(q, r);
         } catch (e) { fsPatch_('shipq', q._id, { st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
       } else if (q.st === 'void') {
         try { voidShip_(q.shipId); fsPatch_('shipq', q._id, { st: 'voided', at: iso_(), err: '' }); }
         catch (e) { fsPatch_('shipq', q._id, { st: 'voiderr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+      } else if (q.st === 'rate') {
+        try { fsPatch_('shipq', q._id, { st: 'ratedone', at: iso_(), err: '', rates: rates_(q, from) }); }
+        catch (e) { fsPatch_('shipq', q._id, { st: 'rateerr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+      } else if (q.st === 'trk') {
+        const res = {};
+        [].concat(q.trks || []).slice(0, 25).forEach(t => { try { res[t] = track_(t); updShipment_(t, res[t]); } catch (e) { res[t] = { err: String(e && e.message || e).substring(0, 200) }; } });
+        fsPatch_('shipq', q._id, { st: 'trkdone', at: iso_(), res });
       } else if (q.st === 'av') {
         try { fsPatch_('shipq', q._id, Object.assign({ st: 'avdone', at: iso_(), err: '' }, xav_(q.to || {}))); }
         catch (e) { fsPatch_('shipq', q._id, { st: 'averr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
@@ -99,28 +112,70 @@ function upsFetch_(path, method, body) {
 const clip_ = (s, n) => String(s || '').toUpperCase().replace(/[^A-Z0-9 #&\-.,'\/]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, n);
 const phone_ = s => String(s || '').replace(/\D/g, '').slice(-10) || '0000000000';
 function addr_(a) { return { AddressLine: [clip_(a.addr1, 35), clip_(a.addr2, 35)].filter(Boolean), City: clip_(a.city, 30), StateProvinceCode: clip_(a.state, 2), PostalCode: String(a.zip || '').replace(/[^0-9-]/g, '').substring(0, 10), CountryCode: 'US' }; }
-function ship_(q, from) {
-  const acct = prop_('UPS_ACCOUNT'), to = q.to || {};
+/* UPS 서비스 이름 (요금 비교 · 기록용) */
+const SVC_ = { '03': 'UPS Ground', '12': 'UPS 3 Day Select', '02': 'UPS 2nd Day Air', '59': 'UPS 2nd Day Air A.M.', '13': 'UPS Next Day Air Saver', '01': 'UPS Next Day Air', '14': 'UPS Next Day Air Early' };
+/** 앱의 출고 입력 → UPS Shipment (라벨 · 요금 공통). q = { to:{name, attn, phone, email, addr1, addr2, addr3, city, state, zip, res}, fromX, svc, boxes:[{w, l, wd, h, pkg, val, ref1, ref2, invs}], opt:{sat, sig, notify}, bill:{type, acct, zip}, ref, desc } */
+function shipment_(q, from, rate) {
+  const acct = prop_('UPS_ACCOUNT'), to = q.to || {}, f = Object.assign({}, from, q.fromX || {});
   if (!to.addr1 || !to.city || !to.state || !to.zip) throw new Error('받는 주소가 부족합니다 (주소 · 도시 · 주 · ZIP)');
-  const boxes = (q.boxes && q.boxes.length ? q.boxes : [{ w: 5 }]).slice(0, 20);
+  const opt = q.opt || {}, bill = q.bill || {};
+  const toAddr = addr_(to); if (to.addr3) toAddr.AddressLine.push(clip_(to.addr3, 35)); if (to.res) toAddr.ResidentialAddressIndicator = '';
+  const party = (x, ad) => ({ Name: clip_(x.name, 35), AttentionName: clip_(x.attn || x.name, 35), Phone: { Number: phone_(x.phone) }, Address: ad });
+  const charge = bill.type === 'rcv' && bill.acct ? { Type: '01', BillReceiver: { AccountNumber: clip_(bill.acct, 10), Address: { PostalCode: String(bill.zip || to.zip).substring(0, 10) } } }
+    : bill.type === 'third' && bill.acct ? { Type: '01', BillThirdParty: { AccountNumber: clip_(bill.acct, 10), Address: { PostalCode: String(bill.zip || '').substring(0, 10), CountryCode: 'US' } } }
+    : { Type: '01', BillShipper: { AccountNumber: acct } };
+  const pk = (q.boxes && q.boxes.length ? q.boxes : [{ w: 5 }]).slice(0, 50).map((b, i) => {
+    const o = {}; o[rate ? 'PackagingType' : 'Packaging'] = { Code: String(b.pkg || '02') };
+    if (!rate) o.Description = 'BOX ' + (i + 1);
+    o.PackageWeight = { UnitOfMeasurement: { Code: 'LBS' }, Weight: String(Math.max(1, Math.ceil(Number(b.w) || 1))) };
+    if (Number(b.l) && Number(b.wd) && Number(b.h)) o.Dimensions = { UnitOfMeasurement: { Code: 'IN' }, Length: String(Math.ceil(b.l)), Width: String(Math.ceil(b.wd)), Height: String(Math.ceil(b.h)) };
+    const so = {};
+    if (Number(b.val) > 0) so.DeclaredValue = { CurrencyCode: 'USD', MonetaryValue: String(Math.round(Number(b.val))) };
+    if (opt.sig === 'sig' || opt.sig === 'adult') so.DeliveryConfirmation = { DCISType: opt.sig === 'adult' ? '3' : '2' };
+    if (Object.keys(so).length) o.PackageServiceOptions = so;
+    if (!rate) { const refs = [b.ref1 || (b.invs || []).join(' ') || q.ref, b.ref2].map(x => clip_(x, 35)).filter(Boolean); if (refs.length) o.ReferenceNumber = refs.map(v => ({ Value: v })); }
+    return o;
+  });
+  const sh = {
+    Description: clip_(q.desc || 'JEWELRY & ACCESSORIES', 50),
+    Shipper: Object.assign(party(f, addr_(f)), { ShipperNumber: acct }),
+    ShipFrom: party(f, addr_(f)),
+    ShipTo: party(to, toAddr),
+    Service: { Code: String(q.svc || '03') },
+    Package: pk
+  };
+  if (to.email && !rate) sh.ShipTo.EMailAddress = String(to.email).substring(0, 50);
+  const sso = {};
+  if (opt.sat) sso.SaturdayDeliveryIndicator = '';
+  if (opt.notify && to.email && !rate) sso.Notification = [{ NotificationCode: '6', EMail: { EMailAddress: [String(to.email)] } }];
+  if (Object.keys(sso).length) sh.ShipmentServiceOptions = sso;
+  if (rate) { sh.PaymentDetails = { ShipmentCharge: [charge] }; sh.ShipmentRatingOptions = { NegotiatedRatesIndicator: '' }; }
+  else sh.PaymentInformation = { ShipmentCharge: [charge] };
+  return sh;
+}
+function ship_(q, from) {
   const ref = clip_(q.ref, 35);
-  const body = { ShipmentRequest: { Request: { RequestOption: 'nonvalidate', TransactionReference: { CustomerContext: ref } },
-    Shipment: {
-      Description: 'JEWELRY & ACCESSORIES',
-      Shipper: { Name: clip_(from.name, 35), AttentionName: clip_(from.attn || from.name, 35), Phone: { Number: phone_(from.phone) }, ShipperNumber: acct, Address: addr_(from) },
-      ShipFrom: { Name: clip_(from.name, 35), AttentionName: clip_(from.attn || from.name, 35), Phone: { Number: phone_(from.phone) }, Address: addr_(from) },
-      ShipTo: { Name: clip_(to.name, 35), AttentionName: clip_(to.attn || to.name, 35), Phone: { Number: phone_(to.phone) }, Address: addr_(to) },
-      PaymentInformation: { ShipmentCharge: [{ Type: '01', BillShipper: { AccountNumber: acct } }] },
-      Service: { Code: String(q.svc || '03') },
-      Package: boxes.map((b, i) => ({ Description: 'BOX ' + (i + 1), Packaging: { Code: '02' },
-        PackageWeight: { UnitOfMeasurement: { Code: 'LBS' }, Weight: String(Math.max(1, Math.ceil(Number(b.w) || 1))) },
-        ReferenceNumber: ref ? [{ Value: ref }] : undefined }))
-    },
+  const body = { ShipmentRequest: { Request: { RequestOption: 'nonvalidate', TransactionReference: { CustomerContext: ref } }, Shipment: shipment_(q, from, false),
     LabelSpecification: { LabelImageFormat: { Code: 'GIF' }, HTTPUserAgent: 'Mozilla/4.5' } } };
   const j = upsFetch_('/api/shipments/v2403/ship', 'post', body);
   const R = j.ShipmentResponse.ShipmentResults, pk = [].concat(R.PackageResults || []);
-  const charge = Number(((R.ShipmentCharges || {}).TotalCharges || {}).MonetaryValue || 0);
+  const neg = Number((((R.NegotiatedRateCharges || {}).TotalCharge) || {}).MonetaryValue || 0);
+  const charge = neg || Number(((R.ShipmentCharges || {}).TotalCharges || {}).MonetaryValue || 0);
   return { shipId: R.ShipmentIdentificationNumber, charge, labels: pk.map(p => ({ trk: p.TrackingNumber, img: (p.ShippingLabel || {}).GraphicImage || '' })) };
+}
+/** 💲 서비스별 요금 (Shop) — [{ svc, name, total, list, days }] 싼 순 */
+function rates_(q, from) {
+  const j = upsFetch_('/api/rating/v2403/Shop', 'post', { RateRequest: { Request: { RequestOption: 'Shop' }, Shipment: shipment_(q, from, true) } });
+  return [].concat(((j.RateResponse || {}).RatedShipment) || []).map(r => {
+    const list = Number(((r.TotalCharges || {}).MonetaryValue) || 0), neg = Number((((r.NegotiatedRateCharges || {}).TotalCharge) || {}).MonetaryValue || 0);
+    const code = String((r.Service || {}).Code || '');
+    return { svc: code, name: SVC_[code] || ('UPS ' + code), total: neg || list, list, days: String(((r.GuaranteedDelivery || {}).BusinessDaysInTransit) || '') };
+  }).sort((a, b) => a.total - b.total);
+}
+/** 📦 라벨이 나오면 박스마다 shipments/{트래킹} 기록 — 어느 인보이스가 어느 박스로 나갔는지 */
+function saveShipments_(q, r) {
+  const boxes = q.boxes || [], n = r.labels.length, d = iso_().substring(0, 10);
+  r.labels.forEach((l, i) => { const b = boxes[i] || {}; try { fsPatch_('shipments', l.trk, { trk: l.trk, orderId: q.orderId || '', no: q.no || '', acct: q.acct || '', store: q.store || '', sm: q.sm || '', invs: (b.invs && b.invs.length ? b.invs : (q.invs || [])), box: i + 1, boxes: n, w: Number(b.w) || 0, dims: [b.l, b.wd, b.h].filter(Number).join('×'), svc: String(q.svc || '03'), svcName: SVC_[String(q.svc || '03')] || '', shipDate: d, to: [q.to && q.to.addr1, q.to && q.to.city, q.to && q.to.state, q.to && q.to.zip].filter(Boolean).join(', '), by: q.by || '', src: 'app', env: env_(), status: 'Label created', trkSt: 'open', delivered: false, at: iso_() }); } catch (e) {} });
 }
 /** 📍 주소 확인 (UPS Address Validation — Street Level). 돌려주는 값: { valid, ambiguous, none, cls, cands:[{addr1, addr2, city, state, zip, zip4}] }
  *  시험 서버(UPS_ENV=test)는 UPS 규정상 뉴욕(NY) · 캘리포니아(CA) 주소만 확인해 줍니다 — 실제 확인은 live 에서 */
@@ -173,6 +228,11 @@ function qvManifest_(m) {
   const L = qvArr_(a.AddressLine);
   const log = { trk: trks.join(' '), refs: refs.join(' '), store, addr1: L[0] || '', addr2: L[1] || '', city: a.City || '', state: a.StateProvinceCode || '', zip: a.PostalCode || '', d, svc: (m.Service || {}).Code || '', boxes: trks.length, orderId: orderId || '', acct: o.acct || '', src: 'qv', at: iso_() };
   trks.forEach(t => fsPatchDoc_('upsLog', t, log));
+  /* 📦 박스 기록 — 다른 프로그램(직원 앱)에서 찍은 출고도 가게 · 인보이스별 배송 조회에 나오게 */
+  const invTok = []; refs.forEach(r => String(r).toUpperCase().split(/[\s,;\/]+/).forEach(t => { if (/^[A-Z]{1,3}-?\d{3,7}$/.test(t) && invTok.indexOf(t) < 0) invTok.push(t); }));
+  let acct = o.acct || '', sm = o.sm || '', st0 = o.store || store;
+  if (!acct && invTok.length) { const iv = fsGet_('invoices', invTok[0]); if (iv) { acct = iv.acct || ''; sm = iv.sm || ''; st0 = iv.store || st0; } }
+  trks.forEach((t, i) => { const ex = fsGet_('shipments', t); if (ex && ex.src === 'app') return; fsPatchDoc_('shipments', t, { trk: t, orderId: orderId || '', no: o.no || '', acct, store: st0, sm, invs: invTok.length ? invTok : (o.invs || []), box: i + 1, boxes: trks.length, w: Number(((pk[i] || {}).PackageWeight || {}).Weight || 0), svc: (m.Service || {}).Code || '', svcName: SVC_[(m.Service || {}).Code] || '', shipDate: d, to: [L[0], a.City, a.StateProvinceCode, a.PostalCode].filter(Boolean).join(', '), src: 'qv', status: 'Shipped', trkSt: 'open', delivered: false, at: iso_() }); });
   if (!orderId) return false;
   const have = String(o.track || '').split(/\s+/).filter(Boolean), add = trks.filter(t => have.indexOf(t) < 0);
   const patch = { updatedAt: iso_() };
@@ -186,7 +246,45 @@ function qvDelivery_(d) {
   const log = fsGet_('upsLog', t), when = String(d.Date || '').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3');
   fsPatchDoc_('upsLog', t, { delivered: when || iso_().substring(0, 10), deliveredTo: String(d.DeliveryLocation && d.DeliveryLocation.SignedForByName || '') });
   if (log && log.orderId) fsPatchDoc_('orders', log.orderId, { deliveredAt: when || iso_().substring(0, 10) });
+  try { if (fsGet_('shipments', t)) fsPatchDoc_('shipments', t, { delivered: true, deliveredAt: when || iso_().substring(0, 10), status: 'Delivered', trkSt: 'done' }); } catch (e) {}
 }
+/* ============================================================
+ *  📦 배송 조회 (UPS Tracking API) — track_ 한 개, updShipment_ 기록 갱신, trackSync 3시간마다 배달 안 된 것
+ * ============================================================ */
+const ymd_ = s => String(s || '').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3');
+const hm_ = s => String(s || '').replace(/^(\d{2})(\d{2}).*/, '$1:$2');
+function track_(trk) {
+  const j = upsFetch_('/api/track/v1/details/' + encodeURIComponent(trk) + '?locale=en_US&returnSignature=false', 'get');
+  const sh = (((j.trackResponse || {}).shipment) || [])[0] || {}, k = [].concat(sh.package || [])[0] || {};
+  if (!k.trackingNumber && sh.warnings) throw new Error([].concat(sh.warnings).map(w => w.message).join(' / ') || '조회 결과 없음');
+  const ev = [].concat(k.activity || []).map(a => { const ad = ((a.location || {}).address) || {}, st = a.status || {}; return { d: ymd_(a.date), t: hm_(a.time), st: st.type || '', desc: st.description || '', loc: [ad.city, ad.stateProvince, ad.country].filter(Boolean).join(', ') }; });
+  const cur = k.currentStatus || {}, dd = [].concat(k.deliveryDate || []), del = dd.find(x => x.type === 'DEL'), sdd = dd.find(x => x.type === 'SDD' || x.type === 'RDD');
+  const delivered = (ev[0] && ev[0].st === 'D') || /delivered/i.test(cur.description || '');
+  return { status: cur.description || (ev[0] || {}).desc || '', code: cur.code || '', delivered, deliveredAt: delivered ? (del ? ymd_(del.date) : (ev[0] || {}).d || '') : '', eta: !delivered && sdd ? ymd_(sdd.date) : '', receivedBy: ((k.deliveryInformation || {}).receivedBy) || '', dlvLoc: ((k.deliveryInformation || {}).location) || '', events: ev.slice(0, 40), svcName: ((k.service || {}).description) || '', w: Number(((k.weight || {}).weight) || 0) || undefined, at: iso_() };
+}
+/** 조회 결과를 shipments 기록에 (있을 때만) · 배달되면 주문에도 */
+function updShipment_(trk, r) {
+  if (!r || r.err) return;
+  const old = fsGet_('shipments', trk); if (!old) return;
+  const p = { status: r.status, events: r.events, delivered: !!r.delivered, deliveredAt: r.deliveredAt || '', eta: r.eta || '', receivedBy: r.receivedBy || '', dlvLoc: r.dlvLoc || '', trkAt: r.at, trkSt: r.delivered ? 'done' : 'open' };
+  fsPatch_('shipments', trk, p);
+  if (r.delivered && old.orderId) { try { fsPatch_('orders', old.orderId, { deliveredAt: r.deliveredAt || iso_().substring(0, 10) }); } catch (e) {} }
+}
+/** 3시간마다 — 배달 안 된 박스만 조회 (30일 지난 것은 그만) */
+function trackSync() {
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
+  try {
+    let L = []; try { L = fsQuery_('shipments', 'trkSt', 'open', 150); } catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 한도 초과 — 다음에'); return; } throw e; }
+    const old = iso_().substring(0, 10), t0 = Date.now(); let n = 0, dl = 0;
+    L.forEach(x => {
+      if (Date.now() - t0 > 5 * 60 * 1000) return;
+      if (x.shipDate && (new Date(old) - new Date(x.shipDate)) / 86400000 > 30) { fsPatch_('shipments', x._id, { trkSt: 'old' }); return; }
+      try { const r = track_(x._id); updShipment_(x._id, r); n++; if (r.delivered) dl++; } catch (e) {}
+    });
+    Logger.log('📦 배송 조회 ' + n + '개 · 배달 완료 ' + dl);
+  } finally { lock.releaseLock(); }
+}
+
 /* ============================================================
  *  🗺 geoSync — 거래처 주소 → 좌표 (앱 거래처 → 🗺 지도). 주소가 바뀌면 다시 찾음 (geoQ = 찾을 때 쓴 주소)
  *    구글 하루 한도에 걸리면 멈췄다가 다음 시간에 이어서. 바뀐 게 있으면 settings/app.accountsVer 를 올려 폰들이 새로 받게

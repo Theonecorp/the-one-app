@@ -90,7 +90,15 @@ service cloud.firestore {
     }
     match /backorders/{id} { allow read, write: if isStaff(); }
     match /counters/{id} { allow read, write: if isStaff(); }
-    match /shipq/{id} { allow read, write: if isStaff(); }
+    match /shipq/{id} {                                                                                                              // 🚚 UPS 요청 (라벨 · 취소 · 요금 · 주소 · 배송 조회) — UPS.gs 가 처리
+      allow read, write: if isStaff();
+      allow create: if registered() && request.resource.data.st == 'trk' && request.resource.data.by == email();   // 세일즈맨: 배송 조회만
+      allow read: if registered() && resource.data.by == email();
+    }
+    match /shipments/{id} {                                                                                                          // 📦 박스별 배송 기록 — 세일즈맨은 자기 가게 것
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow write: if isStaff();
+    }
     match /acctNotes/{id} {                                                                                                          // 📝 거래처 노트 — 누구나 남기고 읽음, 고치기 · 지우기는 쓴 사람 · 담당자
       allow read: if registered();
       allow create: if registered() && request.resource.data.by == email();

@@ -84,7 +84,7 @@ async function pageHome() {
   const out = outboxList().filter(x => x.o.sm === mySm()).length;
   const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + icon + '</span><b>' + label + '</b><small id="hs-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
   $('page').innerHTML = '<div class="card" style="text-align:center"><img src="logo.png" alt="" style="width:64px;height:64px"><div style="font-weight:800;font-size:17px;margin-top:4px">' + esc(name) + '</div><div class="muted">' + esc(mySm()) + ' · ' + (navigator.onLine === false ? '<span class="warn">오프라인 Offline</span>' : '<span class="ok">온라인 Online</span>') + (out ? ' · <span class="warn">📤 안 보낸 주문 ' + out + '건</span>' : '') + '</div></div>' +
-    '<div class="hgrid">' + tile('order/new', '🛒', bi('새 주문', 'New order'), '가게 고르고 담기 · pick a store', 'blue') + tile('order', '📤', bi('보낼 주문', 'To send'), '읽는 중…', 'green') + tile('order', '📋', bi('내 주문', 'My orders'), '최근 2달 · last 2 months') + tile('order', '❓', bi('확인 요청', 'To confirm'), '읽는 중…', 'amber') + tile('stores', '🏬', bi('거래처', 'Customers'), '가게 정보 · 미수금 · 기록') + tile('entry/new', '✍️', bi('수금 입력', 'Payment'), '체크 · 캐쉬 / check · cash') + tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 가격 · 바코드 라벨 / photos · labels') + tile('ar', '💰', bi('미수금', 'A/R'), '내 가게 미수금 / my stores') + tile('mycomm', '🧾', bi('정산서', 'Commission'), '커미션 정산서 / statement') + '</div>' +
+    '<div class="hgrid">' + tile('order/new', '🛒', bi('새 주문', 'New order'), '가게 고르고 담기 · pick a store', 'blue') + tile('order', '📤', bi('보낼 주문', 'To send'), '읽는 중…', 'green') + tile('order', '📋', bi('내 주문', 'My orders'), '최근 2달 · last 2 months') + tile('order', '❓', bi('확인 요청', 'To confirm'), '읽는 중…', 'amber') + tile('stores', '🏬', bi('거래처', 'Customers'), '가게 정보 · 미수금 · 기록') + tile('entry/new', '✍️', bi('수금 입력', 'Payment'), '체크 · 캐쉬 / check · cash') + tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 가격 · 바코드 라벨 / photos · labels') + tile('track', '🚚', bi('배송 조회', 'Tracking'), '박스 · 인보이스 · 받은 날 / boxes · delivered') + tile('ar', '💰', bi('미수금', 'A/R'), '내 가게 미수금 / my stores') + tile('mycomm', '🧾', bi('정산서', 'Commission'), '커미션 정산서 / statement') + '</div>' +
     '<button class="b-ghost" id="hMine" style="margin-top:4px">📋 ' + bi('내 수금 기록', 'My payment log') + '</button>';
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
   $('hMine').onclick = () => Router.go('mine');
@@ -237,6 +237,7 @@ async function staffHome() {
   if (can('verify')) A.push(tile('verify', '💵', bi('수금 확인', 'Payments'), '세일즈맨 수금 확인'));
   if (can('items')) A.push(tile('items', '🏷', bi('아이템 · 재고 위치', 'Items · Inventory'), '찾기 · 위치 · 등록'));
   A.push(tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 바코드 라벨 · 엑셀'));
+  A.push(tile('track', '🚚', bi('배송 조회', 'Tracking'), '가게 · 인보이스 · 트래킹'));
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
   /* 담당자 홈 = 주문 처리 먼저 (접수 · 픽킹 · 인보이스 · 포장), 바로가기, 매출은 맨 아래 */
   $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📦 ' + bi('주문 처리', 'Order processing') + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
@@ -251,7 +252,7 @@ async function staffHome() {
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
-    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat') return Router.go(k);
+    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track') return Router.go(k);
     if (k === 'inv' || k === 'shipped') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
     if (k === 'inv') { LF.im = 'acct'; LF.iacct = ''; LF.iq = ''; }
     LF.st = k; LF.list = true; pageOrder('');
