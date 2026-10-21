@@ -4,7 +4,8 @@
 export const $ = id => document.getElementById(id);
 /* 한글 · 영문 병기 — bi: 화면(HTML) 용, bt: 글자만 (placeholder · toast · confirm) */
 export const bi = (ko, en) => ko + ' <span class="en">' + en + '</span>';
-export const bt = (ko, en) => ko + ' / ' + en;
+/* bt: 앞뒤에 보이지 않는 표시(U+2062 · U+2063) — 언어 전환(i18n.js)이 한글 / English 짝의 정확한 경계를 알게 (뒤에 붙는 날짜 · 이름이 안 사라지게) */
+export const bt = (ko, en) => '\u2062' + ko + ' / ' + en + '\u2063';
 export const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
 export const money = n => { n = Number(n) || 0; return (n < 0 ? '−$' : '$') + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
 export const k = n => { n = Number(n) || 0; const a = Math.abs(n), s = n < 0 ? '−' : ''; if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(2) + 'M'; if (a >= 1e3) return s + '$' + Math.round(a / 1e3) + 'K'; return s + '$' + Math.round(a); };
@@ -37,7 +38,7 @@ export function toast(m, kind) {
 export function busy(on) { const b = $('busy'); if (b) b.classList.toggle('on', !!on); }
 export function openModal(html, opts) {
   const m = $('modal'), box = $('mbox');
-  box.innerHTML = html; m.classList.add('on');
+  box.className = 'box' + (opts && opts.wide ? ' wide' : ''); box.innerHTML = html; m.classList.add('on');
   box.scrollTop = 0;
   if (opts && opts.onClose) m._onClose = opts.onClose; else m._onClose = null;
 }

@@ -56,7 +56,15 @@ function greedy(run) {
   return out.join(' ');
 }
 /** 글자 하나(텍스트 노드 · placeholder …)를 지금 언어로 */
+const MK = /\u2062([^\u2062\u2063]*?) \/ ([^\u2062\u2063]*)\u2063/g;
+/** bt() 짝 하나 — 한국어 · 영어는 그대로 고르고, 포르투갈어는 사전(한글 → 영어 → 덩어리 순) */
+function pair(ko, en) {
+  if (LANG === 'ko') return ko; if (LANG === 'en') return en;
+  const pre = ko.match(/^[^가-힣]*/)[0], k = ko.slice(pre.length).replace(TAIL, ''), P = D.p[k] || D.r[k];
+  return pre + ((P && P[1]) || ptOfEn(en) || tr(ko.slice(pre.length)));
+}
 export function tr(t, enHint) {
+  if (t && t.indexOf('\u2063') >= 0) { t = t.replace(MK, (_, ko, en) => pair(ko, en)); }
   if (!t || !HAN.test(t)) return t;
   const lead = t.match(/^\s*/)[0], trail = t.match(/\s*$/)[0];
   let s = t.trim();
