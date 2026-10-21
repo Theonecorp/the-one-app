@@ -23,7 +23,8 @@ header .hb{background:rgba(255,255,255,.12);color:#fff;border:0;font-size:17px;p
 .up{color:var(--green);font-weight:700}.down{color:var(--red);font-weight:700}
 .warn{color:var(--red);font-weight:800}.ok{color:var(--green);font-weight:700}
 .login{text-align:center;padding:40px 16px}.login .logo{font-size:40px;margin-bottom:6px}.login .logo img{width:110px;height:110px}.login h1{font-size:22px;margin:0 0 4px}.login p{color:var(--muted);font-size:14px;margin:0 0 22px}
-.load{text-align:center;padding:36px 0;color:var(--muted);font-size:14px}
+.load{display:flex;flex-direction:column;align-items:center;gap:12px;padding:28px 4px;color:var(--muted);font-size:14px;font-weight:600;text-align:center}.load::before{content:'';width:36px;height:36px;border-radius:50%;border:4px solid #dbeafe;border-top-color:var(--blue);animation:ldspin .8s linear infinite}.load::after{content:'';width:100%;max-width:560px;height:96px;border-radius:12px;background:linear-gradient(90deg,#e9eef5 25%,#f6f8fb 40%,#e9eef5 60%);background-size:300% 100%;animation:ldshim 1.2s ease-in-out infinite}@keyframes ldspin{to{transform:rotate(360deg)}}@keyframes ldshim{0%{background-position:100% 0}100%{background-position:0 0}}
+#topbar{position:fixed;left:0;right:0;top:0;height:3px;z-index:9999;pointer-events:none;opacity:0;transition:opacity .2s;overflow:hidden}#topbar.on{opacity:1}#topbar::before{content:'';position:absolute;top:0;bottom:0;left:-40%;width:40%;background:linear-gradient(90deg,transparent,#60a5fa,#2563eb,#60a5fa,transparent);animation:tbmove 1s ease-in-out infinite}@keyframes tbmove{0%{left:-40%}100%{left:100%}}
 .none{text-align:center;padding:22px 0;color:#94a3b8;font-size:14px}
 button{font-family:inherit;cursor:pointer}
 .b-blue,.b-green,.b-ghost,.b-red,.b-navy{border:0;border-radius:13px;padding:13px 14px;font-size:15px;font-weight:800;width:100%}

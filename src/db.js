@@ -135,6 +135,42 @@ async function makeFirestoreDB() {
 }
 
 export async function connect() {
-  if (MOCK) return { DB: makeMemoryDB(window.__MOCK_SEED__ || {}), AUTH: makeMemoryAuth(window.__MOCK_USER__ || null) };
-  return makeFirestoreDB();
+  if (MOCK) return { DB: speed(makeMemoryDB(window.__MOCK_SEED__ || {})), AUTH: makeMemoryAuth(window.__MOCK_USER__ || null) };
+  const r = await makeFirestoreDB(); r.DB = speed(r.DB); return r;
 }
+
+/* ============================================================
+ *  ⚡ 빠르게 — ① 같은 읽기는 잠깐(15초) 기억해서 탭을 오갈 때 다시 안 읽음 (그 컬렉션에 쓰면 바로 지움)
+ *             ② 읽는 중이면 화면 위에 진행 막대 (window 'dbbusy' 이벤트)
+ * ============================================================ */
+const TTL = 15000, NOCACHE = { shipq: 1, counters: 1 };
+let INFLIGHT = 0;
+const busyEv = d => { INFLIGHT = Math.max(0, INFLIGHT + d); try { window.dispatchEvent(new CustomEvent('dbbusy', { detail: INFLIGHT })); } catch (e) {} };
+function speed(DB) {
+  const M = new Map(), P = new Map();   // M: 결과 {at, v} · P: 같은 읽기가 이미 진행 중이면 그 약속을 같이 씀
+  const key = (k, c, q) => k + '|' + c + '|' + JSON.stringify(q || {});
+  const drop = c => { for (const x of Array.from(M.keys())) if (x.split('|')[1] === c) M.delete(x); };
+  const read = (k, c, q, fn) => {
+    if (NOCACHE[c]) { busyEv(1); return fn().finally(() => busyEv(-1)); }   // 기다리며 계속 확인하는 것(UPS 요청)은 늘 새로
+    const id = key(k, c, q), hit = M.get(id);
+    if (hit && Date.now() - hit.at < TTL) return Promise.resolve(clone2(hit.v));
+    if (P.has(id)) return P.get(id).then(clone2);
+    busyEv(1);
+    const pr = fn().then(v => { M.set(id, { at: Date.now(), v }); return v; }).finally(() => { P.delete(id); busyEv(-1); });
+    P.set(id, pr); return pr.then(clone2);
+  };
+  const write = (c, fn) => { drop(c); busyEv(1); return fn().finally(() => { drop(c); busyEv(-1); }); };
+  const W = Object.create(DB);
+  W.get = (c, id) => read('g', c, id, () => DB.get(c, id));
+  W.list = (c, q) => read('l', c, q, () => DB.list(c, q));
+  W.set = (c, id, d) => write(c, () => DB.set(c, id, d));
+  W.update = (c, id, d) => write(c, () => DB.update(c, id, d));
+  W.del = (c, id) => write(c, () => DB.del(c, id));
+  W.batch = ops => { const cs = Array.from(new Set(ops.map(o => o.col))); cs.forEach(drop); busyEv(1); return DB.batch(ops).finally(() => { cs.forEach(drop); busyEv(-1); }); };
+  W.seq = (id, k, st) => { drop('counters'); return DB.seq(id, k, st); };
+  /** 기억한 것을 버리고 새로 읽게 (새로고침 버튼 등) */
+  W.fresh = c => { if (c) drop(c); else M.clear(); };
+  return W;
+}
+/* 돌려준 결과를 화면이 고쳐도 기억한 원본은 그대로 */
+function clone2(v) { return v == null || typeof v !== 'object' ? v : JSON.parse(JSON.stringify(v)); }

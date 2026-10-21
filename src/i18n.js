@@ -136,15 +136,16 @@ function walk(node) {
   while (w.nextNode()) L.push(w.currentNode);
   L.forEach(doText);
 }
+function buildE2P() { if (LANG !== 'pt') return; for (const k in D.r) { const e = D.r[k]; if (e[0] && e[1] && !E2P[ek(e[0])]) E2P[ek(e[0])] = e[1]; } for (const k in D.p) { const e = D.p[k]; if (e[0] && e[1]) E2P[ek(e[0])] = e[1]; } }
 let ON = false;
 /** 앱 시작 때 한 번 — 사전 받기 · 감시 시작 · 확인창 바꾸기 */
 export async function initLang(ver) {
   document.documentElement.lang = LANG === 'pt' ? 'pt-BR' : LANG;
   document.documentElement.classList.add('L-' + LANG);
-  try { const r = await fetch('i18n.json?v=' + encodeURIComponent(ver || '')); if (r.ok) D = await r.json(); } catch (e) {}
-  D.r = D.r || {}; D.p = D.p || {};
-  for (const k in D.r) { const e = D.r[k]; if (e[0] && e[1] && !E2P[ek(e[0])]) E2P[ek(e[0])] = e[1]; }
-  for (const k in D.p) { const e = D.p[k]; if (e[0] && e[1]) E2P[ek(e[0])] = e[1]; }
+  /* 한국어 화면은 사전을 기다리지 않고 바로 시작 (사전은 한글 옆 영어 지우기용 — 받아지면 화면 전체에 한 번 더) */
+  const load = fetch('i18n.json?v=' + encodeURIComponent(ver || '')).then(r => r.ok ? r.json() : null).catch(() => null).then(j => { if (j) D = j; D.r = D.r || {}; D.p = D.p || {}; buildE2P(); });
+  if (LANG !== 'ko') await load; else { D.r = D.r || {}; D.p = D.p || {}; load.then(() => walk(document.body)); }
+
   if (ON) return; ON = true;
   walk(document.body);
   new MutationObserver(ms => {
