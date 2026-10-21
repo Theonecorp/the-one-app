@@ -303,11 +303,11 @@ async function saveShipAddr(o, v, toAcct) {
   await S.DB.batch(ops); if ((o.invs || []).length) dropInvCache();
   o.shipTo = shipTo;
 }
-/** UPS 주소 확인 요청 → UPS.gs 가 1분 안에 upsAv/{id} 에 결과를 적음 */
+/** UPS 주소 확인 요청 → UPS.gs 가 1분 안에 shipq/{id} 에 결과를 적음 (st: av → avdone · averr) */
 async function upsValidate(to, orderId) {
-  const id = (orderId || 'x') + '-' + Date.now().toString(36);
-  await S.DB.set('upsAv', id, { st: 'wait', to, orderId: orderId || '', by: S.user.email, createdAt: new Date().toISOString() });
-  for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 3000)); let x = null; try { x = await S.DB.get('upsAv', id); } catch (e) {} if (x && x.st !== 'wait' && x.st !== 'working') return x; if (!$('upAvBox')) return null; }
+  const id = 'AV-' + (orderId || 'x') + '-' + Date.now().toString(36);
+  await S.DB.set('shipq', id, { st: 'av', kind: 'av', to, orderId: orderId || '', by: S.user.email, createdAt: new Date().toISOString() });
+  for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 3000)); let x = null; try { x = await S.DB.get('shipq', id); } catch (e) {} if (x && x.st === 'avdone') return Object.assign({}, x, { st: 'done' }); if (x && x.st === 'averr') return { st: 'error', err: x.err }; if (!$('upAvBox')) return null; }
   return { st: 'error', err: '응답이 없습니다 — UPS 스크립트(UPS.gs)를 새 버전으로 바꾸고 setup 을 실행했는지 확인하세요' };
 }
 export function printLabels(q) {
@@ -386,7 +386,7 @@ export async function shipModal(o, after) {
     if ($('aeOrd')) $('aeOrd').onclick = () => save(false);
     if ($('aeAcc')) $('aeAcc').onclick = () => save(true);
     if ($('upRs')) $('upRs').onclick = async () => { busy(true); try { const now = new Date().toISOString(); await S.DB.batch([{ op: 'update', col: 'orders', id: o.id, data: { shipTo: null, updatedAt: now } }].concat((o.invs || []).map(n => ({ op: 'update', col: 'invoices', id: n, data: { shipTo: null, updatedAt: now } })))); o.shipTo = null; to = upsTo(o); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); paint(); };
-    if ($('upAv')) $('upAv').onclick = async () => { if (!to.addr1 || !to.zip) return toast(bt('주소가 비었습니다', 'Address missing'), 'bad'); av = { st: 'wait' }; $('upAvBox').innerHTML = avHtml(); try { av = await upsValidate(to, o.id); } catch (e) { av = { st: 'error', err: String(e.code || e.message) + (String(e.code || e.message).includes('permission') ? ' — Firestore 규칙에 upsAv 를 게시해야 합니다' : '') }; } if (av && $('upAvBox')) { $('upAvBox').innerHTML = avHtml(); bindAddr(); } };
+    if ($('upAv')) $('upAv').onclick = async () => { if (!to.addr1 || !to.zip) return toast(bt('주소가 비었습니다', 'Address missing'), 'bad'); av = { st: 'wait' }; $('upAvBox').innerHTML = avHtml(); try { av = await upsValidate(to, o.id); } catch (e) { av = { st: 'error', err: String(e.code || e.message) + (String(e.code || e.message).includes('permission') ? ' — Firestore 규칙에 shipq 를 게시해야 합니다' : '') }; } if (av && $('upAvBox')) { $('upAvBox').innerHTML = avHtml(); bindAddr(); } };
   };
   let stop = false;
   const poll = async () => { for (let i = 0; i < 60 && !stop; i++) { await new Promise(r => setTimeout(r, 4000)); if (stop || !$('mbox')) return; let x = null; try { x = await S.DB.get('shipq', o.id); } catch (e) {} if (x && x.st !== q.st) { q = x; paint(); if (x.st === 'done') { try { await S.DB.update('orders', o.id, { track: x.track, shipVia: 'UPS', boxes: (x.labels || []).length, shipCost: x.charge || 0, updatedAt: new Date().toISOString() }); } catch (e) {} toast('✅ UPS 라벨 ' + (x.labels || []).length + '장 — 인쇄하세요', 'good'); printLabels(x); } return; } } };

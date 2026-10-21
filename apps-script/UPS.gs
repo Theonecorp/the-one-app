@@ -6,7 +6,8 @@
  *          앱은 그걸 보고 라벨을 인쇄하고 주문에 트래킹을 붙임. 실패하면 st:'error' + 이유.
  *          취소(void)도 같은 방식 — 앱에서 라벨 취소 → st:'void' → UPS 에 취소 요청 → st:'voided'.
  *          🗺 가게 지도: geoSync 가 1시간마다 거래처 주소를 구글 지도(Apps Script Maps)로 좌표(lat · lng)로 바꿔 accounts 에 넣음 — 새 · 바뀐 주소만.
- *          주소 확인: 앱에서 "✅ UPS 주소 확인" → upsAv/{id} (st:'wait') → UPS Address Validation API → 추천 주소(cands) 를 적음(st:'done').
+ *          주소 확인: 앱에서 "✅ UPS 주소 확인" → shipq/{id} (st:'av') → UPS Address Validation API → 추천 주소(cands) 를 적음(st:'avdone').
+ *          Firestore 무료 한도(하루 읽기 5만)를 아끼려고 1분에 읽기 1번만 함.
  *
  * 설치 (한 번만, luke@theonefl.com):
  *   1. script.google.com → 새 프로젝트 "THE ONE UPS" → 이 내용을 Code.gs 에 붙여넣기 → 저장
@@ -30,7 +31,7 @@ const SHIP_FROM_DEFAULT = { name: 'THE ONE CORP', attn: 'SHIPPING', phone: '4078
 function setup() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('run').timeBased().everyMinutes(1).create();
-  ScriptApp.newTrigger('geoSync').timeBased().everyHours(1).create(); Logger.log('🗺 가게 지도 좌표 — 1시간마다 새 · 바뀐 주소를 찾습니다 (처음 한 번은 지금 geoSync 를 직접 실행하면 빠릅니다)');
+  ScriptApp.newTrigger('geoSync').timeBased().everyHours(6).create(); Logger.log('🗺 가게 지도 좌표 — 6시간마다, 거래처가 바뀌었을 때만 새 · 바뀐 주소를 찾습니다 (처음 한 번은 지금 geoSync 를 직접 실행하면 빠릅니다)');
   if (prop_('UPS_QV_NAME')) { ScriptApp.newTrigger('qvSync').timeBased().everyHours(1).create(); Logger.log('Quantum View 구독 "' + prop_('UPS_QV_NAME') + '" — 1시간마다 출고 · 배달 기록을 받아옵니다'); }
   const tok = upsToken_();
   const r = UrlFetchApp.fetch(FS + '/settings/app', { headers: fsHeaders_(), muteHttpExceptions: true }), c = r.getResponseCode();
@@ -48,21 +49,26 @@ function testLabel() {
 function run() {
   const lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
   try {
-    const from = settingsFrom_();
-    fsQuery_('shipq', 'st', 'wait', 10).forEach(q => {
-      try {
-        fsPatch_('shipq', q._id, { st: 'working', at: iso_() });
-        const r = ship_(q, from);
-        fsPatch_('shipq', q._id, { st: 'done', at: iso_(), env: env_(), shipId: r.shipId, charge: r.charge, track: r.labels.map(x => x.trk).join(' '), labels: r.labels, err: '' });
-      } catch (e) { fsPatch_('shipq', q._id, { st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
-    });
-    fsQuery_('upsAv', 'st', 'wait', 10).forEach(q => {
-      try { fsPatch_('upsAv', q._id, Object.assign({ st: 'done', at: iso_(), err: '' }, xav_(q.to || {}))); }
-      catch (e) { fsPatch_('upsAv', q._id, { st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
-    });
-    fsQuery_('shipq', 'st', 'void', 10).forEach(q => {
-      try { voidShip_(q.shipId); fsPatch_('shipq', q._id, { st: 'voided', at: iso_(), err: '' }); }
-      catch (e) { fsPatch_('shipq', q._id, { st: 'voiderr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+    /* 1분에 Firestore 읽기 1번만 — 라벨(wait) · 취소(void) · 주소 확인(av) 을 한 번에 찾음. 설정은 라벨이 있을 때만 */
+    let jobs = [];
+    try { jobs = fsQueryIn_('shipq', 'st', ['wait', 'void', 'av'], 20); }
+    catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면(밤 12시 태평양 시간) 저절로 이어집니다'); return; } throw e; }
+    if (!jobs.length) return;
+    const from = jobs.some(q => q.st === 'wait') ? settingsFrom_() : null;
+    jobs.forEach(q => {
+      if (q.st === 'wait') {
+        try {
+          fsPatch_('shipq', q._id, { st: 'working', at: iso_() });
+          const r = ship_(q, from);
+          fsPatch_('shipq', q._id, { st: 'done', at: iso_(), env: env_(), shipId: r.shipId, charge: r.charge, track: r.labels.map(x => x.trk).join(' '), labels: r.labels, err: '' });
+        } catch (e) { fsPatch_('shipq', q._id, { st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+      } else if (q.st === 'void') {
+        try { voidShip_(q.shipId); fsPatch_('shipq', q._id, { st: 'voided', at: iso_(), err: '' }); }
+        catch (e) { fsPatch_('shipq', q._id, { st: 'voiderr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+      } else if (q.st === 'av') {
+        try { fsPatch_('shipq', q._id, Object.assign({ st: 'avdone', at: iso_(), err: '' }, xav_(q.to || {}))); }
+        catch (e) { fsPatch_('shipq', q._id, { st: 'averr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+      }
     });
   } finally { lock.releaseLock(); }
 }
@@ -216,6 +222,9 @@ function geoSync() {
   const lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
   const t0 = Date.now();
   try {
+    /* 거래처가 바뀌지 않았으면 읽지 않음 (Firestore 읽기 아끼기) — settings/app.accountsVer 를 지난번과 비교 */
+    const P = PropertiesService.getScriptProperties(), st = fsGet_('settings', 'app') || {}, ver = String(st.accountsVer || '');
+    if (P.getProperty('GEO_DONE') === '1' && P.getProperty('GEO_VER') === ver) { Logger.log('🗺 바뀐 거래처 없음 — 건너뜀'); return; }
     const all = fsListAll_('accounts'), todo = all.filter(a => { const q = geoQ_(a); return q && a.geoQ !== q; });
     Logger.log('🗺 거래처 ' + all.length + '곳 · 좌표 찾을 곳 ' + todo.length);
     let ok = 0, bad = 0, stop = ''; const errs = {};
@@ -231,10 +240,12 @@ function geoSync() {
         save(a, r);
       }
     }
-    if (ok || bad) fsPatch_('settings', 'app', { accountsVer: String(Date.now()) });
+    /* 다 끝났을 때만 버전을 올림 — 올리면 모든 폰이 거래처를 다시 받으므로 한 번만 */
+    if (!stop) { let v = ver; if (ok || bad || P.getProperty('GEO_PENDING') === '1') { v = String(Date.now()); fsPatch_('settings', 'app', { accountsVer: v }); } P.setProperties({ GEO_VER: v, GEO_DONE: '1', GEO_PENDING: '0' }); }
+    else P.setProperties({ GEO_DONE: '0', GEO_PENDING: (ok || bad || P.getProperty('GEO_PENDING') === '1') ? '1' : '0' });
     Logger.log('🗺 찾음 ' + ok + ' · 못 찾음 ' + bad + (stop ? ' · 멈춤(' + stop + ') — 다음 실행 때 이어서' : ' · 끝'));
     Object.keys(errs).slice(0, 5).forEach(k => Logger.log('  이유: ' + k + ' × ' + errs[k]));
-  } catch (e) { Logger.log('🗺 geoSync 오류: ' + (e && e.message || e)); throw e; }
+  } catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('🗺 Firestore 하루 무료 한도 초과 — 한도가 다시 차면 다음 실행 때 이어서 합니다'); return; } Logger.log('🗺 geoSync 오류: ' + (e && e.message || e)); throw e; }
   finally { lock.releaseLock(); }
 }
 
@@ -275,6 +286,13 @@ function fsListAll_(col) {
     const j = JSON.parse(r.getContentText()); (j.documents || []).forEach(d => out.push(fromDoc_(d))); tok = j.nextPageToken || '';
   } while (tok);
   return out;
+}
+/** field IN [값들] — 여러 상태를 읽기 1번으로 */
+function fsQueryIn_(col, field, vals, limit) {
+  const body = { structuredQuery: { from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: field }, op: 'IN', value: { arrayValue: { values: vals.map(v => ({ stringValue: v })) } } } }, limit } };
+  const r = UrlFetchApp.fetch(FS + ':runQuery', { method: 'post', contentType: 'application/json', payload: JSON.stringify(body), headers: fsHeaders_(), muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error('Firestore 읽기 실패 ' + r.getResponseCode() + ': ' + r.getContentText().substring(0, 200));
+  return JSON.parse(r.getContentText()).filter(x => x.document).map(x => fromDoc_(x.document));
 }
 function fsPatch_(col, id, data) {
   const mask = Object.keys(data).map(k => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&'), fields = {};
