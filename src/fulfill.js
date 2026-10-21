@@ -510,7 +510,10 @@ async function confirmInvoice(o, lines) {
       const doc = orderDoc(Object.assign({}, o, { st: 'done', invs: invs.map(x => x.no), doneAt: now, doneBy: S.user.email, bo: bo.length ? o.id : '', updatedAt: now }), lines, o.disc);
       doc.amt = R2(invs.reduce((a, x) => a + x.total, 0));
       ops.push({ op: 'set', col: 'orders', id: o.id, data: doc }, { op: 'set', col: 'orderLines', id: o.id, data: { sm: o.sm, lines } });
+      const wake = acc && acc.inactive;   // 💤 비활성 거래처에 다시 인보이스 → 자동으로 활성
+      if (wake) ops.push({ op: 'update', col: 'accounts', id: acc.acct, data: { inactive: false, reactAt: now, reactBy: 'invoice ' + invs.map(x => x.no).join(' ') } });
       await S.DB.batch(ops); dropInvCache(); bumpSalesM(S, invs, 1);
+      if (wake) { try { await bumpAccountsVer(); } catch (e) {} }
       toast('인보이스 ' + invs.map(x => x.no).join(', '), 'good');
       busy(false);
       await printInvoices(invs, acc);
@@ -673,11 +676,11 @@ function acctList(LF, head, modeSeg) {
   bindListHead(LF, head);
   let lim = 300;
   const paint = () => {
-    const q = LF.iq.trim(), hits = q ? searchAccounts(S.accounts, q, 100000) : sortBy(S.accounts, a => a.store), show = hits.slice(0, lim);
+    const q = LF.iq.trim(), hits = q ? searchAccounts(S.accounts, q, 100000) : sortBy(S.accounts.filter(a => !a.inactive), a => a.store), show = hits.slice(0, lim);   // 💤 비활성은 검색할 때만 (맨 뒤)
     const isNo = /^[A-Z]{1,2}\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);
     $('iaList').innerHTML = (isNo ? '<button class="b-blue" id="iaNo" style="margin-bottom:8px">🔎 ' + bi('인보이스 · 주문 번호로 찾기', 'Find by number') + ': ' + esc(q.toUpperCase()) + '</button>' : '') +
       '<div class="muted" style="margin:0 0 6px">' + (q ? bt('찾음', 'Found') : bt('전체 거래처 · 이름순', 'All customers · by name')) + ' ' + hits.length.toLocaleString() + ' — ' + bt('가게를 누르면 인보이스 전부', 'tap a store for its invoices') + '</div>' +
-      (show.length ? show.map(a => '<div class="pr tap" data-ia="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</small></div><div class="pa">›</div></div>').join('') : '<div class="none">없음 · no match</div>') +
+      (show.length ? show.map(a => '<div class="pr tap" data-ia="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + (a.inactive ? ' <span class="tag t-g">💤</span>' : '') + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</small></div><div class="pa">›</div></div>').join('') : '<div class="none">없음 · no match</div>') +
       (hits.length > show.length ? '<button class="b-ghost" id="iaMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (hits.length - show.length).toLocaleString() + ')</button>' : '');
     $('iaList').querySelectorAll('[data-ia]').forEach(el => el.onclick = () => { LF.iacct = el.dataset.ia; invBrowser(LF, head); });
     if ($('iaMore')) $('iaMore').onclick = () => { lim += 300; paint(); };

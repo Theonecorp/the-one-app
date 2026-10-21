@@ -186,27 +186,56 @@ function qvDelivery_(d) {
  *    구글 하루 한도에 걸리면 멈췄다가 다음 시간에 이어서. 바뀐 게 있으면 settings/app.accountsVer 를 올려 폰들이 새로 받게
  * ============================================================ */
 const geoQ_ = a => { const p = [a.addr, a.city, a.state, a.zip].map(x => String(x || '').trim()).filter(Boolean); return a.addr && p.length >= 3 ? p.join(', ') + ', USA' : ''; };
+/** 주소 하나 → [lat, lng] — ① 미국 인구조사국 Census 지오코더 (무료 · 키 없음 · 한도 없음) ② 안 되면 구글 Maps (Apps Script) */
+function geocode_(a) {
+  const one = [a.addr, a.city, a.state, a.zip].map(x => String(x || '').trim()).filter(Boolean).join(', ');
+  try {
+    const r = UrlFetchApp.fetch('https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=' + encodeURIComponent(one), { muteHttpExceptions: true });
+    if (r.getResponseCode() === 200) { const m = ((JSON.parse(r.getContentText()).result || {}).addressMatches || [])[0]; if (m && m.coordinates) return { lat: m.coordinates.y, lng: m.coordinates.x, src: 'census' }; }
+  } catch (e) {}
+  try {
+    const g = Maps.newGeocoder().setRegion('us').geocode(one + ', USA');
+    if (g && g.status === 'OK' && g.results && g.results.length) { const l = g.results[0].geometry.location; return { lat: l.lat, lng: l.lng, src: 'google' }; }
+    return { err: String((g && g.status) || 'NOT_FOUND') };
+  } catch (e) { return { err: String(e && e.message || e).substring(0, 120), quota: /too many|quota|limit/i.test(String(e && e.message)) }; }
+}
+/** Census 일괄 — 한 번에 최대 1,000곳. 돌려주는 값: { acct: [lat, lng] } (못 찾은 곳은 없음) */
+function censusBatch_(list) {
+  const q = v => '"' + String(v || '').replace(/"/g, '').trim() + '"';
+  const csv = list.map(a => [q(a._id), q(a.addr), q(a.city), q(a.state), q(String(a.zip || '').substring(0, 5))].join(',')).join('\n');
+  const r = UrlFetchApp.fetch('https://geocoding.geo.census.gov/geocoder/locations/addressbatch', { method: 'post', payload: { benchmark: 'Public_AR_Current', addressFile: Utilities.newBlob(csv, 'text/csv', 'addr.csv') }, muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error('Census ' + r.getResponseCode());
+  const out = {};
+  r.getContentText().split(/\r?\n/).forEach(line => {
+    const c = (line.match(/"([^"]*)"/g) || []).map(x => x.replace(/"/g, ''));
+    if (c.length >= 6 && c[2] === 'Match') { const xy = c[5].split(','); out[c[0]] = [Number(xy[1]), Number(xy[0])]; }
+  });
+  return out;
+}
 function geoSync() {
   const lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
   const t0 = Date.now();
   try {
     const all = fsListAll_('accounts'), todo = all.filter(a => { const q = geoQ_(a); return q && a.geoQ !== q; });
-    const g = Maps.newGeocoder().setRegion('us');
-    let ok = 0, bad = 0, stop = '';
-    for (const a of todo) {
-      if (Date.now() - t0 > 4.5 * 60 * 1000) { stop = '시간'; break; }
-      const q = geoQ_(a);
-      try {
-        const r = g.geocode(q);
-        if (r.status === 'OK' && r.results && r.results.length) { const l = r.results[0].geometry.location; fsPatch_('accounts', a._id, { lat: l.lat, lng: l.lng, geoQ: q, geoErr: '', geoAt: iso_() }); ok++; }
-        else if (r.status === 'OVER_QUERY_LIMIT') { stop = '구글 한도'; break; }
-        else { fsPatch_('accounts', a._id, { geoQ: q, geoErr: String(r.status || '?'), lat: null, lng: null }); bad++; }
-      } catch (e) { if (/too many|quota|limit/i.test(String(e.message))) { stop = '구글 하루 한도'; break; } bad++; }
-      Utilities.sleep(120);
+    Logger.log('🗺 거래처 ' + all.length + '곳 · 좌표 찾을 곳 ' + todo.length);
+    let ok = 0, bad = 0, stop = ''; const errs = {};
+    const save = (a, r) => { const q = geoQ_(a); try { if (r.lat != null) { fsPatch_('accounts', a._id, { lat: r.lat, lng: r.lng, geoQ: q, geoErr: '', geoSrc: r.src, geoAt: iso_() }); ok++; } else { fsPatch_('accounts', a._id, { geoQ: q, geoErr: r.err, lat: null, lng: null }); errs[r.err] = (errs[r.err] || 0) + 1; bad++; } } catch (e) { errs[String(e.message)] = (errs[String(e.message)] || 0) + 1; } };
+    for (let i = 0; i < todo.length && !stop; i += 1000) {
+      const part = todo.slice(i, i + 1000);
+      let hit = {}; try { hit = censusBatch_(part); } catch (e) { errs[String(e.message)] = 1; }
+      for (const a of part) {
+        if (Date.now() - t0 > 5 * 60 * 1000) { stop = '시간 (5분)'; break; }
+        if (hit[a._id]) { save(a, { lat: hit[a._id][0], lng: hit[a._id][1], src: 'census' }); continue; }
+        const r = geocode_(a);   // Census 일괄에서 못 찾은 곳 — 한 곳씩 다시 (Census → 구글)
+        if (r.quota) { stop = '구글 하루 한도'; break; }
+        save(a, r);
+      }
     }
     if (ok || bad) fsPatch_('settings', 'app', { accountsVer: String(Date.now()) });
-    Logger.log('🗺 좌표 — 거래처 ' + all.length + '곳 중 찾을 것 ' + todo.length + ' · 찾음 ' + ok + ' · 못 찾음 ' + bad + (stop ? ' · 멈춤(' + stop + ') — 다음 시간에 이어서' : ' · 끝'));
-  } finally { lock.releaseLock(); }
+    Logger.log('🗺 찾음 ' + ok + ' · 못 찾음 ' + bad + (stop ? ' · 멈춤(' + stop + ') — 다음 실행 때 이어서' : ' · 끝'));
+    Object.keys(errs).slice(0, 5).forEach(k => Logger.log('  이유: ' + k + ' × ' + errs[k]));
+  } catch (e) { Logger.log('🗺 geoSync 오류: ' + (e && e.message || e)); throw e; }
+  finally { lock.releaseLock(); }
 }
 
 /** 참조 번호 → 인보이스(invoices/{번호}.orderId) · 주문(orders/{번호}) · 없으면 받는 가게 이름 + 7일 안 "인보이스 발행" 주문 하나 */
