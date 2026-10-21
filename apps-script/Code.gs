@@ -2,7 +2,7 @@
  * THE ONE — Daily Collection Report 메일 보내기 (구글 Apps Script)
  *
  * 하는 일: 세일즈맨이 앱에서 "📧 Daily Report 전송" 을 누르면 Firestore reports 에 문서가 하나 생김(mail: 'wait').
- *          이 스크립트가 1분마다 그걸 찾아서 예전처럼 표 모양 이메일을 보냄 → 보낸 사람 + check@theonefl.com (설정의 담당자 알림 이메일)
+ *          이 스크립트가 5분마다 그걸 찾아서 예전처럼 표 모양 이메일을 보냄 → 보낸 사람 + check@theonefl.com (설정의 담당자 알림 이메일)
  *          보낸 뒤 mail: 'sent' 로 표시. 실패하면 mail: 'error' + 이유 (관리 → 설정에서 보이고 다시 보내기 가능)
  *
  * 설치 (한 번만, luke@theonefl.com 으로):
@@ -21,12 +21,12 @@ const FROM_NAME = 'THE ONE Collection Report';
 const REPLY_TO = 'luke@theonefl.com';
 const DEFAULT_TO = 'check@theonefl.com';
 
-/** 1분마다 도는 트리거 만들기 (기존 것은 지움) */
+/** 5분마다 도는 트리거 만들기 (기존 것은 지움) — Firestore 무료 한도를 아끼려고 5분 */
 function setup() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('run').timeBased().everyMinutes(1).create();
+  ScriptApp.newTrigger('run').timeBased().everyMinutes(5).create();
   run();
-  Logger.log('설치 완료 — 1분마다 Daily Report 를 보냅니다');
+  Logger.log('설치 완료 — 5분마다 Daily Report 를 보냅니다');
 }
 
 /** 시험 메일 — 나에게만 */
@@ -43,9 +43,12 @@ function run() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return;
   try {
+    let list = [];
+    try { list = query_('reports', 'mail', 'wait', 20); }
+    catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면 이어서 보냅니다'); return; } throw e; }
+    if (!list.length) return;   // 보낼 것이 없으면 설정도 안 읽음 (읽기 아끼기)
     const settings = getDoc_('settings', 'app') || {};
     const cc = String(settings.reportTo || DEFAULT_TO).split(/[,;\s]+/).filter(isEmail_);
-    const list = query_('reports', 'mail', 'wait', 20);
     list.forEach(r => {
       try {
         const to = [];
