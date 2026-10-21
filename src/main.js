@@ -21,7 +21,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.53';
+export const VER = 'v0.8.54';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -81,6 +81,11 @@ function shell() {
     '<div id="prt"><div id="prtbar"><button onclick="window.print()">🖨 인쇄 / PDF</button><button id="prtClose">닫기</button></div><div id="prtbody"></div></div>';
   $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
   /* ⏳ 서버에서 읽는 동안 화면 맨 위에 진행 막대 (0.15초 넘게 걸릴 때만) */
+  /* 처리 안 된 오류가 나도 화면이 막힌 채 남지 않게 — 동그라미를 풀고 알림 */
+  window.addEventListener('unhandledrejection', e => { const r = e.reason, b = $('busy'); console.error(r); if (b && b.classList.contains('on')) { busy(false); toast('오류: ' + String((r && (r.code || r.message)) || r).slice(0, 120), 'bad'); } });
+  window.addEventListener('error', e => { if (e.target && e.target !== window) return; busy(false); });
+  /* 큰 버튼(저장 · 적용 · 보내기 …) 두 번 빨리 누르면 한 번만 — 같은 일이 겹쳐 돌다 화면이 꼬이는 것 막기 (수량 +/- 같은 작은 버튼은 그대로) */
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button.b-blue,button.b-red,button.b-green,button.b-amb,#nav button'); if (!b) return; const t = Date.now(); if (b._tap && t - b._tap < 450) { e.stopImmediatePropagation(); e.preventDefault(); return; } b._tap = t; }, true);
   let tbT = 0; window.addEventListener('dbbusy', e => { const n = e.detail, tb = $('topbar'); if (!tb) return; clearTimeout(tbT); if (n > 0) tbT = setTimeout(() => tb.classList.add('on'), 150); else tb.classList.remove('on'); });
   $('prtClose').onclick = printClose;
   $('hMenu').onclick = userMenu;

@@ -162,7 +162,15 @@ export async function loadCatalog(S, force) {
 
 async function readSets(S) { try { const d = await S.DB.get('catalog', 'sets'); return d && d.j ? JSON.parse(d.j) : {}; } catch (e) { return {}; } }
 export const SET_GROUP = '🧩 세트 · 인서트';
-export const SET_L1 = '"🧩 SETS"', NO_L1 = '*NO LEVEL*';
+export const SET_L1 = 'SET ORDER""', NO_L1 = '*NO LEVEL*';
+/** 분류 없는 세트를 SET ORDER 안 어디에 — 구성품이 바디주얼리면 BODY JEWELRY, 아니면 코드 앞부분 (C4-EB01 → C4) */
+function setKind(x, byCode) {
+  const L = {}; (x.k || []).forEach(k => { const c = byCode[k[0]]; if (c && c.l1) L[c.l1] = (L[c.l1] || 0) + 1; });
+  const top = Object.keys(L).sort((a, b) => L[b] - L[a])[0] || '';
+  if (/BODY/i.test(top) || /^(BD|BJ)/i.test(x.c)) return 'BODY JEWELRY';
+  const pre = String(x.c).split(/[-_ ]/)[0];
+  return pre && pre !== x.c ? pre.toUpperCase() : (top ? cleanName(top) : 'SETS');
+}
 const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function index(pack) {
   const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
@@ -186,8 +194,12 @@ function index(pack) {
   });
   for (let i = items.length - 1; i >= 0; i--) if (items[i].gone) items.splice(i, 1);
   /* Level 1 이 빈 보이는 아이템도 주문 화면 분류에 나오게 — 세트(세트북에서 새로 생긴 코드)는 "🧩 SETS", 그 밖은 맨 뒤 "NO LEVEL"
-   *  (화면용 lv1 만 채움 — 저장된 l1 · 인보이스 종류는 그대로) */
-  items.forEach(x => { x.lv1 = x.l1 || (x.h ? '' : x.virt ? SET_L1 : NO_L1); });
+   *  (화면용 lv1 · lv2 · lv3 만 채움 — 저장된 l1 · 인보이스 종류는 그대로) */
+  const setL1 = (items.find(x => x.l1 && /SET ORDER/i.test(x.l1)) || {}).l1 || SET_L1;
+  items.forEach(x => {
+    x.lv1 = x.l1 || (x.h ? '' : x.virt ? setL1 : NO_L1); x.lv2 = x.l2; x.lv3 = x.l3;
+    if (x.virt && !x.l1 && !x.h) { x.lv2 = setKind(x, byCode); x.lv3 = ''; }   // 세트북 세트 → SET ORDER › C4 · BODY JEWELRY …
+  });
   items.sort((a, b) => COLL.compare(a.c, b.c));   // 분류 안에서는 코드 순 (Collator — localeCompare 보다 20배 빠름)
   /* 카테고리 트리: 📌 위 고정 → ABC → 📌 아래 고정 (sortTree)
    *  tree  = Group → Level 1 → Level 2 → Level 3   (4단계)
@@ -205,7 +217,7 @@ function index(pack) {
   (pack.cats || []).forEach(p => { add(tree, p); add(tree1, p.slice(1)); add(treeA, p); });
   const count = (root, path, hid) => { let node = root; if (hid) node.nh++; else node.n++; path.forEach(name => { if (!name) return; node = node.map[name]; if (hid) node.nh++; else node.n++; }); };
   items.forEach(x => {
-    const P = [x.g, x.lv1, x.l2, x.l3];
+    const P = [x.g, x.lv1, x.lv2, x.lv3];
     add(treeA, P); count(treeA, P, x.h);
     if (x.h) return;
     add(tree, P); count(tree, P); add(tree1, P.slice(1)); count(tree1, P.slice(1));
@@ -220,7 +232,7 @@ function index(pack) {
 /** 주문 화면이 어느 단계부터 보이나 — 'l1'(기본, SBMGo 처럼 ANKLET · EARRING …) 또는 'g'(Jewelry · Beauty … 부터) */
 export function catStart(S) { return S && S.settings && S.settings.catStart === 'g' ? 'g' : 'l1'; }
 export function treeFor(S) { return catStart(S) === 'g' ? CAT.tree : CAT.tree1; }
-export function levelsOf(x, start) { const l1 = x.lv1 == null ? x.l1 : x.lv1; return start === 'g' ? [x.g, l1, x.l2, x.l3] : [l1, x.l2, x.l3]; }
+export function levelsOf(x, start) { const V = x.lv1 == null ? [x.l1, x.l2, x.l3] : [x.lv1, x.lv2, x.lv3]; return start === 'g' ? [x.g].concat(V) : V; }
 
 /** 코드 · 바코드가 정확히 맞는 것 (스캐너 입력) */
 export function exactItem(q) {
