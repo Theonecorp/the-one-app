@@ -7,7 +7,7 @@
  *  행 모양: [code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide]
  * ============================================================ */
 import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt } from './ui.js';
-import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, SET_L1, NO_L1 } from './catalog.js';
+import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1 } from './catalog.js';
 import { typeOfItem, invTypes } from './invoicing.js';
 import { can } from './main.js';
 import { levelTool } from './lvtool.js';
@@ -28,7 +28,7 @@ const isAdmin = () => S.role === 'admin';
 const locOnly = () => S.role !== 'admin' && !can('newOrder') && !can('invoice');
 const LV = ['Group', 'Level 1', 'Level 2', 'Level 3'];
 const pathOf = x => [x.g, x.l1, x.l2, x.l3];
-const inPath = (x, path) => { const L = [x.g, x.lv1 == null ? x.l1 : x.lv1, x.l2, x.l3]; return path.every((p, i) => L[i] === p); };   // 분류 트리와 같게 (Level 1 빈 것 = NO LEVEL · 🧩 SETS)
+const inPath = (x, path) => { const L = x.lv1 == null ? [x.g, x.l1, x.l2, x.l3] : [x.g, x.lv1, x.lv2, x.lv3]; return path.every((p, i) => L[i] === p); };   // 분류 트리와 같게 (Level 1 빈 것 = NO LEVEL · 세트 = SET ORDER)
 
 async function page(arg) {
   if (!isStaff()) { $('page').innerHTML = '<div class="card"><div class="none">담당자 · 관리자만 쓰는 화면입니다</div></div>'; return; }
@@ -169,7 +169,7 @@ function bindLevelLists(ids) {
 /** 여러 개를 다른 분류로 — 지금 보고 있는 분류가 기본값 */
 function moveForm(codes) {
   const C = catalog(), L = levelLists(), first = C.byCode[codes[0]] || {};
-  const d = (IT.path.length ? IT.path.concat(['', '', '', '']).slice(0, 4) : pathOf(first)).map(v => v === SET_L1 || v === NO_L1 ? '' : v);
+  const d = (IT.path.length ? IT.path.concat(['', '', '', '']).slice(0, 4) : pathOf(first)).map(v => v === NO_L1 ? '' : v);
   openModal('<h2>➡️ ' + codes.length + '개 분류 옮기기</h2><div class="muted">' + esc(codes.slice(0, 6).join(', ')) + (codes.length > 6 ? ' 외 ' + (codes.length - 6) + '개' : '') + '</div>' +
     '<div class="two" style="margin-top:8px">' + catPick('mG', '그룹 <span class="en">Group</span>', L.groups, d[0]) + catPick('mL1', 'Level 1', L.l1s(d[0]), d[1]) + '</div>' +
     '<div class="two">' + catPick('mL2', 'Level 2', L.l2s(d[0], d[1]), d[2]) + catPick('mL3', 'Level 3', L.l3s(d[0], d[1], d[2]), d[3]) + '</div>' +

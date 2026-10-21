@@ -30,7 +30,7 @@ const path = require('path'), fs = require('fs');
   const tiles = await pg.$$eval('.cats button', els => els.map(e => e.querySelector('b').textContent.trim()));
   log('L1 tiles:', tiles.join(' | '));
   if (!tiles[0].startsWith('✨ 자주 나가는') || tiles[1] !== 'Wax' || tiles[tiles.length - 1] !== 'Chains') errs.push('tile order wrong: ' + tiles.join('|'));
-  const mid = tiles.slice(2, -1); if (mid.join() !== mid.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).join()) errs.push('not ABC: ' + mid.join('|'));
+  const mid = tiles.slice(2, -1).filter(t => t !== 'SET ORDER');   // SET ORDER(세트북 세트)는 이전 시스템처럼 맨 앞 고정 if (mid.join() !== mid.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).join()) errs.push('not ABC: ' + mid.join('|'));
   /* ✨ 자주 나가는: 이 가게(3001) 가 최근 산 AHG100 · AHG101 먼저, 그 다음 GM104 EB103 */
   await pg.click('[data-pop]'); await pg.waitForTimeout(300); await shot('h1_pop');
   const pop = await pg.$$eval('#eRes .gcard .gt > b, #eRes .irow .ct > b', els => els.map(e => e.textContent.trim().split(' ')[0]));

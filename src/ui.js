@@ -35,7 +35,14 @@ export function toast(m, kind) {
   t.textContent = m; t.className = 'on' + (kind ? ' ' + kind : '');
   clearTimeout(t._t); t._t = setTimeout(() => { t.className = ''; }, 2400);
 }
-export function busy(on) { const b = $('busy'); if (b) b.classList.toggle('on', !!on); }
+/* 잠깐 막기(돌아가는 동그라미) — 8초 넘게 안 풀리면 "화면 풀기" 버튼이 나와 화면이 영영 멈추지 않게 */
+let busyT = 0;
+export function busy(on) {
+  const b = $('busy'); if (!b) return;
+  b.classList.toggle('on', !!on); clearTimeout(busyT);
+  const x = b.querySelector('.bfree'); if (x) x.remove();
+  if (on) busyT = setTimeout(() => { if (!b.classList.contains('on') || b.querySelector('.bfree')) return; const k = document.createElement('button'); k.className = 'bfree'; k.textContent = '오래 걸립니다 — ✕ 화면 풀기'; k.onclick = () => busy(false); b.appendChild(k); }, 8000);
+}
 export function openModal(html, opts) {
   const m = $('modal'), box = $('mbox');
   box.className = 'box' + (opts && opts.wide ? ' wide' : ''); box.innerHTML = html; m.classList.add('on');
@@ -91,7 +98,7 @@ export function printClose() { $('prt').classList.remove('on'); }
 
 /* 간단 라우터 — 해시 기반 (#/page/sub) */
 export const Router = {
-  routes: {}, cur: '', stack: [], home: '',
+  routes: {}, cur: '', stack: [], home: '', gen: 0, done: 0,
   on(name, fn) { this.routes[name] = fn; },
   go(name, arg) { location.hash = '#/' + name + (arg ? '/' + encodeURIComponent(arg) : ''); },
   /** 화면마다 "한 단계 위" 가 따로 있으면 — up[name](arg) 가 처리하고 true, upHas[name]() 는 위가 있는지 */
@@ -114,7 +121,12 @@ export const Router = {
       if (this._back) this._back = false;
       else if (this.stack.length > 1 && this.stack[this.stack.length - 2] === h) this.stack.pop();   // 브라우저(안드로이드) 뒤로 — 우리 기록도 한 칸 뒤로
       else if (this.stack[this.stack.length - 1] !== h) { this.stack.push(h); if (this.stack.length > 60) this.stack.shift(); }
-      const fn = this.routes[name] || this.routes['']; if (fn) fn(arg ? decodeURIComponent(arg) : '');
+      /* 빠르게 여러 탭을 누르면 앞 화면이 늦게 끝나 지금 화면을 덮어쓸 수 있음 — 늦게 끝난 앞 화면이 있으면 지금 화면을 한 번 더 그림 */
+      this.at = Date.now(); const g = ++this.gen, fn = this.routes[name] || this.routes['']; if (!fn) return;
+      const redo = () => { if (g !== this.gen && this.done === this.gen && Date.now() - this.at < 5000) { const f2 = this.routes[this.cur] || this.routes['']; const a2 = location.hash.replace(/^#\/?/, '').split('/')[1]; this.done = 0; settle(this.gen, f2 && f2(a2 ? decodeURIComponent(a2) : '')); } };
+      const settle = (gg, p) => { const end = () => { if (gg === this.gen) this.done = gg; else redo(); }; if (p && p.then) p.then(end, e => { busy(false); toast('화면을 열지 못했습니다: ' + (e && (e.code || e.message) || e), 'bad'); end(); }); else end(); };
+      let p; try { p = fn(arg ? decodeURIComponent(arg) : ''); } catch (e) { busy(false); toast('화면을 열지 못했습니다: ' + (e.code || e.message), 'bad'); }
+      settle(g, p);
       document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === name));
       this.refreshBack();
       window.scrollTo(0, 0);
