@@ -61,7 +61,7 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .a-red{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.a-amb{background:#fff7ed;color:#7c2d12;border:1px solid #fed7aa}.a-blu{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe}.a-grn{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
 .pr{display:flex;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line)}.pr.tap{border-radius:12px;padding:11px 8px;margin:0 -6px}.pr.tap:hover{background:#f8fafc}
 .en{font-weight:500;opacity:.72;font-size:.88em;white-space:nowrap}.en.enx{display:none!important}nav button .en{display:block;font-size:9px;opacity:.75;font-weight:600;line-height:1.1;overflow:hidden;text-overflow:ellipsis}.htile .en{display:block;font-size:12px}h2 .en,.chips .en,.seg .en{font-size:.85em}
-.kpi.strip div{cursor:pointer}.kpi.strip b{font-size:15px}
+.kpi.strip{grid-template-columns:repeat(5,1fr);gap:5px}.kpi.strip div{cursor:pointer;padding:7px 3px}.kpi.strip b{font-size:15px}.kpi.strip span{font-size:10.5px}
 .iday{display:flex;justify-content:space-between;align-items:center;background:#f1f5f9;border-radius:8px;padding:6px 10px;margin:10px 0 2px;font-size:13px}.iday span{color:var(--muted);font-size:12px}
 .pr .ct{flex:1;min-width:0}.pr .ct b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pr .ct small{color:var(--muted);font-size:11.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pr .pa{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.pr .pa b{font-size:14.5px}.pr .pa small{display:block;font-size:10.5px;color:var(--muted)}

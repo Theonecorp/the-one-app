@@ -77,7 +77,11 @@ const path = require('path'), fs = require('fs');
   await home();
   await pg.click('[data-hg="sent"]'); await pg.waitForSelector('[data-ck]'); log('sent list groups:', await pg.$$eval('.smgrp', e => e.length), 'rows:', await pg.$$eval('[data-ck]', e => e.length));
   await pg.click('[data-ckall="1"]'); await pg.click('#bkCf'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(800);
+  /* v0.8.51 흐름: 확인 요청 → ❓ 확인 대기 → 👍 확인 완료 → 배정 */
+  await pg.click('[data-lf="cfw"]'); await pg.waitForSelector('[data-ckall="1"]');
   log('cf tags:', await pg.$$eval('.tag', e => e.map(x => x.textContent).filter(t => /확인/.test(t))));
+  await pg.click('[data-ckall="1"]'); await pg.click('#bkCfOk'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(800);
+  await pg.click('[data-lf="cfok"]'); await pg.waitForSelector('[data-ckall="1"]');
   await pg.click('[data-ckall="1"]'); await pg.click('#bkAssign'); await pg.waitForSelector('#pkOk'); log('picker opts:', await pg.$$eval('[data-pk]', e => e.map(x => x.textContent.trim())));
   await pg.evaluate(() => { document.getElementById('pkPrint').checked = false; }); await pg.click('#pkOk'); await pg.waitForTimeout(900);
   await pg.click('[data-lf="pick"]'); await pg.waitForTimeout(700); const pk = await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid)); log('picking list:', pk);
@@ -92,7 +96,7 @@ const path = require('path'), fs = require('fs');
   log('after invoice:', (await txt(pg, '#page h2')).slice(0, 60), 'ship btn:', !!(await pg.$('#mShip')));
   await pg.click('#mShip'); await pg.waitForSelector('#shOk'); await pg.fill('#shTrack', '1Z999TEST'); await pg.click('#shOk'); await pg.waitForTimeout(900);
   log('after ship:', (await txt(pg, '#page h2')).slice(0, 60), (await txt(pg, '#page .muted')).slice(0, 160));
-  if (!/출고 완료/.test(await txt(pg, '#page h2'))) errs.push('ship state not applied');
+  if (!/픽업 대기/.test(await txt(pg, '#page h2'))) errs.push('UPS ship should go to awaiting pickup (packed)');   // v0.8.51: UPS → 📮 픽업 대기
   await home(); await pg.waitForTimeout(800); log('tiles after flow:', await pg.$$eval('.htile', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 44))));
   await shot(pg, 'd4_dash2');
   /* 아이템 등록 */

@@ -192,7 +192,7 @@ function voidShip_(shipId) { if (!shipId) throw new Error('취소할 출고 번�
  *  📡 Quantum View — 회사 UPS 계정으로 나간 모든 출고(어느 프로그램에서 찍었든) · 배달 기록을 받아 앱 주문에 붙임
  *   ups.com 에서 Quantum View 구독(Outbound)을 만들고 그 이름을 스크립트 속성 UPS_QV_NAME 에 넣으면 1시간마다 돎.
  *   · 출고(Manifest): 참조 번호에 인보이스(A41921 · P-008312) · 주문 번호가 있으면 그 주문, 없으면 받는 가게 이름 + 날짜로 찾음
- *     → 주문에 트래킹 추가, "인보이스 발행 · 포장 대기" 였으면 "출고 완료" 로
+ *     → 주문에 트래킹 추가, "인보이스 발행 · 포장 대기" 였으면 "📮 픽업 대기" 로 (UPS 트럭에 넘기는 것은 앱의 📮 UPS 픽업에서)
  *   · 배달(Delivery): 그 트래킹의 주문에 배달 완료 표시
  *   · 기록은 upsLog/{트래킹} 에 (못 찾은 것도 — 관리 → 설정 → 🚚 UPS 에서 보임)
  * ============================================================ */
@@ -237,7 +237,7 @@ function qvManifest_(m) {
   const have = String(o.track || '').split(/\s+/).filter(Boolean), add = trks.filter(t => have.indexOf(t) < 0);
   const patch = { updatedAt: iso_() };
   if (add.length) { patch.track = have.concat(add).join(' '); patch.shipVia = 'UPS'; patch.boxes = have.length + add.length; }
-  if (o.st === 'done') { patch.st = 'shipped'; patch.shipAt = iso_(); patch.shipBy = 'UPS 기록 (자동)'; }
+  if (o.st === 'done') { patch.st = 'packed'; patch.packAt = iso_(); patch.packBy = 'UPS 기록 (자동)'; }   // 다른 프로그램 라벨 → 📮 픽업 대기 (트럭 인계는 앱에서)
   if (Object.keys(patch).length > 1) fsPatchDoc_('orders', orderId, patch);
   return true;
 }

@@ -17,10 +17,11 @@ import { storeSheet } from './store.js';
 import { searchAccounts } from './accounts.js';
 import { fillPinned } from './notes.js';
 import * as Ship from './ship.js';
+import * as Pickup from './pickup.js';
 
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
-export function register(state) { S = state; Ship.register(state); }
+export function register(state) { S = state; Ship.register(state); Pickup.register(state); }
 const acctOf = a => (S.accounts.byCode ? S.accounts.byCode[a] : null);
 /** 인보이스 인쇄 — AR 에이징(가게 창 자료)과 회사 정보를 붙여서 */
 async function printInvoices(invs, acc) {
@@ -72,7 +73,9 @@ export function manage(o, lines) {
   if (o.st === 'sent') B.push((can('assign') ? '<button class="b-blue" id="mAssign">👷 ' + bi('작업 배정', 'Assign Picker') + '</button>' : '') + (can('pick') ? '<button class="b-ghost" id="mPick">🖨 ' + bi('직접 작업 시작', 'Start Myself') + '</button>' : ''));
   if (o.st === 'pick' || o.st === 'ok') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('작업 저장', 'Save Progress') + '</button><button class="b-green" id="mPickDone">✅ ' + bi('작업 완료', 'Complete Picking') + '</button>');
   if (o.st === 'picked') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('수량 저장', 'Save') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 발행', 'Issue invoice') + '</button>' : '<span class="muted" style="align-self:center">' + bi('인보이스 발행은 사무실에서 합니다', 'Office issues the invoice') + '</span>'));
-  if (o.st === 'done' && can('ship')) B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · 출고 완료', 'Packed & shipped') + '</button>');
+  if (o.st === 'sent' && !o.cfOk) B.push('<button class="b-ghost" id="mCfOk">👍 ' + bi('확인 완료로 (전화 등)', 'Mark confirmed') + '</button>');
+  if (o.st === 'done' && can('ship')) B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · UPS 라벨', 'Pack · UPS label') + '</button>');
+  if (o.st === 'packed') B.push('<button class="b-blue" id="mPickup">📮 ' + bi('UPS 픽업 화면', 'UPS pickup') + '</button>' + (can('ship') ? '<button class="b-ghost" id="mShip">🚚 ' + bi('라벨 · 박스 보기', 'Labels · boxes') + '</button>' : ''));
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
     (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 ' + bi('가게 기록', 'Store') + '</button>' : '') +
@@ -80,6 +83,7 @@ export function manage(o, lines) {
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
     (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
     (o.st === 'picked' ? '<button class="b-ghost b-sm" id="mRepick">↩️ ' + bi('출고 작업으로 되돌리기', 'Return to Fulfillment') + '</button>' : '') +
+    (o.st === 'packed' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('포장 대기로 되돌리기', 'Back to packing') + '</button>' : '') +
     (o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('출고 취소', 'Undo shipping') + '</button><button class="b-ghost b-sm" id="mTrk">📦 ' + bi('배송 조회', 'Tracking') + '</button>' : '') +
     ((o.st === 'sent' || o.st === 'pick' || o.st === 'ok') && !o.cfOk ? '<button class="b-ghost b-sm" id="mCfReq">❓ ' + bi(o.cfReq ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman') + '</button>' : '') +
     (o.st === 'done' || o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 ' + bi('인보이스 인쇄', 'Print invoice') + '</button>' : '') +
@@ -187,8 +191,10 @@ export function manage(o, lines) {
   if ($('mRepick')) $('mRepick').onclick = async () => { busy(true); try { await saveLines({ st: 'pick' }); toast('출고 작업으로 되돌림 · Back to Fulfillment'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mCfReq')) $('mCfReq').onclick = async () => { if (!(await confirmBox(o.sm + ' 에게 이 주문 내용 확인을 요청할까요? 세일즈맨 앱 홈에 "확인 요청" 으로 뜹니다.', '요청'))) return; busy(true); try { await S.DB.update('orders', o.id, { cfReq: true, cfReqAt: new Date().toISOString(), cfReqBy: S.user.email, cfOk: false }); toast('확인 요청 보냄', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mShip')) $('mShip').onclick = () => shipModal(o);
+  if ($('mPickup')) $('mPickup').onclick = () => { Router.go('order'); setTimeout(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'packed' })), 0); };
+  if ($('mCfOk')) $('mCfOk').onclick = async () => { if (!(await confirmBox(bt('세일즈맨 확인 완료로 바꿀까요? (전화 · 문자로 확인한 경우)', 'Mark as confirmed by the salesman?'), '👍'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { cfReq: true, cfOk: true, cfAt: now, cfBy: S.user.email, cfHow: 'staff' }); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mTrk')) $('mTrk').onclick = () => Router.go('track', o.no);
-  if ($('mUnship')) $('mUnship').onclick = async () => { if (!(await confirmBox('출고 완료를 취소할까요? (포장 대기로 돌아감)', '취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'done', updatedAt: new Date().toISOString() }); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mUnship')) $('mUnship').onclick = async () => { const back = o.st === 'shipped' && o.pickupId ? 'packed' : 'done'; if (!(await confirmBox(back === 'packed' ? bt('UPS 인계를 취소할까요? (픽업 대기로 돌아감)', 'Undo handover? (back to awaiting pickup)') : bt('포장 · 출고를 취소할까요? (포장 대기로 돌아감)', 'Undo packing/shipping? (back to packing)'), bt('되돌리기', 'Undo')))) return; busy(true); try { await S.DB.update('orders', o.id, Object.assign({ st: back, updatedAt: new Date().toISOString() }, back === 'packed' ? { pickupId: '' } : {})); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mPickPrint')) $('mPickPrint').onclick = () => printPicking(o, lines);
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 주문로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
@@ -453,6 +459,7 @@ async function confirmInvoice(o, lines) {
 export async function pageLists(LF, head) {
   if (LF.st === 'inv') return invBrowser(LF, head);
   if (LF.st === 'ups') return upsPage(LF, head);
+  if (LF.st === 'packed') return Pickup.pickupPage(LF, head, () => pageLists(LF, head));
   $('page').innerHTML = head + '<div class="load">읽는 중…</div>';
   let rows = [];
   try { rows = await S.DB.list('backorders', { where: [['st', '==', 'open']] }); }
@@ -491,6 +498,8 @@ export async function pickers() {
 }
 /** 주문들을 픽킹 직원에게 할당 (접수 → 픽킹 중). 직원을 고르면 그 직원 앱의 "내 픽킹" 에 뜸. 픽킹 인보이스 인쇄는 선택 */
 export async function assignPicker(orders, done) {
+  const noCf = orders.filter(o => !o.cfOk);   // 순서: 세일즈맨 확인 → 픽킹 배정
+  if (noCf.length && !(await confirmBox('❓ ' + noCf.length + bt('건은 아직 세일즈맨 확인 전입니다. 그래도 픽킹에 배정할까요?', ' orders are not confirmed by the salesman yet. Assign anyway?'), bt('그래도 배정', 'Assign anyway')))) return;
   const list = await pickers(), me = S.user.email;
   const opts = [{ email: me, name: (S.user.name || me.split('@')[0]) + ' (나 · me)', pick: true }].concat(list.filter(p => p.email !== me));
   openModal('<h2>👷 ' + bi('작업 배정', 'Assign Picker') + ' — ' + orders.length + '건 · ' + money(orders.reduce((a, o) => a + (o.amt || 0), 0)) + '</h2>' +
