@@ -2,7 +2,7 @@
  *  THE ONE 앱 — 진입점: 로그인 → 역할 → 메뉴
  * ============================================================ */
 import { connect, MOCK, newId } from './db.js';
-import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today } from './ui.js';
+import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt } from './ui.js';
 import { CSS } from './style.js';
 import * as Sales from './sales.js';
 import * as Collect from './collect.js';
@@ -21,7 +21,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.51';
+export const VER = 'v0.8.52';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -116,8 +116,10 @@ function userMenu() {
       (S.role === 'manager' ? '<div class="seg">' + JOBS.map(j => '<button class="' + (jobOf() === j[0] ? 'on' : '') + '" data-j="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div>' : '') + '</div>' : '') +
     '<div class="fg"><label>🌐 언어 · Language · Idioma</label><div class="seg">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '" translate="no">' + l[1] + '</button>').join('') + '</div></div>' +
     '<div class="btns"><button class="b-ghost" id="mOut">로그아웃 <span class="en">Sign out</span></button><button class="b-blue" id="mReload">새로고침 <span class="en">Reload</span></button></div>' +
+    (isApp() ? '' : '<button class="b-blue b-sm" id="mInst" style="margin-top:10px">📲 ' + bt('앱으로 설치 (홈 화면)', 'Install as app') + '</button>') +
     '<button class="b-ghost b-sm" id="mDiag" style="margin-top:10px">🔎 연결 · 권한 점검 <span class="en">Check connection</span></button><div id="diagOut"></div>');
   $('mDiag').onclick = diag;
+  if ($('mInst')) $('mInst').onclick = () => { closeModal(); doInstall(); };
   document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
   document.querySelectorAll('#mbox [data-r]').forEach(b => b.onclick = () => { switchRole(b.dataset.r); closeModal(); });
   document.querySelectorAll('#mbox [data-j]').forEach(b => b.onclick = () => { S.me.job = b.dataset.j; switchRole('manager'); closeModal(); });
@@ -152,6 +154,25 @@ async function diag() {
   out.insertAdjacentHTML('beforeend', '<div class="sumbox" style="line-height:1.8;margin-top:8px"><b>📊 서버 자료 건수</b><br>' + L.join('<br>') + '</div>');
 }
 function openMenu(h) { openModal(h); }
+/* 📲 앱으로 설치 — 안드로이드 크롬이 "설치 가능" 하다고 알려 주면 그 신호를 받아 두었다가 버튼으로 (홈 화면에서 크롬 없이 앱처럼 열림) */
+let INSTALL = null;
+const isApp = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALL = e; installBar(); });
+window.addEventListener('appinstalled', () => { INSTALL = null; const b = document.getElementById('instBar'); if (b) b.remove(); toast('📲 ' + bt('앱으로 설치했습니다 — 홈 화면의 THE ONE 아이콘으로 여세요', 'Installed — open THE ONE from your home screen'), 'good'); });
+async function doInstall() {
+  if (INSTALL) { INSTALL.prompt(); try { await INSTALL.userChoice; } catch (e) {} INSTALL = null; const b = document.getElementById('instBar'); if (b) b.remove(); return; }
+  openModal('<h2>📲 ' + bt('앱으로 설치', 'Install the app') + '</h2><div class="muted" style="line-height:1.7">' + bt('안드로이드: 크롬에서 이 주소를 연 뒤 오른쪽 위 ⋮ → <b>앱 설치</b> (또는 홈 화면에 추가 → <b>설치</b>). 카카오톡 · 문자 안의 브라우저가 아니라 <b>크롬</b>에서 열어야 합니다. 예전에 만든 아이콘은 지우고 다시 설치하세요.<br>아이폰: 사파리 → 공유 ⬆️ → <b>홈 화면에 추가</b>.', 'Android: open this page in Chrome → ⋮ → Install app. iPhone: Safari → Share → Add to Home Screen.') + '</div><div class="btns"><button class="b-blue" id="inX">' + bt('확인', 'OK') + '</button></div>');
+  $('inX').onclick = closeModal;
+}
+function installBar() {
+  if (isApp() || !INSTALL || document.getElementById('instBar')) return;
+  try { const t = Number(localStorage.getItem('theone.instHide') || 0); if (Date.now() - t < 3 * 86400000) return; } catch (e) {}
+  const d = document.createElement('div'); d.id = 'instBar';
+  d.innerHTML = '<span>📲 ' + bt('THE ONE 을 앱으로 설치 — 크롬 없이 바로 열려요', 'Install THE ONE as an app') + '</span><button id="instGo">' + bt('설치', 'Install') + '</button><button id="instNo">✕</button>';
+  document.body.appendChild(d);
+  $('instGo').onclick = doInstall;
+  $('instNo').onclick = () => { d.remove(); try { localStorage.setItem('theone.instHide', String(Date.now())); } catch (e) {} };
+}
 export function roleLabel(r) { return { admin: '관리자 Admin', manager: '담당자 Staff', salesman: '세일즈맨 Salesman' }[r] || r; }
 
 function switchRole(r) {
