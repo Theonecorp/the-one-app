@@ -16,12 +16,13 @@ import * as Items from './items.js';
 import * as CatPage from './catpage.js';
 import * as Track from './track.js';
 import * as Reports from './reports.js';
+import * as Flow from './flow.js';
 import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.55';
+export const VER = 'v0.8.56';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -42,14 +43,14 @@ const NAV = {
 NAV.manager = NAV.office;
 /* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자(루크)는 전부 */
 export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct', '회계 담당', 'Accounting'], ['pickinv', '출고 · 인보이스', 'Fulfillment & Invoicing'], ['invoice', '인보이스 담당', 'Invoicing'], ['whmgr', '창고 매니저', 'Warehouse Manager'], ['pick', '창고 직원', 'Warehouse Staff']];
-/** 일별 할 수 있는 것 — newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
+/** 일별 할 수 있는 것 — flow 🧭 전체 주문 흐름 감독 · newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
  *  · verify 수금 확인 · cod COD·카드 · ach ACH · items 아이템 · 재고 위치 · bo 백오더 */
 export const CAN = {
-  office:  ['newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
+  office:  ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
   acct:    ['verify', 'cod', 'ach', 'invLookup'],
-  pickinv: ['invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],
+  pickinv: ['flow', 'invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],
   invoice: ['newOrder', 'invoice', 'void', 'verify', 'bo'],
-  whmgr:   ['assign', 'pick', 'ship', 'items', 'bo'],
+  whmgr:   ['flow', 'assign', 'pick', 'ship', 'items', 'bo'],
   pick:    ['pick', 'ship', 'items']
 };
 export const jobCan = (job, cap) => (CAN[job] || CAN.office).includes(cap);
@@ -240,7 +241,7 @@ async function boot() {
   shell();
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S);
+  Sales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
