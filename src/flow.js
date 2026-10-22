@@ -31,7 +31,7 @@ export function register(state) {
   S = state; Router.on('flow', page);
   loadNames();
 }
-export const canFlow = () => S && (S.role === 'admin' || (S.role === 'manager' && can('flow')));
+export const canFlow = () => S && (S.role === 'admin' || S.role === 'owner' || (S.role === 'manager' && can('flow')));
 
 /** 이메일 → 이름 (사용자 목록) */
 async function loadNames() {

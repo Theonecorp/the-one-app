@@ -10,7 +10,7 @@ import { catalog, loadCatalog, cleanName } from './catalog.js';
 
 let S = null, R = { p: 'month', from: '', to: '', tab: 'item', sm: '', q: '', sort: 'amt' }, D = null;
 export function register(state) { S = state; Router.on('reports', page); }
-const isAdmin = () => S.role === 'admin';
+const isAdmin = () => S.role === 'admin' || S.role === 'owner';   // 오너도 관리자급
 
 async function page() {
   if (!isAdmin()) { $('page').innerHTML = '<div class="card"><div class="none">관리자 화면입니다</div></div>'; return; }

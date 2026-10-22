@@ -22,7 +22,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.61';
+export const VER = 'v0.8.62';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -38,6 +38,7 @@ const NAV = {
   invoice:  [['order', '🧾', '주문·인보이스', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['stores', '🏬', '거래처', 'Customers']],
   whmgr:    [['order', '📦', '창고 작업', 'Warehouse'], ['items', '🏷', '재고·위치', 'Inventory'], ['stores', '🏬', '거래처', 'Customers']],
   pick:     [['order', '📦', '내 작업', 'My Work'], ['items', '🏷', '재고·위치', 'Inventory'], ['stores', '🏬', '거래처', 'Customers']],
+  owner:    [['now', '📈', '현황', 'Today'], ['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['flow', '🧭', '주문 흐름', 'Order flow'], ['stores', '🏬', '거래처', 'Customers'], ['cat', '📒', '카탈로그', 'Catalog']],
   admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '주문', 'Orders'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
 };
 NAV.manager = NAV.office;
@@ -55,14 +56,24 @@ export const CAN = {
 };
 export const jobCan = (job, cap) => (CAN[job] || CAN.office).includes(cap);
 /** 지금 사용자가 이걸 할 수 있나 — 관리자는 전부, 세일즈맨은 없음 */
-export function can(cap) { if (S.role === 'admin') return true; if (S.role !== 'manager') return false; return jobCan(jobOf(), cap); }
+/** 관리자급 — 관리자 · 오너 (데이터는 둘 다 전부, 화면은 오너가 현황 · 경영 위주) */
+export const isTop = () => S.role === 'admin' || S.role === 'owner';
+/** 이 사람이 볼 수 있는 화면 — 관리자: 전부 (관리 · 오너 · 담당 · 세일즈) · 오너 / 담당자: 자기 역할 + 사용자 등록에서 준 추가 역할 · 세일즈맨: 세일즈 */
+export function viewsOf(me) {
+  me = me || {}; const r = me.role || 'salesman', ex = Array.isArray(me.extra) ? me.extra : [];
+  if (r === 'admin') return ['admin', 'owner', 'manager', 'salesman'];
+  const v = [r]; ['manager', 'salesman'].forEach(x => { if (x !== r && ex.includes(x) && (x !== 'salesman' || me.sm)) v.push(x); });
+  return r === 'salesman' ? ['salesman'] : v;
+}
+const VIEW_KEY = () => 'theone.view.' + ((S.user && S.user.email) || '');
+export function can(cap) { if (S.role === 'admin' || S.role === 'owner') return true; if (S.role !== 'manager') return false; return jobCan(jobOf(), cap); }
 /** 지금 화면의 일 — 담당자는 사용자 기록의 job (없으면 office), 그 외는 역할 그대로 */
 export function jobOf() { if (S.role !== 'manager') return S.role; const j = S.me && S.me.job; return JOBS.some(x => x[0] === j) ? j : 'office'; }
 export function jobLabel(j) { const x = JOBS.find(k => k[0] === j); return x ? x[1] + ' ' + x[2] : j; }
 /* 주문는 관리 → 📦 아이템에서 "주문 켜기" 전까지 관리자에게만 보임 */
 /* 주문가 켜지면 세일즈맨은 🏠 홈(큰 버튼) 이 첫 화면, 꺼져 있으면 예전처럼 수금 입력부터 */
 function navFor(r) {
-  const on = S.settings.ordersOn || (S.me && S.me.role === 'admin');
+  const on = S.settings.ordersOn || (S.me && (S.me.role === 'admin' || S.me.role === 'owner'));
   const key = r === 'manager' ? jobOf() : r;
   let items = (NAV[key] || NAV.office).filter(x => (x[0] !== 'order' && x[0] !== 'home') || on);
   if (r === 'salesman') items = items.filter(x => on ? x[0] !== 'mine' : true);   // 홈이 있으면 내 기록은 홈 안의 버튼으로
@@ -116,10 +127,10 @@ function waitScreen(email) {
 function userMenu() {
   if (!S.user) return;
   const isAdm = S.me && S.me.role === 'admin';
-  const roles = isAdm ? ['admin', 'manager', 'salesman'] : [];
+  const vs = viewsOf(S.me), roles = vs.length > 1 ? vs : [];
   openMenu('<h2>' + esc(S.user.name || S.user.email) + '</h2><p class="muted">' + esc(S.user.email) + ' · ' + (S.role === 'manager' ? jobLabel(jobOf()) : roleLabel(S.role)) + ' · ' + VER + '</p>' +
-    (roles.length ? '<div class="fg"><label>화면 보기 (관리자) <span class="en">Preview as</span></label><div class="seg">' + roles.map(r => '<button class="' + (S.role === r ? 'on' : '') + '" data-r="' + r + '">' + roleLabel(r) + '</button>').join('') + '</div>' +
-      (S.role === 'manager' ? '<div class="seg">' + JOBS.map(j => '<button class="' + (jobOf() === j[0] ? 'on' : '') + '" data-j="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div>' : '') + '</div>' : '') +
+    (roles.length ? '<div class="fg"><label>화면 바꾸기 <span class="en">Switch view</span></label><div class="seg">' + roles.map(r => '<button class="' + (S.role === r ? 'on' : '') + '" data-r="' + r + '">' + roleLabel(r) + '</button>').join('') + '</div>' +
+      (S.role === 'manager' && isAdm ? '<div class="seg">' + JOBS.map(j => '<button class="' + (jobOf() === j[0] ? 'on' : '') + '" data-j="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div>' : '') + '</div>' : '') +
     '<div class="fg"><label>🌐 언어 · Language · Idioma</label><div class="seg">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '" translate="no">' + l[1] + '</button>').join('') + '</div></div>' +
     '<div class="btns"><button class="b-ghost" id="mOut">로그아웃 <span class="en">Sign out</span></button><button class="b-blue" id="mReload">새로고침 <span class="en">Reload</span></button></div>' +
     (isApp() ? '' : '<button class="b-blue b-sm" id="mInst" style="margin-top:10px">📲 ' + bt('앱으로 설치 (홈 화면)', 'Install as app') + '</button>') +
@@ -179,10 +190,11 @@ function installBar() {
   $('instGo').onclick = doInstall;
   $('instNo').onclick = () => { d.remove(); try { localStorage.setItem('theone.instHide', String(Date.now())); } catch (e) {} };
 }
-export function roleLabel(r) { return { admin: '관리자 Admin', manager: '담당자 Staff', salesman: '세일즈맨 Salesman' }[r] || r; }
+export function roleLabel(r) { return { owner: '오너 Owner', admin: '관리자 Admin', manager: '담당자 Staff', salesman: '세일즈맨 Salesman' }[r] || r; }
 
 function switchRole(r) {
-  S.role = r;
+  if (!viewsOf(S.me).includes(r)) return;
+  S.role = r; try { localStorage.setItem(VIEW_KEY(), r); } catch (e) {}
   Router.stack = [];   // 새 역할의 첫 화면이 뒤로가기의 끝
   paintNav();
   Router.go(navFor(r)[0][0]);
@@ -199,6 +211,7 @@ function paintNav() {
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => Router.go(b.dataset.go));
   navH();
   $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
+  const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? userMenu : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
 }
 
 async function afterLogin(user) {
@@ -216,6 +229,8 @@ async function afterLogin(user) {
     try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
   }
   S.me = me; S.role = me.role || 'salesman';
+  /* 여러 화면을 쓰는 사람 (관리자 · 추가 역할) — 이 폰에서 마지막으로 본 화면으로 */
+  try { const v = localStorage.getItem(VIEW_KEY()); if (v && viewsOf(me).includes(v)) S.role = v; } catch (e) {}
   busy(true);
   try {
     const [sms, st] = await Promise.all([S.DB.list('salesmen', { order: ['code', 'asc'] }), S.DB.get('settings', 'app')]);   // 동시에 읽기

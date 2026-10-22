@@ -8,16 +8,17 @@ service cloud.firestore {
     function userDoc() { return get(/databases/$(database)/documents/users/$(email())).data; }
     function registered() { return isAdminEmail() || (signedIn() && exists(/databases/$(database)/documents/users/$(email())) && userDoc().get('active', true) != false); }
     function role() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('role', '') : ''; }
-    function isAdmin() { return isAdminEmail() || role() == 'admin'; }
+    function isRealAdmin() { return isAdminEmail() || role() == 'admin'; }                 // 관리자 — 사용자 등록 · ACH 은행은 관리자만
+    function isAdmin() { return isRealAdmin() || role() == 'owner'; }                      // 관리자급 (오너 포함) — 자료는 관리자와 같음
     function isStaff() { return isAdmin() || role() == 'manager'; }       // 담당자(회계) + 관리자
     function mySm() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('sm', '') : ''; }
-    function achOk() { return isAdmin() || (registered() && userDoc().get('achAccess', false) == true); }
+    function achOk() { return isRealAdmin() || (registered() && userDoc().get('achAccess', false) == true); }
 
     // ---------- 사용자 ----------
     match /users/{uid} {
       allow read: if signedIn() && (uid == email() || isStaff());
       allow create: if isAdminEmail() && uid == email();   // 루크 첫 로그인
-      allow write: if isAdmin();
+      allow write: if isRealAdmin();
     }
     // ---------- 기준 자료 ----------
     match /salesmen/{id} { allow read: if registered(); allow write: if isAdmin(); }   // 요율 · 캐쉬 보관은 루크만
