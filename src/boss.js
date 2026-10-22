@@ -7,6 +7,8 @@
  *    찾기: 가게 → 12개월 · 수금 내역 (현장 · COD · ACH · 카드)
  *  자료: entries · cod · ar/_all · settlements · deductions · salesmen(rates · cashKeep) · bonusAcc · pay1099 · payees
  * ============================================================ */
+import { storeSheet } from './store.js';
+import { adminRequestsCard } from './access.js';
 import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords, pickDates } from './ui.js';
 import { newId } from './db.js';
 import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
@@ -103,7 +105,7 @@ async function pageNow() {
   if (arAll && arAll.stores) { const paid = {}; C.ents.forEach(e => { if (e.d <= arAll.asOf || e.repl) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
     arAll.stores.forEach(st => { let net = 0, n90 = 0; (st.invs || []).forEach(v => { const b = R2(v.bal - (paid[st.acct + '|' + v.inv] || 0)); net += b; if (b > 0 && (v.bk || 0) >= 4) n90 += b; }); if (net > 0.005) { arTot = R2(arTot + net); ar90 = R2(ar90 + n90); arN++; } }); }
   const cmp = (a, b) => b ? ' <b class="' + (a >= b ? 'ok' : 'warn') + '">' + ((a - b) / b * 100 >= 0 ? '+' : '') + Math.round((a - b) / b * 100) + '%</b>' : '';
-  let h = '<button class="htile flowtile" style="width:100%;margin:0 0 10px" onclick="location.hash=\'#/flow\'"><span class="hi">🧭</span><b>주문 흐름 감독 <span class="en">Order flow</span></b><small>단계 · 담당자 · 머문 시간 · 지연 — 출고 전 주문 전체</small></button>' +
+  let h = '<div id="rqCard"></div>' + '<button class="htile flowtile" style="width:100%;margin:0 0 10px" onclick="location.hash=\'#/flow\'"><span class="hi">🧭</span><b>주문 흐름 감독 <span class="en">Order flow</span></b><small>단계 · 담당자 · 머문 시간 · 지연 — 출고 전 주문 전체</small></button>' +
     '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📈 현황 — ' + esc(ptxt) + '</h2><div class="chips" style="margin:0 0 8px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (NP.p === c[0] ? 'on' : '') + '" data-np="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (MAIN.includes(NP.p) ? '' : 'on') + '" id="npCal">📅 날짜 선택</button></div>' +
     '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="npPrev">◀</button><div style="text-align:center;font-weight:800">' + esc(ptxt) + '</div><button class="b-ghost b-sm" id="npNext">▶</button></div></div>';
   /* ① 큰 숫자 넷 */
@@ -132,6 +134,7 @@ async function pageNow() {
   document.querySelectorAll('[data-up]').forEach(el => el.onclick = () => { const d = up.find(x => x.d === el.dataset.up); openModal('<h2>' + dlabel(d.d) + ' 입금 예정 · ' + money(d.amt) + '</h2><table>' + d.items.map(i => '<tr><td class="nm">' + esc(i.store) + '</td><td class="muted" style="font-size:12px">' + esc(i.sm) + ' #' + esc(i.check) + '</td><td class="r"><b>' + money(i.amt) + '</b></td></tr>').join('') + '</table><div class="btns"><button class="b-ghost" id="mX">닫기</button></div>'); $('mX').onclick = closeModal; });
   $('nowGo').onclick = () => Router.go('find', encodeURIComponent($('nowQ').value.trim())); $('nowQ').onkeydown = e => { if (e.key === 'Enter') $('nowGo').click(); };
   paintEstimate();
+  adminRequestsCard($('rqCard'));   // 🔐 세일즈맨 인보이스 조회 요청 — 허락 · 거절
 }
 function overview(from, to) {
   const inR = r => r.d >= from && r.d <= to;
@@ -569,6 +572,8 @@ async function pageFind(q) {
   const months = recentYms(12).reverse().map(m => ({ ym: m, amt: sum(items.filter(r => r.ym === m), r => r.amt) })), mx = Math.max(1, ...months.map(x => x.amt));
   const ar = await loadArAll().catch(() => null); const ars = ar && ar.stores ? ar.stores.find(s => s.acct === acct) : null;
   $('fOut').innerHTML = '<div class="card"><h2>' + esc(store || items[0].store) + (acct ? ' <span class="code">' + esc(acct) + '</span>' : '') + (a && a.sm ? ' · 담당 ' + esc(a.sm) : '') + '</h2>' + (a ? '<div class="muted">' + esc([a.addr, a.city, a.state, a.zip].filter(Boolean).join(', ')) + (a.tel ? ' · ' + esc(a.tel) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</div>' : '') +
+    (acct ? '<div class="btns" style="justify-content:flex-start;margin:6px 0"><button class="b-blue b-sm" id="fSheet">🏬 가게 창 · 인보이스 · 미수금</button></div>' : '') +
     '<div class="hero">' + money(sum(items, r => r.amt)) + '</div><div class="heroSub">' + items.length + '건 (최근 13개월)' + (ars ? ' · AR 잔액 ' + money(ars.total) + ' (기준일 ' + esc(ar.asOf) + ')' : '') + '</div><div class="bars" style="margin-top:12px">' + months.map(x => '<div class="b' + (x.ym === ym(today()) ? ' on' : '') + '" style="height:' + Math.max(2, Math.round(x.amt / mx * 78)) + 'px" data-v="' + x.ym.substring(5) + '월 ' + k(x.amt) + '"></div>').join('') + '</div><div class="xlab"><span>' + months[0].ym + '</span><span>최근 12개월</span><span>' + months[11].ym + '</span></div></div>' +
     '<div class="card"><h2>수금 내역</h2>' + (items.length ? '<table><tr><th>날짜</th><th>방법</th><th>담당</th><th class="r">금액</th></tr>' + items.map(r => '<tr><td style="font-size:13px">' + esc(r.d) + '</td><td><span class="tag ' + SRC_TAG[r.src][1] + '">' + SRC_TAG[r.src][0] + '</span> <span class="muted" style="font-size:12px">' + esc(r.method || '') + (r.check ? ' #' + esc(r.check) : '') + '</span></td><td class="muted" style="font-size:12px">' + esc(r.sm) + '</td><td class="r"><b>' + money(r.amt) + '</b></td></tr>').join('') + '</table>' : '<div class="none">수금 기록이 없습니다</div>') + '</div>';
+  if ($('fSheet')) $('fSheet').onclick = () => storeSheet(acct, null, 'invh');
 }

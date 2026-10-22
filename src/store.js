@@ -8,6 +8,7 @@ import { company, docHead, termDays } from './invoicing.js';
 import { recentYms, stTag } from './orders.js';
 import * as Notes from './notes.js';
 import { shipmentsOf, shipmentsHtml, bindShipments, openStore } from './track.js';
+import { acctAccess, requestAccess, untilTxt } from './access.js';
 
 let S = null;
 export function register(state) { S = state; Notes.register(state); }
@@ -18,11 +19,15 @@ const mySm = () => (S.me && S.me.sm ? String(S.me.sm).toUpperCase() : '');
 
 /** 가게 자료 읽기 (10분 보관) — 인터넷이 없으면 Firestore 오프라인 사본에서 */
 export async function storeInfo(acct, force) {
-  const c = CACHE[acct]; if (c && !force && Date.now() - c.at < 600000) return c;
+  const c = CACHE[acct];
+  if (c && !force && Date.now() - c.at < 600000) { if (!(c.access && c.access.k === 'none') || (await acctAccess(acct)).k === 'none') return c; }   // 그사이 허락을 받았으면 새로 읽음
   const a = S.accounts.byCode ? S.accounts.byCode[acct] : null;
   const sm = isStaff() ? String((a && a.sm) || mySm() || '').toUpperCase() : mySm();
   const out = { at: Date.now(), acct, sm, ar: null, invs: [], bk: [0, 0, 0, 0, 0], bal: 0, asOf: '', orders: [], pays: [], hist: {}, invHist: [], err: '' };
   const wh = [['acct', '==', acct]]; if (!isStaff()) wh.push(['sm', '==', mySm()]);
+  /* 인보이스는 가게 기준 — 내 담당 가게 · 관리자가 허락한 가게는 다른 세일즈맨이 발행한 것까지 전부 (firestore.rules ownAcct · granted) */
+  const acc = await acctAccess(acct); out.access = acc;
+  const whInv = acc.k === 'none' ? wh : [['acct', '==', acct]];
   try {
     const [arDoc, orders, pays] = await Promise.all([
       sm ? S.DB.get('ar', sm).catch(() => null) : null,
@@ -46,7 +51,7 @@ export async function storeInfo(acct, force) {
     }
     /* 앱에서 확정한 인보이스 — AR 에 아직 없는 것은 미결 목록에 더함 */
     try {
-      const app = await S.DB.list('invoices', { where: wh.concat([['st', '==', 'open']]) });
+      const app = await S.DB.list('invoices', { where: whInv.concat([['st', '==', 'open']]) });
       const have = {}; out.invs.forEach(v => { have[v.no] = 1; });
       const paidApp = {}; pays.forEach(e => { if (e.void || e.repl) return; (e.invs || []).forEach(v => { paidApp[v.no] = R2((paidApp[v.no] || 0) + num(v.amt)); }); });
       app.forEach(x => { if (have[x.no] || x.src === 'legacy') return;   // 이전 시스템 인보이스의 잔액은 AR 이 기준 (AR 에 없으면 받은 것)
@@ -54,7 +59,7 @@ export async function storeInfo(acct, force) {
       out.invs.sort((x, y) => x.d < y.d ? 1 : -1);
     } catch (e) {}
     /* 인보이스 기록 — 이전 시스템에서 가져온 것 + 앱 발행, 최근 60장 (받은 것 포함) */
-    try { const allInv = await S.DB.list('invoices', { where: wh }); out.invHist = sortBy(allInv.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 60); out.invHistN = allInv.length; out.invHistAmt = R2(allInv.filter(x => x.st !== 'x' && x.d >= today().substring(0, 4) + '-01-01').reduce((a, x) => a + (x.total || 0), 0)); } catch (e) {}
+    try { const allInv = await S.DB.list('invoices', { where: whInv }); out.invHist = sortBy(allInv.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 60); out.invHistN = allInv.length; out.invHistAmt = R2(allInv.filter(x => x.st !== 'x' && x.d >= today().substring(0, 4) + '-01-01').reduce((a, x) => a + (x.total || 0), 0)); } catch (e) {}
     out.orders = sortBy(orders.filter(o => o.st !== 'x'), o => o.d + (o.createdAt || ''), true).slice(0, 30);
     out.pays = sortBy(pays.filter(e => !e.void), e => e.d + (e.createdAt || ''), true).slice(0, 30);
     /* 아이템별 최근 구매 — 최근 주문 8건의 줄을 읽음 (인보이스 확정된 것 우선) */
@@ -92,6 +97,62 @@ export function statementHtml(acct, info) {
 export function histText(info, code) { const h = info && info.hist[code]; if (!h || !h.length) return ''; return h.slice(0, 3).map(x => md(x[0]) + '(' + x[1] + ')').join(' '); }
 export function lastPrice(info, code) { const h = info && info.hist[code]; return h && h.length ? h[0][2] : null; }
 
+/** 인보이스 탭 — 인보이스 기록(이전 시스템 + 앱) 과 AR 미결을 번호로 합침. 상태는 AR 이 기준 (AR 에 있으면 미결, 기준일 전 것이 AR 에 없으면 완납) */
+function invhHtml(info) {
+  const ar = {}; (info.invs || []).forEach(v => { ar[v.no] = v; });
+  const rows = (info.invHist || []).map(x => ({ x, v: ar[x.no] }));
+  const have = {}; rows.forEach(r => { have[r.x.no] = 1; });
+  (info.invs || []).forEach(v => { if (!have[v.no]) rows.push({ x: { no: v.no, d: v.d, total: v.amt, t: String(v.no).charAt(0), arOnly: true }, v }); });
+  rows.sort((a, b) => String(b.x.d).localeCompare(String(a.x.d)) || String(b.x.no).localeCompare(String(a.x.no)));
+  if (!rows.length) return '<div class="none">인보이스 기록 없음 · No invoices</div>';
+  const st = r => { const x = r.x, v = r.v;
+    if (v) return Math.abs(v.bal) > 0.005 ? '<span class="warn">' + (v.bal < 0 ? bt('크레딧', 'Credit') : bt('미결', 'Open')) + ' ' + money(v.bal) + '</span>' : bt('완납', 'Paid');
+    if (x.src !== 'legacy' && x.st === 'open') return '<span class="warn">' + bt('미결 (앱)', 'Open (app)') + '</span>';
+    if (info.asOf && x.d <= info.asOf) return bt('완납', 'Paid');
+    return info.asOf ? bt('AR 기준일 뒤 발행', 'after AR date') : ((x.bal || 0) > 0.005 ? '<span class="warn">' + bt('미결', 'Open') + ' ' + money(x.bal) + '</span>' : bt('완납', 'Paid')); };
+  return '<div class="muted" style="margin:4px 0 6px">' + bt('올해 매출', 'This year') + ' <b>' + money(info.invHistAmt || 0) + '</b> · ' + bt('전체', 'All') + ' ' + (info.invHistN || 0) + bt('장', '') + (info.invHistN > 60 ? ' (' + bt('최근 60장', 'latest 60') + ')' : '') + ' · ' + bt('미결 · 완납은 AR 기준', 'open/paid from A/R') + (info.asOf ? ' ' + esc(info.asOf) : '') + '</div>' +
+    rows.map(r => { const x = r.x; return '<div class="pr tap" data-si="' + esc(x.no) + '"><div class="ct"><b>' + esc(x.no) + ' <span class="tag t-g">' + esc(x.t || '') + '</span>' + (x.arOnly ? ' <span class="tag t-c">AR</span>' : x.src === 'legacy' ? '' : ' <span class="tag t-b">' + bt('앱', 'App') + '</span>') + '</b><small>' + esc(md(x.d)) + (x.sm ? ' · ' + esc(x.sm) : '') + (x.terms ? ' · ' + esc(x.terms) : '') + (x.order ? ' · ' + esc(x.order) : '') + '</small></div><div class="pa"><b>' + money(x.total) + '</b><small>' + st(r) + '</small></div></div>'; }).join('');
+}
+/** 📄 인보이스 한 장 — 인보이스(앱 · 이전 시스템) + AR 잔액 + 이 인보이스에 넣은 수금, 한 화면에. back 이 있으면 ‹ 로 돌아감 */
+export async function invDetail(no, acct, back) {
+  if (!back) openModal('<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>', { wide: true }); else $('mbox').innerHTML = '<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>';
+  let x = null, denied = false;
+  try { x = await S.DB.get('invoices', no); } catch (e) { denied = /permission/i.test(String(e.code || e.message)); }
+  acct = acct || (x && x.acct) || '';
+  if (!acct && !x && !isStaff()) { /* 내 AR 에서 찾기 */ try { const ar = await S.DB.get('ar', mySm()); const st = ar && (ar.stores || []).find(s => (s.invs || []).some(v => v.inv === no)); if (st) acct = st.acct; } catch (e) {} }
+  if (!acct && !x && isStaff()) { try { for (const d of await S.DB.list('ar')) { const st = (d.stores || []).find(s => (s.invs || []).some(v => v.inv === no)); if (st) { acct = st.acct; break; } } } catch (e) {} }
+  const a = acct && S.accounts.byCode ? S.accounts.byCode[acct] : null;
+  const info = acct ? await storeInfo(acct) : null;
+  const v = info ? (info.invs || []).find(z => z.no === no) : null;
+  const pays = info ? (info.pays || []).filter(e => (e.invs || []).some(y => y.no === no)) : [];
+  const box = $('mbox'); if (!box) return;
+  if (!x && !v) {
+    box.innerHTML = '<h2>📄 ' + esc(no) + '</h2>' + (denied || (info && info.access && info.access.k === 'none')
+      ? '<div class="alert a-amb">🔒 ' + bt('다른 세일즈맨 담당 인보이스입니다 — 관리자 허락이 있어야 볼 수 있습니다', 'Another salesman\'s invoice — admin approval needed') + '</div><div class="btns"><button class="b-ghost" id="idX">‹</button><button class="b-blue" id="idReq">🔐 ' + bt('조회 요청', 'Request access') + '</button></div>'
+      : '<div class="none">' + bt('인보이스를 찾지 못했습니다 — 번호를 확인하세요', 'Invoice not found') + '</div><div class="btns"><button class="b-ghost" id="idX">‹</button></div>');
+    $('idX').onclick = () => back ? back() : closeModal();
+    if ($('idReq')) $('idReq').onclick = () => requestAccess({ acct, no });
+    return;
+  }
+  const legacy = x && x.src === 'legacy', lines = (x && x.lines) || [];
+  const total = x ? x.total : v.amt, d = x ? x.d : v.d;
+  const arTxt = v ? (Math.abs(v.bal) < 0.005 ? bt('완납', 'Paid') : money(v.bal)) : info && info.asOf && d <= info.asOf ? bt('완납 (AR 에 없음)', 'Paid (not in A/R)') : x && x.src !== 'legacy' && x.st === 'open' ? money(x.bal != null ? x.bal : x.total) : '—';
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">📄 ' + esc(no) + ' <span class="tag t-g">' + esc((x && x.t) || String(no).charAt(0)) + '</span>' + (legacy ? ' <span class="tag t-c">' + bt('이전 시스템', 'Legacy') + '</span>' : x ? ' <span class="tag t-b">' + bt('앱', 'App') + '</span>' : ' <span class="tag t-c">AR</span>') + (x && x.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</h2>' +
+    '<div class="tap" id="idStore" style="font-size:17px;font-weight:800;margin-top:6px">🏬 ' + esc((a && a.store) || (x && x.store) || acct) + ' <span class="muted" style="font-weight:400">' + esc(acct) + ' ›</span></div>' +
+    '<div class="muted">' + esc([x && x.sm, d, x && x.terms, x && x.shipVia, x && x.order ? bt('주문', 'Order') + ' ' + x.order : ''].filter(Boolean).join(' · ')) + '</div></div><button class="b-ghost b-sm" id="idX">' + (back ? '‹' : '✕') + '</button></div>' +
+    '<div class="kpi" style="margin-top:10px"><div><b>' + money(total) + '</b><span>' + bt('합계', 'Total') + '</span></div><div><b' + (v && v.bal > 0.005 ? ' style="color:#b91c1c"' : '') + '>' + arTxt + '</b><span>' + bt('지금 잔액', 'Balance now') + '</span></div>' +
+    '<div><b>' + (v && v.pdd > 0 ? v.pdd + bt('일', 'd') : '—') + '</b><span>' + bt('지난 날', 'Past due') + '</span></div><div><b>' + pays.length + '</b><span>' + bt('수금', 'Payments') + '</span></div></div>' +
+    (info && info.asOf ? '<div class="muted">' + bt('잔액은 AR 기준일', 'Balance from A/R as of') + ' ' + esc(info.asOf) + bt(' + 그 뒤 받은 돈', ' + payments since') + '</div>' : '') +
+    (pays.length ? '<div class="sumbox"><b>💵 ' + bt('이 인보이스에 넣은 수금', 'Payments applied') + '</b>' + pays.map(e => { const y = (e.invs || []).find(z => z.no === no); return '<div class="muted">' + esc(e.d) + ' · ' + esc((e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(', ')) + ' · ' + esc(e.sm || '') + ' — <b>' + money(y ? y.amt : 0) + '</b></div>'; }).join('') + '</div>' : '') +
+    (lines.length ? '<div style="max-height:40vh;overflow:auto"><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('가격', 'Price') + '</th><th class="r">' + bt('금액', 'Amount') + '</th></tr>' + lines.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table></div>'
+      : '<div class="muted" style="margin-top:6px">' + (legacy ? bt('이전 시스템(SmartBee) 인보이스 — 품목 줄은 SmartBee 에 있습니다', 'SmartBee invoice — line items are in SmartBee') : !x ? bt('AR 에만 있는 인보이스 — 인보이스 목록을 올리면 자세히 보입니다', 'Only in A/R — upload the invoice list for details') : '') + '</div>') +
+    '<div class="btns"><button class="b-ghost" id="idStore2">🏬 ' + bi('가게 창', 'Store') + '</button>' + (x && lines.length ? '<button class="b-blue" id="idPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' : '') + '</div>';
+  $('idX').onclick = () => back ? back() : closeModal();
+  const toStore = () => storeSheet(acct, null, 'invh');
+  $('idStore').onclick = toStore; $('idStore2').onclick = toStore;
+  if ($('idPrint')) $('idPrint').onclick = async () => { const { printInvoices } = await import('./fulfill.js'); printInvoices([x], a); };
+}
+
 /** 가게 창 열기 */
 export async function storeSheet(acct, onPick, opt0) {
   const a = S.accounts.byCode ? S.accounts.byCode[acct] : null;
@@ -104,8 +165,8 @@ export async function storeSheet(acct, onPick, opt0) {
   const paint = () => {
     let body = '';
     if (tab === 'inv') body = live.length || credits.length ?
-      live.concat(credits).map(v => '<div class="pr"' + (v.bk >= 3 ? ' style="background:#fef2f2;border-radius:10px;padding-left:8px;padding-right:8px"' : '') + '><span class="tb" style="flex:0 0 34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;background:' + (v.bal < 0 ? '#15803d' : v.bk >= 3 ? '#b91c1c' : v.bk >= 1 ? '#b45309' : '#64748b') + '">' + esc(String(v.no).charAt(0)) + '</span><div class="ct"><b>' + esc(v.no) + (v.app ? ' <span class="tag t-b">앱</span>' : '') + '</b><small>' + esc(md(v.d)) + (v.pdd > 0 ? ' · ' + v.pdd + '일 지남 overdue' : ' · 기한 전') + ' · ' + money(v.amt) + '</small></div><div class="pa"><b>' + money(v.bal) + '</b><small>' + (v.bal < 0 ? '크레딧' : '잔액 due') + '</small></div></div>').join('') : '<div class="none">미결 인보이스 없음 · No open invoices' + (info.asOf ? '' : ' (AR 아직 안 올라옴 · AR not uploaded yet)') + '</div>';
-    else if (tab === 'invh') body = (info.invHist && info.invHist.length) ? '<div class="muted" style="margin:4px 0 6px">올해 매출 <b>' + money(info.invHistAmt || 0) + '</b> · 전체 ' + (info.invHistN || 0) + '장 (최근 60장 표시)</div>' + info.invHist.map(x => '<div class="pr tap" data-si="' + esc(x.no) + '"><div class="ct"><b>' + esc(x.no) + ' <span class="tag t-g">' + esc(x.t || '') + '</span>' + (x.src === 'legacy' ? '' : ' <span class="tag t-b">앱</span>') + '</b><small>' + esc(md(x.d)) + (x.sm ? ' · ' + esc(x.sm) : '') + (x.terms ? ' · ' + esc(x.terms) : '') + (x.order ? ' · ' + esc(x.order) : '') + '</small></div><div class="pa"><b>' + money(x.total) + '</b><small>' + ((x.bal || 0) > 0.005 ? '<span class="warn">미결 ' + money(x.bal) + '</span>' : '완납 · paid') + '</small></div></div>').join('') : '<div class="none">인보이스 기록 없음 · No invoices</div>';
+      live.concat(credits).map(v => '<div class="pr tap" data-si="' + esc(v.no) + '"' + (v.bk >= 3 ? ' style="background:#fef2f2;border-radius:10px;padding-left:8px;padding-right:8px"' : '') + '><span class="tb" style="flex:0 0 34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;background:' + (v.bal < 0 ? '#15803d' : v.bk >= 3 ? '#b91c1c' : v.bk >= 1 ? '#b45309' : '#64748b') + '">' + esc(String(v.no).charAt(0)) + '</span><div class="ct"><b>' + esc(v.no) + (v.app ? ' <span class="tag t-b">앱</span>' : '') + '</b><small>' + esc(md(v.d)) + (v.pdd > 0 ? ' · ' + v.pdd + '일 지남 overdue' : ' · 기한 전') + ' · ' + money(v.amt) + '</small></div><div class="pa"><b>' + money(v.bal) + '</b><small>' + (v.bal < 0 ? '크레딧' : '잔액 due') + '</small></div></div>').join('') : '<div class="none">미결 인보이스 없음 · No open invoices' + (info.asOf ? '' : ' (AR 아직 안 올라옴 · AR not uploaded yet)') + '</div>';
+    else if (tab === 'invh') body = invhHtml(info);
     else if (tab === 'ord') body = info.orders.length ? info.orders.map(o => '<div class="pr tap" data-so="' + esc(o.id) + '"><div class="ct"><b>' + esc(o.no) + ' ' + stTag(o.st) + '</b><small>' + esc(o.d) + ' · ' + esc(o.sm) + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.memo ? ' · ' + esc(o.memo) : '') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div></div>').join('') : '<div class="none">앱으로 넣은 주문가 아직 없습니다 · No app orders yet</div>';
     else if (tab === 'ship') body = '<div class="btns" style="margin:4px 0 6px;justify-content:flex-start"><button class="b-ghost b-sm" id="ssTrk">🚚 ' + bi('배송 조회 화면', 'Tracking page') + '</button></div>' + shipmentsHtml(ships.slice().sort((x, y) => String(y.shipDate || '').localeCompare(String(x.shipDate || '')) || (x.box || 0) - (y.box || 0)).slice(0, 80));
     else if (tab === 'note') body = '<button class="b-blue b-sm" id="ssNoteAdd" style="margin:4px 0 8px">📝 ' + bi('노트 남기기', 'Add note') + '</button>' + Notes.notesHtml(notes, { edit: true });
@@ -117,6 +178,8 @@ export async function storeSheet(acct, onPick, opt0) {
       '<div class="kpi" style="grid-template-columns:repeat(5,1fr);margin-top:10px">' + info.bk.map((v, i) => '<div' + (i >= 3 && v > 0.005 ? ' style="background:#fef2f2"' : '') + '><b style="font-size:12px">' + money(v) + '</b><span>' + BK[i] + '</span></div>').join('') + '</div>' +
       '<div class="sumbox" style="display:flex;justify-content:space-between"><span>' + bi('미수금 합계', 'Balance due') + (info.asOf ? ' <span class="muted">기준 as of ' + esc(info.asOf) + (stale > 10 ? ' (' + stale + '일 전)' : '') + '</span>' : '') + '</span><b class="' + (info.bal > 0.005 ? 'warn' : 'ok') + '">' + money(info.bal) + '</b></div>' +
       (info.err ? '<div class="alert a-amb">일부를 읽지 못했습니다 (' + esc(info.err) + ')</div>' : '') +
+      (info.access && info.access.k === 'none' ? '<div class="alert a-amb">🔒 ' + bt('다른 세일즈맨 담당 가게입니다', 'Another salesman\'s store') + (info.access.owner ? ' (' + esc(info.access.owner) + ')' : '') + ' — ' + bt('내가 발행한 것만 보입니다', 'only your own invoices show') + ' <button class="b-ghost b-sm" id="ssReq">🔐 ' + bt('전체 조회 요청', 'Request access') + '</button></div>' : '') +
+      (info.access && info.access.k === 'grant' ? '<div class="alert a-grn">✅ ' + bt('관리자 허락으로 조회 중', 'Viewing with admin approval') + ' ~' + esc(untilTxt(info.access.until)) + '</div>' : '') +
       '<div class="seg" style="flex-wrap:wrap">' + [['inv', bi('미결', 'Open') + ' ' + live.length], ['invh', bi('인보이스', 'Invoices') + ' ' + (info.invHistN || 0)], ['ord', bi('주문', 'Orders') + ' ' + info.orders.length], ['pay', bi('수금', 'Payments') + ' ' + info.pays.length], ['ship', '🚚 ' + bi('배송', 'Shipments') + ' ' + ships.length], ['note', '📝 ' + bi('노트', 'Notes') + ' ' + notes.length]].map(t => '<button class="' + (tab === t[0] ? 'on' : '') + '" data-ss="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
       '<div style="max-height:45vh;overflow:auto">' + body + '</div>' +
       '<div class="btns"><button class="b-ghost" id="ssStmt">🖨 ' + bi('손님용 스테이트먼트', 'Customer statement') + '</button>' + (onPick ? '<button class="b-blue" id="ssPick">' + bi('이 가게로 주문', 'Order for this store') + '</button>' : '') + '</div>';
@@ -124,7 +187,8 @@ export async function storeSheet(acct, onPick, opt0) {
     $('ssStmt').onclick = () => printOpen(statementHtml(acct, info));
     document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { tab = b.dataset.ss; paint(); });
     document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); location.hash = '#/order/' + encodeURIComponent(el.dataset.so); });
-    document.querySelectorAll('[data-si]').forEach(el => el.onclick = () => { closeModal(); location.hash = '#/order/inv:' + encodeURIComponent(el.dataset.si); });
+    document.querySelectorAll('[data-si]').forEach(el => el.onclick = () => invDetail(el.dataset.si, acct, paint));
+    if ($('ssReq')) $('ssReq').onclick = () => requestAccess({ acct });
     if ($('ssPick')) $('ssPick').onclick = () => { closeModal(); onPick(acct); };
     const back = L => { notes = L; tab = 'note'; openModal(''); paint(); };
     if ($('ssNoteAdd')) $('ssNoteAdd').onclick = () => Notes.noteForm(acct, null, back);
@@ -132,7 +196,7 @@ export async function storeSheet(acct, onPick, opt0) {
     if (tab === 'ship') bindShipments($('mbox'), ships);
     if ($('ssTrk')) $('ssTrk').onclick = () => { closeModal(); openStore(acct); };
   };
-  if (opt0 === 'note' || opt0 === 'ship') tab = opt0;
+  if (opt0 === 'note' || opt0 === 'ship' || opt0 === 'invh') tab = opt0;
   paint();
   return info;
 }

@@ -113,7 +113,8 @@ const path = require('path'), fs = require('fs');
   await pg.fill('#iqQ', 'G00002'); await pg.waitForTimeout(700); log('by no:', await rowsN());
   await pg.click('#iqX'); await pg.waitForTimeout(300);
   await pg.click('#iCal'); await pg.waitForSelector('[data-cd]'); log('calendar opens:', !!(await pg.$('[data-cd]'))); await pg.click('#cdX');   // v0.8.44: 기간 직접 = 📅 달력
-  await pg.click('#iList [data-go]'); await pg.waitForSelector('#iBack'); await pg.click('#iBack'); await pg.waitForSelector('#iqQ'); log('back to browser ok');
+  /* v0.8.64: 인보이스를 누르면 인보이스 · AR · 수금 한 화면(창) — 닫으면 목록 그대로 */
+  await pg.click('#iList [data-go]'); await pg.waitForSelector('#idX'); log('detail:', (await pg.textContent('#mbox')).replace(/\s+/g, ' ').slice(0, 80)); await pg.click('#idX'); await pg.waitForSelector('#iqQ'); log('back to browser ok');
   await shot('h5_inv_back');
   log('ERRORS:', errs.length ? errs : 'none');
   await br.close(); srv.kill(); process.exit(errs.length ? 1 : 0);

@@ -85,9 +85,22 @@ service cloud.firestore {
     }
 
     // ---------- 인보이스 · 백오더 · 번호 (매니저) ----------
+    // 인보이스 — 세일즈맨: 내가 발행한 것 · 내 담당 가게(거래처 담당 = 내 코드) 것 · 관리자가 허락한 가게 것 (허락 기간 동안)
+    function ownAcct(a) { return mySm() != '' && get(/databases/$(database)/documents/accounts/$(a)).data.get('sm', '') == mySm(); }
+    function granted(a) { return exists(/databases/$(database)/documents/grants/$(email() + '__' + a)) && get(/databases/$(database)/documents/grants/$(email() + '__' + a)).data.untilMs > request.time.toMillis(); }
     match /invoices/{id} {
-      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow read: if isStaff() || (registered() && (resource.data.sm == mySm() || ownAcct(resource.data.acct) || granted(resource.data.acct)));
       allow write: if isStaff();
+    }
+    // 🔐 조회 요청 · 허락 — 세일즈맨이 요청, 관리자만 허락
+    match /invReq/{id} {
+      allow read: if isStaff() || (registered() && resource.data.by == email());
+      allow create: if registered() && request.resource.data.by == email() && request.resource.data.st == 'wait';
+      allow update, delete: if isRealAdmin();
+    }
+    match /grants/{id} {
+      allow read: if isStaff() || (registered() && resource.data.email == email());
+      allow write: if isRealAdmin();
     }
     match /backorders/{id} { allow read, write: if isStaff(); }
     match /counters/{id} { allow read, write: if isStaff(); }
