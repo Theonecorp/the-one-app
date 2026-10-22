@@ -107,14 +107,29 @@ export async function invoicesBetween(S, from, to) {
  *  발행(+1) · 취소(−1) · 가져오기(다시 계산) 때 갱신. 문서가 없으면 그 달은 원본을 읽고 요약을 만들어 저장함 */
 const SM_M = new Map();
 export function dropSalesM() { SM_M.clear(); }
+let ACCS = null;   // 거래처 (주 State 찾기) — 요약을 만드는 곳에서 S.accounts 로 채움
+const stateOf = acct => { const a = ACCS && ACCS.byCode ? ACCS.byCode[acct] : null; return String((a && a.state) || '').toUpperCase().trim() || '—'; };
 function mAdd(doc, x, sign) {
   if (!x || x.st === 'x') return;
   const t = x.t || 'A', sm = x.sm || '—', dd = String(x.d || '').substring(8, 10) || '00', tot = R2((x.total || 0) * sign), q = (x.qty || 0) * sign;
   doc.n += sign; doc.qty += q; doc.total = R2(doc.total + tot);
   const s = doc.bySm[sm] = doc.bySm[sm] || {}; const b = s[t] = s[t] || { n: 0, qty: 0, total: 0 }; b.n += sign; b.qty += q; b.total = R2(b.total + tot);
   doc.byDay[dd] = R2((doc.byDay[dd] || 0) + tot);
+  doc.byState = doc.byState || {}; const st = stateOf(x.acct); doc.byState[st] = R2((doc.byState[st] || 0) + tot);
 }
-export function buildSalesM(ym, rows) { const doc = { id: ym, ym, n: 0, qty: 0, total: 0, bySm: {}, byDay: {}, updatedAt: new Date().toISOString() }; rows.forEach(x => mAdd(doc, x, 1)); return doc; }
+export function buildSalesM(ym, rows) { const doc = { id: ym, ym, n: 0, qty: 0, total: 0, bySm: {}, byDay: {}, byState: {}, v: 2, updatedAt: new Date().toISOString() }; rows.forEach(x => mAdd(doc, x, 1)); return doc; }
+/** 한 달 매출 요약 — 있으면 읽고, 없거나 옛 모양(주별 없음)이면 인보이스에서 새로 계산해 저장 (관리자 · 담당자) */
+export async function salesMonth(S, k) {
+  ACCS = S.accounts;
+  let doc = SM_M.get(k);
+  if (!doc) { try { doc = await S.DB.get('salesM', k); } catch (e) { doc = null; } }
+  if (!doc || doc.v !== 2) {
+    const y = Number(k.substring(0, 4)), mm = Number(k.substring(5, 7)), last = k + '-' + String(new Date(y, mm, 0).getDate()).padStart(2, '0');
+    doc = buildSalesM(k, await invoicesBetween(S, k + '-01', last));
+    if (S.role !== 'salesman') { try { await S.DB.set('salesM', k, doc); } catch (e) {} }
+  }
+  SM_M.set(k, doc); return doc;
+}
 /** 요약 문서 → 대시보드가 쓰는 가짜 인보이스 줄 (세일즈맨 × 종류 하나씩, cnt 에 장수) */
 function expandM(doc) {
   const out = [];
@@ -124,6 +139,7 @@ function expandM(doc) {
 export const invCount = rows => rows.reduce((a, x) => a + (x.cnt || 1), 0);
 /** 기간의 매출 줄 — 꽉 찬 달은 요약, 걸치는 달은 원본 */
 export async function salesRows(S, from, to) {
+  ACCS = S.accounts;
   const months = []; let m = from.substring(0, 7); while (m <= to.substring(0, 7)) { months.push(m); const y = Number(m.substring(0, 4)), mm = Number(m.substring(5, 7)); m = (mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0')); }
   const last = k => { const y = Number(k.substring(0, 4)), mm = Number(k.substring(5, 7)); return k + '-' + String(new Date(y, mm, 0).getDate()).padStart(2, '0'); };
   const out = [];
@@ -139,12 +155,14 @@ export async function salesRows(S, from, to) {
 }
 /** 발행 · 취소 때 그 달 요약 갱신 (요약이 아직 없으면 그냥 둠 — 처음 볼 때 만들어짐) */
 export async function bumpSalesM(S, invs, sign) {
+  ACCS = S.accounts;
   const by = {}; (invs || []).forEach(x => { const k = String(x.d || '').substring(0, 7); if (k) (by[k] = by[k] || []).push(x); });
   for (const k of Object.keys(by)) { try { const doc = await S.DB.get('salesM', k); if (!doc) continue; by[k].forEach(x => mAdd(doc, x, sign)); doc.updatedAt = new Date().toISOString(); await S.DB.set('salesM', k, doc); } catch (e) {} }
   dropSalesM();
 }
 /** 가져오기 뒤 — 그 달들을 원본에서 다시 계산 */
 export async function rebuildSalesM(S, months) {
+  ACCS = S.accounts;
   dropInvCache(); dropSalesM();
   const last = k => { const y = Number(k.substring(0, 4)), mm = Number(k.substring(5, 7)); return k + '-' + String(new Date(y, mm, 0).getDate()).padStart(2, '0'); };
   const uniq = Array.from(new Set(months)).sort(); if (!uniq.length) return 0;

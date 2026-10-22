@@ -9,13 +9,14 @@ import { searchAccounts, sortStores } from './accounts.js';
 import { storeSheet, invDetail } from './store.js';
 import { loadGrants, requestAccess, myRequests, reqStatus, untilTxt, mySm } from './access.js';
 
-let S = null, Q = '';
+let S = null, Q = '', IVM = 'date';   // IVM: 📅 최근 인보이스 · 🏬 가게별
 export function register(state) { S = state; Router.on('invs', page); }
 const isStaff = () => S.role !== 'salesman';
 const looksInv = q => /^(A|P|W|CM)-?\d{3,}$/i.test(q.replace(/\s+/g, ''));
 const normInv = q => { q = q.replace(/\s+/g, '').toUpperCase(); const m = q.match(/^(P|CM)(\d+)$/); return m ? m[1] + '-' + m[2].padStart(6, '0') : q; };   // SmartBee: P-007803 · CM-000161
 
 async function page() {
+  if (isStaff()) { const { invTab } = await import('./orders.js'); return invTab(); }   // 담당자 · 관리자: 전체 인보이스 (기간별)
   /* 허락은 다른 폰(관리자)에서 바뀜 — 화면을 열 때마다 새로 */
   if (S.DB.fresh) { S.DB.fresh('grants'); S.DB.fresh('invReq'); }
   await loadGrants(true);
@@ -40,13 +41,23 @@ async function show() {
   if (q) {
     const hits = searchAccounts(S.accounts, q, 150);
     h += '<div class="card">' + (hits.length ? '<div class="muted" style="margin-bottom:4px">' + hits.total + bt('곳', ' stores') + '</div>' + hits.map(row).join('') : looksInv(q) ? '' : '<div class="none">' + bt('맞는 가게가 없습니다', 'No match') + '</div>') + '</div>';
+  } else if (!isStaff() && IVM === 'date') {
+    /* 📅 내 인보이스 — 최근 3달, 날짜 → 번호 순으로 쌓임 */
+    const yms = []; const d0 = new Date(); for (let i = 0; i < 3; i++) { yms.push(d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0')); d0.setMonth(d0.getMonth() - 1); }
+    let L = []; try { L = await S.DB.list('invoices', { where: [['sm', '==', sm], ['ym', 'in', yms]] }); } catch (e) {}
+    const key = x => x.d + ' ' + String(x.no || '').replace(/^([A-Z]+)-?(\d+)$/i, (m, a, n) => a + n.padStart(8, '0'));
+    L = L.filter(x => x.st !== 'x').sort((a, b) => key(b).localeCompare(key(a)));
+    const days = []; L.forEach(x => { if (!days.length || days[days.length - 1][0] !== x.d) days.push([x.d, []]); days[days.length - 1][1].push(x); });
+    h += '<div class="card">' + (L.length ? '<div class="muted">' + bt('최근 3달', 'Last 3 months') + ' · ' + L.length + bt('장', '') + ' · ' + money(L.reduce((a, x) => a + (x.total || 0), 0)) + '</div>' + days.map(([d, X]) => '<div class="iday"><b>' + esc(d) + '</b><span>' + X.length + ' · ' + money(X.reduce((a, x) => a + (x.total || 0), 0)) + '</span></div>' + X.map(x => '<div class="pr tap" data-in="' + esc(x.no) + '" data-inacct="' + esc(x.acct || '') + '"><div class="ct"><b>' + esc(x.no) + ' <span class="tag t-g">' + esc(x.t || '') + '</span></b><small>' + esc(x.store || '') + ' · ' + esc(x.acct || '') + '</small></div><div class="pa"><b>' + money(x.total) + '</b></div></div>').join('')).join('') : '<div class="none">' + bt('최근 3달 인보이스가 없습니다', 'No invoices in the last 3 months') + '</div>') + '</div>';
   } else if (!isStaff()) {
     const mine = sortStores((S.accounts || []).filter(a => !a.inactive && String(a.sm || '').toUpperCase() === sm));
     const gr = Object.keys(g).map(k => S.accounts.byCode && S.accounts.byCode[k]).filter(Boolean);
     h += (gr.length ? '<div class="card"><h2 style="font-size:15px">✅ ' + bi('허락받은 가게', 'Approved stores') + '</h2>' + gr.map(row).join('') + '</div>' : '') +
       '<div class="card"><h2 style="font-size:15px">🏬 ' + bi('내 가게', 'My stores') + ' <span class="muted" style="font-weight:400">' + mine.length + '</span></h2>' + (mine.length ? mine.slice(0, 400).map(row).join('') : '<div class="none">' + bt('담당 가게가 없습니다 — 세일즈맨 코드를 확인하세요', 'No stores — check your salesman code') + '</div>') + '</div>';
   }
-  out.innerHTML = h;
+  out.innerHTML = (!q && !isStaff() ? '<div class="seg" style="margin:0 0 8px"><button class="' + (IVM === 'date' ? 'on' : '') + '" data-ivm="date">📅 ' + bi('최근 인보이스', 'Recent invoices') + '</button><button class="' + (IVM === 'store' ? 'on' : '') + '" data-ivm="store">🏬 ' + bi('가게별', 'By store') + '</button></div>' : '') + h;
+  out.querySelectorAll('[data-ivm]').forEach(b => b.onclick = () => { IVM = b.dataset.ivm; show(); });
+  out.querySelectorAll('[data-in]').forEach(el => el.onclick = () => invDetail(el.dataset.in, el.dataset.inacct));
   if ($('ivNo')) $('ivNo').onclick = () => invDetail(normInv(q));
   out.querySelectorAll('[data-ia]').forEach(el => el.onclick = () => {
     const a = S.accounts.byCode[el.dataset.ia]; if (!a) return;

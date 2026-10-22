@@ -234,7 +234,7 @@ let STM = { mode: '', sm: '', state: '', city: '', msm: null };
 let MAP_FRESH = false;   // 지도 화면에서 서버 거래처를 한 번 새로 받았나
 async function pageStores() {
   const isSales = S.role === 'salesman', mine = (S.me && S.me.sm) ? String(S.me.sm).toUpperCase() : '';
-  if (!STM.mode) { STM.mode = isSales ? 'sm' : 'q'; if (isSales) STM.sm = mine; }
+  if (!STM.mode) { STM.mode = 'q'; if (isSales) STM.sm = mine; }   // 처음엔 모두 전체 거래처 (가게 이름 ABC) — 세일즈맨은 👤 세일즈맨별에 내 가게가 골라져 있음
   const A = activeOnly(S.accounts), Z = S.accounts.filter(a => a.inactive);   // 💤 비활성은 목록 · 지도에서 빼고 따로
   const canZ = S.role === 'admin' || S.role === 'owner' || (!isSales && (S.me && (S.me.job || 'office') === 'office'));
   const row = a => '<div class="pr tap" data-st="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + (a.inactive ? ' <span class="tag t-g">💤 ' + bt('비활성', 'Inactive') + '</span>' : '') + '</b><small>' + esc(a.acct) + ' · ' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.tel ? ' · ' + esc(a.tel) : '') + '</small></div>' + (!isSales ? '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' : '') + '</div>';

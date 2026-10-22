@@ -9,6 +9,7 @@
  * ============================================================ */
 import { storeSheet } from './store.js';
 import { adminRequestsCard } from './access.js';
+import { mergeAppInvoices } from './arapp.js';
 import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords, pickDates } from './ui.js';
 import { newId } from './db.js';
 import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
@@ -27,12 +28,17 @@ const srcOf = c => c.method === 'ACH' ? 'ACH' : c.method === 'CREDIT CARD' ? 'CA
 function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
 /** 미수금 전체 — _all(합계 · 기준일) + 세일즈맨별 문서의 가게 목록을 합침 (_all 에 invs 가 있으면 옛 모양 그대로 씀). 문서 1MB 한도 대비 */
 async function loadArAll() {
-  let docs = []; try { docs = await S.DB.list('ar'); } catch (e) { return null; }
-  const all = docs.find(d => d.id === '_all' || d.sm === '_all'); if (!all) return null;
-  if (all.stores && all.stores.length && all.stores[0].invs) return all;
-  const seen = {}, stores = [];
-  docs.filter(d => d !== all).forEach(d => (d.stores || []).forEach(s => { if (!seen[s.acct]) { seen[s.acct] = 1; stores.push(s); } }));
-  return Object.assign({}, all, { stores });
+  let docs = []; try { docs = await S.DB.list('ar'); } catch (e) { docs = []; }
+  let all = docs.find(d => d.id === '_all' || d.sm === '_all');
+  if (all && !(all.stores && all.stores.length && all.stores[0].invs)) {
+    const seen = {}, stores = [];
+    docs.filter(d => d !== all).forEach(d => (d.stores || []).forEach(s => { if (!seen[s.acct]) { seen[s.acct] = 1; stores.push(s); } }));
+    all = Object.assign({}, all, { stores });
+  }
+  /* 앱에서 발행한 인보이스 중 덜 받은 것도 미수금에 (AR 을 다시 올리지 않아도 저절로) */
+  let app = []; try { app = await S.DB.list('invoices', { where: [['st', '==', 'open']] }); } catch (e) {}
+  const m = mergeAppInvoices(all, app, (C && C.ents) || []);
+  return m.stores.length ? m : null;
 }
 /** 가져오기 뒤 현황 캐시 비우기 */
 export function dropBossCache() { C.at = 0; C.ents = null; HIST = null; }
@@ -103,7 +109,7 @@ async function pageNow() {
   /* 미수금 — 미수금 화면과 같은 계산 (기준일 이후 받은 돈을 빼고, 잔액 있는 가게만) */
   let arTot = 0, ar90 = 0, arN = 0;
   if (arAll && arAll.stores) { const paid = {}; C.ents.forEach(e => { if (e.d <= arAll.asOf || e.repl) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
-    arAll.stores.forEach(st => { let net = 0, n90 = 0; (st.invs || []).forEach(v => { const b = R2(v.bal - (paid[st.acct + '|' + v.inv] || 0)); net += b; if (b > 0 && (v.bk || 0) >= 4) n90 += b; }); if (net > 0.005) { arTot = R2(arTot + net); ar90 = R2(ar90 + n90); arN++; } }); }
+    arAll.stores.forEach(st => { let net = 0, n90 = 0; (st.invs || []).forEach(v => { const b = R2(v.bal - (v.app ? 0 : paid[st.acct + '|' + v.inv] || 0)); net += b; if (b > 0 && (v.bk || 0) >= 4) n90 += b; }); if (net > 0.005) { arTot = R2(arTot + net); ar90 = R2(ar90 + n90); arN++; } }); }
   const cmp = (a, b) => b ? ' <b class="' + (a >= b ? 'ok' : 'warn') + '">' + ((a - b) / b * 100 >= 0 ? '+' : '') + Math.round((a - b) / b * 100) + '%</b>' : '';
   let h = '<div id="rqCard"></div>' + '<button class="htile flowtile" style="width:100%;margin:0 0 10px" onclick="location.hash=\'#/flow\'"><span class="hi">🧭</span><b>주문 흐름 감독 <span class="en">Order flow</span></b><small>단계 · 담당자 · 머문 시간 · 지연 — 출고 전 주문 전체</small></button>' +
     '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📈 현황 — ' + esc(ptxt) + '</h2><div class="chips" style="margin:0 0 8px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (NP.p === c[0] ? 'on' : '') + '" data-np="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (MAIN.includes(NP.p) ? '' : 'on') + '" id="npCal">📅 날짜 선택</button></div>' +
@@ -390,7 +396,7 @@ async function loadDed() {
     ar.stores.filter(s => (s.sm || '') === sm).forEach(s => {
       let pool = {}; const invs = sortBy((s.invs || []).map(v => Object.assign({}, v, { age: v.d ? daysBetween(v.d, today()) : (v.pdd || 0) + 30 })), v => v.d || '');
       /* 기준일 뒤 받은 돈은 인보이스별로, 남으면 오래된 것부터 */
-      let extra = 0; invs.forEach(v => { const p = paid[s.acct + '|' + v.inv] || 0; v.net = R2(v.bal - p); if (v.net < 0 && v.bal > 0) { extra += -v.net; v.net = 0; } });
+      let extra = 0; invs.forEach(v => { const p = v.app ? 0 : (paid[s.acct + '|' + v.inv] || 0); v.net = R2(v.bal - p); if (v.net < 0 && v.bal > 0) { extra += -v.net; v.net = 0; } });
       invs.forEach(v => { if (extra > 0 && v.net > 0) { const t = Math.min(v.net, extra); v.net = R2(v.net - t); extra = R2(extra - t); } });
       const old = invs.filter(v => v.age >= 180 && v.net > 0.005), cr = invs.filter(v => v.net < -0.005), storeTot = R2(invs.reduce((a, v) => a + v.net, 0));
       const has = active.some(d => d.acct === s.acct && d.st !== '완료');
@@ -502,7 +508,7 @@ async function pageAR() {
   /* 실제 수금 담당 (최근 1년) */
   const payer = {}; C.ents.forEach(e => { if (!e.acct) return; payer[e.acct] = payer[e.acct] || {}; payer[e.acct][e.sm] = (payer[e.acct][e.sm] || 0) + 1; });
   const realSm = acct => { const m = payer[acct]; if (!m) return ''; return Object.keys(m).sort((a, b) => m[b] - m[a])[0]; };
-  let stores = all.stores.map(s => { let net = 0; const b = [0, 0, 0, 0, 0]; const invs = (s.invs || []).map(v => { const p = paid[s.acct + '|' + v.inv] || 0, bal = R2(v.bal - p); net += bal; if (bal > 0) b[Math.max(0, Math.min(4, v.bk || 0))] += bal; return Object.assign({}, v, { net: bal }); }); const rs = realSm(s.acct); return Object.assign({}, s, { net: R2(net), b: b.map(R2), invs, maxPdd: Math.max(0, ...invs.filter(v => v.net > 0.005).map(v => v.pdd || 0)), moved: rs && rs !== (s.sm || '') ? s.sm : '', sm: rs || s.sm || '' }); }).filter(s => s.net > 0.005);
+  let stores = all.stores.map(s => { let net = 0; const b = [0, 0, 0, 0, 0]; const invs = (s.invs || []).map(v => { const p = v.app ? 0 : (paid[s.acct + '|' + v.inv] || 0), bal = R2(v.bal - p); net += bal; if (bal > 0) b[Math.max(0, Math.min(4, v.bk || 0))] += bal; return Object.assign({}, v, { net: bal }); }); const rs = realSm(s.acct); return Object.assign({}, s, { net: R2(net), b: b.map(R2), invs, maxPdd: Math.max(0, ...invs.filter(v => v.net > 0.005).map(v => v.pdd || 0)), moved: rs && rs !== (s.sm || '') ? s.sm : '', sm: rs || s.sm || '' }); }).filter(s => s.net > 0.005);
   const smAll = Object.keys(groupBy(stores, s => s.sm || '(없음)')).sort();
   if (AV_SM) stores = stores.filter(s => (s.sm || '(없음)') === AV_SM);
   const total = sum(stores, s => s.net), bk = [0, 1, 2, 3, 4].map(i => sum(stores, s => s.b[i])), pct90 = Math.round(bk[4] / Math.max(1, total) * 100);

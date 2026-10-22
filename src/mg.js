@@ -8,6 +8,7 @@
  * ============================================================ */
 import { $, esc, money, k, num, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, pct } from './ui.js';
 import { newId } from './db.js';
+import { salesMonth, rebuildSalesM, invTypes } from './invoicing.js';
 
 let S = null, TAB = 'home', YEAR = Number(today().substring(0, 4)), FAC = '', MON = Number(today().substring(5, 7)) - 1;
 let LV = 'grid';   // 📒 장부 보기: 엑셀식 · 카드식
@@ -89,7 +90,8 @@ const kindTag = p => p.kind === '커미션' ? '<span class="tag t-a">커미션</
 /* ============================================================
  *  요약
  * ============================================================ */
-function paintHome() {
+async function paintHome() {
+  await salesDoc(YEAR);
   const facs = D.fac.map(f => Object.assign({ code: f.code, name: f.name }, facStat(f.code, YEAR)));
   const tot = { bal: sum(facs, f => f.balance), buy: sum(facs, f => f.buy), paid: sum(facs, f => f.paid), item: sum(facs, f => f.item), frt: sum(facs, f => f.frt) };
   const p99 = p99Stat(YEAR), bo = bonusStat(), sl = D.sales[YEAR];
@@ -295,7 +297,25 @@ function bonForm(x) {
  *  📈 회사 매출 — sales/{year} = { year, rows: [{ label, grp, m: [12] }] }
  * ============================================================ */
 const GRPS = [['total', 'TOTAL SALES'], ['item', '품목'], ['sm', '세일즈맨'], ['state', '주 (State)'], ['cash', '현금 흐름']];
-async function salesDoc(y) { if (!D.sales[y]) D.sales[y] = (await S.DB.get('sales', String(y)).catch(() => null)) || { id: String(y), year: y, rows: [] }; return D.sales[y]; }
+/** 회사 매출 — 인보이스에서 자동 계산 (월별 요약 salesM: 합계 · 세일즈맨 · 인보이스 종류 · 주). 현금 흐름만 직접 입력(sales/{year}).
+ *  인보이스가 하나도 없는 해는 예전에 손으로 넣은 숫자를 그대로 보여 줌 */
+async function salesDoc(y) {
+  if (D.sales[y]) return D.sales[y];
+  const man = (await S.DB.get('sales', String(y)).catch(() => null)) || { id: String(y), year: y, rows: [] };
+  const nowYm = today().substring(0, 7), yms = MON_KO.map((x, i) => y + '-' + String(i + 1).padStart(2, '0'));
+  const docs = await Promise.all(yms.map(k => k > nowYm ? null : salesMonth(S, k).catch(() => null)));
+  const z = () => Array(12).fill(0), rows = [], get = (grp, label) => { let r = rows.find(x => x.grp === grp && x.label === label); if (!r) { r = { label, grp, m: z(), auto: true }; rows.push(r); } return r; };
+  const types = invTypes(S), tName = t => { const x = types.find(q => q.c === t); return t + (x ? ' · ' + x.n : ''); };
+  docs.forEach((d, i) => {
+    if (!d || !d.n) return;
+    get('total', 'TOTAL SALES').m[i] = R2(d.total || 0);
+    Object.keys(d.bySm || {}).forEach(sm => Object.keys(d.bySm[sm]).forEach(t => { const b = d.bySm[sm][t]; get('sm', sm === '—' ? 'NO SALES REP' : sm).m[i] = R2(get('sm', sm === '—' ? 'NO SALES REP' : sm).m[i] + (b.total || 0)); get('item', tName(t)).m[i] = R2(get('item', tName(t)).m[i] + (b.total || 0)); }));
+    Object.keys(d.byState || {}).forEach(st => { get('state', st).m[i] = R2((d.byState[st] || 0)); });
+  });
+  const auto = rows.some(r => r.grp === 'total' && sum(r.m) > 0);
+  const out = auto ? { id: String(y), year: y, auto: true, man, rows: rows.concat(man.rows.filter(r => r.grp === 'cash')), n: docs.reduce((a, d) => a + ((d && d.n) || 0), 0) } : Object.assign({}, man, { man, auto: false });
+  D.sales[y] = out; return out;
+}
 async function paintSales() {
   const d = await salesDoc(YEAR), pv = await salesDoc(YEAR - 1), m = MON;
   const T = d.rows.find(r => r.grp === 'total'), PT = pv.rows.find(r => r.grp === 'total');
@@ -303,22 +323,25 @@ async function paintSales() {
   let h = '<div class="chips">' + MON_KO.map((x, i) => '<button class="' + (i === m ? 'on' : '') + (T && !T.m[i] ? ' dim' : '') + '" data-mon="' + i + '">' + x + '</button>').join('') + '</div>';
   h += '<div class="card"><h2>📈 ' + YEAR + '년 ' + MON_KO[m] + ' TOTAL SALES</h2><div class="hero">' + money(cur) + '</div><div class="heroSub">전월 ' + (prevM ? money(prevM) + ' ' + pct(cur, prevM) : '미입력') + ' · 전년 같은 달 ' + (ly ? money(ly) + ' ' + pct(cur, ly) : '—') + '</div><div class="kpi"><div><b>' + k(ytd) + '</b><span>YTD (1~' + (m + 1) + '월)</span></div><div><b>' + k(lyYtd) + '</b><span>전년 YTD</span></div><div><b>' + (lyYtd ? pct(ytd, lyYtd) : '—') + '</b><span>전년比</span></div><div><b>' + k(T ? sum(T.m) : 0) + '</b><span>올해 입력 합계</span></div></div>';
   const mx = Math.max(1, ...(T ? T.m : [0]), ...(PT ? PT.m : [0]));
-  h += '<div class="bars" style="margin-top:12px">' + MON_KO.map((x, i) => { const a = T ? T.m[i] : 0, b = PT ? PT.m[i] : 0; return '<div style="flex:1;display:flex;gap:1px;align-items:flex-end;height:80px" class="tap" data-mon="' + i + '"><div class="b" style="height:' + Math.max(2, Math.round(b / mx * 78)) + 'px" data-v="' + (YEAR - 1) + ' ' + x + ' ' + k(b) + '"></div><div class="b ' + (i === m ? 'on' : '') + '" style="height:' + Math.max(2, Math.round(a / mx * 78)) + 'px" data-v="' + YEAR + ' ' + x + ' ' + k(a) + '"></div></div>'; }).join('') + '</div><div class="xlab"><span>1월 (연한 막대 = 전년)</span><span>12월</span></div><div class="btns"><button class="b-blue" id="slEdit">✏️ ' + MON_KO[m] + ' 숫자 입력</button></div></div>';
+  h += '<div class="bars" style="margin-top:12px">' + MON_KO.map((x, i) => { const a = T ? T.m[i] : 0, b = PT ? PT.m[i] : 0; return '<div style="flex:1;display:flex;gap:1px;align-items:flex-end;height:80px" class="tap" data-mon="' + i + '"><div class="b" style="height:' + Math.max(2, Math.round(b / mx * 78)) + 'px" data-v="' + (YEAR - 1) + ' ' + x + ' ' + k(b) + '"></div><div class="b ' + (i === m ? 'on' : '') + '" style="height:' + Math.max(2, Math.round(a / mx * 78)) + 'px" data-v="' + YEAR + ' ' + x + ' ' + k(a) + '"></div></div>'; }).join('') + '</div><div class="xlab"><span>1월 (연한 막대 = 전년)</span><span>12월</span></div><div class="btns"><button class="b-blue" id="slEdit">✏️ ' + MON_KO[m] + (d.auto ? ' 현금 흐름 입력' : ' 숫자 입력') + '</button>' + (d.auto ? '<button class="b-ghost" id="slRe">↻ 다시 계산</button>' : '') + '</div>' + (d.auto ? '<div class="muted">📄 인보이스 ' + (d.n || 0).toLocaleString() + '장에서 자동 계산 — 앱에서 인보이스를 발행 · VOID 하면 바로 반영됩니다. 현금 흐름(은행)만 직접 입력.</div>' : '<div class="alert a-amb">이 해는 앱에 인보이스가 없어 예전에 손으로 넣은 숫자입니다. 인보이스를 가져오면 자동으로 바뀝니다.</div>') + '</div>';
   const tbl = (title, rows, withPrev, note) => { if (!rows.length) return ''; const tot = sum(rows, r => r.m[m]); return '<div class="card"><h2>' + title + '</h2><table style="font-size:13px"><tr><th>구분</th><th class="r">' + MON_KO[m] + '</th><th class="r">' + (withPrev ? '전년 ' + MON_KO[m] : '비중') + '</th><th class="r">YTD</th></tr>' + sortBy(rows.filter(r => r.m[m] || sum(r.m)), r => r.m[m], true).map(r => { const p = withPrev ? (pv.rows.find(x => x.label.toUpperCase() === r.label.toUpperCase()) || { m: [] }).m[m] : null; return '<tr><td class="nm">' + esc(r.label) + '</td><td class="r"><b>' + (r.m[m] ? money(r.m[m]) : '<span style="color:#cbd5e1">—</span>') + '</b></td><td class="r muted">' + (withPrev ? (p ? k(p) + ' ' + pct(r.m[m], p) : '—') : (cur ? Math.round(r.m[m] / cur * 100) + '%' : '—')) + '</td><td class="r">' + k(sum(r.m.slice(0, m + 1))) + '</td></tr>'; }).join('') + '<tr style="font-weight:800"><td>합계</td><td class="r">' + money(tot) + '</td><td class="r">' + (cur && !withPrev ? Math.round(tot / cur * 100) + '%' : '') + '</td><td class="r"></td></tr></table>' + (note ? '<div class="heroSub" style="margin-top:6px">' + note + '</div>' : '') + '</div>'; };
   h += '<div class="two-col">' + tbl('세일즈맨별', d.rows.filter(r => r.grp === 'sm'), true, 'TOTAL SALES 와 차이가 나면 "NO SALES REP" 분이거나 아직 안 넣은 사람이 있는 것입니다.') + tbl('품목별', d.rows.filter(r => r.grp === 'item'), false, '') + '</div>' + tbl('주(State)별', d.rows.filter(r => r.grp === 'state'), false, '');
   const cash = d.rows.filter(r => r.grp === 'cash'); if (cash.length) h += '<div class="card"><h2>현금 흐름 (은행 기준)</h2><table style="font-size:13px"><tr><th>구분</th><th class="r">' + MON_KO[m] + '</th><th class="r">YTD</th></tr>' + cash.map(r => '<tr><td>' + esc(r.label) + '</td><td class="r ' + (r.m[m] < 0 ? 'warn' : '') + '">' + signed(r.m[m]) + '</td><td class="r">' + signed(sum(r.m.slice(0, m + 1))) + '</td></tr>').join('') + '</table></div>';
-  if (!d.rows.length) h += '<div class="card"><div class="none">아직 항목이 없습니다. ✏️ 숫자 입력에서 TOTAL SALES · 품목 · 세일즈맨 · 주 · 현금 흐름 항목을 추가하세요.<br><span class="muted" style="font-size:12px">세일즈맨은 자동으로 목록에 들어갑니다.</span></div></div>';
+  if (!d.rows.length && !d.auto) h += '<div class="card"><div class="none">아직 항목이 없습니다. ✏️ 숫자 입력에서 TOTAL SALES · 품목 · 세일즈맨 · 주 · 현금 흐름 항목을 추가하세요.<br><span class="muted" style="font-size:12px">세일즈맨은 자동으로 목록에 들어갑니다.</span></div></div>';
   $('mgBody').innerHTML = h;
   document.querySelectorAll('[data-mon]').forEach(el => el.onclick = () => { MON = Number(el.dataset.mon); paintSales(); });
-  $('slEdit').onclick = () => salesEdit(d);
+  $('slEdit').onclick = () => salesEdit(d.man || d);
+  if ($('slRe')) $('slRe').onclick = async () => { busy(true); try { const yms = MON_KO.map((x, i) => YEAR + '-' + String(i + 1).padStart(2, '0')).filter(k => k <= today().substring(0, 7)); await rebuildSalesM(S, yms); delete D.sales[YEAR]; delete D.sales[YEAR - 1]; toast('다시 계산했습니다', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); paintSales(); };
 }
 function salesEdit(d) {
-  const m = MON, rows = d.rows.slice();
-  if (!rows.some(r => r.grp === 'total')) rows.unshift({ label: 'TOTAL SALES', grp: 'total', m: Array(12).fill(0) });
-  S.sms.filter(s => s.active !== false).forEach(s => { if (!rows.some(r => r.grp === 'sm' && r.label.toUpperCase() === s.code)) rows.push({ label: s.code, grp: 'sm', m: Array(12).fill(0) }); });
+  const m = MON, rows = d.rows.slice(), autoOn = D.sales[YEAR] && D.sales[YEAR].auto;
+  if (!autoOn) {
+    if (!rows.some(r => r.grp === 'total')) rows.unshift({ label: 'TOTAL SALES', grp: 'total', m: Array(12).fill(0) });
+    S.sms.filter(s => s.active !== false).forEach(s => { if (!rows.some(r => r.grp === 'sm' && r.label.toUpperCase() === s.code)) rows.push({ label: s.code, grp: 'sm', m: Array(12).fill(0) }); });
+  }
   let h = '<h2>✏️ ' + YEAR + '년 ' + MON_KO[m] + ' 숫자 입력</h2><div class="heroSub">바뀐 칸만 저장됩니다. 항목 추가는 아래에서.</div>';
   GRPS.forEach(([g, name]) => { const L = rows.filter(r => r.grp === g); if (!L.length) return; h += '<div class="dedSub">' + name + '</div><table style="font-size:13px">' + L.map(r => '<tr><td>' + esc(r.label) + '</td><td class="r"><input data-se="' + esc(r.grp + '|' + r.label) + '" value="' + (r.m[m] || '') + '" inputmode="decimal" style="width:130px;text-align:right;padding:6px"></td></tr>').join('') + '</table>'; });
   h += '<div class="dedSub">＋ 항목 추가</div><div class="two">' + sel('naG', GRPS.filter(g => g[0] !== 'total'), 'item') + '<input id="naL" placeholder="항목 이름 (예: WAX · FL · CASH IN)" style="text-transform:uppercase"></div><div class="btns"><button class="b-ghost" id="mX">취소</button><button class="b-blue" id="mOk">저장</button></div>';
   openModal(h); $('mX').onclick = closeModal;
-  $('mOk').onclick = async () => { document.querySelectorAll('[data-se]').forEach(inp => { const [g, label] = inp.dataset.se.split('|'); let r = rows.find(x => x.grp === g && x.label === label); if (!r) { r = { label, grp: g, m: Array(12).fill(0) }; rows.push(r); } r.m[m] = R2(num(inp.value)); }); const nl = $('naL').value.trim().toUpperCase(); if (nl && !rows.some(r => r.label.toUpperCase() === nl)) rows.push({ label: nl, grp: $('naG').value, m: Array(12).fill(0) }); busy(true); try { const doc = { id: String(YEAR), year: YEAR, rows, updatedAt: new Date().toISOString() }; await S.DB.set('sales', String(YEAR), doc); D.sales[YEAR] = doc; closeModal(); toast('저장했습니다', 'good'); paintSales(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  $('mOk').onclick = async () => { document.querySelectorAll('[data-se]').forEach(inp => { const [g, label] = inp.dataset.se.split('|'); let r = rows.find(x => x.grp === g && x.label === label); if (!r) { r = { label, grp: g, m: Array(12).fill(0) }; rows.push(r); } r.m[m] = R2(num(inp.value)); }); const nl = $('naL').value.trim().toUpperCase(); if (nl && !rows.some(r => r.label.toUpperCase() === nl)) rows.push({ label: nl, grp: $('naG').value, m: Array(12).fill(0) }); busy(true); try { const doc = { id: String(YEAR), year: YEAR, rows, updatedAt: new Date().toISOString() }; await S.DB.set('sales', String(YEAR), doc); delete D.sales[YEAR]; closeModal(); toast('저장했습니다', 'good'); paintSales(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
