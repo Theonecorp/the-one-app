@@ -362,20 +362,28 @@ export function parseArRows(aoa) {
     const m = {}; Object.keys(AR_COLS).forEach(k => { const c = row.findIndex(h => h && AR_COLS[k].test(h)); if (c >= 0) m[k] = c; });
     if (m.inv != null && m.bal != null && m.acct != null) { hi = r; idx = m; }
   }
-  if (hi < 0) throw new Error('머리글(Invoice · balance · Customer #)을 못 찾았습니다');
-  const out = [], subtotals = [];
+  if (hi < 0) {
+    /* 수금 앱 v79 · BOSS b22 와 같게: 머리글 줄 없이 붙여넣은 SmartBee AR (1행 비어 있음) — 자리 그대로 읽음 */
+    const looks = aoa.slice(0, 8).some(r => r && /^\d{3,5}$/.test(String(r[2] == null ? '' : r[2]).replace(/\.0+$/, '').trim()) && String(r[3] || '').trim() && String(r[4] || '').trim());
+    if (!looks) throw new Error('머리글(Invoice · balance · Customer #)을 못 찾았습니다');
+    hi = (aoa[0] || []).some(x => /^\d{3,5}$/.test(String(x == null ? '' : x).trim())) ? -1 : 0;
+    idx = { rep: 1, acct: 2, store: 3, inv: 4, d: 5, total: 6, pdd: 7, bal: 8, cur: 9, b1: 10, b2: 11, b3: 12, b4: 13, term: 14 };
+  }
+  const out = [], subtotals = [], closed = {}; let tail = 0;   // closed: 소계(ACE (437))가 이미 나온 담당 — 그 뒤 같은 담당 줄은 지난번 붙여넣기 꼬리
   const dateOf = v => { if (v instanceof Date) return v.toISOString().substring(0, 10); const s = String(v || '').trim(); const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0'); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10); if (typeof v === 'number' && v > 30000) { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().substring(0, 10); } return ''; };
   for (let r = hi + 1; r < aoa.length; r++) {
     const row = aoa[r]; if (!row || !row.length) continue;
     const inv = String(row[idx.inv] == null ? '' : row[idx.inv]).trim(), acct = String(row[idx.acct] == null ? '' : row[idx.acct]).trim();
     const bal = num(row[idx.bal]);
-    if (!inv) { const lab = String(row[idx.rep] == null ? '' : row[idx.rep]).trim() || String(row[idx.store] == null ? '' : row[idx.store]).trim(); if (lab && bal) subtotals.push({ label: lab, bal }); continue; }
+    const rep = String(row[idx.rep] == null ? '' : row[idx.rep]).trim().toUpperCase(), repLab = rep.replace(/\s*\(\d+\)\s*$/, '');
+    if (!inv) { const lab = String(row[idx.rep] == null ? '' : row[idx.rep]).trim() || String(row[idx.store] == null ? '' : row[idx.store]).trim(); if (/\(\d+\)\s*$/.test(rep) && repLab !== 'ALL') { if (closed[repLab]) { tail++; continue; } closed[repLab] = 1; } if (lab && bal) subtotals.push({ label: lab, bal }); continue; }
+    if (rep && closed[rep]) { tail++; continue; }
     if (!acct || Math.abs(bal) < 0.005) continue;
     const bk = [num(row[idx.cur]), num(row[idx.b1]), num(row[idx.b2]), num(row[idx.b3]), num(row[idx.b4])];
     let bkIdx = bk.findIndex(x => Math.abs(x) > 0.005); if (bkIdx < 0) { const p = num(row[idx.pdd]); bkIdx = p <= 0 ? 0 : p <= 30 ? 1 : p <= 60 ? 2 : p <= 90 ? 3 : 4; }
     out.push({ rep: String(row[idx.rep] || '').trim().toUpperCase(), acct: pad4(acct), store: String(row[idx.store] || '').trim(), inv, d: dateOf(row[idx.d]), amt: R2(num(row[idx.total])), bal: R2(bal), pdd: Math.round(num(row[idx.pdd])), bk: bkIdx, term: String(row[idx.term] || '').trim() });
   }
-  return { rows: out, subtotals };
+  return { rows: out, subtotals, tail };
 }
 async function arParse(file) {
   if (!file) return;
@@ -384,10 +392,10 @@ async function arParse(file) {
     const XLSX = await loadXlsx();
     const buf = await file.arrayBuffer(); const wb = XLSX.read(buf, { type: 'array', cellDates: true });
     const ws = wb.Sheets[wb.SheetNames[0]]; const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
-    const { rows, subtotals } = parseArRows(aoa);
+    const { rows, subtotals, tail } = parseArRows(aoa);
     const allRow = subtotals.find(s => /^ALL$/i.test(s.label));
     const total = sum(rows, r => r.bal);
-    out.innerHTML = '<div class="alert a-blu">인보이스 ' + rows.length + '건 · 잔액 합계 <b>' + money(total) + '</b>' + (allRow ? ' · 파일 ALL 행 ' + money(allRow.bal) + (Math.abs(allRow.bal - total) < 0.02 ? ' ✓' : ' <span class="warn">✗ 다름</span>') : '') + '</div><button class="b-blue" id="arGo" style="margin-top:8px">세일즈맨별로 나눠 저장</button>';
+    out.innerHTML = '<div class="alert a-blu">인보이스 ' + rows.length + '건 · 잔액 합계 <b>' + money(total) + '</b>' + (allRow ? ' · 파일 ALL 행 ' + money(allRow.bal) + (Math.abs(allRow.bal - total) < 0.02 ? ' ✓' : ' <span class="warn">✗ 다름</span>') : '') + (tail ? '<br>지난번 붙여넣기에서 남은 꼬리 ' + tail + '줄은 뺐습니다' : '') + '</div><button class="b-blue" id="arGo" style="margin-top:8px">세일즈맨별로 나눠 저장</button>';
     $('arGo').onclick = () => arBuild(rows, $('arD').value);
   } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
