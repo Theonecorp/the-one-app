@@ -9,6 +9,7 @@ import { roleLabel, JOBS, jobLabel } from './main.js';
 import { seedImport } from './mg.js';
 import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
+import { acctImportCard, bindAcctImport } from './acctimp.js';
 import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs } from './catalog.js';
 import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM } from './invoicing.js';
 
@@ -158,7 +159,7 @@ async function settings() {
  *   · THE ONE 커미션.xlsx → 세일즈맨 요율 · 정산 기록(settled)
  * ============================================================ */
 async function importer() {
-  $('adminBody').innerHTML = exportCard() + '<div class="card" style="border:2px solid #bfdbfe"><h2>📥 한 번에 올리기 <span class="en">Upload all at once</span></h2><div class="muted">파일을 여러 개 한꺼번에 고르세요 (수금 입력 · SALES · 커미션 · 수금 대시보드 · sales_invoice). 탭 이름으로 종류를 알아보고 ① → ② → ③ → ④ → ⑤ 순서로 넣습니다. 끝날 때까지 화면을 닫지 마세요.</div>' +
+  $('adminBody').innerHTML = exportCard() + acctImportCard() + '<div class="card" style="border:2px solid #bfdbfe"><h2>📥 한 번에 올리기 <span class="en">Upload all at once</span></h2><div class="muted">파일을 여러 개 한꺼번에 고르세요 (수금 입력 · SALES · 커미션 · 수금 대시보드 · sales_invoice). 탭 이름으로 종류를 알아보고 ① → ② → ③ → ④ → ⑤ 순서로 넣습니다. 끝날 때까지 화면을 닫지 마세요.</div>' +
     '<div class="two" style="margin-top:8px"><div class="fg"><label>인보이스는 이 날짜부터</label><input type="date" id="allFrom" value="' + today().substring(0, 4) + '-01-01"></div><div class="fg"><label>AR 기준일 (비우면 오늘)</label><input type="date" id="allArD"></div></div>' +
     '<input type="file" id="fAll" accept=".xlsx" multiple style="padding:8px"><div id="allOut"></div></div>' +
     '<div class="card"><h2>📥 옛 시트에서 가져오기 (하나씩)</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
@@ -173,7 +174,7 @@ async function importer() {
     '<div class="card"><h2>④ THE ONE 수금 대시보드.xlsx — 공장 장부 · 1099 · 오피스 보너스 · 배분표 · 1099 대상 · 커미션 공제 · 정산 옵션</h2><div class="muted">경영 파일을 그대로 올리세요. 탭 이름(🏭 공장 이름 · 1099 2026 · 오피스 보너스 …)으로 찾고, 시트 안의 ID 를 그대로 써서 다시 올려도 두 번 쌓이지 않습니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="f4" accept=".xlsx"></div><div id="bossOut"></div>' +
     '<details style="margin-top:6px"><summary class="muted">변환해 둔 SEED_DATA(.js) 파일로 넣기</summary><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></details></div>';
-  bindExport();
+  bindExport(); bindAcctImport(S, readBook, aoa);
   $('arF2').onchange = async () => { const f = $('arF2').files[0]; if (!f) return; const out = $('arOut2'); out.innerHTML = '<div class="muted">읽는 중…</div>'; try { const { XLSX, wb } = await readBook(f); const rows0 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }); const { rows } = parseArRows(rows0); busy(true); const r = await saveAr(rows, $('arD2').value || today()); busy(false); out.innerHTML = '<div class="alert a-grn">저장 — 인보이스 ' + rows.length + '건 · ' + money(sum(rows, x => x.bal)) + ' · 가게 ' + r.stores.length + '곳' + (r.unmatched.length ? '<br>거래처 목록에 없는 가게: ' + r.unmatched.slice(0, 20).map(esc).join(', ') : '') + '</div>'; } catch (e) { busy(false); out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; } };
   $('seedPick').onclick = () => $('seedFile').click();
   $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedImport(r.result); r.readAsText(f); };
@@ -302,7 +303,8 @@ async function importAll(files) {
 /* ⑤ 이전 시스템 인보이스 목록 — 머리글 이름으로 열을 찾음 */
 export function parseInvoiceList(aoa, fromD) {
   let hi = -1, ix = {};
-  const want = { no: /^invoice\s*(#|no)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /customer\s*#|acct|account/i, store: /customer\s*name|store/i, sm: /sales\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /sales\s*order|^s\.?o\.?/i };
+  /* 이전 시스템 내보내기마다 머리글이 조금씩 다름 — sales_invoice(invoice · customer# · customer name) · invoice_list(trans # → "trans 3", cusomer # → "cusomer 3", name, slaes order) */
+  const want = { no: /^(invoice|trans)\s*(#|no|3)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /^cus\w*mer\s*(#|3|no)?$|acct|account/i, store: /customer\s*name|store|^name$/i, sm: /sales?\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /s[a-z]*\s*order|^s\.?o\.?$/i };
   for (let r = 0; r < Math.min(aoa.length, 8) && hi < 0; r++) { const row = aoa[r].map(x => String(x == null ? '' : x).trim()); const m = {}; Object.keys(want).forEach(k => { const c = row.findIndex(h => h && want[k].test(h)); if (c >= 0) m[k] = c; }); if (m.no != null && m.d != null && m.total != null) { hi = r; ix = m; } }
   if (hi < 0) throw new Error('머리글(invoice · trans date · Total)을 못 찾았습니다');
   const out = [], seen = {}; let skipped = 0, old = 0;
@@ -317,23 +319,29 @@ export function parseInvoiceList(aoa, fromD) {
     out.push({ id: no, no, t: t.length > 2 ? t.charAt(0) : t, d, ym: d.substring(0, 7), acct: ix.acct != null ? pad4(row[ix.acct]) : '', store: String(row[ix.store] || '').trim(), sm: String(row[ix.sm] || '').trim().toUpperCase(), terms: String(row[ix.terms] || '').trim(), shipVia: String(row[ix.via] || '').trim(),
       ship: frt, discAmt, sub: R2(total - frt + discAmt), disc: 0, total: R2(total - frt), bal, st: bal > 0.005 ? 'open' : 'paid', order: ix.so != null ? String(row[ix.so] || '').trim() : '', qty: 0, lines: [], src: 'legacy' });
   }
-  return { rows: out, skipped, old };
+  return { rows: out, skipped, old, hasBal: ix.bal != null };
 }
 async function importInvoices(file, auto) {
   if (!file) return; const out = $('invOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
   try {
     const { XLSX, wb } = await readBook(file);
     const sheet = aoa(XLSX, wb, wb.SheetNames[0]);
-    const { rows, skipped, old } = parseInvoiceList(sheet, $('f5From').value || '');
+    const P = parseInvoiceList(sheet, $('f5From').value || ''), { skipped, old } = P;
+    /* 이미 있는 인보이스 — 앱에서 만든 것(줄 · 픽킹 기록 있음)은 건드리지 않음. 잔액 열이 없는 파일이면 있던 잔액 · 상태는 그대로 */
+    const ds = P.rows.map(r => r.d).sort(), ex = {};
+    if (ds.length) (await S.DB.list('invoices', { where: [['d', '>=', ds[0]], ['d', '<=', ds[ds.length - 1]]] })).forEach(v => { ex[v.id || v.no] = v; });
+    const appMade = P.rows.filter(r => ex[r.id] && ex[r.id].src !== 'legacy'), rows = P.rows.filter(r => !(ex[r.id] && ex[r.id].src !== 'legacy'));
+    const nNew = rows.filter(r => !ex[r.id]).length;
+    if (!P.hasBal) rows.forEach(r => { if (ex[r.id]) { delete r.bal; delete r.st; } else { r.bal = 0; r.st = 'paid'; } });
     const byY = {}; rows.forEach(r => { const y = r.d.substring(0, 4); byY[y] = byY[y] || { n: 0, amt: 0 }; byY[y].n++; byY[y].amt = R2(byY[y].amt + r.total); });
-    out.innerHTML = '<div class="alert a-blu">인보이스 <b>' + rows.length.toLocaleString() + '</b>장 · 매출 ' + money(sum(rows, r => r.total)) + ' · 잔액 ' + money(sum(rows, r => r.bal)) + (old ? ' · 시작일 전 ' + old.toLocaleString() + '장 제외' : '') + (skipped ? ' · 건너뜀 ' + skipped : '') + '<br>' + Object.keys(byY).sort().map(y => y + ': ' + byY[y].n.toLocaleString() + '장 ' + money(byY[y].amt)).join(' · ') + '</div>' +
+    out.innerHTML = '<div class="alert a-blu">인보이스 <b>' + rows.length.toLocaleString() + '</b>장 (새로 ' + nNew.toLocaleString() + ' · 이미 있음 ' + (rows.length - nNew).toLocaleString() + ') · 매출 ' + money(sum(rows, r => r.total)) + (P.hasBal ? ' · 잔액 ' + money(sum(rows, r => r.bal || 0)) : ' · 잔액 열 없음 (미수금은 AR 파일 기준)') + (appMade.length ? '<br>앱에서 발행한 인보이스 ' + appMade.length + '장은 그대로 둠: ' + esc(appMade.slice(0, 8).map(r => r.no).join(', ')) : '') + (old ? ' · 시작일 전 ' + old.toLocaleString() + '장 제외' : '') + (skipped ? ' · 건너뜀 ' + skipped : '') + '<br>' + Object.keys(byY).sort().map(y => y + ': ' + byY[y].n.toLocaleString() + '장 ' + money(byY[y].amt)).join(' · ') + '</div>' +
       (rows.length > 18000 ? '<div class="alert a-amb">1만 8천 장이 넘습니다 — 무료 요금제면 하루 한도에 걸릴 수 있습니다. 시작일을 올리거나 Blaze 로 바꾼 뒤 넣으세요.</div>' : '') +
       '<button class="b-blue" id="invGo">넣기</button><div id="invProg" class="muted" style="margin-top:6px"></div>';
     const run = async () => {
       busy(true); const prog = $('invProg'); let done = 0;
       try {
         const now = new Date().toISOString();
-        for (let i = 0; i < rows.length; i += 400) { const part = rows.slice(i, i + 400); await S.DB.batch(part.map(r => ({ op: 'set', col: 'invoices', id: r.id, data: Object.assign({}, r, { createdAt: now, importedAt: now }) }))); done += part.length; prog.textContent = done.toLocaleString() + ' / ' + rows.length.toLocaleString() + ' 저장 중…'; }
+        for (let i = 0; i < rows.length; i += 400) { const part = rows.slice(i, i + 400); await S.DB.batch(part.map(r => ex[r.id] ? { op: 'update', col: 'invoices', id: r.id, data: Object.assign({}, r, { importedAt: now }) } : { op: 'set', col: 'invoices', id: r.id, data: Object.assign({}, r, { createdAt: now, importedAt: now }) })); done += part.length; prog.textContent = done.toLocaleString() + ' / ' + rows.length.toLocaleString() + ' 저장 중…'; }
         dropInvCache(); dropBossCache();
         prog.textContent = '월별 매출 요약 계산 중…'; try { await rebuildSalesM(S, rows.map(r => r.ym)); } catch (e) {}
         out.insertAdjacentHTML('beforeend', '<div class="alert a-grn">넣었습니다 — ' + done.toLocaleString() + '장. 현황 · 리포트 · 가게 창에 바로 보입니다.</div>'); toast('인보이스 ' + done.toLocaleString() + '장', 'good');
