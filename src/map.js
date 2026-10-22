@@ -23,12 +23,22 @@ export const smColor = (sm, all) => { const i = all.indexOf(sm); return i < 0 ? 
 const miles = (a, b) => { const R = 3958.8, r = x => x * Math.PI / 180, dLat = r(b[0] - a[0]), dLng = r(b[1] - a[1]); const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a[0])) * Math.cos(r(b[0])) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
 
 let MAP = null, ME = null;
+/** 좌표 작업(geoSync) 상태 — settings/app.geo (UPS.gs 가 실행할 때마다 적음) */
+export function geoStatus(S) {
+  if (!S || S.role === 'salesman') return '';
+  const g = S.settings && S.settings.geo;
+  if (!g) return '<div class="alert a-amb" style="margin-top:6px">🗺 ' + bt('좌표 작업 기록이 없습니다 — Apps Script(UPS.gs)를 새 코드로 바꾸고 geoSync 를 한 번 실행해 주세요', 'No geocoding run recorded yet — update UPS.gs and run geoSync once') + '</div>';
+  const at = String(g.at || '').replace('T', ' ').substring(5, 16);
+  return '<div class="muted" style="margin-top:4px">🗺 geoSync ' + esc(at) + ' · ' + bt('좌표 있음', 'located') + ' ' + (g.have || 0).toLocaleString() + ' / ' + (g.total || 0).toLocaleString() +
+    (g.bad ? ' · ' + bt('주소로 못 찾음', 'not found') + ' ' + g.bad : '') + (g.noAddr ? ' · ' + bt('주소 없음', 'no address') + ' ' + g.noAddr : '') +
+    (g.stop ? ' · <span class="warn">' + bt('이어서 하는 중', 'continuing') + ' (' + esc(g.stop) + ', ' + bt('남은 곳', 'left') + ' ' + (g.left || 0) + ')</span>' : '') + (g.err ? '<br><span class="warn">' + esc(g.err) + '</span>' : '') + '</div>';
+}
 /** el 안에 지도 그리기 — list: 보여 줄 거래처, sms: 색 정하는 세일즈맨 순서 */
 export async function renderMap(el, list, sms, S) {
   const box = $(el); if (!box) return;
   const withXY = list.filter(a => Number(a.lat) && Number(a.lng)), noXY = list.length - withXY.length;
   const info = $('mapInfo');
-  if (info) info.innerHTML = withXY.length + ' / ' + list.length + ' ' + bt('곳 지도에 표시', 'stores on the map') + (noXY ? ' · <span class="warn">' + bt('좌표 없는 가게', 'no location yet') + ' ' + noXY + '</span> <span class="muted">(' + bt('주소로 자동으로 찾아 넣습니다 — 관리자 UPS 스크립트 geoSync', 'filled in automatically from the address') + ')</span>' : '');
+  if (info) info.innerHTML = withXY.length + ' / ' + list.length + ' ' + bt('곳 지도에 표시', 'stores on the map') + (noXY ? ' · <span class="warn">' + bt('좌표 없는 가게', 'no location yet') + ' ' + noXY + '</span> <span class="muted">(' + bt('주소로 자동으로 찾아 넣습니다 — 관리자 UPS 스크립트 geoSync', 'filled in automatically from the address') + ')</span>' : '') + geoStatus(S);
   let L;
   try { L = await loadLeaflet(); } catch (e) { box.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; return; }
   if (!$(el)) return;

@@ -327,24 +327,41 @@ function geoSync() {
     Logger.log('🗺 거래처 ' + all.length + '곳 · 좌표 찾을 곳 ' + todo.length);
     let ok = 0, bad = 0, stop = ''; const errs = {};
     const save = (a, r) => { const q = geoQ_(a); try { if (r.lat != null) { fsPatch_('accounts', a._id, { lat: r.lat, lng: r.lng, geoQ: q, geoErr: '', geoSrc: r.src, geoAt: iso_() }); ok++; } else { fsPatch_('accounts', a._id, { geoQ: q, geoErr: r.err, lat: null, lng: null }); errs[r.err] = (errs[r.err] || 0) + 1; bad++; } } catch (e) { errs[String(e.message)] = (errs[String(e.message)] || 0) + 1; } };
-    for (let i = 0; i < todo.length && !stop; i += 1000) {
+    /* ① Census 일괄 (1,000곳 15초쯤) 먼저 전부 → ② 못 찾은 곳만 구글로 한 곳씩 (Census 한 곳씩 다시 묻지 않음 — 일괄이 이미 못 찾은 주소) */
+    const left = [];
+    for (let i = 0; i < todo.length; i += 1000) {
+      if (Date.now() - t0 > 4 * 60 * 1000) { stop = '시간 (4분)'; break; }
       const part = todo.slice(i, i + 1000);
       let hit = {}; try { hit = censusBatch_(part); } catch (e) { errs[String(e.message)] = 1; }
-      for (const a of part) {
-        if (Date.now() - t0 > 5 * 60 * 1000) { stop = '시간 (5분)'; break; }
-        if (hit[a._id]) { save(a, { lat: hit[a._id][0], lng: hit[a._id][1], src: 'census' }); continue; }
-        const r = geocode_(a);   // Census 일괄에서 못 찾은 곳 — 한 곳씩 다시 (Census → 구글)
-        if (r.quota) { stop = '구글 하루 한도'; break; }
-        save(a, r);
-      }
+      for (const a of part) { if (hit[a._id]) save(a, { lat: hit[a._id][0], lng: hit[a._id][1], src: 'census' }); else left.push(a); }
     }
-    /* 다 끝났을 때만 버전을 올림 — 올리면 모든 폰이 거래처를 다시 받으므로 한 번만 */
-    if (!stop) { let v = ver; if (ok || bad || P.getProperty('GEO_PENDING') === '1') { v = String(Date.now()); fsPatch_('settings', 'app', { accountsVer: v }); } P.setProperties({ GEO_VER: v, GEO_DONE: '1', GEO_PENDING: '0' }); }
-    else P.setProperties({ GEO_DONE: '0', GEO_PENDING: (ok || bad || P.getProperty('GEO_PENDING') === '1') ? '1' : '0' });
-    Logger.log('🗺 찾음 ' + ok + ' · 못 찾음 ' + bad + (stop ? ' · 멈춤(' + stop + ') — 다음 실행 때 이어서' : ' · 끝'));
+    for (const a of left) {
+      if (stop) break;
+      if (Date.now() - t0 > 4.5 * 60 * 1000) { stop = '시간 (4분 30초)'; break; }
+      const r = googleGeo_(a);
+      if (r.quota) { stop = '구글 하루 한도'; break; }
+      save(a, r);
+    }
+    /* 찾은 게 있으면 멈췄어도 버전을 올림 — 폰들이 지금까지 찾은 좌표를 바로 받게 (전에는 다 끝나야 올려서 오래 걸리면 지도가 빈 채로 남았음) */
+    let v = ver;
+    if (ok || bad || P.getProperty('GEO_PENDING') === '1') v = String(Date.now());
+    const tset = new Set(todo), have = all.filter(a => Number(a.lat) && Number(a.lng) && !tset.has(a)).length + ok, noAddr = all.filter(a => !geoQ_(a)).length;
+    const geo = { at: iso_(), total: all.length, have, noAddr, ok, bad, left: stop ? todo.length - ok - bad : 0, stop, err: Object.keys(errs).slice(0, 3).map(k => k + ' ×' + errs[k]).join(' · ') };
+    fsPatch_('settings', 'app', v !== ver ? { accountsVer: v, geo } : { geo });
+    P.setProperties({ GEO_VER: v, GEO_DONE: stop ? '0' : '1', GEO_PENDING: '0' });
+    Logger.log('🗺 찾음 ' + ok + ' · 못 찾음 ' + bad + ' · 좌표 있는 가게 ' + have + '/' + all.length + (stop ? ' · 멈춤(' + stop + ') — 다음 실행 때 이어서' : ' · 끝'));
     Object.keys(errs).slice(0, 5).forEach(k => Logger.log('  이유: ' + k + ' × ' + errs[k]));
   } catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('🗺 Firestore 하루 무료 한도 초과 — 한도가 다시 차면 다음 실행 때 이어서 합니다'); return; } Logger.log('🗺 geoSync 오류: ' + (e && e.message || e)); throw e; }
   finally { lock.releaseLock(); }
+}
+/** 구글 Maps (Apps Script) 로 한 곳 — Census 일괄이 못 찾은 주소용 */
+function googleGeo_(a) {
+  const one = [a.addr, a.city, a.state, a.zip].map(x => String(x || '').trim()).filter(Boolean).join(', ');
+  try {
+    const g = Maps.newGeocoder().setRegion('us').geocode(one + ', USA');
+    if (g && g.status === 'OK' && g.results && g.results.length) { const l = g.results[0].geometry.location; return { lat: l.lat, lng: l.lng, src: 'google' }; }
+    return { err: String((g && g.status) || 'NOT_FOUND') };
+  } catch (e) { return { err: String(e && e.message || e).substring(0, 120), quota: /too many|quota|limit/i.test(String(e && e.message)) }; }
 }
 
 /** 참조 번호 → 인보이스(invoices/{번호}.orderId) · 주문(orders/{번호}) · 없으면 받는 가게 이름 + 7일 안 "인보이스 발행" 주문 하나 */
