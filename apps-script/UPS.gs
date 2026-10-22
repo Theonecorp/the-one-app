@@ -316,14 +316,17 @@ function censusBatch_(list) {
   });
   return out;
 }
-function geoSync() {
+/** 🗺 지도 좌표 — 처음부터 다시: "바뀐 거래처 없음 — 건너뜀" 이 나와도 전부 확인하고, 좌표가 없는 가게(전에 못 찾은 곳 포함)를 다시 찾음 */
+function geoForce() { PropertiesService.getScriptProperties().deleteProperty('GEO_DONE'); geoRun_(true); }
+function geoSync() { geoRun_(false); }   // 6시간마다 (트리거) — 새 · 바뀐 주소만
+function geoRun_(force) {
   const lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
   const t0 = Date.now();
   try {
     /* 거래처가 바뀌지 않았으면 읽지 않음 (Firestore 읽기 아끼기) — settings/app.accountsVer 를 지난번과 비교 */
     const P = PropertiesService.getScriptProperties(), st = fsGet_('settings', 'app') || {}, ver = String(st.accountsVer || '');
-    if (P.getProperty('GEO_DONE') === '1' && P.getProperty('GEO_VER') === ver) { Logger.log('🗺 바뀐 거래처 없음 — 건너뜀'); return; }
-    const all = fsListAll_('accounts'), todo = all.filter(a => { const q = geoQ_(a); return q && a.geoQ !== q; });
+    if (!force && P.getProperty('GEO_DONE') === '1' && P.getProperty('GEO_VER') === ver) { Logger.log('🗺 바뀐 거래처 없음 — 건너뜀 (처음부터 다시 하려면 geoForce 실행)'); return; }
+    const all = fsListAll_('accounts'), todo = all.filter(a => { const q = geoQ_(a); return q && (a.geoQ !== q || (force && !(Number(a.lat) && Number(a.lng)))); });
     Logger.log('🗺 거래처 ' + all.length + '곳 · 좌표 찾을 곳 ' + todo.length);
     let ok = 0, bad = 0, stop = ''; const errs = {};
     const save = (a, r) => { const q = geoQ_(a); try { if (r.lat != null) { fsPatch_('accounts', a._id, { lat: r.lat, lng: r.lng, geoQ: q, geoErr: '', geoSrc: r.src, geoAt: iso_() }); ok++; } else { fsPatch_('accounts', a._id, { geoQ: q, geoErr: r.err, lat: null, lng: null }); errs[r.err] = (errs[r.err] || 0) + 1; bad++; } } catch (e) { errs[String(e.message)] = (errs[String(e.message)] || 0) + 1; } };

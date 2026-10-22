@@ -15,7 +15,7 @@ import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
 import { storeSheet } from './store.js';
-import { searchAccounts } from './accounts.js';
+import { searchAccounts, sortStores } from './accounts.js';
 import { fillPinned } from './notes.js';
 import * as Ship from './ship.js';
 import * as Pickup from './pickup.js';
@@ -612,7 +612,7 @@ function acctList(LF, head, modeSeg) {
   bindListHead(LF, head);
   let lim = 300;
   const paint = () => {
-    const q = LF.iq.trim(), hits = q ? searchAccounts(S.accounts, q, 100000) : sortBy(S.accounts.filter(a => !a.inactive), a => a.store), show = hits.slice(0, lim);   // 💤 비활성은 검색할 때만 (맨 뒤)
+    const q = LF.iq.trim(), hits = q ? searchAccounts(S.accounts, q, 100000) : sortStores(S.accounts.filter(a => !a.inactive)), show = hits.slice(0, lim);   // 💤 비활성은 검색할 때만 (맨 뒤)
     const isNo = /^[A-Z]{1,2}\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);
     $('iaList').innerHTML = (isNo ? '<button class="b-blue" id="iaNo" style="margin-bottom:8px">🔎 ' + bi('인보이스 · 주문 번호로 찾기', 'Find by number') + ': ' + esc(q.toUpperCase()) + '</button>' : '') +
       '<div class="muted" style="margin:0 0 6px">' + (q ? bt('찾음', 'Found') : bt('전체 거래처 · 이름순', 'All customers · by name')) + ' ' + hits.length.toLocaleString() + ' — ' + bt('가게를 누르면 인보이스 전부', 'tap a store for its invoices') + '</div>' +

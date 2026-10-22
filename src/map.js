@@ -27,7 +27,7 @@ let MAP = null, ME = null;
 export function geoStatus(S) {
   if (!S || S.role === 'salesman') return '';
   const g = S.settings && S.settings.geo;
-  if (!g) return '<div class="alert a-amb" style="margin-top:6px">🗺 ' + bt('좌표 작업 기록이 없습니다 — Apps Script(UPS.gs)를 새 코드로 바꾸고 geoSync 를 한 번 실행해 주세요', 'No geocoding run recorded yet — update UPS.gs and run geoSync once') + '</div>';
+  if (!g) return '<div class="alert a-amb" style="margin-top:6px">🗺 ' + bt('좌표 작업 기록이 없습니다 — Apps Script(UPS.gs)를 새 코드로 바꾸고 geoForce 를 한 번 실행해 주세요', 'No geocoding run recorded yet — update UPS.gs and run geoForce once') + '</div>';
   const at = String(g.at || '').replace('T', ' ').substring(5, 16);
   return '<div class="muted" style="margin-top:4px">🗺 geoSync ' + esc(at) + ' · ' + bt('좌표 있음', 'located') + ' ' + (g.have || 0).toLocaleString() + ' / ' + (g.total || 0).toLocaleString() +
     (g.bad ? ' · ' + bt('주소로 못 찾음', 'not found') + ' ' + g.bad : '') + (g.noAddr ? ' · ' + bt('주소 없음', 'no address') + ' ' + g.noAddr : '') +

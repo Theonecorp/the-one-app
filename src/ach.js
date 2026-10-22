@@ -11,7 +11,7 @@
  * ============================================================ */
 import { $, esc, money, num, R2, today, ym, md, addDays, daysBetween, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, pad4, nz, sel, hasWords } from './ui.js';
 import { newId } from './db.js';
-import { searchAccounts } from './accounts.js';
+import { searchAccounts, sortStores } from './accounts.js';
 import { invType } from './comm.js';
 
 let S = null;
@@ -311,7 +311,7 @@ async function detail(id) {
  * ============================================================ */
 let REG_BACK = '';
 async function paintAccts() {
-  const list = AQ ? searchAccounts(S.accounts, AQ, 60) : S.accounts.filter(a => a.ach).slice(0, 80);
+  const list = AQ ? searchAccounts(S.accounts, AQ, 60) : sortStores(S.accounts.filter(a => a.ach)).slice(0, 80);
   const pre = REG_BACK ? acctInfo(REG_BACK) : null;
   let h = '<div class="card"><h2>ACH 거래처 <span class="en">ACH accounts</span></h2><input id="acq" placeholder="계정코드 또는 가게 이름" value="' + esc(AQ) + '" autocomplete="off">' +
     (list.length ? list.map(a => '<div class="pr tap" data-ah="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.achBank ? ' · ' + esc(a.achBank) + (a.achLast4 ? ' ••' + esc(a.achLast4) : '') : '') + '</small></div>' + achTag(a) + '</div>').join('') + '<div class="hint">가게를 누르면 ACH 이력 (인출 · 반송 · 미인출) 이 나옵니다</div>' : '<div class="none">' + (AQ ? '없습니다 — 아래에서 등록하세요' : 'ACH 등록된 거래처가 아직 없습니다') + '</div>') + '</div>';

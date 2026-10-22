@@ -22,20 +22,24 @@ function index(rows) {
   rows.byCode = {}; rows.forEach(a => { rows.byCode[a.acct] = a; });
   return rows;
 }
-/** 가게 이름 / 코드 / 도시로 찾기 — 글자 순서대로 포함 */
+/** 가게 이름 ABC 순 (대소문자 무시 · 숫자는 크기대로: #2 < #10) */
+const COLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+export const byStore = (a, b) => COLL.compare(String(a.store || ''), String(b.store || '')) || String(a.acct || '').localeCompare(String(b.acct || ''));
+export const sortStores = L => L.slice().sort(byStore);
 /** 가게 찾기 — 띄어쓴 단어가 모두 들어 있으면 맞음 (이름 · 도시 · 주 · 주소 · 번호 · 전화 · 세일즈맨), 이름이 앞부분부터 맞는 것 먼저.
- *  limit 기본 200 — 짧은 단어로도 전체가 나오고, 돌려주는 배열에 total(전체 맞는 수) 을 붙임 */
+ *  결과는 가게 이름 ABC 순 (계정코드를 정확히 치면 그 가게가 맨 위, 💤 비활성은 맨 뒤). limit 기본 200 — 짧은 단어로도 전체가 나오고, 돌려주는 배열에 total(전체 맞는 수) 을 붙임 */
 export function searchAccounts(rows, q, limit) {
   q = String(q || '').trim(); if (!q) return [];
   const words = q.split(/\s+/).map(nz).filter(Boolean), qn = nz(q);
-  const first = [], rest = [], zz = [];   // zz = 💤 비활성 (맨 뒤)
+  const first = [], rest = [], zz = [];   // first = 계정코드가 정확히 맞는 곳 · rest = 가게 이름 ABC · zz = 💤 비활성 (맨 뒤, ABC)
   if (/^\d{1,4}$/.test(q)) { const a = rows.byCode[pad4(q)]; if (a) first.push(a); }
   for (const a of rows) {
     if (first.includes(a)) continue;
     if (!a._all) a._all = nz([a.store, a.city, a.state, a.addr, a.acct, a.tel, a.sm].filter(Boolean).join(' '));
     if (!words.every(w => a._all.includes(w))) continue;
-    (a.inactive ? zz : a._n.startsWith(qn) || a._n.startsWith(words[0]) ? first : rest).push(a);
+    (a.inactive ? zz : rest).push(a);
   }
+  rest.sort(byStore); zz.sort(byStore);
   const all = first.concat(rest, zz), out = all.slice(0, limit || 200);
   out.total = all.length;
   return out;

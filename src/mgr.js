@@ -4,7 +4,7 @@
 import { invTypes } from './invoicing.js';
 import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt } from './ui.js';
 import { newId } from './db.js';
-import { searchAccounts, dropAccountCache, activeOnly } from './accounts.js';
+import { searchAccounts, dropAccountCache, activeOnly, sortStores } from './accounts.js';
 import { inactiveTool, reactivate, register as regInactive } from './inactive.js';
 import { invType } from './comm.js';
 import { stageText } from './sales.js';
@@ -246,12 +246,12 @@ async function pageStores() {
   } else if (STM.mode === 'sm') {
     const bySm = cnt(A, a => String(a.sm || '').toUpperCase()), sms = Object.keys(bySm).sort((x, y) => x === mine ? -1 : y === mine ? 1 : x < y ? -1 : 1);
     sub = '<div class="chips" style="margin-top:8px">' + sms.map(k => '<button class="' + (STM.sm === k ? 'on' : '') + '" data-stsm="' + esc(k) + '">' + (k === mine ? '👤 ' : '') + esc(k) + ' <span class="en">' + bySm[k] + '</span></button>').join('') + '</div>';
-    const list = sortBy(A.filter(a => String(a.sm || '').toUpperCase() === (STM.sm || '—') || (STM.sm === '—' && !a.sm)), a => a.store);
+    const list = sortStores(A.filter(a => String(a.sm || '').toUpperCase() === (STM.sm || '—') || (STM.sm === '—' && !a.sm)));
     body = STM.sm ? (list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.sm) + ' · ' + list.length + '곳 · 이름순</div>' + list.map(row).join('') : '<div class="none">없음</div>') : '<div class="none">세일즈맨을 고르세요</div>';
   } else if (STM.mode === 'z') {
     /* 💤 비활성 — 3년 거래 없는 곳. 다시 활성 가능 */
     sub = '<div class="muted" style="margin-top:8px">' + bi('최근 3년 동안 거래가 없어 목록 · 지도 · 가게 찾기 맨 뒤로 뺀 거래처입니다. 다시 거래하면 앱에서 인보이스를 발행할 때 자동으로 활성으로 돌아갑니다.', 'No activity for 3 years — removed from lists and the map. Issuing an invoice makes them active again.') + '</div>' + (canZ ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="stZscan">🔎 ' + bi('3년 거래 없는 곳 다시 찾기', 'Scan again') + '</button></div>' : '');
-    body = Z.length ? '<div class="muted" style="margin:0 0 6px">💤 ' + Z.length + '</div>' + sortBy(Z, a => a.store).map(a => '<div class="pr"><div class="ct tap" data-st="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.lastTx ? ' · ' + bt('마지막 거래', 'last activity') + ' ' + esc(a.lastTx) : '') + '</small></div>' + (!isSales ? '<button class="b-ghost b-sm" data-zre="' + esc(a.acct) + '">↩️ ' + bi('다시 활성', 'Re-activate') + '</button>' : '') + '</div>').join('') : '<div class="none">' + bt('비활성 거래처가 없습니다', 'No inactive accounts') + (canZ ? ' — ' + bt('위 버튼으로 3년 거래 없는 곳을 찾으세요', 'scan with the button above') : '') + '</div>';
+    body = Z.length ? '<div class="muted" style="margin:0 0 6px">💤 ' + Z.length + '</div>' + sortStores(Z).map(a => '<div class="pr"><div class="ct tap" data-st="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.lastTx ? ' · ' + bt('마지막 거래', 'last activity') + ' ' + esc(a.lastTx) : '') + '</small></div>' + (!isSales ? '<button class="b-ghost b-sm" data-zre="' + esc(a.acct) + '">↩️ ' + bi('다시 활성', 'Re-activate') + '</button>' : '') + '</div>').join('') : '<div class="none">' + bt('비활성 거래처가 없습니다', 'No inactive accounts') + (canZ ? ' — ' + bt('위 버튼으로 3년 거래 없는 곳을 찾으세요', 'scan with the button above') : '') + '</div>';
   } else if (STM.mode === 'map') {
     /* 🗺 지도 — 세일즈맨은 내 가게가 먼저 (전체도 볼 수 있음), 담당자는 세일즈맨별 색 */
     if (STM.msm == null) STM.msm = isSales ? mine : '';
@@ -265,7 +265,7 @@ async function pageStores() {
     if (STM.state) {
       const inState = A.filter(a => String(a.state || '').toUpperCase() === STM.state), byCity = cnt(inState, a => String(a.city || '').toUpperCase()), cities = Object.keys(byCity).sort();
       sub += '<div class="chips">' + '<button class="' + (STM.city ? '' : 'on') + '" data-stct="">' + bi('전체', 'All') + ' ' + inState.length + '</button>' + cities.map(k => '<button class="' + (STM.city === k ? 'on' : '') + '" data-stct="' + esc(k) + '">' + esc(k) + ' <span class="en">' + byCity[k] + '</span></button>').join('') + '</div>';
-      const list = sortBy(inState.filter(a => !STM.city || String(a.city || '').toUpperCase() === STM.city), a => (a.city || '') + ' ' + a.store);
+      const list = sortStores(inState.filter(a => !STM.city || String(a.city || '').toUpperCase() === STM.city));
       body = list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.state) + (STM.city ? ' · ' + esc(STM.city) : '') + ' · ' + list.length + '곳</div>' + list.slice(0, 400).map(row).join('') + (list.length > 400 ? '<div class="hint">400곳까지 표시 — 도시를 고르세요</div>' : '') : '<div class="none">없음</div>';
     } else body = '<div class="none">주(State)를 고르세요</div>';
   }
@@ -300,7 +300,7 @@ async function pageStores() {
   if ($('stQ')) {
     let lim = 300;
     const paintList = () => {
-      const hits = STQ.trim() ? searchAccounts(S.accounts, STQ, 100000) : sortBy(A, a => a.store), show = hits.slice(0, lim);   // 검색하면 💤 비활성도 맨 뒤에
+      const hits = STQ.trim() ? searchAccounts(S.accounts, STQ, 100000) : sortStores(A), show = hits.slice(0, lim);   // 검색하면 💤 비활성도 맨 뒤에
       $('stList').innerHTML = '<div class="muted" style="margin:0 0 6px">' + (STQ.trim() ? bt('찾음', 'Found') + ' ' : bt('전체 · 이름순', 'All · by name') + ' ') + hits.length.toLocaleString() + '</div>' + (show.length ? show.map(row).join('') : '<div class="none">없음 · no match</div>') + (hits.length > show.length ? '<button class="b-ghost" id="stMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (hits.length - show.length).toLocaleString() + ')</button>' : '');
       $('stList').querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeSheet(el.dataset.st));
       $('stList').querySelectorAll('[data-ste]').forEach(el => el.onclick = e => { e.stopPropagation(); storeForm(S.accounts.byCode[el.dataset.ste]); });
