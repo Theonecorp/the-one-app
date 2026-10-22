@@ -190,7 +190,8 @@ export async function openInvoices(acct) {
     const wh = [['acct', '==', acct], ['st', '==', 'open']]; if (S.role === 'salesman') wh.push(['sm', '==', me()]);
     const app = await S.DB.list('invoices', { where: wh });
     const have = {}; list.forEach(v => { have[v.no] = 1; });
-    app.forEach(x => { if (have[x.no]) return; const p = paid[acct + '|' + x.no] || 0, pdd = Math.max(0, daysBetween(x.d, today()) - 30); list.push({ no: x.no, d: x.d, amt: x.total, paid: p, bal: R2((x.bal != null ? x.bal : x.total) - p), pdd, bk: pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4, app: true }); });
+    app.forEach(x => { if (have[x.no] || x.src === 'legacy') return;   // 이전 시스템 인보이스 — AR 이 기준
+     const p = paid[acct + '|' + x.no] || 0, pdd = Math.max(0, daysBetween(x.d, today()) - 30); list.push({ no: x.no, d: x.d, amt: x.total, paid: p, bal: R2((x.bal != null ? x.bal : x.total) - p), pdd, bk: pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4, app: true }); });
   } catch (e) {}
   list.sort((a, b) => a.d < b.d ? -1 : 1);
   return { asOf: ar.asOf, list: list.filter(v => v.bal > 0.005 || v.bal < -0.005) };
