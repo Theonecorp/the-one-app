@@ -231,6 +231,7 @@ function codForm(r) {
  * ============================================================ */
 let STQ = '';
 let STM = { mode: '', sm: '', state: '', city: '', msm: null };
+let MAP_FRESH = false;   // 지도 화면에서 서버 거래처를 한 번 새로 받았나
 async function pageStores() {
   const isSales = S.role === 'salesman', mine = (S.me && S.me.sm) ? String(S.me.sm).toUpperCase() : '';
   if (!STM.mode) { STM.mode = isSales ? 'sm' : 'q'; if (isSales) STM.sm = mine; }
@@ -277,6 +278,17 @@ async function pageStores() {
     const smsAll = Object.keys(cnt(A, a => String(a.sm || '').toUpperCase())).filter(k => k !== '—').sort();
     const list = STM.msm ? A.filter(a => String(a.sm || '').toUpperCase() === STM.msm) : A;
     renderMap('stMap', list, smsAll, S);
+    /* 좌표가 하나도 없으면 — 폰에 저장된 거래처가 옛것일 수 있으니 서버에서 한 번 새로 받아 봄 (geoSync 가 좌표를 넣고도 버전을 못 올렸던 경우) */
+    if (!MAP_FRESH && A.length && !A.some(a => Number(a.lat) && Number(a.lng))) {
+      MAP_FRESH = true;
+      (async () => {
+        try {
+          const app = await S.DB.get('settings', 'app'); if (app) { S.settings.geo = app.geo; if (app.accountsVer) S.settings.accountsVer = app.accountsVer; }
+          dropAccountCache(); const { loadAccounts } = await import('./accounts.js'); S.accounts = await loadAccounts(S);
+          if (STM.mode === 'map' && location.hash.indexOf('#/stores') === 0) pageStores();
+        } catch (e) { /* 다음에 다시 */ }
+      })();
+    }
     document.querySelectorAll('[data-msm]').forEach(b => b.onclick = () => { STM.msm = b.dataset.msm; pageStores(); });
     $('mapMe').onclick = () => nearMe(list, 'mapNear');
   }
