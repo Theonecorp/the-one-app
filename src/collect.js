@@ -15,6 +15,7 @@ import { searchAccounts } from './accounts.js';
 import { invType } from './comm.js';
 import { myEntries, openInvoices, stageText, clearEntryCache } from './sales.js';
 import * as Store from './store.js';
+import { mergeAppInvoices } from './arapp.js';
 
 let S = null;
 export function register(state) {
@@ -576,7 +577,13 @@ async function periodReport(mail) {
  *  ④ 미수금 (내 담당 AR)
  * ============================================================ */
 const ARC = {};
-async function arDocMine() { if (ARC.doc && Date.now() - ARC.at < 600000) return ARC.doc; try { ARC.doc = await S.DB.get('ar', me()); } catch (e) { ARC.doc = null; } ARC.at = Date.now(); return ARC.doc; }
+async function arDocMine() {
+  if (ARC.doc && Date.now() - ARC.at < 600000) return ARC.doc;
+  let ar = null; try { ar = await S.DB.get('ar', me()); } catch (e) { ar = null; }
+  /* 내가 발행한(앱) 인보이스 중 덜 받은 것도 — 앱을 쓰면 미수금이 저절로 맞춰짐 */
+  let app = [], ents = []; try { [app, ents] = await Promise.all([S.DB.list('invoices', { where: [['sm', '==', me()], ['st', '==', 'open']] }), myEntries()]); } catch (e) {}
+  const m = mergeAppInvoices(ar, app, ents); ARC.doc = m.stores.length ? m : ar; ARC.at = Date.now(); return ARC.doc;
+}
 const BK = ['기한 전', '1-30일', '31-60일', '61-90일', '90일+'];
 let AR_F = 'all';
 async function paintAR() {
@@ -584,7 +591,7 @@ async function paintAR() {
   if (!ar || !ar.stores) { $('hubBody').innerHTML = '<div class="card"><div class="none">아직 올라온 AR 이 없습니다. 담당자가 미수금(AR)을 올리면 여기에 보입니다.<br><span class="en">No AR uploaded yet.</span></div></div>'; return; }
   const rows = await myEntries(), paid = {};
   rows.forEach(e => { if (e.d <= (ar.asOf || '') || e.repl) return; (e.invs || []).forEach(v => { const k = (v.acct || e.acct) + '|' + v.no; paid[k] = R2((paid[k] || 0) + num(v.amt)); }); });
-  const stores = ar.stores.map(s => { let net = 0; const b = [0, 0, 0, 0, 0]; const invs = (s.invs || []).map(v => { const p = paid[s.acct + '|' + v.inv] || 0; const bal = R2(v.bal - p); return Object.assign({}, v, { paid: p, net: bal }); }); invs.forEach(v => { net += v.net; if (v.net > 0) b[Math.max(0, Math.min(4, v.bk || 0))] += v.net; else b[0] += v.net; }); return Object.assign({}, s, { net: R2(net), b: b.map(R2), invs, done: net <= 0.005, maxPdd: Math.max(0, ...invs.filter(v => v.net > 0.005).map(v => v.pdd || 0)) }); });
+  const stores = ar.stores.map(s => { let net = 0; const b = [0, 0, 0, 0, 0]; const invs = (s.invs || []).map(v => { const p = v.app ? 0 : (paid[s.acct + '|' + v.inv] || 0); const bal = R2(v.bal - p); return Object.assign({}, v, { paid: p, net: bal }); }); invs.forEach(v => { net += v.net; if (v.net > 0) b[Math.max(0, Math.min(4, v.bk || 0))] += v.net; else b[0] += v.net; }); return Object.assign({}, s, { net: R2(net), b: b.map(R2), invs, done: net <= 0.005, maxPdd: Math.max(0, ...invs.filter(v => v.net > 0.005).map(v => v.pdd || 0)) }); });
   const live = stores.filter(s => !s.done), done = stores.filter(s => s.done), total = sum(live, s => s.net), bk = [0, 1, 2, 3, 4].map(i => sum(live, s => s.b[i])), stale = daysBetween(ar.asOf, today()), dormant = live.filter(s => s.dormant);
   const cnt = [0, 1, 2, 3, 4].map(i => live.filter(s => s.b[i] > 0.005).length);
   const filt = AR_F === 'all' ? live : AR_F === 'z' ? dormant : AR_F === 'done' ? done : live.filter(s => s.b[+AR_F] > 0.005);

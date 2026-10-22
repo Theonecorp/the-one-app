@@ -24,7 +24,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.64';
+export const VER = 'v0.8.65';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -32,16 +32,20 @@ const ADMIN_EMAILS = ['luke@theonefl.com'];
  *   salesman  세일즈맨: 세일즈 관련만
  *   manager   담당자 — job: office 오피스(기본) · invoice 인보이스 · pick 픽킹·팩킹 · acct 어카운팅
  *   admin     관리자: 전부 */
+/* 맨 앞 4개는 모든 역할이 같음: 🏠 홈 · 🛒 세일 · 📄 인보이스 · 🏬 거래처 — 그 뒤에 역할 · 일마다 필요한 것 */
+const SALE = ['order', '🛒', '세일', 'Sales'], INVS = ['invs', '📄', '인보이스', 'Invoices'], STORES = ['stores', '🏬', '거래처', 'Customers'];
+const HOME_STAFF = ['shome', '🏠', '홈', 'Home'], HOME_TOP = ['now', '🏠', '홈', 'Home'];
+const fixed = (home, rest) => [home, SALE, INVS, STORES].concat(rest);
 const NAV = {
-  salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '세일', 'Sales'], ['entry', '✍️', '수금 입력', 'Payment'], ['stores', '🏬', '거래처', 'Customers'], ['cat', '📒', '카탈로그', 'Catalog'], ['ar', '💰', '미수금', 'A/R'], ['invs', '📄', '인보이스', 'Invoices'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
-  office:   [['order', '🛒', '세일', 'Sales'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['items', '🏷', '아이템', 'Items'], ['stores', '🏬', '거래처', 'Customers']],
-  acct:     [['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['order', '🧾', '인보이스', 'Invoices'], ['stores', '🏬', '거래처', 'Customers']],
-  pickinv:  [['order', '📦', '세일·출고', 'Sales · Fulfillment'], ['items', '🏷', '아이템·위치', 'Items'], ['stores', '🏬', '거래처', 'Customers']],
-  invoice:  [['order', '🧾', '세일·인보이스', 'Sales · Invoices'], ['verify', '💵', '수금 확인', 'Payments'], ['stores', '🏬', '거래처', 'Customers']],
-  whmgr:    [['order', '📦', '창고 작업', 'Warehouse'], ['items', '🏷', '재고·위치', 'Inventory'], ['stores', '🏬', '거래처', 'Customers']],
-  pick:     [['order', '📦', '내 작업', 'My Work'], ['items', '🏷', '재고·위치', 'Inventory'], ['stores', '🏬', '거래처', 'Customers']],
-  owner:    [['now', '📈', '현황', 'Today'], ['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['flow', '🧭', '세일 흐름', 'Sales flow'], ['stores', '🏬', '거래처', 'Customers'], ['cat', '📒', '카탈로그', 'Catalog']],
-  admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '세일', 'Sales'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
+  salesman: fixed(['home', '🏠', '홈', 'Home'], [['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['cat', '📒', '카탈로그', 'Catalog'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']]),
+  office:   fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['items', '🏷', '아이템', 'Items']]),
+  acct:     fixed(['verify', '🏠', '홈', 'Home'], [['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH']]),   // 회계: 홈 = 수금 확인
+  pickinv:  fixed(HOME_STAFF, [['items', '🏷', '아이템·위치', 'Items']]),
+  invoice:  fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments']]),
+  whmgr:    fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory']]),
+  pick:     fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory']]),
+  owner:    fixed(HOME_TOP, [['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['flow', '🧭', '세일 흐름', 'Sales flow'], ['cat', '📒', '카탈로그', 'Catalog']]),
+  admin:    fixed(HOME_TOP, [['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']])
 };
 NAV.manager = NAV.office;
 /* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자(루크)는 전부 */
@@ -210,7 +214,7 @@ function paintNav() {
   const items = navFor(S.role);
   Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '<span class="en">' + (x[3] || '') + '</span></button>').join('');
-  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => Router.go(b.dataset.go));
+  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go; Router.navTap = g; if (location.hash === '#/' + g) { const f = Router.routes[g]; if (f) f(''); } else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
   navH();
   $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
   const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? userMenu : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈

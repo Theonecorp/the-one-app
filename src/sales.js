@@ -184,14 +184,17 @@ export async function openInvoices(acct) {
   const ar = await arDoc(); if (!ar || !ar.stores) return { asOf: '', list: [] };
   const st = ar.stores.find(s => s.acct === acct); if (!st) return { asOf: ar.asOf, list: [] };
   const paid = await paidSince(ar.asOf || '');
-  const list = (st.invs || []).map(v => { const p = paid[acct + '|' + v.inv] || 0; return { no: v.inv, d: v.d, amt: v.amt, paid: p, bal: R2(v.bal - p), pdd: v.pdd, bk: v.bk }; });
+  const list = (st.invs || []).map(v => { const p = v.app ? 0 : (paid[acct + '|' + v.inv] || 0); return { no: v.inv, d: v.d, amt: v.amt, paid: p, bal: R2(v.bal - p), pdd: v.pdd, bk: v.bk }; });
   /* 앱에서 확정한 인보이스 (아직 올린 AR 에 없는 것) 도 같이 — 세일즈맨이 어느 인보이스에 얼마를 적용할지 고를 수 있게 */
   try {
     const wh = [['acct', '==', acct], ['st', '==', 'open']]; if (S.role === 'salesman') wh.push(['sm', '==', me()]);
     const app = await S.DB.list('invoices', { where: wh });
     const have = {}; list.forEach(v => { have[v.no] = 1; });
+    const ents = await myEntries();
     app.forEach(x => { if (have[x.no] || x.src === 'legacy') return;   // 이전 시스템 인보이스 — AR 이 기준
-     const p = paid[acct + '|' + x.no] || 0, pdd = Math.max(0, daysBetween(x.d, today()) - 30); list.push({ no: x.no, d: x.d, amt: x.total, paid: p, bal: R2((x.bal != null ? x.bal : x.total) - p), pdd, bk: pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4, app: true }); });
+      /* 앱 인보이스: bal 에는 담당자가 확인한 수금이 이미 빠져 있음 → 아직 확인 전인 내 수금만 더 뺌 */
+      const pays = x.pays || {}, p = ents.filter(e => !e.void && !e.repl && !(e.id in pays)).reduce((a, e) => a + (e.invs || []).filter(v => v.no === x.no).reduce((b, v) => b + num(v.amt), 0), 0), pdd = Math.max(0, daysBetween(x.d, today()) - 30);
+      list.push({ no: x.no, d: x.d, amt: x.total, paid: R2((x.total || 0) - (x.bal != null ? x.bal : x.total) + p), bal: R2((x.bal != null ? x.bal : x.total) - p), pdd, bk: pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4, app: true }); });
   } catch (e) {}
   list.sort((a, b) => a.d < b.d ? -1 : 1);
   return { asOf: ar.asOf, list: list.filter(v => v.bal > 0.005 || v.bal < -0.005) };
@@ -327,7 +330,7 @@ async function pageAR() {
   const paid = await paidSince(ar.asOf || '');
   const stores = ar.stores.map(s => {
     let net = 0; const b = [0, 0, 0, 0, 0];
-    const invs = (s.invs || []).map(v => { const p = paid[s.acct + '|' + v.inv] || 0; const bal = R2(v.bal - p); return Object.assign({}, v, { paid: p, net: bal }); });
+    const invs = (s.invs || []).map(v => { const p = v.app ? 0 : (paid[s.acct + '|' + v.inv] || 0); const bal = R2(v.bal - p); return Object.assign({}, v, { paid: p, net: bal }); });
     invs.forEach(v => { net += v.net; if (v.net > 0) b[Math.max(0, Math.min(4, v.bk || 0))] += v.net; else b[0] += v.net; });
     return Object.assign({}, s, { net: R2(net), b: b.map(R2), invs, done: net <= 0.005, maxPdd: Math.max(0, ...invs.filter(v => v.net > 0.005).map(v => v.pdd || 0)) });
   });

@@ -55,7 +55,7 @@ export async function storeInfo(acct, force) {
       const have = {}; out.invs.forEach(v => { have[v.no] = 1; });
       const paidApp = {}; pays.forEach(e => { if (e.void || e.repl) return; (e.invs || []).forEach(v => { paidApp[v.no] = R2((paidApp[v.no] || 0) + num(v.amt)); }); });
       app.forEach(x => { if (have[x.no] || x.src === 'legacy') return;   // 이전 시스템 인보이스의 잔액은 AR 이 기준 (AR 에 없으면 받은 것)
-      const p = paidApp[x.no] || 0, bal = R2((x.bal != null ? x.bal : x.total) - p), pdd = Math.max(0, daysBetween(x.d, today()) - 30), bk = pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4; out.invs.push({ no: x.no, d: x.d, amt: x.total, paid: p, bal, pdd, bk, app: true }); if (bal > 0.005) { out.bal = R2(out.bal + bal); out.bk[bk] = R2(out.bk[bk] + bal); } });
+      const pays0 = x.pays || {}, p = pays.filter(e => !e.void && !e.repl && !(e.id in pays0)).reduce((a, e) => a + (e.invs || []).filter(v => v.no === x.no).reduce((b, v) => b + num(v.amt), 0), 0), bal = R2((x.bal != null ? x.bal : x.total) - p) /* bal 에는 확인된 수금이 이미 빠짐 → 확인 전 수금만 */, pdd = Math.max(0, daysBetween(x.d, today()) - 30), bk = pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4; out.invs.push({ no: x.no, d: x.d, amt: x.total, paid: p, bal, pdd, bk, app: true }); if (bal > 0.005) { out.bal = R2(out.bal + bal); out.bk[bk] = R2(out.bk[bk] + bal); } });
       out.invs.sort((x, y) => x.d < y.d ? 1 : -1);
     } catch (e) {}
     /* 인보이스 기록 — 이전 시스템에서 가져온 것 + 앱 발행, 최근 60장 (받은 것 포함) */

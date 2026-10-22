@@ -545,7 +545,7 @@ export async function invBrowser(LF, head) {
   const types = invTypes(S);
   const q = LF.iq.trim();
   /* 인보이스 번호 · 주문 번호 모양이면 번호로 바로 찾기 */
-  const isNo = /^[A-Z]{1,2}\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);
+  const isNo = /^[A-Z]{1,2}-?\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);   // A42497 · P-007803 · O261022-…
   /* 🏬 거래처별(기본): 전체 거래처 목록 → 검색으로 거르기 → 가게를 누르면 그 가게 인보이스 전부 · 📅 기간별: 예전처럼 */
   const byAcct = LF.im === 'acct';
   let accs = [], acc = null;
@@ -572,7 +572,7 @@ export async function invBrowser(LF, head) {
   if (LF.it) rows = rows.filter(r => r.t === LF.it);
   if (!LF.ivoid) rows = rows.filter(r => r.st !== 'x');
   if (q && !acc && !isNo) { const qq = q.toUpperCase(); rows = rows.filter(r => String(r.store || '').toUpperCase().includes(qq) || String(r.no).includes(qq) || String(r.order || '').includes(qq) || String(r.acct || '') === qq); }
-  rows = sortBy(rows, r => r.d + ' ' + (r.createdAt || '') + ' ' + r.no, true);
+  rows = sortBy(rows, r => r.d + ' ' + String(r.no || '').replace(/^([A-Z]+)-?(\d+)$/i, (m, a, n) => a + n.padStart(8, '0')), true);   // 날짜 → 인보이스 번호 순
   const live = rows.filter(r => r.st !== 'x'), tot = live.reduce((a, r) => a + (r.total || 0), 0), bal = live.reduce((a, r) => a + (r.bal != null ? r.bal : r.total || 0), 0);
   const days = {}; rows.forEach(r => { (days[r.d] = days[r.d] || []).push(r); });
   const dayKeys = Object.keys(days).sort().reverse();
@@ -615,7 +615,7 @@ function acctList(LF, head, modeSeg) {
   let lim = 300;
   const paint = () => {
     const q = LF.iq.trim(), hits = q ? searchAccounts(S.accounts, q, 100000) : sortStores(S.accounts.filter(a => !a.inactive)), show = hits.slice(0, lim);   // 💤 비활성은 검색할 때만 (맨 뒤)
-    const isNo = /^[A-Z]{1,2}\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);
+    const isNo = /^[A-Z]{1,2}-?\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);   // A42497 · P-007803 · O261022-…
     $('iaList').innerHTML = (isNo ? '<button class="b-blue" id="iaNo" style="margin-bottom:8px">🔎 ' + bi('인보이스 · 주문 번호로 찾기', 'Find by number') + ': ' + esc(q.toUpperCase()) + '</button>' : '') +
       '<div class="muted" style="margin:0 0 6px">' + (q ? bt('찾음', 'Found') : bt('전체 거래처 · 이름순', 'All customers · by name')) + ' ' + hits.length.toLocaleString() + ' — ' + bt('가게를 누르면 인보이스 전부', 'tap a store for its invoices') + '</div>' +
       (show.length ? show.map(a => '<div class="pr tap" data-ia="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + (a.inactive ? ' <span class="tag t-g">💤</span>' : '') + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</small></div><div class="pa">›</div></div>').join('') : '<div class="none">없음 · no match</div>') +

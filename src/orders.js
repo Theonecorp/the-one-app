@@ -21,7 +21,10 @@ import * as Notes from './notes.js';
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
 export function register(state) {
-  S = state; Router.on('order', pageOrder); Router.on('home', pageHome); Fulfill.register(state); Store.register(state);
+  S = state; Router.on('order', arg => { if (!arg && Router.navTap === 'order') LF.list = false; Router.navTap = ''; return pageOrder(arg); });   // 아래 메뉴 🛒 세일 = 세일 처리 첫 화면
+  Router.on('home', pageHome);
+  /* 🏠 담당자 홈 = 내 일 목록 (창고 직원: 내 배정 작업 · 인보이스 담당: 검수 대기 · 출고/창고 매니저: 배정 대기 · 오피스: 신규 주문) */
+  Router.on('shome', () => { LF.init = true; LF.list = true; LF.st = { pick: 'mine', invoice: 'picked', whmgr: 'cfok', pickinv: 'cfok' }[jobOf()] || 'sent'; return pageOrder(''); }); Fulfill.register(state); Store.register(state);
   /* ‹ 뒤로: 주문 목록(신규 · 출고 작업 …) → 주문 처리 첫 화면 */
   Router.up.order = arg => { if (!arg && isStaff() && LF.list) { LF.list = false; pageOrder(''); return true; } return false; };
   Router.upHas.order = () => isStaff() && !!LF.list;
@@ -107,6 +110,13 @@ let LF = { st: 'sent', sm: '' };
 const NEWK = { sent: 1, cfw: 1, cfok: 1 };
 const subOf = o => o.cfOk ? 'cfok' : o.cfReq ? 'cfw' : 'sent';
 let PK = [];   // 👷 빠른 할당용 픽킹 직원 목록 (나 먼저) · LF.qp = 고른 직원 email
+/** 📄 인보이스 탭 (담당자 · 관리자 · 오너) — 기간별(날짜 → 번호 순)이 기본, 거래처별 · 번호 · 종류 · 세일즈맨으로도 */
+let INV_TAB = false;
+export function invTab() {
+  if (!INV_TAB) { INV_TAB = true; LF.im = 'date'; LF.ip = LF.ip || 'month'; }
+  LF.st = 'inv';
+  return Fulfill.invBrowser(LF, '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📄 ' + bi('인보이스', 'Invoices') + '</h2><div class="muted">' + bt('앱에서 발행한 것 + 이전 시스템에서 가져온 것 — 날짜별로 쌓임. 거래처 · 번호 · 종류 · 세일즈맨으로 찾기', 'App + imported invoices by date — search by customer, number, type, salesman') + '</div></div>');
+}
 /** 다른 화면(관리자 현황)에서 주문 목록을 바로 열기 — st: sent · pick · picked · done · shipped · bo · inv · all, 기간은 선택 */
 export function openList(st, from, to) { LF.init = true; LF.list = true; LF.st = st; if (from) { LF.hp = 'custom'; LF.hfrom = from; LF.hto = to; LF.ip = 'custom'; LF.ifrom = from; LF.ito = to; LF.im = 'date'; } if (location.hash === '#/order') pageOrder(''); else Router.go('order'); }
 async function pageOrder(arg) {
