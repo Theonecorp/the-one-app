@@ -107,6 +107,13 @@ export async function invoicesBetween(S, from, to) {
  *  발행(+1) · 취소(−1) · 가져오기(다시 계산) 때 갱신. 문서가 없으면 그 달은 원본을 읽고 요약을 만들어 저장함 */
 const SM_M = new Map();
 export function dropSalesM() { SM_M.clear(); }
+/** 매출 아이템 구분 (회사 매출 시트와 같게) — 주얼리 분류는 모두 JEWELRY 한 줄, 그 외 제품([EDGE BOOSTER] · [PERFUME] · <GIFT> …)은 제품 이름별 */
+export function itemKey(l1) {
+  const s = String(l1 || '').trim(); if (!s) return '(기타)';
+  if (/SHIP|UPS|FEDEX|FREIGHT/i.test(s)) return 'SHIPPING';
+  if (/^[\[<*#]/.test(s) || /^zz?[A-Z]/.test(s)) return s.replace(/^[\[<*#]+|[\]>*]+$/g, '').replace(/^zz?(?=[A-Z])/, '').trim().toUpperCase() || s;
+  return 'JEWELRY';
+}
 let ACCS = null;   // 거래처 (주 State 찾기) — 요약을 만드는 곳에서 S.accounts 로 채움
 const stateOf = acct => { const a = ACCS && ACCS.byCode ? ACCS.byCode[acct] : null; return String((a && a.state) || '').toUpperCase().trim() || '—'; };
 function mAdd(doc, x, sign) {
@@ -116,14 +123,19 @@ function mAdd(doc, x, sign) {
   const s = doc.bySm[sm] = doc.bySm[sm] || {}; const b = s[t] = s[t] || { n: 0, qty: 0, total: 0 }; b.n += sign; b.qty += q; b.total = R2(b.total + tot);
   doc.byDay[dd] = R2((doc.byDay[dd] || 0) + tot);
   doc.byState = doc.byState || {}; const st = stateOf(x.acct); doc.byState[st] = R2((doc.byState[st] || 0) + tot);
+  /* 아이템(품목 = Level 1)별 — 줄 금액을 인보이스 합계에 맞춰 나눔 (할인 · 배송비 반영). 줄이 없는 이전 시스템 인보이스는 "(A)" 처럼 종류로 */
+  doc.byItem = doc.byItem || {};
+  const L = (x.lines || []).filter(l => l && l.q && l.p), base = L.reduce((a, l) => a + l.q * l.p, 0);
+  if (L.length && base > 0) { const f = (x.total || 0) / base; L.forEach(l => { const g = itemKey(l.g); doc.byItem[g] = R2((doc.byItem[g] || 0) + l.q * l.p * f * sign); }); }
+  else { const g = t === 'P' ? '(P)' : 'JEWELRY'; doc.byItem[g] = R2((doc.byItem[g] || 0) + tot); }   // 줄 없는 이전 시스템 인보이스: A · W = 주얼리, P = 그 외 (어느 제품인지 모름)
 }
-export function buildSalesM(ym, rows) { const doc = { id: ym, ym, n: 0, qty: 0, total: 0, bySm: {}, byDay: {}, byState: {}, v: 2, updatedAt: new Date().toISOString() }; rows.forEach(x => mAdd(doc, x, 1)); return doc; }
+export function buildSalesM(ym, rows) { const doc = { id: ym, ym, n: 0, qty: 0, total: 0, bySm: {}, byDay: {}, byState: {}, byItem: {}, v: 4, updatedAt: new Date().toISOString() }; rows.forEach(x => mAdd(doc, x, 1)); return doc; }
 /** 한 달 매출 요약 — 있으면 읽고, 없거나 옛 모양(주별 없음)이면 인보이스에서 새로 계산해 저장 (관리자 · 담당자) */
 export async function salesMonth(S, k) {
   ACCS = S.accounts;
   let doc = SM_M.get(k);
   if (!doc) { try { doc = await S.DB.get('salesM', k); } catch (e) { doc = null; } }
-  if (!doc || doc.v !== 2) {
+  if (!doc || doc.v !== 4) {
     const y = Number(k.substring(0, 4)), mm = Number(k.substring(5, 7)), last = k + '-' + String(new Date(y, mm, 0).getDate()).padStart(2, '0');
     doc = buildSalesM(k, await invoicesBetween(S, k + '-01', last));
     if (S.role !== 'salesman') { try { await S.DB.set('salesM', k, doc); } catch (e) {} }
