@@ -346,8 +346,10 @@ async function pageAR() {
 }
 function arStore(s) {
   openModal('<h2>' + esc(s.store) + '</h2><div class="muted">' + esc(s.acct) + ' · 잔액 <b>' + money(s.net) + '</b></div>' +
-    '<table style="margin-top:8px"><tr><th>인보이스</th><th>날짜</th><th class="r">연체</th><th class="r">잔액</th></tr>' + s.invs.filter(v => Math.abs(v.net) > 0.005).map(v => '<tr><td>' + esc(v.inv) + '</td><td>' + md(v.d) + '</td><td class="r ' + (v.pdd > 60 ? 'warn' : '') + '">' + (v.pdd > 0 ? v.pdd + '일' : 'D' + v.pdd) + '</td><td class="r"><b>' + money(v.net) + '</b>' + (v.paid ? '<br><small class="muted">받음 ' + money(v.paid) + '</small>' : '') + '</td></tr>').join('') + '</table>' +
-    '<div class="btns"><button class="b-blue" id="arGo">＋ 이 가게 수금 입력</button></div>');
+    '<table style="margin-top:8px"><tr><th>인보이스</th><th>날짜</th><th class="r">연체</th><th class="r">잔액</th></tr>' + s.invs.filter(v => Math.abs(v.net) > 0.005).map(v => '<tr class="tap" data-ari="' + esc(v.inv) + '"><td><b>' + esc(v.inv) + ' ›</b></td><td>' + md(v.d) + '</td><td class="r ' + (v.pdd > 60 ? 'warn' : '') + '">' + (v.pdd > 0 ? v.pdd + '일' : 'D' + v.pdd) + '</td><td class="r"><b>' + money(v.net) + '</b>' + (v.paid ? '<br><small class="muted">받음 ' + money(v.paid) + '</small>' : '') + '</td></tr>').join('') + '</table>' +
+    '<div class="btns"><button class="b-ghost" id="arSt">🏬 ' + bi('가게 창 · 인보이스 전체', 'Store · all invoices') + '</button><button class="b-blue" id="arGo">＋ 이 가게 수금 입력</button></div>');
+  document.querySelectorAll('#mbox [data-ari]').forEach(el => el.onclick = () => Store.invDetail(el.dataset.ari, s.acct, () => arStore(s)));
+  $('arSt').onclick = () => Store.storeSheet(s.acct, null, 'invh');
   $('arGo').onclick = () => { closeModal(); resetForm(); pickStore(s.acct); Router.go('entry'); };
 }
 

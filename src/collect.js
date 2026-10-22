@@ -599,8 +599,11 @@ async function paintAR() {
 }
 function arStore(s, asOf) {
   openModal('<div style="font-weight:800;font-size:17px">' + esc(s.store) + '</div><div class="muted">' + esc(s.acct) + ' · ' + s.invs.filter(v => Math.abs(v.net) > 0.005).length + '건 · 기준일 ' + esc(asOf || '') + '</div><div class="hero" style="margin-top:8px">' + money(s.net) + '</div>' +
-    s.invs.filter(v => Math.abs(v.net) > 0.005).map(v => { const bkI = Math.max(0, Math.min(4, v.bk || 0)); return '<div class="pr"><div class="ct"><b>' + esc(v.inv) + '</b><small>' + esc(md(v.d)) + (v.paid ? ' · 받음 ' + money(v.paid) : '') + '</small></div><span class="agebadge a' + bkI + '">' + (v.pdd > 0 ? v.pdd + '일 연체' : 'D' + (v.pdd || 0)) + '</span><div class="pa"><b>' + money(v.net) + '</b></div></div>'; }).join('') +
-    '<div class="hint">D-17 은 아직 기한까지 17일 남았다는 뜻입니다. 마이너스 금액은 CM(크레딧)입니다.</div><div class="btns"><button class="b-ghost" id="arX">닫기 Close</button><button class="b-blue" id="arGo">＋ 이 가게 수금 입력</button></div>');
+    s.invs.filter(v => Math.abs(v.net) > 0.005).map(v => { const bkI = Math.max(0, Math.min(4, v.bk || 0)); return '<div class="pr tap" data-ari="' + esc(v.inv) + '"><div class="ct"><b>' + esc(v.inv) + ' ›</b><small>' + esc(md(v.d)) + (v.paid ? ' · 받음 ' + money(v.paid) : '') + '</small></div><span class="agebadge a' + bkI + '">' + (v.pdd > 0 ? v.pdd + '일 연체' : 'D' + (v.pdd || 0)) + '</span><div class="pa"><b>' + money(v.net) + '</b></div></div>'; }).join('') +
+    '<div class="hint">D-17 은 아직 기한까지 17일 남았다는 뜻입니다. 마이너스 금액은 CM(크레딧)입니다.</div><div class="btns"><button class="b-ghost" id="arX">닫기 Close</button><button class="b-ghost" id="arSt">🏬 ' + bi('가게 창 · 인보이스 전체', 'Store · all invoices') + '</button><button class="b-blue" id="arGo">＋ 이 가게 수금 입력</button></div>');
   $('arX').onclick = closeModal;
+  /* 인보이스를 누르면 인보이스 · AR · 수금을 한 화면에 (‹ 로 여기로 돌아옴) */
+  document.querySelectorAll('#mbox [data-ari]').forEach(el => el.onclick = () => Store.invDetail(el.dataset.ari, s.acct, () => arStore(s, asOf)));
+  if ($('arSt')) $('arSt').onclick = () => Store.storeSheet(s.acct, null, 'invh');
   $('arGo').onclick = () => { closeModal(); resetForm(); const a = S.accounts.byCode[s.acct]; if (a) { F.acct = a.acct; F.store = a.store; } else { F.store = s.store; F.acct = s.acct; } Router.go('entry'); };
 }

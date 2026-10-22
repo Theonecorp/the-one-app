@@ -17,12 +17,14 @@ import * as CatPage from './catpage.js';
 import * as Track from './track.js';
 import * as Reports from './reports.js';
 import * as Flow from './flow.js';
+import * as Invlook from './invlook.js';
+import * as Access from './access.js';
 import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.63';
+export const VER = 'v0.8.64';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -31,15 +33,15 @@ const ADMIN_EMAILS = ['luke@theonefl.com'];
  *   manager   담당자 — job: office 오피스(기본) · invoice 인보이스 · pick 픽킹·팩킹 · acct 어카운팅
  *   admin     관리자: 전부 */
 const NAV = {
-  salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '주문', 'Orders'], ['entry', '✍️', '수금 입력', 'Payment'], ['stores', '🏬', '거래처', 'Customers'], ['cat', '📒', '카탈로그', 'Catalog'], ['ar', '💰', '미수금', 'A/R'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
-  office:   [['order', '🛒', '주문', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['items', '🏷', '아이템', 'Items'], ['stores', '🏬', '거래처', 'Customers']],
+  salesman: [['home', '🏠', '홈', 'Home'], ['order', '🛒', '세일', 'Sales'], ['entry', '✍️', '수금 입력', 'Payment'], ['stores', '🏬', '거래처', 'Customers'], ['cat', '📒', '카탈로그', 'Catalog'], ['ar', '💰', '미수금', 'A/R'], ['invs', '📄', '인보이스', 'Invoices'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']],
+  office:   [['order', '🛒', '세일', 'Sales'], ['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['items', '🏷', '아이템', 'Items'], ['stores', '🏬', '거래처', 'Customers']],
   acct:     [['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['order', '🧾', '인보이스', 'Invoices'], ['stores', '🏬', '거래처', 'Customers']],
-  pickinv:  [['order', '📦', '주문·출고', 'Fulfillment'], ['items', '🏷', '아이템·위치', 'Items'], ['stores', '🏬', '거래처', 'Customers']],
-  invoice:  [['order', '🧾', '주문·인보이스', 'Orders'], ['verify', '💵', '수금 확인', 'Payments'], ['stores', '🏬', '거래처', 'Customers']],
+  pickinv:  [['order', '📦', '세일·출고', 'Sales · Fulfillment'], ['items', '🏷', '아이템·위치', 'Items'], ['stores', '🏬', '거래처', 'Customers']],
+  invoice:  [['order', '🧾', '세일·인보이스', 'Sales · Invoices'], ['verify', '💵', '수금 확인', 'Payments'], ['stores', '🏬', '거래처', 'Customers']],
   whmgr:    [['order', '📦', '창고 작업', 'Warehouse'], ['items', '🏷', '재고·위치', 'Inventory'], ['stores', '🏬', '거래처', 'Customers']],
   pick:     [['order', '📦', '내 작업', 'My Work'], ['items', '🏷', '재고·위치', 'Inventory'], ['stores', '🏬', '거래처', 'Customers']],
-  owner:    [['now', '📈', '현황', 'Today'], ['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['flow', '🧭', '주문 흐름', 'Order flow'], ['stores', '🏬', '거래처', 'Customers'], ['cat', '📒', '카탈로그', 'Catalog']],
-  admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '주문', 'Orders'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
+  owner:    [['now', '📈', '현황', 'Today'], ['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['flow', '🧭', '세일 흐름', 'Sales flow'], ['stores', '🏬', '거래처', 'Customers'], ['cat', '📒', '카탈로그', 'Catalog']],
+  admin:    [['now', '📈', '현황', 'Today'], ['order', '🛒', '세일', 'Sales'], ['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']]
 };
 NAV.manager = NAV.office;
 /* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자(루크)는 전부 */
@@ -256,7 +258,7 @@ async function boot() {
   shell();
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S);
+  Sales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }

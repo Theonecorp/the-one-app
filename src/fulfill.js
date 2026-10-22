@@ -14,7 +14,7 @@ import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, 
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
-import { storeSheet } from './store.js';
+import { storeSheet, invDetail } from './store.js';
 import { searchAccounts, sortStores } from './accounts.js';
 import { fillPinned } from './notes.js';
 import * as Ship from './ship.js';
@@ -25,7 +25,7 @@ const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
 export function register(state) { S = state; Ship.register(state); Pickup.register(state); }
 const acctOf = a => (S.accounts.byCode ? S.accounts.byCode[a] : null);
 /** 인보이스 인쇄 — AR 에이징(가게 창 자료)과 회사 정보를 붙여서 */
-async function printInvoices(invs, acc) {
+export async function printInvoices(invs, acc) {
   let ar = null; try { const i = await storeInfo(invs[0].acct, true); ar = i && i.asOf ? { asOf: i.asOf, bk: i.bk, bal: i.bal } : null; } catch (e) {}
   try { await loadCatalog(S); } catch (e) {}
   const v = invView(S);
@@ -583,8 +583,10 @@ export async function invBrowser(LF, head) {
     '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + '</div>' +
     (rows.length ? dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<div class="iday"><b>' + esc(dayLabel(d)) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>' + L.map(r => invRow(r)).join(''); }).join('') : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
   $('iList').innerHTML = h;
-  document.querySelectorAll('#iList [data-go]').forEach(el => el.onclick = () => Router.go('order', el.dataset.go));
-  if ($('iAcc')) $('iAcc').onclick = () => storeSheet(acc.acct);
+  /* 인보이스를 누르면 인보이스 · AR 잔액 · 수금을 한 화면에 (가게 창 · 미수금과 같은 화면) */
+  document.querySelectorAll('#iList [data-go]').forEach(el => el.onclick = () => { const g = el.dataset.go; if (g.indexOf('inv:') === 0) invDetail(g.substring(4)); else Router.go('order', g); });
+  if (isNo && !rows.length && $('iList')) { $('iList').insertAdjacentHTML('afterbegin', '<div class="card"><button class="b-blue" id="iArFind">🔎 ' + bt('AR(미수금)에서 이 번호 찾기', 'Look up this number in A/R') + '</button></div>'); $('iArFind').onclick = () => invDetail(q.toUpperCase()); }
+  if ($('iAcc')) $('iAcc').onclick = () => storeSheet(acc.acct, null, 'invh');
   if ($('iCsv')) $('iCsv').onclick = () => {
     const csv = [['Invoice', 'Date', 'Type', 'Acct', 'Store', 'SalesRep', 'Terms', 'Order', 'Qty', 'Sub', 'Disc%', 'Total', 'Balance', 'Status']].concat(rows.map(r => [r.no, r.d, r.t, r.acct, r.store, r.sm, r.terms || '', r.order, r.qty, r.sub, r.disc || 0, r.total, r.bal != null ? r.bal : r.total, r.st === 'x' ? 'VOID' : 'open'])).map(a => a.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'invoices-' + (acc ? acc.acct : from + '_' + to) + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
