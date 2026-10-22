@@ -230,6 +230,7 @@ async function staffHome() {
   /* 일 타일 — 기간에 따라 숫자가 바뀜 (들어온 · 인보이스 완료 · 매출), 지금 상태 (픽킹 중 · 백오더) */
   const T = [];
   const W = can('pick') || can('assign') || can('invoice');   // 출고 흐름을 보는 일
+  if (can('flow')) T.push('<button class="htile flowtile" data-hg="flow"><span class="hi">🧭</span><b>' + bi('주문 흐름 감독', 'Order flow') + '</b><small id="ht-flow">' + bt('단계 · 담당자 · 머문 시간 · 지연', 'stage · who · time · late') + '</small></button>');
   if (can('pick') && !can('invoice')) T.push(tile('mine', '👷', bi('내 배정 작업', 'My Assignments'), '읽는 중…', 'blue'));
   if (W) T.push(tile('sent', '📥', bi('신규 주문', 'New Orders'), '읽는 중…', can('assign') || can('invoice') ? 'blue' : ''), tile('cfw', '❓', bi('세일즈맨 확인 대기', 'Awaiting Salesman'), '읽는 중…', 'amber'), tile('cfok', '👍', bi('확인 완료 · 배정 대기', 'Confirmed · To Assign'), '읽는 중…'), tile('pick', '📦', bi('출고 작업', 'In Fulfillment'), '읽는 중…'));
   if (W) T.push(tile('picked', '✅', bi('작업 완료 · 검수 대기', 'Ready for Review'), '읽는 중…'));
@@ -259,7 +260,7 @@ async function staffHome() {
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
-    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track') return Router.go(k);
+    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow') return Router.go(k);
     if (k === 'inv' || k === 'shipped') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
     if (k === 'inv') { LF.im = 'acct'; LF.iacct = ''; LF.iq = ''; }
     LF.st = k; LF.list = true; pageOrder('');
@@ -276,6 +277,7 @@ async function staffHome() {
     const put = (id, v) => { const el = $('ht-' + id); if (el) el.innerHTML = v; };
     const nm = (L, f) => L.length ? L.length + '건 · ' + money(L.reduce((a, o) => a + (f ? f(o) : o.amt || 0), 0)) : '없음 · none';
     put('mine', nm(mine));
+    put('flow', bt('작업 중', 'working') + ' ' + pk.length + ' · 👷 ' + new Set(pk.map(o => o.picker).filter(Boolean)).size + bt('명', '') + ' · ' + bt('출고 전 전체', 'open') + ' ' + live.length);
     const nw = wait.filter(o => subOf(o) === 'sent'), cw = wait.filter(o => subOf(o) === 'cfw'), ck2 = wait.filter(o => subOf(o) === 'cfok'), pkd2 = live.filter(o => o.st === 'packed');
     put('sent', nm(sentIn) + (nw.length ? '<br><b style="color:#b91c1c">' + bt('확인할 신규', 'To review') + ' ' + nw.length + '</b>' : '<br>' + bt('대기 없음', 'none waiting')));
     put('cfw', cw.length ? '<b>' + cw.length + '</b> · ' + bt('세일즈맨 답 기다림', 'waiting for salesman') : bt('없음', 'none'));

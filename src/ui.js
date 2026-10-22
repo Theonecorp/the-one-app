@@ -109,6 +109,7 @@ export const Router = {
     const v = document.getElementById('viewer'); if (v) { v.remove(); return; }
     const p = $('prt'); if (p && p.classList.contains('on')) { printClose(); return; }
     const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
+    if (this.backTo && arg && this.backTo.name === name) { const b = this.backTo.hash; this.backTo = null; location.hash = b; return; }   // 다른 화면(🧭 흐름 감독)에서 열었으면 그리로
     const up = this.up[name]; if (up && up(arg ? decodeURIComponent(arg) : '')) { this.refreshBack(); return; }
     if (arg) this.go(name); else if (this.home && name !== this.home) this.go(this.home);
   },
@@ -118,6 +119,7 @@ export const Router = {
     const run = () => {
       const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
       this.cur = name || '';
+      if (this.backTo && this.backTo.name !== name && '#/' + h !== this.backTo.hash) this.backTo = null;
       if (this._back) this._back = false;
       else if (this.stack.length > 1 && this.stack[this.stack.length - 2] === h) this.stack.pop();   // 브라우저(안드로이드) 뒤로 — 우리 기록도 한 칸 뒤로
       else if (this.stack[this.stack.length - 1] !== h) { this.stack.push(h); if (this.stack.length > 60) this.stack.shift(); }
