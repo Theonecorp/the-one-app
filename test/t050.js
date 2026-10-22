@@ -34,6 +34,14 @@ const path = require('path'), fs = require('fs');
   /* Daily Report 전송 */
   await pg.click('#btnSend'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(900); await shot('c3_report');
   const modalOn = await pg.evaluate(() => document.getElementById('modal').classList.contains('on')); log('modal after send (want false):', modalOn); if (modalOn) errs.push('email modal still shown');
+  /* v0.8.59: 리포트를 보낸 뒤 체크 사진만 따로 */
+  const jpg = path.resolve(__dirname, 'fixtures', 'check.png');
+  if (fs.existsSync(jpg)) {
+    await pg.setInputFiles('#rPhotoLib', jpg); await pg.waitForSelector('#phGrid img', { timeout: 20000 }); await pg.waitForTimeout(300);
+    const bt = (await pg.textContent('#btnSend')).trim(), dis = await pg.$eval('#btnSend', b => b.disabled); log('photo-only button:', bt, dis); if (dis || !/사진만/.test(bt)) errs.push('photo-only button not enabled');
+    await pg.click('#btnSend'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(900);
+    const po = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.reports).filter(r => r.photoOnly).map(r => [r.photos.length, r.photos[0].slice(0, 23), r.photos[0].length > 3000, r.mail])); log('photo-only report:', JSON.stringify(po)); if (!po.length || !po[0][2]) errs.push('photo-only report missing');
+  }
   const sentPills = await pg.$$eval('.pill.sent', e => e.length); log('sent pills:', sentPills); if (!sentPills) errs.push('no sent pill');
   /* 3. 기록 */
   await pg.click('[data-ct="hist"]'); await pg.waitForSelector('#hQ'); await pg.fill('#hQ', '1111'); await pg.click('#hGo'); await pg.waitForSelector('.hent'); await shot('c4_hist');

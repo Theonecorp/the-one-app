@@ -56,9 +56,15 @@ function run() {
         cc.forEach(x => { if (to.indexOf(x) < 0) to.push(x); });
         if (!to.length) throw new Error('받는 사람이 없습니다');
         const total = Number(r.total) || 0;
-        const subject = '[Daily Collection] ' + (r.sm || '') + ' — ' + (r.d || '') + ' (' + (r.n || (r.rows || []).length) + '건 / ' + money_(total) + ')';
         const atts = (r.photos || []).map((p, i) => dataUrlBlob_(p, (r.sm || 'SM') + '_' + (r.d || '') + '_check' + (i + 1))).filter(Boolean);
-        MailApp.sendEmail({ to: to.join(','), subject, htmlBody: reportHtml(r), name: FROM_NAME, replyTo: REPLY_TO, attachments: atts });
+        const bad = (r.photos || []).length - atts.length;   // 빈 사진 (폰 메모리 부족으로 "data:," 만 온 것)
+        /* 사진만 (리포트는 이미 보냄) — 수금 앱 v81 과 같은 제목 */
+        const subject = r.photoOnly ? '[Daily Collection] ' + (r.sm || '') + ' — ' + (r.d || '') + ' 체크 사진 ' + atts.length + '장 (추가)'
+          : '[Daily Collection] ' + (r.sm || '') + ' — ' + (r.d || '') + ' (' + (r.n || (r.rows || []).length) + '건 / ' + money_(total) + ')';
+        const html = r.photoOnly ? '<div style="font-family:Arial,Helvetica,sans-serif">' + esc_(r.sm || '') + ' · ' + esc_(r.d || '') + ' — 리포트를 보낸 뒤 추가로 보내는 체크 사진 ' + atts.length + '장입니다.' + (bad ? '<br><span style="color:#b91c1c">읽지 못한 사진 ' + bad + '장은 빠졌습니다.</span>' : '') + '</div>'
+          : reportHtml(r) + (bad ? '<p style="color:#b91c1c">읽지 못한 체크 사진 ' + bad + '장은 빠졌습니다 — 다시 찍어 보내 주세요.</p>' : '');
+        if (r.photoOnly && !atts.length) throw new Error('보낼 사진이 없습니다 (사진을 읽지 못함)');
+        MailApp.sendEmail({ to: to.join(','), subject, htmlBody: html, name: FROM_NAME, replyTo: REPLY_TO, attachments: atts });
         patch_('reports', r._id, { mail: 'sent', mailAt: new Date().toISOString(), mailTo: to.join(', ') });
       } catch (e) {
         patch_('reports', r._id, { mail: 'error', mailErr: String(e && e.message || e).substring(0, 300), mailAt: new Date().toISOString() });
@@ -118,7 +124,7 @@ function fromVal_(v) {
 function toVal_(x) { if (x === null || x === undefined) return { nullValue: null }; if (typeof x === 'number') return { doubleValue: x }; if (typeof x === 'boolean') return { booleanValue: x }; return { stringValue: String(x) }; }
 
 /* ---------- 작은 도구 ---------- */
-function dataUrlBlob_(s, name) { const m = String(s || '').match(/^data:([^;]+);base64,(.+)$/); if (!m) return null; const ext = m[1].indexOf('png') >= 0 ? '.png' : '.jpg'; return Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], name + ext); }
+function dataUrlBlob_(s, name) { const m = String(s || '').match(/^data:([^;]+);base64,(.+)$/); if (!m || m[2].length < 2000) return null; const ext = m[1].indexOf('png') >= 0 ? '.png' : '.jpg'; return Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], name + ext); }
 function isEmail_(s) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || '')); }
 function money_(n) { n = Number(n) || 0; return (n < 0 ? '-' : '') + '$' + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 function esc_(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

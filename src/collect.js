@@ -363,7 +363,7 @@ async function paintToday() {
     '<label>📷 오늘 받은 체크 사진 <span class="en">Check photos</span> <span style="font-weight:400">(선택 · 여러 장 · 최대 15장)</span></label>' +
     '<input id="rPhotoCam" type="file" accept="image/*" capture="environment" style="display:none"><input id="rPhotoLib" type="file" accept="image/*" multiple style="display:none">' +
     '<div class="two" style="margin-top:6px"><button type="button" class="b-ghost" id="btnPhotoCam">📷 사진 찍기 · Camera</button><button type="button" class="b-ghost" id="btnPhotoLib">🖼 여러 장 고르기 · Choose</button></div>' +
-    '<div id="phGrid" class="phgrid"></div>' +
+    '<div id="phGrid" class="phgrid"></div><div class="hint" id="phHint"></div>' +
     '<button class="b-blue" id="btnSend" style="background:var(--amber);margin-top:14px;padding:16px" ' + (pend.length ? '' : 'disabled') + '>📧 Daily Report 전송 · Send</button>' +
     '<div class="hint" style="text-align:center;margin-top:10px"><b>아직 안 보낸 건만</b> 전송됩니다 (한 번 보낸 건은 다시 안 감). 전송 후 취소는 담당자를 통해야 합니다.<br><span class="en">Only entries not yet reported are sent. After sending, ask the office to cancel.</span></div></div>';
   $('hubBody').innerHTML = h;
@@ -373,6 +373,7 @@ async function paintToday() {
   renderPhotos();
   document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => Router.go('entry', b.dataset.ed));
   document.querySelectorAll('[data-vd]').forEach(b => b.onclick = async () => { if (!(await confirmBox('이 건을 취소하시겠습니까? · Void this entry?', '취소 Void'))) return; busy(true); try { await S.DB.update('entries', b.dataset.vd, { void: true, updatedAt: new Date().toISOString() }); clearEntryCache(); toast('취소 처리됨 · Voided', 'good'); paintToday(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
+  PEND_N = pend.length; sendBtnState();
   $('btnSend').onclick = () => sendReport(pend);
 }
 function entCard(r) {
@@ -386,23 +387,60 @@ function entCard(r) {
     '<span class="pill' + (r.rep ? ' sent' : '') + '">' + (vd ? '취소됨 Void' : r.rep ? '리포트 전송됨 Sent' : '전송 대기 Pending') + '</span> <span class="muted">' + esc(stageText(r)) + '</span></div>' +
     (!vd && r.rep !== true && !r.sb ? '<div class="act"><button type="button" data-ed="' + esc(r.id) + '" style="color:#1d4ed8;border-color:#bfdbfe">수정 Edit</button><button type="button" data-vd="' + esc(r.id) + '">취소 Void</button></div>' : '') + '</div>';
 }
-function shrink(file) {
-  return new Promise(res => { const url = URL.createObjectURL(file), img = new Image(); img.onload = () => { const max = 1100, sc = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.55)); }; img.onerror = () => { URL.revokeObjectURL(url); res(null); }; img.src = url; });
+/* 체크 사진 줄이기 — 한 장씩 차례로 (여러 장을 한꺼번에 줄이면 폰 메모리가 모자라 빈 사진 "data:," 이 되던 문제 · 수금 앱 v81 과 같음)
+ *  결과가 비었으면 더 작게 한 번 더, 그래도 안 되면 실패로. 20초 안에 못 읽어도 실패 */
+function shrink(file, max) {
+  max = max || 1100;
+  return new Promise(res => {
+    const url = URL.createObjectURL(file), img = new Image(); let done = false;
+    const fin = d => { if (done) return; done = true; try { URL.revokeObjectURL(url); } catch (e) {} res(d); };
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, sc = Math.min(1, max / Math.max(w, h));
+        const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc));
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+        const d = c.toDataURL('image/jpeg', 0.55); c.width = 0; c.height = 0;   // 메모리 바로 돌려주기
+        if (!/^data:image\/jpeg;base64,/.test(d) || d.length < 3000) { if (max > 800) { done = true; try { URL.revokeObjectURL(url); } catch (e) {} return shrink(file, 800).then(res); } return fin(null); }
+        fin(d);
+      } catch (e) { fin(null); }
+    };
+    img.onerror = () => fin(null);
+    setTimeout(() => fin(null), 20000);
+    img.src = url;
+  });
 }
+let PH_BUSY = 0;
 async function addPhotos(files) {
   let list = Array.from(files || []); if (!list.length) return;
-  if (PHOTOS.length + list.length > 15) { toast('사진은 15장까지. · Up to 15 photos.', 'bad'); list = list.slice(0, 15 - PHOTOS.length); }
-  for (const f of list) { const d = await shrink(f); if (d && PHOTOS.reduce((a, x) => a + x.length, 0) + d.length > 900000) { toast('사진 용량이 한도를 넘었습니다 — 더 넣을 수 없습니다. · Photo size limit reached.', 'bad'); break; } if (d) PHOTOS.push(d); else toast('사진을 읽지 못했습니다. · Could not read photo.', 'bad'); }
+  if (PHOTOS.length + list.length > 15) { toast('사진은 15장까지. · Up to 15 photos.', 'bad'); list = list.slice(0, Math.max(0, 15 - PHOTOS.length)); }
+  let fail = 0; PH_BUSY += list.length; renderPhotos();
+  for (const f of list) {
+    const d = await shrink(f); PH_BUSY = Math.max(0, PH_BUSY - 1);
+    if (d && PHOTOS.reduce((a, x) => a + x.length, 0) + d.length > 900000) { toast('사진 용량이 한도를 넘었습니다 — 더 넣을 수 없습니다. · Photo size limit reached.', 'bad'); PH_BUSY = 0; break; }
+    if (d) PHOTOS.push(d); else fail++;
+    renderPhotos(); await new Promise(r => setTimeout(r, 30));
+  }
   renderPhotos();
+  if (fail) toast('사진 ' + fail + '장을 읽지 못했습니다 — 다시 찍어 주세요. · Could not read ' + fail + ' photo(s).', 'bad');
 }
 function renderPhotos() {
   const g = $('phGrid'); if (!g) return;
   g.innerHTML = PHOTOS.map((d, i) => '<div class="ph"><img src="' + d + '"><button type="button" data-phx="' + i + '">✕</button></div>').join('');
   g.querySelectorAll('[data-phx]').forEach(b => b.onclick = () => { PHOTOS.splice(+b.dataset.phx, 1); renderPhotos(); });
   if ($('btnPhotoCam')) $('btnPhotoCam').textContent = PHOTOS.length ? '📷 한 장 더 찍기 · One more' : '📷 사진 찍기 · Camera';
+  if ($('phHint')) $('phHint').innerHTML = PH_BUSY ? '사진 준비 중… ' + PH_BUSY + '장 남음 · Preparing photos…' : PHOTOS.length ? '<b>' + PHOTOS.length + '장</b> 첨부됩니다 (최대 15장). 리포트를 이미 보냈어도 <b>전송</b>을 누르면 사진만 따로 보냅니다.' : '';
+  sendBtnState();
+}
+/* 리포트를 이미 보냈어도 사진이 있으면 버튼을 켜서 "사진만" 보낼 수 있게 (수금 앱 v81) */
+let PEND_N = 0;
+function sendBtnState() {
+  const b = $('btnSend'); if (!b) return;
+  b.disabled = !PEND_N && !PHOTOS.length;
+  b.textContent = !PEND_N && PHOTOS.length ? '📷 체크 사진만 전송 · Send photos' : '📧 Daily Report 전송 · Send';
 }
 async function sendReport(pend) {
-  if (!pend.length) return;
+  if (PH_BUSY) return toast('사진을 아직 준비 중입니다 — 잠시 후 다시 눌러 주세요. · Photos still preparing.', 'bad');
+  if (!pend.length) return sendPhotosOnly();
   if (!(await confirmBox(TODAY_D + ' 수금 ' + pend.length + '건 · ' + money(sum(pend, r => r.total)) + ' 을 ' + REPORT_TO() + ' 로 전송합니다.' + (PHOTOS.length ? '\n📷 체크 사진 ' + PHOTOS.length + '장 첨부' : '\n(체크 사진 없음 · no photo)') + '\n계속하시겠습니까? · Continue?', '전송 Send'))) return;
   busy(true);
   try {
@@ -418,6 +456,21 @@ async function sendReport(pend) {
     toast('전송했습니다 · Sent — ' + pend.length + '건 · 메일은 자동으로 갑니다', 'good');
     paintToday();
   } catch (e) { toast('전송 실패: ' + (e.message || e.code), 'bad'); }
+  busy(false);
+}
+
+/** 📷 리포트는 이미 보냈고 체크 사진만 나중에 — 사진만 담은 리포트를 만들어 메일로 (Apps Script 가 "체크 사진 N장 (추가)" 로 보냄) */
+async function sendPhotosOnly() {
+  if (!PHOTOS.length) return;
+  if (!(await confirmBox(TODAY_D + ' 체크 사진 ' + PHOTOS.length + '장만 ' + REPORT_TO() + ' 로 보냅니다. · Send photos only?', '전송 Send'))) return;
+  busy(true);
+  try {
+    const now = new Date().toISOString(), id = me() + '_' + TODAY_D + '_' + now.substring(11, 19).replace(/:/g, '') + '_PH';
+    let bytes = 0; const photos = []; for (const p of PHOTOS) { bytes += p.length; if (bytes > 850000) { toast('사진 용량이 많아 ' + photos.length + '장까지만 보냅니다', ''); break; } photos.push(p); }
+    await S.DB.set('reports', id, { id, sm: me(), d: TODAY_D, n: 0, total: 0, entries: [], rows: [], photos, photoOnly: true, to: REPORT_TO(), sentAt: now, by: S.user.email, mail: 'wait' });
+    PHOTOS = PHOTOS.slice(photos.length);
+    toast('📷 체크 사진 ' + photos.length + '장을 보냈습니다 · Photos sent', 'good'); paintToday();
+  } catch (e) { toast('전송 실패 — 사진은 그대로 있습니다. 신호 좋은 곳에서 다시 눌러 주세요. · ' + (e.code || e.message), 'bad'); }
   busy(false);
 }
 
@@ -448,7 +501,7 @@ async function sentReports() {
   if (!list.length) { box.innerHTML = '<div class="none">최근 10일 동안 보낸 리포트가 없습니다 · No reports</div>'; return; }
   const hm = t => t ? new Date(t).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   const stat = r => r.mail === 'sent' ? '<span class="tag t-k">✅ 메일 보냄 · Sent ' + esc(hm(r.mailAt)) + '</span>' : r.mail === 'error' ? '<span class="tag t-r">⚠️ 메일 실패 · Failed</span><div class="warn" style="font-size:12px">' + esc(r.mailErr || '') + '</div>' : '<span class="tag t-c">⏳ 보내는 중 · Sending</span>';
-  box.innerHTML = list.map(r => '<div class="pr"><div class="ct"><b>' + esc(r.d) + ' · ' + (r.n || 0) + '건 · ' + money(r.total || 0) + '</b><small>전송 ' + esc(hm(r.sentAt)) + ((r.photos || []).length ? ' · 📷 ' + r.photos.length : '') + (r.mailTo ? ' · ' + esc(r.mailTo) : '') + '</small><div style="margin-top:4px">' + stat(r) + '</div></div>' +
+  box.innerHTML = list.map(r => '<div class="pr"><div class="ct"><b>' + esc(r.d) + ' · ' + (r.photoOnly ? '📷 체크 사진만 · Photos only' : (r.n || 0) + '건 · ' + money(r.total || 0)) + '</b><small>전송 ' + esc(hm(r.sentAt)) + ((r.photos || []).length ? ' · 📷 ' + r.photos.length : '') + (r.mailTo ? ' · ' + esc(r.mailTo) : '') + '</small><div style="margin-top:4px">' + stat(r) + '</div></div>' +
     '<div style="display:flex;flex-direction:column;gap:6px;flex:0 0 auto"><button type="button" class="b-ghost b-sm" data-rsend="' + esc(r.id) + '">📧 다시 보내기</button><button type="button" class="b-ghost b-sm" data-rapp="' + esc(r.id) + '">✉️ 이메일 앱</button></div></div>').join('');
   box.querySelectorAll('[data-rsend]').forEach(b => b.onclick = async () => {
     const r = list.find(x => x.id === b.dataset.rsend); if (!r) return;
