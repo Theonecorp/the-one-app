@@ -29,32 +29,78 @@ async function pageAdmin(arg) {
 }
 
 /* ---- 사용자 ---- */
+/* ---- 👤 사용자 — 이메일 · 이름 · 역할, 역할을 고르면 그 역할에 맞는 추가 설정 (일 · 세일즈맨 코드 · 추가 화면 · ACH) ---- */
+const ROLES = [
+  ['owner', '👑', '오너', 'Owner', '현황 · 경영 · 미수금 · 주문 흐름 · 거래처 · 카탈로그 (관리자급 — 자료는 전부 봄, 사용자 등록 · ACH 은행은 빼고)'],
+  ['admin', '⚙️', '관리자', 'Admin', '모든 화면 + 관리(사용자 · 설정 · 가져오기). 오너 · 담당자 · 세일즈맨 화면으로 바꿔 볼 수 있음'],
+  ['manager', '🧑‍💼', '담당자', 'Staff', '고른 "일"에 따라 화면이 달라짐 — 주문 · 출고 · 인보이스 · 수금 확인 · 창고'],
+  ['salesman', '🚗', '세일즈맨', 'Salesman', '내 가게 · 주문 · 수금 입력 · 미수금 · 정산서 (자기 것만)']];
+const JOB_TXT = { office: '주문 · 인보이스 · 출고 · 재고 · 수금 · COD · ACH 거의 전부', acct: '수금 확인 · COD · 카드 · ACH · 인보이스 조회', pickinv: '작업 배정 · 피킹 · 인보이스 발행 · 포장 · UPS · 재고', invoice: '주문 · 인보이스 발행 · 수금 확인', whmgr: '작업 배정 · 피킹 · 포장 · UPS · 재고 위치', pick: '내 배정 작업 · 피킹 · 포장 · 재고 위치' };
+const roleTag = r => '<span class="tag ' + ({ owner: 't-c', admin: 't-a', manager: 't-b', salesman: 't-k' }[r] || 't-g') + '">' + (ROLES.find(x => x[0] === r) || ['', '', r])[1] + ' ' + (ROLES.find(x => x[0] === r) || ['', '', r])[2] + '</span>';
 async function users() {
-  const list = sortBy(await S.DB.list('users'), u => (u.role === 'admin' ? '0' : u.role === 'manager' ? '1' : '2') + u.email);
-  $('adminBody').innerHTML = '<div class="card"><h2>사용자 ' + list.length + '명</h2><div class="muted">구글 계정 이메일로 등록합니다. 세일즈맨은 세일즈맨 코드를 꼭 연결하세요. ACH 은행 정보는 "ACH 접근" 켠 사람만 봅니다.</div><button class="b-blue" id="uNew" style="margin-top:8px">＋ 사용자 추가</button></div>' +
-    '<div class="card">' + list.map(u => '<div class="pr tap" data-u="' + esc(u.email) + '"><div class="ct"><b>' + esc(u.name || u.email) + ' <span class="tag ' + (u.role === 'admin' ? 't-a' : u.role === 'manager' ? 't-b' : 't-k') + '">' + roleLabel(u.role).split(' ')[0] + '</span>' + (u.role === 'manager' && u.job ? ' <span class="tag t-b">' + esc(jobLabel(u.job).split(' ')[0]) + '</span>' : '') + (u.sm ? ' <span class="tag t-g">' + esc(u.sm) + '</span>' : '') + (u.achAccess ? ' <span class="tag t-r">ACH</span>' : '') + (u.active === false ? ' <span class="tag t-g">비활성</span>' : '') + '</b><small>' + esc(u.email) + '</small></div></div>').join('') + '</div>';
+  const all = await S.DB.list('users'), ord = { owner: 0, admin: 1, manager: 2, salesman: 3 };
+  const list = sortBy(all, u => (ord[u.role] == null ? 9 : ord[u.role]) + (u.active === false ? 'z' : 'a') + (u.name || u.email).toUpperCase());
+  const grp = ROLES.map(r => [r, list.filter(u => (u.role || 'salesman') === r[0])]).filter(x => x[1].length);
+  $('adminBody').innerHTML = '<div class="card"><h2>👤 사용자 ' + list.length + '명</h2><div class="muted">구글 계정 이메일로 등록합니다. <b>역할</b>을 고르면 그 역할에 맞는 설정이 나옵니다 — 담당자는 "일", 세일즈맨은 "세일즈맨 코드", 오너 · 담당자는 <b>추가 화면</b>(세일즈맨 · 담당자 화면도 보기)을 줄 수 있습니다. 여러 화면을 가진 사람은 위쪽 이름을 눌러 화면을 바꿉니다.</div><button class="b-blue" id="uNew" style="margin-top:8px">＋ 사용자 추가</button></div>' +
+    grp.map(([r, L]) => '<div class="card"><h2 style="font-size:15px">' + r[1] + ' ' + r[2] + ' <span class="en">' + r[3] + '</span> <span class="muted" style="font-weight:400">' + L.length + '명</span></h2>' +
+      L.map(u => { const ex = (u.extra || []).filter(x => x !== u.role);
+        return '<div class="pr tap" data-u="' + esc(u.email) + '"><div class="ct"><b>' + esc(u.name || u.email) + (u.active === false ? ' <span class="tag t-g">비활성</span>' : '') + '</b>' +
+          '<small>' + esc(u.email) + '</small><small>' + [u.role === 'manager' ? '일: ' + esc(jobLabel(u.job || 'office').split(' ')[0]) : '', u.sm ? '세일즈맨 코드 ' + esc(u.sm) : '', ex.length ? '추가 화면: ' + ex.map(x => (ROLES.find(y => y[0] === x) || ['', '', x])[2]).join(' · ') : '', u.achAccess ? 'ACH 은행' : ''].filter(Boolean).join(' · ') + '</small></div></div>'; }).join('') + '</div>').join('');
   $('uNew').onclick = () => userForm(null);
   document.querySelectorAll('[data-u]').forEach(el => el.onclick = () => userForm(list.find(u => u.email === el.dataset.u)));
 }
 function userForm(u) {
   u = u || {};
-  openModal('<h2>' + (u.email ? esc(u.email) : '＋ 사용자') + '</h2>' +
-    '<div class="fg"><label>구글 이메일</label><input id="uEmail" value="' + esc(u.email || '') + '" ' + (u.email ? 'readonly' : '') + ' placeholder="name@gmail.com"></div>' +
-    '<div class="two"><div class="fg"><label>이름</label><input id="uName" value="' + esc(u.name || '')+ '"></div><div class="fg"><label>역할</label>' + sel('uRole', [['salesman', '세일즈맨'], ['manager', '담당자'], ['admin', '관리자']], u.role || 'salesman') + '</div></div>' +
-    '<div class="fg"><label>담당자의 일 (담당자만) — 화면이 달라집니다</label>' + sel('uJob', JOBS.map(j => [j[0], j[1] + ' · ' + j[2]]), u.job || 'office') + '<small class="muted">오피스 매니저: 주문 · 인보이스 · 출고 · 재고 · 수금 · COD · ACH 거의 전부 / 회계: 수금 확인 · COD · 카드 · ACH · 인보이스 조회 / 출고 · 인보이스: 작업 배정 · 피킹 · 인보이스 발행 · 포장 · UPS · 재고 / 인보이스: 주문 · 인보이스 발행 · 수금 확인 / 창고 매니저: 작업 배정 · 피킹 · 포장 · UPS · 재고 · 위치 / 창고 직원: 내 작업 피킹 · 포장 · UPS · 재고 · 위치. ACH 은행 정보는 아래 "ACH 은행 정보 보기" 를 따로 켠 사람만.</small></div>' +
-    '<div class="two"><div class="fg"><label>세일즈맨 코드</label><input id="uSm" list="uSmList" value="' + esc(u.sm || '') + '" placeholder="예: BRANDON" style="text-transform:uppercase" autocomplete="off"><datalist id="uSmList">' + S.sms.map(s => '<option value="' + esc(s.code) + '">').join('') + '</datalist><small class="muted">목록에 없으면 그대로 입력 — 저장할 때 세일즈맨도 같이 만듭니다</small></div><div class="fg"><label>옵션</label><label class="muted" style="display:flex;gap:6px;align-items:center;padding:8px 0"><input type="checkbox" id="uAch" style="width:18px;height:18px" ' + (u.achAccess ? 'checked' : '') + '> ACH 은행 정보 접근</label><label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="uAct" style="width:18px;height:18px" ' + (u.active !== false ? 'checked' : '') + '> 활성</label></div></div>' +
-    '<div class="btns">' + (u.email && u.email !== S.user.email ? '<button class="b-ghost" id="uDel">삭제</button>' : '') + '<button class="b-blue" id="uSave">저장</button></div>');
+  const F = { role: u.role || 'salesman', job: u.job || 'office', extra: (u.extra || []).slice(), ach: !!u.achAccess, active: u.active !== false };
+  const isMe = u.email && u.email === S.user.email;
+  openModal('<h2>' + (u.email ? '👤 ' + esc(u.name || u.email) : '＋ 사용자 추가') + '</h2>' +
+    '<div class="fg"><label>① 구글 이메일 <span class="en">Google email</span></label><input id="uEmail" value="' + esc(u.email || '') + '" ' + (u.email ? 'readonly style="background:#f1f5f9"' : '') + ' placeholder="name@gmail.com" autocapitalize="off"></div>' +
+    '<div class="fg"><label>② 이름 <span class="en">Name</span></label><input id="uName" value="' + esc(u.name || '') + '"></div>' +
+    '<div class="fg"><label>③ 역할 <span class="en">Role</span></label><div class="rolepick">' + ROLES.map(r => '<button type="button" class="' + (F.role === r[0] ? 'on' : '') + '" data-ur="' + r[0] + '"' + (isMe && r[0] !== 'admin' ? ' disabled' : '') + '><b>' + r[1] + ' ' + r[2] + ' <span class="en">' + r[3] + '</span></b><small>' + r[4] + '</small></button>').join('') + '</div></div>' +
+    '<div id="uMore"></div>' +
+    '<label class="pick ' + (F.active ? 'on' : '') + '" id="uActP"><span class="ck">✓</span><span class="pm"><b>활성 <span class="en">Active</span></b><small>끄면 로그인이 막힙니다 (기록은 남음)</small></span></label>' +
+    '<div class="btns">' + (u.email && !isMe ? '<button class="b-ghost" id="uDel">삭제</button>' : '') + '<button class="b-ghost" id="uX">취소</button><button class="b-blue" id="uSave">저장</button></div>', { wide: true });
+  const smInput = (req, why) => '<div class="fg"><label>세일즈맨 코드 ' + (req ? '<b style="color:#b91c1c">*</b>' : '<span class="muted">(선택)</span>') + '</label><input id="uSm" list="uSmList" value="' + esc(u.sm || '') + '" placeholder="예: BRANDON" style="text-transform:uppercase" autocomplete="off"><datalist id="uSmList">' + S.sms.map(x => '<option value="' + esc(x.code) + '">').join('') + '</datalist><small class="muted">' + why + ' 목록에 없으면 그대로 입력 — 저장할 때 세일즈맨도 만듭니다.</small></div>';
+  const chk = (id, on, t, sub) => '<label class="pick ' + (on ? 'on' : '') + '" id="' + id + '"><span class="ck">✓</span><span class="pm"><b>' + t + '</b><small>' + sub + '</small></span></label>';
+  const paintMore = () => {
+    const r = F.role; let h = '<div class="sumbox" style="margin:4px 0 10px"><b>④ ' + (ROLES.find(x => x[0] === r) || [])[2] + ' 설정</b>';
+    if (r === 'admin') h += '<div class="muted" style="margin:4px 0 8px">관리자는 모든 화면을 보고, 위쪽 이름을 눌러 👑 오너 · 🧑‍💼 담당자 · 🚗 세일즈맨 화면으로 바꿔 볼 수 있습니다.</div>' + smInput(false, '세일즈맨 화면에서 "내 가게"로 볼 코드 (예: LUKE).');
+    if (r === 'owner') h += chk('uExS', F.extra.includes('salesman'), '🚗 세일즈맨 화면도', '자기 세일즈맨 코드로 내 가게 · 주문 · 수금 입력 · 정산서') + '<div id="uSmBox"></div>' +
+      chk('uExM', F.extra.includes('manager'), '🧑‍💼 담당자 화면도', '아래에서 고른 일의 화면 (주문 처리 · 수금 확인 …)') + '<div id="uJobBox"></div>' + chk('uAchP', F.ach, '🏦 ACH 은행 정보 보기', '고객 은행 계좌 · 라우팅 번호 — 꼭 필요한 사람만');
+    if (r === 'manager') h += '<div class="fg"><label>일 <span class="en">Job</span> — 화면이 달라집니다</label><div class="rolepick sm">' + JOBS.map(j => '<button type="button" class="' + (F.job === j[0] ? 'on' : '') + '" data-uj="' + j[0] + '"><b>' + j[1] + ' <span class="en">' + j[2] + '</span></b><small>' + (JOB_TXT[j[0]] || '') + '</small></button>').join('') + '</div></div>' +
+      chk('uExS', F.extra.includes('salesman'), '🚗 세일즈맨 화면도', '직접 가게를 맡는 담당자 — 자기 세일즈맨 코드로') + '<div id="uSmBox"></div>' +
+      chk('uAchP', F.ach, '🏦 ACH 은행 정보 보기', '고객 은행 계좌 · 라우팅 번호 — 꼭 필요한 사람만');
+    if (r === 'salesman') h += smInput(true, '수금 · 주문 · 미수금이 이 코드로 묶입니다.');
+    $('uMore').innerHTML = h + '</div>';
+    const subSm = () => { const b = $('uSmBox'); if (b) b.innerHTML = F.extra.includes('salesman') ? smInput(true, '') : ''; };
+    const subJob = () => { const b = $('uJobBox'); if (b) b.innerHTML = F.extra.includes('manager') ? '<div class="rolepick sm">' + JOBS.map(j => '<button type="button" class="' + (F.job === j[0] ? 'on' : '') + '" data-uj="' + j[0] + '"><b>' + j[1] + '</b><small>' + (JOB_TXT[j[0]] || '') + '</small></button>').join('') + '</div>' : ''; bindJob(); };
+    const bindJob = () => document.querySelectorAll('[data-uj]').forEach(b => b.onclick = () => { F.job = b.dataset.uj; document.querySelectorAll('[data-uj]').forEach(x => x.classList.toggle('on', x === b)); });
+    const tog = (id, key) => { const el = $(id); if (!el) return; el.onclick = () => { const on = !F.extra.includes(key); F.extra = F.extra.filter(x => x !== key); if (on) F.extra.push(key); el.classList.toggle('on', on); if (key === 'salesman') subSm(); if (key === 'manager') subJob(); }; };
+    tog('uExS', 'salesman'); tog('uExM', 'manager');
+    if ($('uAchP')) $('uAchP').onclick = () => { F.ach = !F.ach; $('uAchP').classList.toggle('on', F.ach); };
+    subSm(); subJob(); bindJob();
+  };
+  document.querySelectorAll('[data-ur]').forEach(b => b.onclick = () => { F.role = b.dataset.ur; document.querySelectorAll('[data-ur]').forEach(x => x.classList.toggle('on', x === b)); paintMore(); });
+  $('uActP').onclick = () => { F.active = !F.active; $('uActP').classList.toggle('on', F.active); };
+  $('uX').onclick = closeModal;
+  paintMore();
   $('uSave').onclick = async () => {
     const email = $('uEmail').value.trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('이메일을 확인하세요', 'bad');
-    let smv = $('uSm').value.trim().toUpperCase().replace(/\s+/g, ' ');
-    if (!smv && $('uRole').value === 'salesman' && $('uName').value.trim()) smv = $('uName').value.trim().toUpperCase().split(/\s+/)[0];
-    const doc = { email, name: $('uName').value.trim(), role: $('uRole').value, job: $('uJob').value, sm: smv, achAccess: $('uAch').checked, active: $('uAct').checked, updatedAt: new Date().toISOString() };
-    if (doc.role === 'salesman' && !doc.sm) return toast('세일즈맨 코드(또는 이름)를 넣으세요', 'bad');
+    const name = $('uName').value.trim(); if (!name) return toast('이름을 넣으세요', 'bad');
+    let smv = $('uSm') ? $('uSm').value.trim().toUpperCase().replace(/\s+/g, ' ') : '';
+    const r = F.role, extra = r === 'admin' || r === 'salesman' ? [] : F.extra.filter(x => x !== r && x !== 'owner');   // 오너 화면은 관리자급 자료가 필요해 오너 · 관리자만
+    if (r === 'salesman' && !smv) smv = name.toUpperCase().split(/\s+/)[0];
+    if (extra.includes('salesman') && !smv) return toast('세일즈맨 화면을 주려면 세일즈맨 코드를 넣으세요', 'bad');
+    if (r !== 'salesman' && r !== 'admin' && !extra.includes('salesman')) smv = '';
+    const doc = { email, name, role: r, job: r === 'manager' || extra.includes('manager') ? F.job : '', sm: smv, extra, achAccess: r === 'admin' ? true : (r === 'salesman' ? false : F.ach), active: F.active, updatedAt: new Date().toISOString() };
+    if (isMe && r !== 'admin') return toast('내 계정은 관리자로 둡니다', 'bad');
     busy(true); try {
       let made = '';
-      if (doc.sm && !S.smByCode[doc.sm]) { await S.DB.set('salesmen', doc.sm, { code: doc.sm, name: doc.name || doc.sm, email: doc.role === 'salesman' ? email : '', rates: Object.assign({}, RATE_DEFAULT), active: true, updatedAt: new Date().toISOString() }); await reloadSms(); made = ' · 세일즈맨 ' + doc.sm + ' 새로 만듦 (요율은 세일즈맨 탭에서 확인)'; }
-      await S.DB.set('users', email, Object.assign({ createdAt: today() }, u, doc)); closeModal(); toast('저장' + made); users();
-    } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
+      if (doc.sm && !S.smByCode[doc.sm]) { await S.DB.set('salesmen', doc.sm, { code: doc.sm, name: doc.name || doc.sm, email: r === 'salesman' ? email : '', rates: Object.assign({}, RATE_DEFAULT), active: true, updatedAt: new Date().toISOString() }); await reloadSms(); made = ' · 세일즈맨 ' + doc.sm + ' 새로 만듦 (요율은 세일즈맨 탭에서 확인)'; }
+      await S.DB.set('users', email, Object.assign({ createdAt: today() }, u, doc)); closeModal(); toast('저장' + made, 'good');
+      if (isMe) { S.me = Object.assign({}, S.me, doc); }
+      users();
+    } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
   };
   if ($('uDel')) $('uDel').onclick = async () => { if (!(await confirmBox('이 사용자를 지울까요? 로그인이 막힙니다.', '삭제'))) return; busy(true); try { await S.DB.del('users', u.email); closeModal(); users(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }

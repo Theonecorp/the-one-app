@@ -100,7 +100,7 @@ function paintHome() {
   h += '<div class="card tap" id="mgRep"><h2>📊 리포트 <span class="en">Reports</span></h2><div class="muted">기간을 골라 아이템별 · 손님별 · 세일즈맨별 매출과 수금 — CSV · 인쇄</div></div>';
   h += '<div class="card tap" data-go="sales"><h2>📈 회사 매출 (The One sales amount)</h2>' + (sl && sl.rows ? (() => { const T = sl.rows.find(r => r.label === 'TOTAL SALES'); const lastM = T ? T.m.map((v, i) => v ? i : -1).filter(i => i >= 0).pop() : -1; const ytd = T ? sum(T.m) : 0; return lastM >= 0 ? '<div class="hero" style="font-size:26px">' + money(T.m[lastM]) + '<span style="font-size:13px;color:#64748b;font-weight:600;margin-left:8px">' + YEAR + '년 ' + MON_KO[lastM] + ' TOTAL SALES</span></div><div class="heroSub">YTD ' + money(ytd) + '</div>' : '<div class="none">아직 입력된 달이 없습니다</div>'; })() : '<div class="none">아직 입력된 달이 없습니다 — 📈 매출 탭에서 월별 숫자 입력</div>') + '</div>';
   $('mgBody').innerHTML = h;
-  document.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { TAB = el.dataset.go; page(); });
+  document.querySelectorAll('#page [data-go]').forEach(el => el.onclick = () => { TAB = el.dataset.go; page(); });
   $('mgRep').onclick = () => Router.go('reports');
 }
 
