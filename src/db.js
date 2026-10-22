@@ -53,6 +53,7 @@ function makeMemoryDB(seed) {
       if (q.limit) rows = rows.slice(0, q.limit);
       return rows.map(clone);
     },
+    async count(c, q) { return (await this.list(c, q)).length; },
     async set(c, id, data) { col(c)[id] = clone(Object.assign({}, data, { id })); return id; },
     async update(c, id, patch) { if (!col(c)[id]) throw new Error('not found: ' + c + '/' + id); Object.assign(col(c)[id], clone(patch)); },
     async del(c, id) { delete col(c)[id]; },
@@ -96,6 +97,14 @@ async function makeFirestoreDB() {
       if (q.limit) parts.push(fs.limit(q.limit));
       const snap = await fs.getDocs(fs.query.apply(null, parts));
       return snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    },
+    /** 개수만 (문서를 받지 않음 — 1,000건에 읽기 1번) */
+    async count(c, q) {
+      q = q || {};
+      const parts = [fs.collection(db, c)];
+      (q.where || []).forEach(w => parts.push(fs.where(w[0], w[1], w[2])));
+      const snap = await fs.getCountFromServer(fs.query.apply(null, parts));
+      return snap.data().count;
     },
     async set(c, id, data) { await fs.setDoc(fs.doc(db, c, id), strip(Object.assign({}, data, { id }))); return id; },
     async update(c, id, patch) { await fs.updateDoc(fs.doc(db, c, id), strip(patch)); },
@@ -163,6 +172,7 @@ function speed(DB) {
   const W = Object.create(DB);
   W.get = (c, id) => read('g', c, id, () => DB.get(c, id));
   W.list = (c, q) => read('l', c, q, () => DB.list(c, q));
+  W.count = (c, q) => read('n', c, q, () => DB.count(c, q));
   W.set = (c, id, d) => write(c, () => DB.set(c, id, d));
   W.update = (c, id, d) => write(c, () => DB.update(c, id, d));
   W.del = (c, id) => write(c, () => DB.del(c, id));

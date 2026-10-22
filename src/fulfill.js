@@ -630,7 +630,7 @@ function acctList(LF, head, modeSeg) {
 }
 function invRow(r) {
   const bal = r.bal != null ? r.bal : r.total;
-  return '<div class="pr tap" data-go="inv:' + esc(r.no) + '"><div class="ct"><b>' + esc(r.store) + ' <span class="muted" style="font-weight:400">' + esc(r.acct || '') + '</span></b><small><b>' + esc(r.no) + '</b> <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + ' · ' + esc(r.sm) + (r.terms ? ' · ' + esc(r.terms) : '') + ' · ' + esc(r.order) + (r.disc ? ' · 할인 ' + r.disc + '%' : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + r.qty + '개' + (r.st !== 'x' && Math.abs(bal - r.total) > 0.005 ? ' · 잔액 ' + money(bal) : '') + '</small></div></div>';
+  return '<div class="pr tap" data-go="inv:' + esc(r.no) + '"><div class="ct"><b>' + esc(r.store) + ' <span class="muted" style="font-weight:400">' + esc(r.acct || '') + '</span></b><small><b>' + esc(r.no) + '</b> <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.src === 'legacy' ? ' <span class="tag t-c">' + bt('이전', 'Legacy') + '</span>' : '') + (r.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + ' · ' + esc(r.sm) + (r.terms ? ' · ' + esc(r.terms) : '') + ' · ' + esc(r.order) + (r.disc ? ' · 할인 ' + r.disc + '%' : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + r.qty + '개' + (r.st !== 'x' && Math.abs(bal - r.total) > 0.005 ? ' · 잔액 ' + money(bal) : '') + '</small></div></div>';
 }
 
 export async function openBackorder(id) {
@@ -667,6 +667,7 @@ export async function openInvoice(no) {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
   const x = await S.DB.get('invoices', no);
   if (!x) { $('page').innerHTML = '<div class="card"><div class="none">인보이스를 찾지 못했습니다</div></div>'; return; }
+  if (x.src === 'legacy' && !(x.lines || []).length) return legacyInvoice(x);
   $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between"><div><h2 style="margin:0">📄 ' + esc(x.no) + (x.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(x.store) + '</div><div class="muted">' + esc(x.sm) + ' · ' + esc(x.d) + ' · 주문 <a href="#/order/' + esc(x.orderId) + '">' + esc(x.order) + '</a></div></div><button class="b-ghost b-sm" id="iBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     '<div class="kpi"><div><b>' + x.qty + '</b><span>수량</span></div><div><b>' + money(x.sub) + '</b><span>금액</span></div><div><b>' + (x.disc ? x.disc + '%' : '—') + '</b><span>할인</span></div><div><b>' + money(x.total) + '</b><span>합계</span></div></div>' +
     '<div class="btns"><button class="b-blue" id="iPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' + (can('void') && x.st !== 'x' ? '<button class="b-ghost" id="iVoid" style="color:#991b1b">🚫 VOID</button>' : '') + '</div>' + (x.st === 'x' ? '<div class="alert a-red">🚫 VOID · ' + esc(String(x.voidAt || '').substring(0, 10)) + ' · ' + esc(String(x.voidBy || '').split('@')[0]) + (x.voidReason ? ' — ' + esc(x.voidReason) : '') + '</div>' : '') + '</div>' +
@@ -674,6 +675,22 @@ export async function openInvoice(no) {
   $('iBack').onclick = () => Router.go('order');
   $('iPrint').onclick = () => printInvoices([x], acctOf(x.acct));
   if ($('iVoid')) $('iVoid').onclick = () => voidModal([x], () => openInvoice(no));
+}
+
+/** 이전 시스템(SmartBee)에서 가져온 인보이스 — 품목 줄은 없고 합계 · 잔액 · 조건만 */
+function legacyInvoice(x) {
+  const bal = x.bal != null ? x.bal : null, paid = bal != null ? R2((x.total || 0) - bal) : null;
+  $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">📄 ' + esc(x.no) + ' <span class="tag t-g">' + esc(x.t || '') + '</span> <span class="tag t-c">' + bt('이전 시스템', 'Legacy') + '</span></h2>' +
+    '<div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(x.store) + ' <span class="muted" style="font-weight:400">' + esc(x.acct || '') + '</span></div>' +
+    '<div class="muted">' + esc(x.sm || '') + ' · ' + esc(x.d) + (x.terms ? ' · ' + esc(x.terms) : '') + (x.shipVia ? ' · ' + esc(x.shipVia) : '') + (x.order ? ' · ' + bt('주문', 'Order') + ' ' + esc(x.order) : '') + '</div></div>' +
+    '<button class="b-ghost b-sm" id="iBack">‹ ' + bi('목록', 'List') + '</button></div>' +
+    '<div class="kpi" style="margin-top:10px"><div><b>' + money(x.sub || x.total) + '</b><span>' + bt('금액', 'Amount') + '</span></div><div><b>' + (x.discAmt ? '−' + money(x.discAmt) : '—') + '</b><span>' + bt('할인', 'Discount') + '</span></div><div><b>' + money(x.total) + '</b><span>' + bt('합계', 'Total') + '</span></div>' +
+    '<div><b' + (bal > 0.005 ? ' style="color:#b91c1c"' : '') + '>' + (bal == null ? '—' : money(bal)) + '</b><span>' + bt('잔액', 'Balance') + '</span></div></div>' +
+    (x.ship ? '<div class="muted">' + bt('배송비', 'Freight') + ' ' + money(x.ship) + '</div>' : '') +
+    '<div class="alert a-blu" style="margin-top:8px">' + bt('이전 시스템(SmartBee)에서 가져온 인보이스입니다 — 품목 줄은 SmartBee 에 있습니다. 잔액은 가져올 때 기준이고, 지금 미수금은 AR 기준입니다.', 'Imported from SmartBee — line items are in SmartBee. Balance is as of import; current A/R comes from the AR upload.') + (paid != null && paid > 0.005 && bal > 0.005 ? '<br>' + bt('가져올 때까지 받은 돈', 'Paid by import') + ' ' + money(paid) : '') + '</div>' +
+    '<div class="btns"><button class="b-ghost" id="iStore">🏬 ' + bi('가게 창', 'Store') + '</button></div></div>';
+  $('iBack').onclick = () => Router.go('order');
+  $('iStore').onclick = () => storeSheet(x.acct);
 }
 
 /* ============================================================
