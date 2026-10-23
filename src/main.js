@@ -24,7 +24,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.67';
+export const VER = 'v0.8.68';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -76,13 +76,11 @@ export function can(cap) { if (S.role === 'admin' || S.role === 'owner') return 
 /** 지금 화면의 일 — 담당자는 사용자 기록의 job (없으면 office), 그 외는 역할 그대로 */
 export function jobOf() { if (S.role !== 'manager') return S.role; const j = S.me && S.me.job; return JOBS.some(x => x[0] === j) ? j : 'office'; }
 export function jobLabel(j) { const x = JOBS.find(k => k[0] === j); return x ? x[1] + ' ' + x[2] : j; }
-/* 주문는 관리 → 📦 아이템에서 "주문 켜기" 전까지 관리자에게만 보임 */
-/* 주문가 켜지면 세일즈맨은 🏠 홈(큰 버튼) 이 첫 화면, 꺼져 있으면 예전처럼 수금 입력부터 */
+/* 홈 · 세일 · 인보이스 · 거래처는 모든 역할에 늘 고정 (예전 시험용 "주문 탭 보이기" 스위치는 없앰) */
 function navFor(r) {
-  const on = S.settings.ordersOn || (S.me && (S.me.role === 'admin' || S.me.role === 'owner'));
   const key = r === 'manager' ? jobOf() : r;
-  let items = (NAV[key] || NAV.office).filter(x => (x[0] !== 'order' && x[0] !== 'home') || on);
-  if (r === 'salesman') items = items.filter(x => on ? x[0] !== 'mine' : true);   // 홈이 있으면 내 기록은 홈 안의 버튼으로
+  let items = (NAV[key] || NAV.office).slice();
+  if (r === 'salesman') items = items.filter(x => x[0] !== 'mine');   // 내 기록은 홈 안의 버튼으로
   if (!items.length) items = [['stores', '🏬', '거래처', 'Stores']];
   return items;
 }
