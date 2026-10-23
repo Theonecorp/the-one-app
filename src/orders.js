@@ -654,7 +654,7 @@ function itemCard(it) {
     '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</span></div></div>';
 }
 /** 담은 줄의 가격 (바꿨으면 그 가격 · 목록가 줄긋기) — ✎ 누르면 가격 · 수량 */
-function priceTxt(it) { const l = IDX[it.c], p = l ? l.p : it.p, chg = l && Math.abs(l.p - it.p) > 0.0001; return (chg ? '<s>' + money(it.p) + '</s> ' : '') + '<b' + (chg ? ' class="chgp"' : '') + '>' + money(p) + '</b> ✎'; }
+function priceTxt(it) { const l = IDX[it.c], p = l ? l.p : it.p, chg = l && Math.abs(l.p - it.p) > 0.0001; return (chg ? '<s>' + money(it.p) + '</s> ' : '') + '<b' + (chg ? ' class="chgp"' : '') + '>' + money(p) + '</b><i class="pen"> ✎</i>'; }
 function refreshRowPrice(c) { const it = catalog().byCode[c]; if (!it) return; document.querySelectorAll('[data-pe="' + CSS.escape(c) + '"]').forEach(el => { el.innerHTML = priceTxt(it); }); }
 const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data-d="-1">−</button><input type="number" inputmode="numeric" min="0" data-qi="' + esc(c) + '" value="' + (v || '') + '" placeholder="0"><button data-dq="' + esc(c) + '" data-d="1">＋</button></div>';
 function paintResults() {
