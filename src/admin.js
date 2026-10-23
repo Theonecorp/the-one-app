@@ -534,8 +534,7 @@ async function catalogAdmin() {
     '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div>' +
     '<div class="btns" style="justify-content:flex-start"><button class="b-ghost" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 등록 · 숨기기 · 분류 옮기기</button></div><div class="hint">분류별로 훑어보며 여러 개를 체크해 한 번에 숨기기 · 보이기 · 옮기기 · 삭제 (담당자도 가능). 엑셀은 대량 변경용.</div></div>' +
     '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
-    photoCard() +
-    '<div class="card"><h2>🛒 주문 탭</h2><label class="pick ' + (S.settings.ordersOn ? 'on' : '') + '" id="ordOn"><span class="ck">✓</span><span class="pm"><b>세일즈맨 · 담당자에게 주문 탭 보이기</b><small>끄면 관리자만 봅니다 (시험용)</small></span></label></div>';
+    photoCard();
   setAdmin();
   $('phDrive').onclick = async () => {
     const on = !S.settings.photoDrive;
@@ -570,13 +569,6 @@ async function catalogAdmin() {
         busy(false);
       };
     } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
-  };
-  $('ordOn').onclick = async () => {
-    const on = !S.settings.ordersOn;
-    busy(true);
-    try { const cur = (await S.DB.get('settings', 'app')) || {}; await S.DB.set('settings', 'app', Object.assign(cur, { ordersOn: on })); S.settings.ordersOn = on; toast(on ? '주문 탭을 켰습니다' : '주문 탭을 껐습니다'); catalogAdmin(); }
-    catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
-    busy(false);
   };
 }
 
