@@ -24,7 +24,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.68';
+export const VER = 'v0.8.69';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -256,8 +256,27 @@ let LAST_ACT = Date.now();
 ['click', 'keydown', 'touchstart', 'scroll'].forEach(ev => window.addEventListener(ev, () => { LAST_ACT = Date.now(); }, { passive: true }));
 setInterval(() => { const m = Number(S && S.settings && S.settings.idleMin) || 0; if (m > 0 && S && S.user && Date.now() - LAST_ACT > m * 60000) { S.AUTH.signOut(); toast('🔒 ' + m + '분 동안 사용하지 않아 로그아웃했습니다 · Signed out after inactivity'); } }, 30000);
 
+/* 🔄 새 버전 확인 — 폰에 저장된 옛 화면을 계속 쓰지 않게: 켤 때 · 다시 화면에 나올 때 · 30분마다 서버의 index.html 버전과 비교
+ *    다르면 위에 띠 → 누르면 새 화면을 받아 다시 엶 (입력 중이던 주문은 flushWip 로 남음) */
+let UPD_AT = 0;
+async function checkUpdate() {
+  if ((MOCK && !window.__UPD_TEST__) || Date.now() - UPD_AT < 60000 || document.getElementById('updBar')) return;
+  UPD_AT = Date.now();
+  try {
+    const t = await (await fetch('index.html?u=' + Date.now(), { cache: 'no-store' })).text();
+    const m = t.match(/app\.js\?v=([\d.]+)/); if (!m || 'v' + m[1] === VER) return;
+    const b = document.createElement('button'); b.id = 'updBar'; b.className = 'updbar';
+    b.innerHTML = '🔄 ' + bt('새 버전이 있습니다', 'New version available') + ' (v' + esc(m[1]) + ') — <u>' + bt('눌러서 업데이트', 'tap to update') + '</u>';
+    b.onclick = async () => { b.textContent = '🔄 …'; try { await fetch('./', { cache: 'reload' }); await fetch('index.html', { cache: 'reload' }); const r = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (r) await r.update(); } catch (e) {} location.reload(); };
+    document.body.appendChild(b);
+  } catch (e) { /* 인터넷 없음 — 다음에 */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+setInterval(checkUpdate, 30 * 60000);
+
 async function boot() {
   shell();
+  setTimeout(checkUpdate, 4000);
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Sales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
