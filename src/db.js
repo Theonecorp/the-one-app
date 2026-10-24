@@ -82,6 +82,13 @@ async function makeFirestoreDB() {
   const app = initializeApp(firebaseConfig);
   /* 폰에 사본을 두어 인터넷이 끊겨도 읽기 · 쓰기가 됨 (다시 연결되면 자동 전송) */
   let db;
+  /* 📵 인터넷이 없거나 아주 느릴 때 — 쓰기는 폰(Firestore 보관함)에 먼저 저장되고 인터넷이 돌아오면 저절로 올라감.
+   *    서버 답을 끝없이 기다리면 저장 버튼이 멈춘 것처럼 보여 또 누르게 되므로: 오프라인이면 바로, 온라인이면 15초까지만 기다림 → DB.queued = true */
+  const soft = p => {
+    let late = false;
+    const t = new Promise(res => setTimeout(() => { late = true; res(); }, typeof navigator !== 'undefined' && navigator.onLine === false ? 800 : 15000));
+    return Promise.race([p, t]).then(() => { DB.queued = late; if (late) p.catch(e => console.warn('나중에 올라가다 실패', e)); });
+  };
   try { db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) }); }
   catch (e) { db = fs.getFirestore(app); }
   const auth = au.getAuth(app);
@@ -106,9 +113,9 @@ async function makeFirestoreDB() {
       const snap = await fs.getCountFromServer(fs.query.apply(null, parts));
       return snap.data().count;
     },
-    async set(c, id, data) { await fs.setDoc(fs.doc(db, c, id), strip(Object.assign({}, data, { id }))); return id; },
-    async update(c, id, patch) { await fs.updateDoc(fs.doc(db, c, id), strip(patch)); },
-    async del(c, id) { await fs.deleteDoc(fs.doc(db, c, id)); },
+    async set(c, id, data) { await soft(fs.setDoc(fs.doc(db, c, id), strip(Object.assign({}, data, { id })))); return id; },
+    async update(c, id, patch) { await soft(fs.updateDoc(fs.doc(db, c, id), strip(patch))); },
+    async del(c, id) { await soft(fs.deleteDoc(fs.doc(db, c, id))); },
     /** 번호 매기기 — counters/{id}.{key} 를 1 올리고 이전 값을 돌려줌 (동시에 눌러도 겹치지 않음) */
     async seq(id, key, start) {
       const ref = fs.doc(db, 'counters', id);
@@ -126,7 +133,7 @@ async function makeFirestoreDB() {
           else if (o.op === 'update') b.update(ref, strip(o.data));
           else if (o.op === 'del') b.delete(ref);
         });
-        await b.commit();
+        await soft(b.commit());
       }
     }
   };
