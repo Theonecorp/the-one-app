@@ -338,7 +338,8 @@ async function saveEntry() {
       await S.DB.set('entries', id, doc);
     }
     clearEntryCache();
-    toast((F.editing ? '수정되었습니다 · Updated' : '저장 완료 · Saved') + ' ' + money(total) + (F.newStore ? ' (신규 거래처 · new store)' : ''), 'good');
+    if (S.DB.queued) toast('📱 ' + bt('폰에 저장했습니다 — 인터넷이 되면 자동으로 올라갑니다 (다시 입력하지 마세요)', 'Saved on this phone — uploads automatically when online (don\'t re-enter)') + ' ' + money(total), 'good');
+    else toast((F.editing ? '수정되었습니다 · Updated' : '저장 완료 · Saved') + ' ' + money(total) + (F.newStore ? ' (신규 거래처 · new store)' : ''), 'good');
     resetForm(); Router.go(isSales() ? 'mine' : 'verify');
   } catch (e) { toast('저장 실패 Save failed: ' + (e.code || e.message), 'bad'); }
   busy(false);
@@ -454,7 +455,7 @@ async function sendReport(pend) {
     for (const r of pend) await S.DB.update('entries', r.id, { rep: true, repAt: now, repId: id });
     clearEntryCache(); PHOTOS = [];
     /* 메일은 Apps Script 가 1~2분 안에 자동으로 보냄 — 안 갔으면 기록 탭 "📧 보낸 Daily Report" 에서 다시 보내기 */
-    toast('전송했습니다 · Sent — ' + pend.length + '건 · 메일은 자동으로 갑니다', 'good');
+    toast(S.DB.queued ? '📱 ' + bt('인터넷이 없어 폰에 보관했습니다 — 연결되면 자동으로 보내집니다', 'No internet — kept on this phone, sends automatically when online') + ' · ' + pend.length + bt('건', '') : '전송했습니다 · Sent — ' + pend.length + '건 · 메일은 자동으로 갑니다', 'good');
     paintToday();
   } catch (e) { toast('전송 실패: ' + (e.message || e.code), 'bad'); }
   busy(false);
