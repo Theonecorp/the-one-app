@@ -55,7 +55,7 @@ export const canEdit = o => isStaff() ? (o.st !== 'done' && o.st !== 'x') : (o.s
  *  보낼 함 (outbox) — 폰에 저장 → 인터넷 되면 전송
  * ============================================================ */
 function readOut() { try { return JSON.parse(localStorage.getItem(OUT_KEY) || '{}') || {}; } catch (e) { return {}; } }
-function writeOut(m) { try { localStorage.setItem(OUT_KEY, JSON.stringify(m)); return true; } catch (e) { return false; } }
+function writeOut(m) { try { localStorage.setItem(OUT_KEY, JSON.stringify(m)); window.dispatchEvent(new Event('theone:net')); return true; } catch (e) { return false; } }
 export function outboxList() { return Object.values(readOut()); }
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 let SYNCING = false;

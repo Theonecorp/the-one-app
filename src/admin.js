@@ -1,7 +1,7 @@
 /* ============================================================
  *  관리 — 사용자 · 세일즈맨(요율) · 설정 · 옛 시트에서 가져오기
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA } from './ui.js';
+import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt } from './ui.js';
 import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
@@ -15,9 +15,17 @@ import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM } from './invoici
 
 let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); }
+/* 💾 드라이브 자동 백업 상태 — apps-script/Backup.gs 가 settings/app.backup 에 적음 */
+function bkLine() {
+  const b = S.settings && S.settings.backup, dt = b && new Date(b.at), at = dt && !isNaN(dt) ? dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0') + ' ' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0') : '';
+  const old = !b || !b.ok || Date.now() - new Date(b.at).getTime() > 2 * 86400000;
+  return '<div class="' + (old ? 'alert a-amb' : 'muted') + '" style="margin:6px 0">💾 ' + (!b ? bt('드라이브 자동 백업이 아직 설정되지 않았습니다 — apps-script/Backup.gs 를 설치해 주세요', 'Drive backup not set up yet — install apps-script/Backup.gs') :
+    bt('마지막 백업', 'Last backup') + ' ' + esc(at) + (b.ok ? ' · ' + Number(b.docs || 0).toLocaleString() + bt('개 기록', ' records') + (b.url ? ' · <a href="' + esc(b.url) + '" target="_blank" rel="noopener">' + bt('드라이브 폴더 열기', 'Open Drive folder') + '</a>' : '') : ' · <b class="warn">' + bt('실패', 'failed') + ': ' + esc(b.err || '') + '</b>') + (old && b.ok ? ' · <b class="warn">' + bt('이틀 넘게 백업이 없습니다', 'No backup for 2+ days') + '</b>' : '')) + '</div>';
+}
 async function pageAdmin(arg) {
   if (arg) TAB = arg;
   let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['cat', '📦 아이템'], ['tree', '🗂 분류'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div class="btns" style="justify-content:flex-start;margin:0 0 4px;flex-wrap:wrap"><button class="b-ghost b-sm" onclick="location.hash=\'#/stores\'">🏬 거래처 전체 보기 (세일즈맨 · 주 · 도시별)</button><button class="b-ghost b-sm" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 숨기기</button></div><div id="adminBody"><div class="load">읽는 중…</div></div>';
+  h = h.replace('<div class="btns"', bkLine() + '<div class="btns"');
   $('page').innerHTML = h;
   document.querySelectorAll('[data-at]').forEach(b => b.onclick = () => { TAB = b.dataset.at; pageAdmin(); });
   try { if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') await settings(); else if (TAB === 'cat') await catalogAdmin(); else if (TAB === 'tree') await treeAdmin(); else await importer(); }

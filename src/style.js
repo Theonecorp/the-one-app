@@ -142,7 +142,7 @@ table.pk td{vertical-align:top}table.pk tr.okd td{background:#f0fdf4}.pkc{white-
 .qbar button{flex:0 0 auto;min-width:46px;height:46px;border:0;border-radius:9px;background:rgba(255,255,255,.14);color:#fff;font-size:18px;font-weight:800}.qbar button:last-child{background:#b91c1c;min-width:40px;font-size:15px}.qbar button.on{background:#f59e0b;color:#1e1b4b;box-shadow:0 0 0 2px #fde68a inset}
 .irow.foc{outline:2px solid var(--blue);outline-offset:-2px;border-radius:10px}
 .hist{color:#1d4ed8!important;font-weight:700}
-#hNet{width:9px;height:9px;border-radius:50%;background:#22c55e;display:inline-block;box-shadow:0 0 0 2px rgba(255,255,255,.15)}#hNet.off{background:#ef4444}
+.netpill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;background:rgba(34,197,94,.16);color:#86efac;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer}.netpill i{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block}.netpill.off{background:#dc2626;color:#fff;animation:netb 2s infinite}.netpill.off i{background:#fff}.netpill.wait:not(.off){background:rgba(245,158,11,.2);color:#fcd34d}.netpill.wait:not(.off) i{background:#f59e0b}@keyframes netb{50%{opacity:.75}}body.isoff header{box-shadow:inset 0 -3px 0 #dc2626}
 #prt{display:none;position:fixed;inset:0;z-index:200;background:#fff;overflow:auto}#prt.on{display:block}
 #prtbar{position:sticky;top:0;background:var(--navy);color:#fff;padding:10px 14px;display:flex;gap:8px}
 #prtbar button{background:rgba(255,255,255,.16);color:#fff;border:0;padding:9px 14px;border-radius:9px;font-size:14px;font-weight:700}

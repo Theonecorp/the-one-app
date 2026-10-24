@@ -87,7 +87,15 @@ async function makeFirestoreDB() {
   const soft = p => {
     let late = false;
     const t = new Promise(res => setTimeout(() => { late = true; res(); }, typeof navigator !== 'undefined' && navigator.onLine === false ? 800 : 15000));
-    return Promise.race([p, t]).then(() => { DB.queued = late; if (late) p.catch(e => console.warn('나중에 올라가다 실패', e)); });
+    return Promise.race([p, t]).then(() => {
+      DB.queued = late;
+      if (late) {
+        p.catch(e => console.warn('나중에 올라가다 실패', e));
+        /* 위쪽 표시: 📤 올라갈 것 있음 → 다 올라가면 사라짐 */
+        DB.pending = true; window.dispatchEvent(new Event('theone:net'));
+        fs.waitForPendingWrites(db).then(() => { DB.pending = false; window.dispatchEvent(new Event('theone:net')); }).catch(() => {});
+      }
+    });
   };
   try { db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) }); }
   catch (e) { db = fs.getFirestore(app); }

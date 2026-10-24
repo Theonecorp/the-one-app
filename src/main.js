@@ -24,7 +24,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.72';
+export const VER = 'v0.8.73';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -109,8 +109,25 @@ function shell() {
   $('hLang').onclick = () => { openModal('<h2 translate="no">🌐 Language · 언어 · Idioma</h2><div class="langpick" translate="no">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'b-blue' : 'b-ghost') + '" data-lang="' + l[0] + '">' + ({ ko: '🇰🇷 ', en: '🇺🇸 ', pt: '🇧🇷 ' })[l[0]] + l[1] + '</button>').join('') + '</div>');
     document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { closeModal(); if (b.dataset.lang !== LANG) setLang(b.dataset.lang); }); };
   $('hBack').onclick = () => Router.back();
-  const net = () => { const d = $('hNet'); if (d) { d.classList.toggle('off', navigator.onLine === false); d.title = navigator.onLine === false ? '오프라인 — 저장한 것은 폰에 보관됩니다' : '온라인'; } };
-  window.addEventListener('online', net); window.addEventListener('offline', net); net();
+  /* 🟢 온라인 · 🔴 오프라인 + 📤 아직 회사로 안 올라간 것 (주문 보낼 함 · 수금 등 폰 보관함) — 누르면 설명 · 지금 보내기 */
+  const net = () => {
+    const d = $('hNet'); if (!d) return;
+    const off = navigator.onLine === false, n = Orders.outboxList().length, wait = n + (S.DB && S.DB.pending ? 1 : 0);
+    d.className = 'netpill' + (off ? ' off' : '') + (wait ? ' wait' : '');
+    d.innerHTML = '<i></i>' + (off ? bt('오프라인', 'Offline') : bt('온라인', 'Online')) + (wait ? ' · 📤' + (n || '') : '');
+    document.body.classList.toggle('isoff', off);
+  };
+  window.addEventListener('online', net); window.addEventListener('offline', net); window.addEventListener('theone:net', net); net();
+  $('hNet').onclick = () => {
+    const off = navigator.onLine === false, n = Orders.outboxList().length, pend = S.DB && S.DB.pending;
+    openModal('<h2>' + (off ? '🔴 ' + bt('오프라인', 'Offline') : '🟢 ' + bt('온라인', 'Online')) + '</h2><div class="muted" style="line-height:1.7">' +
+      (off ? bt('인터넷이 안 됩니다. 주문 · 수금은 그대로 입력하세요 — 폰에 저장했다가 인터넷이 되면 자동으로 회사로 올라갑니다. 다시 입력하지 마세요.', 'No internet. Keep entering orders and payments — they are saved on this phone and upload automatically when online. Don\'t re-enter.') : bt('회사 서버와 연결되어 있습니다.', 'Connected to the company server.')) + '<br>' +
+      (n ? '📤 ' + bt('아직 안 보낸 주문', 'Orders waiting to send') + ': <b>' + n + '</b><br>' : '') + (pend ? '📤 ' + bt('올라가는 중인 수금 · 기록이 있습니다', 'Payments / records still uploading') + '<br>' : '') +
+      (!n && !pend ? '✅ ' + bt('폰에 남은 것 없음 — 모두 회사에 올라갔습니다', 'Nothing waiting — everything is uploaded') + '<br>' : '<b class="warn">' + bt('다 올라가기 전에는 로그아웃 · 앱 데이터 삭제를 하지 마세요.', 'Don\'t sign out or clear app data until everything is uploaded.') + '</b>') +
+      '</div><div class="btns">' + (n && !off ? '<button class="b-blue" id="netSend">📤 ' + bt('지금 보내기', 'Send now') + '</button>' : '') + '<button class="b-ghost" id="netX">' + bt('닫기', 'Close') + '</button></div>');
+    $('netX').onclick = closeModal;
+    if ($('netSend')) $('netSend').onclick = async () => { busy(true); await Orders.syncOutbox(false); busy(false); closeModal(); net(); };
+  };
 }
 
 function loginScreen(msg) {
