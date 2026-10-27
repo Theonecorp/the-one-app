@@ -111,7 +111,8 @@ let LF = { st: 'sent', sm: '' };
 /* 접수(sent) 를 세 칸으로 — 📥 신규(확인 요청 전) · ❓ 확인 대기(세일즈맨 답 기다림) · 👍 확인 완료(배정 대기) */
 const NEWK = { sent: 1, cfw: 1, cfok: 1 };
 const subOf = o => o.cfOk ? 'cfok' : o.cfReq ? 'cfw' : 'sent';
-let PK = [];   // 👷 빠른 할당용 픽킹 직원 목록 (나 먼저) · LF.qp = 고른 직원 email
+/* 👷 신규 · 확인 완료 목록에서는 주문을 누르면 바로 할당 팝업 (여러 건은 체크한 뒤 아무 줄이나 누르거나 [작업 배정]) */
+const assignMode = () => isStaff() && (LF.st === 'sent' || LF.st === 'cfok') && can('assign');
 /** 📄 인보이스 탭 (담당자 · 관리자 · 오너) — 기간별(날짜 → 번호 순)이 기본, 거래처별 · 번호 · 종류 · 세일즈맨으로도 */
 let INV_TAB = false;
 export function invTab() {
@@ -135,7 +136,6 @@ async function pageOrder(arg) {
   $('page').innerHTML = listHead() + '<div class="load">주문 읽는 중…</div>';
   bindHead();
   syncOutbox(true);
-  if (isStaff() && (LF.st === 'sent' || LF.st === 'cfok') && can('assign')) { try { const me = S.user.email, L = await Fulfill.pickers(); PK = [{ email: me, name: (S.user.name || me.split('@')[0]), me: true, pick: true }].concat(L.filter(p => p.email !== me)); } catch (e) { PK = []; } if (!LF.qp || !PK.some(p => p.email === LF.qp)) LF.qp = S.user.email; }
   let rows = [], err = '';
   try {
     if (isStaff()) {
@@ -184,8 +184,7 @@ async function pageOrder(arg) {
   const chip = CHIPS.find(c => c[0] === LF.st);
   const bulk = isStaff() && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine') && rows.length;
   if (bulk) h += '<div class="card" style="padding:10px 14px"><div class="chips" style="margin:0"><button class="' + (LF.grp !== 'day' ? 'on' : '') + '" data-grp="sm">👤 ' + bi('세일즈맨별', 'By salesman') + '</button><button class="' + (LF.grp === 'day' ? 'on' : '') + '" data-grp="day">📅 ' + bi('날짜별', 'By day') + '</button><button data-ckall="1">☑ ' + bi('모두 선택', 'Select all') + '</button><button data-ckall="0">☐ ' + bi('선택 해제', 'Clear') + '</button></div>' +
-    ((LF.st === 'sent' || LF.st === 'cfok') && PK.length ? '<div class="qasg"><span>👷 ' + bi('빠른 할당', 'Quick assign') + '</span><div class="chips" style="margin:0">' + PK.map(p => '<button class="' + (LF.qp === p.email ? 'on' : '') + '" data-qp="' + esc(p.email) + '">' + (p.me ? '🙋 ' : p.pick ? '👷 ' : '🧑‍💼 ') + esc(p.name) + (p.me ? ' (나)' : '') + '</button>').join('') + '</div><div class="muted" style="font-size:12px">' + bi('직원을 고른 뒤 주문 줄의 <b>👷 할당</b> 을 누르면 바로 그 직원 픽킹으로 넘어갑니다 (확인창 없음). 여러 건은 체크 → 픽킹 할당(인쇄 선택)', 'Pick a person, then tap 👷 on an order to assign it instantly. For many: check → Assign picking') + '</div></div>' : '') +
-    '<div id="bulkBar" class="muted" style="margin-top:6px">' + bi('주문을 체크한 뒤 → 작업 배정 또는 세일즈맨 확인 요청', 'Check orders, then assign picking or ask the salesman to confirm') + '</div><div class="btns" style="margin-top:6px;flex-wrap:wrap">' + (can('assign') ? '<button class="b-blue b-sm" id="bkAssign">👷 ' + bi('작업 배정', 'Assign Picker') + '</button>' : '') + (LF.st === 'sent' || LF.st === 'cfw' ? '<button class="b-ghost b-sm" id="bkCf">❓ ' + bi(LF.st === 'cfw' ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman to confirm') + '</button><button class="b-ghost b-sm" id="bkCfOk">👍 ' + bi('확인 완료로 (전화 등)', 'Mark confirmed') + '</button>' : '') + '</div></div>';
+    '<div id="bulkBar" class="muted" style="margin-top:6px">' + (assignMode() ? bi('주문을 <b>누르면 바로 할당 팝업</b>이 뜹니다. 여러 건은 체크한 뒤 아무 줄이나 누르거나 👷 작업 배정. 주문 내용은 줄 끝 📄', 'Tap an order to pick who handles it. For many: check them, then tap any row or 👷 Assign. 📄 opens the order') : bi('주문을 체크한 뒤 → 작업 배정 또는 세일즈맨 확인 요청', 'Check orders, then assign picking or ask the salesman to confirm')) + '</div><div class="btns" style="margin-top:6px;flex-wrap:wrap">' + (can('assign') ? '<button class="b-blue b-sm" id="bkAssign">👷 ' + bi('작업 배정', 'Assign Picker') + '</button>' : '') + (LF.st === 'sent' || LF.st === 'cfw' ? '<button class="b-ghost b-sm" id="bkCf">❓ ' + bi(LF.st === 'cfw' ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman to confirm') + '</button><button class="b-ghost b-sm" id="bkCfOk">👍 ' + bi('확인 완료로 (전화 등)', 'Mark confirmed') + '</button>' : '') + '</div></div>';
   h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' + (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문가 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead(); fillStrip();
@@ -196,19 +195,19 @@ async function pageOrder(arg) {
   document.querySelectorAll('[data-ckall]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-ck]').forEach(c => { c.checked = b.dataset.ckall === '1'; }); });
   document.querySelectorAll('[data-ck]').forEach(c => c.onclick = e => e.stopPropagation());
   document.querySelectorAll('[data-smhd]').forEach(el => el.onclick = () => { const g = el.parentElement; g.classList.toggle('fold'); });
-  document.querySelectorAll('[data-qp]').forEach(b => b.onclick = () => { LF.qp = b.dataset.qp; document.querySelectorAll('[data-qp]').forEach(x => x.classList.toggle('on', x === b)); });
-  document.querySelectorAll('[data-qa]').forEach(b => b.onclick = async e => {
-    e.stopPropagation(); const o = rows.find(x => x.id === b.dataset.qa), p = PK.find(x => x.email === LF.qp); if (!o || !p) return;
-    b.disabled = true; b.textContent = '…';
-    try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'pick', picker: p.email, pickerName: p.name, pickAt: now, pickBy: S.user.email, updatedAt: now }); toast('👷 ' + p.name + ' ← ' + o.store, 'good'); const row = b.closest('[data-oid]'); if (row) { row.style.transition = 'opacity .25s'; row.style.opacity = '0'; setTimeout(() => row.remove(), 260); } }
-    catch (e2) { b.disabled = false; b.textContent = '👷 할당'; toast('실패: ' + (e2.code || e2.message), 'bad'); }
-  });
   if ($('bkAssign')) $('bkAssign').onclick = () => { const ids = picked(); if (!ids.length) return toast('주문를 체크하세요', 'bad'); Fulfill.assignPicker(rows.filter(o => ids.includes(o.id)), () => pageOrder('')); };
   if ($('bkCf')) $('bkCf').onclick = async () => { const ids = picked(); if (!ids.length) return toast('주문를 체크하세요', 'bad'); if (!(await confirmBox(ids.length + '건을 세일즈맨에게 확인 요청할까요? 세일즈맨 앱 홈에 "확인 요청" 으로 뜹니다.', '요청'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.batch(ids.map(id => ({ op: 'update', col: 'orders', id, data: { cfReq: true, cfReqAt: now, cfReqBy: S.user.email, cfOk: false } }))); toast('확인 요청 ' + ids.length + '건', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); pageOrder(''); };
   if ($('bkCfOk')) $('bkCfOk').onclick = async () => { const ids = picked(); if (!ids.length) return toast('주문를 체크하세요', 'bad'); if (!(await confirmBox(ids.length + bt('건을 세일즈맨 확인 완료로 바꿀까요? (전화 · 문자로 확인한 경우)', ' orders → confirmed?'), '👍'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.batch(ids.map(id => ({ op: 'update', col: 'orders', id, data: { cfReq: true, cfOk: true, cfAt: now, cfBy: S.user.email, cfHow: 'staff' } }))); toast('👍 ' + ids.length, 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); pageOrder(''); };
   if ($('oWip')) $('oWip').onclick = () => openEditor(null, wip);
   if ($('oSync')) $('oSync').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast(navigator.onLine === false ? '인터넷이 안 됩니다 — 폰에 그대로 있습니다' : '보내지 못했습니다 — 잠시 뒤 다시', 'bad'); pageOrder(''); };
-  document.querySelectorAll('[data-oid]').forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); Router.go('order', el.dataset.oid); });
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); Router.go('order', b.dataset.open); });
+  document.querySelectorAll('[data-oid]').forEach(el => el.onclick = e => {
+    e.preventDefault(); e.stopPropagation(); const id = el.dataset.oid, o = rows.find(x => x.id === id);
+    if (!assignMode() || !o || o.st !== 'sent') return Router.go('order', id);
+    /* 👷 누르면 할당 팝업 — 체크해 둔 주문이 있으면 그것들(누른 줄 포함)을 한꺼번에 */
+    const ids = picked(); if (!ids.includes(id)) ids.push(id);
+    Fulfill.assignPicker(rows.filter(x => ids.includes(x.id)), () => pageOrder(''));
+  });
   if ($('oSendAll')) $('oSendAll').onclick = async () => {
     const ids = Array.from(document.querySelectorAll('[data-sd]:checked')).map(x => x.dataset.sd); if (!ids.length) return toast('보낼 주문를 체크하세요', 'bad');
     if (!(await confirmBox(ids.length + '건을 회사로 보낼까요?', '보내기'))) return;
@@ -377,7 +376,7 @@ function orderRow(o, local, err, ck) {
   const flags = (NewAcct.isTemp(o.acct) ? ' <span class="tag t-b">🆕 ' + bt('신규 거래처', 'New account') + '</span>' : '') + (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '') + (isStaff() ? cfTag(o) : (o.cfReq && !o.cfOk ? ' <span class="tag t-c">❓ 확인 요청</span>' : o.cfOk ? ' <span class="tag t-k">✅ 확인함</span>' : ''));
   const who = o.pickerName || o.picker ? ' · 👷 ' + esc(o.pickerName || String(o.picker).split('@')[0]) : '';
   const ag = isStaff() && !local ? stageAge(o) : null, agT = ag ? ' <span class="tag agetag' + (ag.day ? ' old' : ag.late ? ' late' : '') + '" title="' + esc(bt('이 단계에서 기다린 시간', 'Waiting in this stage')) + '">⏱ ' + esc(ag.t) + '</span>' : '';
-  return '<div class="pr tap" data-oid="' + esc(o.id) + '">' + (ck ? '<input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '" style="margin-right:8px">' : '') + '<div class="ct"><b>' + esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + agT + flags + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.sm) + ' · ' + esc(o.no) + who + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.track ? ' · 🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : '') + (o.deliveredAt ? ' · <b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : '') + '</small>' + (err ? '<small class="warn">' + esc(err) + '</small>' : '') + '</div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div>' + (ck && o.st === 'sent' && PK.length && (LF.st === 'sent' || LF.st === 'cfok') ? '<button class="b-blue b-sm qa" data-qa="' + esc(o.id) + '">👷 ' + bi('할당', 'Assign') + '</button>' : '') + '</div>';
+  return '<div class="pr tap" data-oid="' + esc(o.id) + '">' + (ck ? '<input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '" style="margin-right:8px">' : '') + '<div class="ct"><b>' + esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + agT + flags + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.sm) + ' · ' + esc(o.no) + who + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.track ? ' · 🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : '') + (o.deliveredAt ? ' · <b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : '') + '</small>' + (err ? '<small class="warn">' + esc(err) + '</small>' : '') + '</div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div>' + (ck && o.st === 'sent' && assignMode() ? '<button type="button" class="b-ghost b-sm qa" data-open="' + esc(o.id) + '" title="' + esc(bt('주문 내용 보기', 'Open order')) + '">📄</button>' : '') + '</div>';
 }
 
 /* ============================================================

@@ -495,29 +495,45 @@ export function monthEnd(d) { const y = Number(d.substring(0, 4)), m = Number(d.
 let PICKERS = null;
 export async function pickers() {
   if (PICKERS) return PICKERS;
-  try { PICKERS = (await S.DB.list('users', {})).filter(u => u.active !== false && u.role === 'manager' && jobCan(u.job || 'office', 'pick')).map(u => ({ email: u.email || u.id, name: u.name || (u.email || u.id).split('@')[0], pick: u.job === 'pick' || u.job === 'whmgr' })).sort((a, b) => (a.pick === b.pick ? 0 : a.pick ? -1 : 1)); }
+  /* 순서: 창고 직원(pick1 · pick2 …) → 창고 매니저 → 그 밖의 담당자, 같은 묶음 안은 이름 순 (숫자 순서로) */
+  const rank = u => u.job === 'pick' ? 0 : u.job === 'whmgr' ? 1 : 2, coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  try { PICKERS = (await S.DB.list('users', {})).filter(u => u.active !== false && u.role === 'manager' && jobCan(u.job || 'office', 'pick')).map(u => ({ email: u.email || u.id, name: u.name || (u.email || u.id).split('@')[0], job: u.job || 'office', pick: u.job === 'pick' || u.job === 'whmgr', rank: rank(u) })).sort((a, b) => a.rank - b.rank || coll.compare(a.name, b.name)); }
   catch (e) { PICKERS = []; }
   return PICKERS;
 }
-/** 주문들을 픽킹 직원에게 할당 (접수 → 픽킹 중). 직원을 고르면 그 직원 앱의 "내 픽킹" 에 뜸. 픽킹 인보이스 인쇄는 선택 */
+/** 할당 창에 보일 사람 목록 — 창고 직원(pick1~) 먼저, 나는 창고 직원 뒤 (내가 창고 직원이면 그 자리 그대로) */
+export async function assignOpts() {
+  const list = await pickers(), me = S.user.email;
+  if (list.some(p => p.email === me)) return list.map(p => Object.assign({}, p, { me: p.email === me }));
+  const mine = { email: me, name: S.user.name || me.split('@')[0], pick: false, rank: 1.5, me: true };
+  return list.filter(p => p.rank <= 1).concat([mine], list.filter(p => p.rank > 1));
+}
+/** 주문들을 픽킹 직원에게 할당 (접수 → 픽킹 중) — 팝업에서 사람을 고름. 창고 직원(pick1~4)이 먼저 · 지금 맡은 건수 표시. 픽킹 인보이스 인쇄는 선택 */
 export async function assignPicker(orders, done) {
   const noCf = orders.filter(o => !o.cfOk);   // 순서: 세일즈맨 확인 → 픽킹 배정
   if (noCf.length && !(await confirmBox('❓ ' + noCf.length + bt('건은 아직 세일즈맨 확인 전입니다. 그래도 픽킹에 배정할까요?', ' orders are not confirmed by the salesman yet. Assign anyway?'), bt('그래도 배정', 'Assign anyway')))) return;
-  const list = await pickers(), me = S.user.email;
-  const opts = [{ email: me, name: (S.user.name || me.split('@')[0]) + ' (나 · me)', pick: true }].concat(list.filter(p => p.email !== me));
-  openModal('<h2>👷 ' + bi('작업 배정', 'Assign Picker') + ' — ' + orders.length + '건 · ' + money(orders.reduce((a, o) => a + (o.amt || 0), 0)) + '</h2>' +
-    '<div class="muted">' + bi('직원을 고르면 그 직원 앱의 "내 배정 작업" 목록에 들어갑니다. 픽킹 직원은 관리 → 사용자에서 일을 "픽킹 · 팩킹" 으로 등록하세요.', 'The orders appear in that person\'s "My picking" list.') + '</div>' +
-    '<div class="chips" style="flex-wrap:wrap;margin-top:8px">' + opts.map((p, i) => '<button class="' + (i === 0 ? 'on' : '') + '" data-pk="' + i + '">' + (p.pick ? '👷 ' : '🧑‍💼 ') + esc(p.name) + '</button>').join('') + '</div>' +
-    '<div style="max-height:30vh;overflow:auto;margin-top:8px;font-size:13px">' + orders.map(o => '<div>' + esc(o.store) + ' <span class="muted">' + esc(o.sm) + ' · ' + esc(o.no) + ' · ' + money(o.amt) + '</span></div>').join('') + '</div>' +
+  const opts = await assignOpts(), me = S.user.email;
+  if (!opts.length) return toast(bt('할당할 직원이 없습니다 — 관리 → 사용자에서 일을 "창고 직원" 으로 등록하세요', 'No pickers — register users with the Warehouse Staff job'), 'bad');
+  /* 지금 맡고 있는 건수 (픽킹 중 · 확정 대기) — 일을 고르게 나눠 주기 위해 */
+  const load = {}; try { (await S.DB.list('orders', { where: [['st', 'in', ['pick', 'ok']]] })).forEach(o => { if (o.picker) load[o.picker] = (load[o.picker] || 0) + 1; }); } catch (e) {}
+  const one = orders.length === 1 ? orders[0] : null;
+  const cur = one && one.picker ? one.picker : '';
+  let sel = Math.max(0, opts.findIndex(p => p.email !== cur));   // 작업자 변경이면 지금 사람 말고 첫 사람
+  const who = p => (p.me ? '🙋 ' : p.pick ? '👷 ' : '🧑‍💼 ') + esc(p.name) + (p.me ? ' <small>(' + bt('나', 'me') + ')</small>' : '');
+  openModal('<h2>👷 ' + bi('누가 픽킹할까요?', 'Who picks this?') + ' <span class="muted" style="font-weight:600">— ' + orders.length + bt('건', '') + ' · ' + money(orders.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></h2>' +
+    '<div class="pkgrid">' + opts.map((p, i) => '<button type="button" class="' + (i === sel ? 'on' : '') + (p.email === cur ? ' cur' : '') + '" data-pk="' + i + '"><b>' + who(p) + '</b><small>' + (p.email === cur ? bt('지금 맡은 사람', 'current picker') : (load[p.email] || 0) + bt('건 진행 중', ' in progress')) + '</small></button>').join('') + '</div>' +
+    '<div class="muted" style="font-size:12px;margin-top:6px">' + bi('고른 직원 앱의 "내 배정 작업" 에 들어갑니다. 창고 직원은 관리 → 사용자에서 일을 "창고 직원" 으로.', 'Goes to that person\'s "My assignments". Register warehouse staff under Admin → Users.') + '</div>' +
+    '<div style="max-height:26vh;overflow:auto;margin-top:8px;font-size:13px">' + orders.map(o => '<div>' + esc(o.store) + ' <span class="muted">' + esc(o.sm) + ' · ' + esc(o.no) + ' · ' + money(o.amt) + '</span></div>').join('') + '</div>' +
     '<label class="pick on" style="margin-top:8px"><input type="checkbox" id="pkPrint" class="ck-big" checked><span class="pm"><b>🖨 ' + bi('픽킹 인보이스도 인쇄', 'Also print picking lists') + '</b></span></label>' +
-    '<div class="btns"><button class="b-ghost" id="pkX">취소</button><button class="b-blue" id="pkOk">할당</button></div>');
-  let sel = 0; document.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => { sel = +b.dataset.pk; document.querySelectorAll('[data-pk]').forEach(x => x.classList.toggle('on', x === b)); });
+    '<div class="btns"><button class="b-ghost" id="pkX">' + bt('취소', 'Cancel') + '</button>' + (one ? '<button class="b-ghost" id="pkOpen">📄 ' + bt('주문 열기', 'Open order') + '</button>' : '') + '<button class="b-blue" id="pkOk">👷 ' + bt('할당', 'Assign') + '</button></div>');
+  document.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => { sel = +b.dataset.pk; document.querySelectorAll('[data-pk]').forEach(x => x.classList.toggle('on', x === b)); });
   $('pkX').onclick = closeModal;
+  if ($('pkOpen')) $('pkOpen').onclick = () => { closeModal(); goOrder(one.id); };
   $('pkOk').onclick = async () => {
     const p = opts[sel], now = new Date().toISOString(), pr = $('pkPrint').checked; closeModal(); busy(true);
     try {
-      await S.DB.batch(orders.map(o => ({ op: 'update', col: 'orders', id: o.id, data: { st: 'pick', picker: p.email, pickerName: p.name.replace(/ \(나 · me\)$/, ''), pickAt: now, pickBy: me, updatedAt: now } })));
-      toast('👷 ' + p.name + ' 에게 ' + orders.length + '건 할당', 'good');
+      await S.DB.batch(orders.map(o => ({ op: 'update', col: 'orders', id: o.id, data: { st: 'pick', picker: p.email, pickerName: p.name, pickAt: now, pickBy: me, updatedAt: now } })));
+      toast('👷 ' + p.name + ' ← ' + (one ? one.store : orders.length + bt('건', ' orders')), 'good');
       if (pr) { const all = []; for (const o of orders) { const L = await S.DB.get('orderLines', o.id); all.push(pickingHtml(Object.assign({}, o, { st: 'pick', pickerName: p.name }), (L && L.lines) || [])); } printOpen(all.join('')); }
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false); if (done) done();
