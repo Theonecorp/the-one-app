@@ -25,7 +25,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.77';
+export const VER = 'v0.8.78';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -224,8 +224,8 @@ function switchRole(r) {
 /* 아래 메뉴의 실제 높이를 CSS 변수로 — 고정 바(.sticky) 와 본문 여백이 메뉴에 가리지 않게 */
 function navH() { const n = $('nav'); const h = n && getComputedStyle(n).position === 'fixed' ? n.offsetHeight : 0; document.documentElement.style.setProperty('--navh', h + 'px'); const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
 window.addEventListener('resize', () => setTimeout(navH, 50));
-/* 아래로 내리면 위 고정 메뉴(주문 상태 아이콘)는 글씨를 접고 아이콘만 — 화면을 덜 가림 */
-window.addEventListener('scroll', () => { const y = window.scrollY, was = document.body.classList.contains('oscr'), on = was ? y > 60 : y > 160; if (document.body.classList.contains('oscr') !== on) document.body.classList.toggle('oscr', on); }, { passive: true });
+/* 위 고정 메뉴(주문 상태 아이콘) 작게 · 크게 — 버튼으로만 (스크롤에 따라 저절로 접고 펴면 메뉴 높이가 바뀌어 아이폰에서 목록이 튕김) */
+try { if (localStorage.getItem('theone.ocompact') === '1') document.body.classList.add('oscr'); } catch (e) {}
 function paintNav() {
   const items = navFor(S.role);
   Router.home = items.length ? items[0][0] : '';
