@@ -12,6 +12,14 @@ export const k = n => { n = Number(n) || 0; const a = Math.abs(n), s = n < 0 ? '
 export const num = v => { const n = Number(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
 export const R2 = x => Math.round((Number(x) || 0) * 100) / 100;
 /** ISO 시각 → 그 폰의 날짜 (YYYY-MM-DD) */
+/** 🔢 인보이스 번호 형식 — 무조건 글자 + 하이픈 + 6자리 숫자: A43350 · A-43350 · a 043350 → A-043350, P007803 → P-007803, CM161 → CM-000161
+ *  (A-999999 다음은 AA-000001 — invoicing.js fmtNo). 숫자가 6자리를 넘거나 모양이 다르면 그대로 (대문자만) */
+export const invNo = v => { const s = String(v == null ? '' : v).toUpperCase().replace(/\s+/g, ''); const m = s.match(/^([A-Z]{1,3})-?(\d{1,6})$/); return m ? m[1] + '-' + m[2].padStart(6, '0') : s; };
+/** 형식 통일 전 옛 모양들 (A43350 · A043350 · A-43350) — 아직 바꾸지 않은 자료를 찾을 때 */
+export const invNoOld = v => { const n = invNo(v), m = n.match(/^([A-Z]{1,3})-(\d{6})$/); if (!m) return [n]; const k = String(Number(m[2])); return [n, m[1] + k, m[1] + m[2], m[1] + '-' + k, m[1] + k.padStart(5, '0')].filter((x, i, a) => a.indexOf(x) === i); };
+/** 인보이스 번호 순서 — 종류(A · CM · P · W …)끼리 묶고, 안에서 번호 크기 순 (A42497 · P-007803 · CM-000161). desc 면 큰 번호가 위 */
+export const invParts = no => { const m = String(no || '').toUpperCase().match(/^([A-Z]+)-?(\d+)/); return m ? [m[1], Number(m[2])] : [String(no || '').toUpperCase(), 0]; };
+export function sortInv(rows, noOf, desc) { return rows.slice().sort((x, y) => { const a = invParts(noOf(x)), b = invParts(noOf(y)); return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : desc ? b[1] - a[1] : a[1] - b[1]; }); }
 export const localDay = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return String(iso).substring(0, 10); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 export const nz = s => String(s || '').toUpperCase().replace(/[^A-Z0-9가-힣]/g, '');
 /** 키워드 검색 — 띄어쓴 단어가 모두 들어 있으면 맞음 (순서 · 대소문자 · 기호 무시). 'beauty miami' → BEAUTY EXCHANGE, MIAMI */

@@ -17,6 +17,7 @@ import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invC
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
 import * as Notes from './notes.js';
+import { stageAge } from './flow.js';
 
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
@@ -115,7 +116,7 @@ let INV_TAB = false;
 export function invTab() {
   if (!INV_TAB) { INV_TAB = true; LF.im = 'date'; LF.ip = LF.ip || 'month'; }
   LF.st = 'inv';
-  return Fulfill.invBrowser(LF, '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📄 ' + bi('인보이스', 'Invoices') + '</h2><div class="muted">' + bt('앱에서 발행한 것 + 이전 시스템에서 가져온 것 — 날짜별로 쌓임. 거래처 · 번호 · 종류 · 세일즈맨으로 찾기', 'App + imported invoices by date — search by customer, number, type, salesman') + '</div></div>');
+  return Fulfill.invBrowser(LF, '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📄 ' + bi('인보이스', 'Invoices') + '</h2><div class="muted">' + bt('앱에서 발행한 것 + 이전 시스템에서 가져온 것 — 인보이스 번호 순 (종류별). 거래처는 이름 순. 거래처 · 번호 · 종류 · 세일즈맨으로 찾기', 'App + imported invoices by invoice number (per type); customers by name — search by customer, number, type, salesman') + '</div></div>');
 }
 /** 다른 화면(관리자 현황)에서 주문 목록을 바로 열기 — st: sent · pick · picked · done · shipped · bo · inv · all, 기간은 선택 */
 export function openList(st, from, to) { LF.init = true; LF.list = true; LF.st = st; if (from) { LF.hp = 'custom'; LF.hfrom = from; LF.hto = to; LF.ip = 'custom'; LF.ifrom = from; LF.ito = to; LF.im = 'date'; } if (location.hash === '#/order') pageOrder(''); else Router.go('order'); }
@@ -156,7 +157,13 @@ async function pageOrder(arg) {
   const out = outboxList().filter(x => isStaff() || x.o.sm === mySm());
   const outIds = {}; out.forEach(x => { outIds[x.o.id] = 1; });
   rows = rows.filter(o => !outIds[o.id]);
-  rows = sortBy(rows, o => o.updatedAt || o.createdAt || '', true);
+  /* 아직 안 끝난 칸(신규 · 확인 대기 · 배정 대기 · 출고 작업 …)은 오래 기다린 주문이 맨 위 — 밀린 것을 놓치지 않게 */
+  const oldFirst = isStaff() && (!!NEWK[LF.st] || OPEN_CH.includes(LF.st));
+  if (oldFirst) {
+    rows = sortBy(rows, o => { const a = stageAge(o); return a ? a.since : (o.sentAt || o.createdAt || ''); });
+    var nOld = rows.filter(o => { const a = stageAge(o); return a && a.day; }).length;
+    if (LF.old) rows = rows.filter(o => { const a = stageAge(o); return a && a.day; });
+  } else { LF.old = false; rows = sortBy(rows, o => o.updatedAt || o.createdAt || '', true); }
   const wip = readWip();
   let h = '';
   if (wip) h += '<div class="alert a-amb tap" id="oWip" style="margin:0 0 12px">✏️ 작성 중인 주문 — ' + esc(wip.store || '가게 미선택') + ' · ' + wip.lines.length + '줄 <b>이어서 하기 ›</b></div>';
@@ -170,6 +177,7 @@ async function pageOrder(arg) {
   if (drafts.length) h += '<div class="card" style="border:2px solid #bfdbfe"><h2>✅ ' + bi('주문 확인 · 보낼 주문', 'Review & send') + ' ' + drafts.length + '건 · ' + money(drafts.reduce((a, o) => a + (o.amt || 0), 0)) + '</h2><div class="muted">저장해 둔 주문입니다. <b>열기</b>로 내용을 확인한 뒤, 체크한 것을 한 번에 회사로 보냅니다 (보낸 뒤에도 픽킹 시작 전까지는 고칠 수 있습니다). <span class="en">Open to review, then send the checked orders.</span></div>' +
     drafts.map(o => '<label class="pick on" style="margin-top:6px"><input type="checkbox" class="ck-big" data-sd="' + esc(o.id) + '" checked><span class="pm"><b>' + esc(o.store) + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.no) + ' · ' + (o.n || 0) + '줄 · ' + money(o.amt) + '</small></span><button class="b-ghost b-sm" data-oid="' + esc(o.id) + '">열기</button></label>').join('') +
     '<button class="b-green" id="oSendAll" style="margin-top:10px;padding:15px">📤 체크한 주문 회사로 보내기</button></div>';
+  if (oldFirst && (nOld || LF.old)) h += '<button class="alert a-red oldbar" id="oOld">⚠️ ' + (LF.old ? bt('하루 넘게 밀린 주문만 보는 중', 'Showing only orders waiting 1+ day') + ' ' + rows.length + bt('건', '') + ' — <u>' + bt('전체 보기', 'Show all') + '</u>' : bt('하루 넘게 밀린 주문', 'Orders waiting 1+ day') + ' <b>' + nOld + '</b>' + bt('건', '') + ' — <u>' + bt('눌러서 밀린 것만 보기', 'tap to show only these') + '</u>') + '</button>';
   const tot = rows.reduce((a, o) => a + (o.amt || 0), 0);
   const chip = CHIPS.find(c => c[0] === LF.st);
   const bulk = isStaff() && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine') && rows.length;
@@ -179,6 +187,7 @@ async function pageOrder(arg) {
   h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' + (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문가 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead(); fillStrip();
+  if ($('oOld')) $('oOld').onclick = () => { LF.old = !LF.old; pageOrder(''); };
   const picked = () => Array.from(document.querySelectorAll('[data-ck]:checked')).map(x => x.dataset.ck);
   document.querySelectorAll('[data-grp]').forEach(b => b.onclick = () => { LF.grp = b.dataset.grp; pageOrder(''); });
   document.querySelectorAll('[data-ckall]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-ck]').forEach(c => { c.checked = b.dataset.ckall === '1'; }); });
@@ -213,7 +222,8 @@ async function pageOrder(arg) {
 /* 담당자의 일(job) 에 따라 보이는 칩이 다름 — 픽킹: 들어온 주문 · 픽킹 중 · 백오더 / 인보이스: 픽킹 중(확정 대기) · 완료 · 인보이스 찾기 · 백오더 */
 const CHIPS = [['mine', '👷 내 배정 작업', 'My Assignments'], ['sent', '📥 신규 주문', 'New Orders'], ['cfw', '❓ 확인 대기', 'Awaiting Salesman'], ['cfok', '👍 확인 완료 · 배정 대기', 'Confirmed · To Assign'], ['pick', '📦 출고 작업', 'In Fulfillment'], ['picked', '✅ 검수 대기', 'Ready for Review'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'], ['ups', '🚚 UPS 출고', 'UPS Shipping'], ['packed', '📮 UPS 픽업', 'UPS Pickup'], ['shipped', '📬 출고 완료', 'Shipped'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoice Lookup'], ['draft', '💾 임시 저장', 'Drafts'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체 주문', 'All Orders']];
 const JOB_CHIPS = { pick: ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo'], whmgr: ['cfok', 'sent', 'cfw', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo', 'all'], pickinv: ['sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'inv', 'bo', 'all'], invoice: ['sent', 'cfw', 'cfok', 'picked', 'pick', 'done', 'packed', 'shipped', 'inv', 'bo', 'draft', 'all'], acct: ['inv', 'done', 'packed', 'shipped', 'bo', 'all'] };
-const LIVE_ST = ['sent', 'pick', 'ok', 'picked', 'done', 'packed'];   // 아직 끝나지 않은 주문 (출고 전)
+const LIVE_ST = ['sent', 'pick', 'ok', 'picked', 'done', 'packed'];
+const OPEN_CH = ['mine', 'pick', 'picked', 'done', 'packed'];   // 목록 칩 중 아직 안 끝난 일 (오래된 것이 위)   // 아직 끝나지 않은 주문 (출고 전)
 export function chipsFor() { const j = jobOf(); const keys = JOB_CHIPS[j]; return (keys ? keys.map(k => CHIPS.find(c => c[0] === k)) : CHIPS).filter(c => c[0] !== 'ups' || can('ship')); }
 export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div><div><b>…</b><span>🧾 포장 대기 · Packing</span></div><div><b>…</b><span>📮 픽업 대기 · Pickup</span></div></div>'; }
 export async function fillStrip() {
@@ -259,7 +269,7 @@ async function staffHome() {
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
   /* 담당자 홈 = 주문 처리 먼저 (접수 · 픽킹 · 인보이스 · 포장), 바로가기, 매출은 맨 아래 */
   $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📦 ' + bi('주문 처리', 'Order processing') + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
-    '<div class="hgrid">' + T.join('') + '</div><div class="hgrid">' + A.join('') + '</div>' +
+    '<div id="hOld"></div><div class="hgrid">' + T.join('') + '</div><div class="hgrid">' + A.join('') + '</div>' +
     '<div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div>';
   document.querySelectorAll('[data-hp]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp; staffHome(); });
   /* ◀ ▶ — 같은 길이만큼 앞뒤로 (달 단위 기간은 달로) */
@@ -287,6 +297,13 @@ async function staffHome() {
     const put = (id, v) => { const el = $('ht-' + id); if (el) el.innerHTML = v; };
     const nm = (L, f) => L.length ? L.length + '건 · ' + money(L.reduce((a, o) => a + (f ? f(o) : o.amt || 0), 0)) : '없음 · none';
     put('mine', nm(mine));
+    /* ⚠️ 하루 넘게 한 단계에 머문 주문 — 누르면 가장 오래된 주문이 있는 칸을 밀린 것만 */
+    const olds = sortBy(live.map(o => ({ o, a: stageAge(o) })).filter(x => x.a && x.a.day), x => x.a.since), ob = $('hOld');
+    if (ob && olds.length) {
+      const CH = { new: 'sent', cfw: 'cfw', cfok: 'cfok', pick: 'pick', picked: 'picked', done: 'done', packed: 'packed' };
+      ob.innerHTML = '<button class="alert a-red oldbar" id="hOldB">⚠️ ' + bt('하루 넘게 밀린 주문', 'Orders waiting 1+ day') + ' <b>' + olds.length + '</b>' + bt('건', '') + ' · ' + bt('가장 오래된 것', 'oldest') + ' ' + esc(olds[0].o.store || '') + ' ⏱ ' + esc(olds[0].a.t) + ' — <u>' + bt('보기', 'view') + '</u></button>';
+      $('hOldB').onclick = () => { LF.st = CH[olds[0].a.key] || 'sent'; LF.old = true; LF.list = true; pageOrder(''); };
+    }
     put('flow', bt('작업 중', 'working') + ' ' + pk.length + ' · 👷 ' + new Set(pk.map(o => o.picker).filter(Boolean)).size + bt('명', '') + ' · ' + bt('출고 전 전체', 'open') + ' ' + live.length);
     const nw = wait.filter(o => subOf(o) === 'sent'), cw = wait.filter(o => subOf(o) === 'cfw'), ck2 = wait.filter(o => subOf(o) === 'cfok'), pkd2 = live.filter(o => o.st === 'packed');
     put('sent', nm(sentIn) + (nw.length ? '<br><b style="color:#b91c1c">' + bt('확인할 신규', 'To review') + ' ' + nw.length + '</b>' : '<br>' + bt('대기 없음', 'none waiting')));
@@ -346,8 +363,9 @@ function dayGroups(rows) {
     const by = {}; rows.forEach(o => { const k = o.sm || '—'; (by[k] = by[k] || []).push(o); });
     return Object.keys(by).sort().map(sm => { const L = by[sm], cf = L.filter(o => o.cfReq && !o.cfOk).length; return '<div class="smgrp"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + (cf ? ' · <span class="warn">확인 대기 ' + cf + '</span>' : '') + ' ▾</span></div><div class="smbody">' + L.map(o => orderRow(o, false, '', ck)).join('') + '</div></div>'; }).join('');
   }
-  const days = {}; rows.forEach(o => { const k = (o.st === 'sent' && o.sentAt ? o.sentAt : o.updatedAt || o.createdAt || o.d).substring(0, 10); (days[k] = days[k] || []).push(o); });
-  return Object.keys(days).sort().reverse().map(d => { const L = days[d]; return '<div class="iday"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>' + L.map(o => orderRow(o, false, '', ck)).join(''); }).join('');
+  const days = {}; rows.forEach(o => { const k = localDay(o.st === 'sent' && o.sentAt ? o.sentAt : o.updatedAt || o.createdAt || o.d); (days[k] = days[k] || []).push(o); });
+  const asc = !!NEWK[LF.st] || OPEN_CH.includes(LF.st);   // 안 끝난 칸은 오래된 날짜가 위
+  return (asc ? Object.keys(days).sort() : Object.keys(days).sort().reverse()).map(d => { const L = days[d]; return '<div class="iday"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>' + L.map(o => orderRow(o, false, '', ck)).join(''); }).join('');
 }
 const WDK = ['일', '월', '화', '수', '목', '금', '토'];
 function dayLbl(d) { const t = today(); const x = new Date(d + 'T12:00:00'); return (d === t ? '오늘 Today · ' : '') + Number(d.substring(5, 7)) + '/' + Number(d.substring(8, 10)) + ' (' + WDK[x.getDay()] + ')'; }
@@ -355,7 +373,8 @@ export const cfTag = o => o.cfOk ? ' <span class="tag t-k" title="Confirmed by s
 function orderRow(o, local, err, ck) {
   const flags = (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '') + (isStaff() ? cfTag(o) : (o.cfReq && !o.cfOk ? ' <span class="tag t-c">❓ 확인 요청</span>' : o.cfOk ? ' <span class="tag t-k">✅ 확인함</span>' : ''));
   const who = o.pickerName || o.picker ? ' · 👷 ' + esc(o.pickerName || String(o.picker).split('@')[0]) : '';
-  return '<div class="pr tap" data-oid="' + esc(o.id) + '">' + (ck ? '<input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '" style="margin-right:8px">' : '') + '<div class="ct"><b>' + esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + flags + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.sm) + ' · ' + esc(o.no) + who + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.track ? ' · 🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : '') + (o.deliveredAt ? ' · <b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : '') + '</small>' + (err ? '<small class="warn">' + esc(err) + '</small>' : '') + '</div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div>' + (ck && o.st === 'sent' && PK.length && (LF.st === 'sent' || LF.st === 'cfok') ? '<button class="b-blue b-sm qa" data-qa="' + esc(o.id) + '">👷 ' + bi('할당', 'Assign') + '</button>' : '') + '</div>';
+  const ag = isStaff() && !local ? stageAge(o) : null, agT = ag ? ' <span class="tag agetag' + (ag.day ? ' old' : ag.late ? ' late' : '') + '" title="' + esc(bt('이 단계에서 기다린 시간', 'Waiting in this stage')) + '">⏱ ' + esc(ag.t) + '</span>' : '';
+  return '<div class="pr tap" data-oid="' + esc(o.id) + '">' + (ck ? '<input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '" style="margin-right:8px">' : '') + '<div class="ct"><b>' + esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + agT + flags + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.sm) + ' · ' + esc(o.no) + who + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.track ? ' · 🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : '') + (o.deliveredAt ? ' · <b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : '') + '</small>' + (err ? '<small class="warn">' + esc(err) + '</small>' : '') + '</div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div>' + (ck && o.st === 'sent' && PK.length && (LF.st === 'sent' || LF.st === 'cfok') ? '<button class="b-blue b-sm qa" data-qa="' + esc(o.id) + '">👷 ' + bi('할당', 'Assign') + '</button>' : '') + '</div>';
 }
 
 /* ============================================================

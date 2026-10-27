@@ -4,16 +4,16 @@
  *    인보이스 번호 → 인보이스 한 장 (인보이스 · AR 잔액 · 수금)
  *    내 담당 가게는 바로, 다른 세일즈맨 가게는 🔐 관리자 허락을 받은 동안만 (access.js)
  * ============================================================ */
-import { $, esc, money, Router, debounce, bi, bt } from './ui.js';
+import { $, esc, money, md, Router, debounce, bi, bt, sortInv, invParts, invNo } from './ui.js';
 import { searchAccounts, sortStores } from './accounts.js';
 import { storeSheet, invDetail } from './store.js';
 import { loadGrants, requestAccess, myRequests, reqStatus, untilTxt, mySm } from './access.js';
 
-let S = null, Q = '', IVM = 'date';   // IVM: 📅 최근 인보이스 · 🏬 가게별
+let S = null, Q = '', IVM = 'date', IDESC = false;   // IVM: 📅 최근 인보이스 · 🏬 가게별
 export function register(state) { S = state; Router.on('invs', page); }
 const isStaff = () => S.role !== 'salesman';
 const looksInv = q => /^(A|P|W|CM)-?\d{3,}$/i.test(q.replace(/\s+/g, ''));
-const normInv = q => { q = q.replace(/\s+/g, '').toUpperCase(); const m = q.match(/^(P|CM)(\d+)$/); return m ? m[1] + '-' + m[2].padStart(6, '0') : q; };   // SmartBee: P-007803 · CM-000161
+const normInv = q => invNo(q);   // 🔢 A-043350 · P-007803 · CM-000161
 
 async function page() {
   if (isStaff()) { const { invTab } = await import('./orders.js'); return invTab(); }   // 담당자 · 관리자: 전체 인보이스 (기간별)
@@ -45,10 +45,9 @@ async function show() {
     /* 📅 내 인보이스 — 최근 3달, 날짜 → 번호 순으로 쌓임 */
     const yms = []; const d0 = new Date(); for (let i = 0; i < 3; i++) { yms.push(d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0')); d0.setMonth(d0.getMonth() - 1); }
     let L = []; try { L = await S.DB.list('invoices', { where: [['sm', '==', sm], ['ym', 'in', yms]] }); } catch (e) {}
-    const key = x => x.d + ' ' + String(x.no || '').replace(/^([A-Z]+)-?(\d+)$/i, (m, a, n) => a + n.padStart(8, '0'));
-    L = L.filter(x => x.st !== 'x').sort((a, b) => key(b).localeCompare(key(a)));
-    const days = []; L.forEach(x => { if (!days.length || days[days.length - 1][0] !== x.d) days.push([x.d, []]); days[days.length - 1][1].push(x); });
-    h += '<div class="card">' + (L.length ? '<div class="muted">' + bt('최근 3달', 'Last 3 months') + ' · ' + L.length + bt('장', '') + ' · ' + money(L.reduce((a, x) => a + (x.total || 0), 0)) + '</div>' + days.map(([d, X]) => '<div class="iday"><b>' + esc(d) + '</b><span>' + X.length + ' · ' + money(X.reduce((a, x) => a + (x.total || 0), 0)) + '</span></div>' + X.map(x => '<div class="pr tap" data-in="' + esc(x.no) + '" data-inacct="' + esc(x.acct || '') + '"><div class="ct"><b>' + esc(x.no) + ' <span class="tag t-g">' + esc(x.t || '') + '</span></b><small>' + esc(x.store || '') + ' · ' + esc(x.acct || '') + '</small></div><div class="pa"><b>' + money(x.total) + '</b></div></div>').join('')).join('') : '<div class="none">' + bt('최근 3달 인보이스가 없습니다', 'No invoices in the last 3 months') + '</div>') + '</div>';
+    L = sortInv(L.filter(x => x.st !== 'x'), x => x.no, IDESC);   // 인보이스 번호 순 — 종류(A · P · W)별로 묶음
+    const days = []; L.forEach(x => { const k = invParts(x.no)[0]; if (!days.length || days[days.length - 1][0] !== k) days.push([k, []]); days[days.length - 1][1].push(x); });
+    h += '<div class="card">' + (L.length ? '<div class="muted">' + bt('최근 3달', 'Last 3 months') + ' · ' + L.length + bt('장', '') + ' · ' + money(L.reduce((a, x) => a + (x.total || 0), 0)) + ' · <a href="#" id="ivSort" onclick="return false">' + (IDESC ? bt('번호 큰 것부터 ↓', 'Highest # first ↓') : bt('번호 작은 것부터 ↑', 'Lowest # first ↑')) + '</a></div>' + days.map(([d, X]) => '<div class="iday"><b>' + esc(d) + '</b><span>' + X.length + ' · ' + money(X.reduce((a, x) => a + (x.total || 0), 0)) + '</span></div>' + X.map(x => '<div class="pr tap" data-in="' + esc(x.no) + '" data-inacct="' + esc(x.acct || '') + '"><div class="ct"><b>' + esc(x.no) + ' <span class="tag t-g">' + esc(x.t || '') + '</span></b><small>' + esc(md(x.d)) + ' · ' + esc(x.store || '') + ' · ' + esc(x.acct || '') + '</small></div><div class="pa"><b>' + money(x.total) + '</b></div></div>').join('')).join('') : '<div class="none">' + bt('최근 3달 인보이스가 없습니다', 'No invoices in the last 3 months') + '</div>') + '</div>';
   } else if (!isStaff()) {
     const mine = sortStores((S.accounts || []).filter(a => !a.inactive && String(a.sm || '').toUpperCase() === sm));
     const gr = Object.keys(g).map(k => S.accounts.byCode && S.accounts.byCode[k]).filter(Boolean);
@@ -57,6 +56,7 @@ async function show() {
   }
   out.innerHTML = (!q && !isStaff() ? '<div class="seg" style="margin:0 0 8px"><button class="' + (IVM === 'date' ? 'on' : '') + '" data-ivm="date">📅 ' + bi('최근 인보이스', 'Recent invoices') + '</button><button class="' + (IVM === 'store' ? 'on' : '') + '" data-ivm="store">🏬 ' + bi('가게별', 'By store') + '</button></div>' : '') + h;
   out.querySelectorAll('[data-ivm]').forEach(b => b.onclick = () => { IVM = b.dataset.ivm; show(); });
+  if ($('ivSort')) $('ivSort').onclick = e => { e.preventDefault(); IDESC = !IDESC; show(); };
   out.querySelectorAll('[data-in]').forEach(el => el.onclick = () => invDetail(el.dataset.in, el.dataset.inacct));
   if ($('ivNo')) $('ivNo').onclick = () => invDetail(normInv(q));
   out.querySelectorAll('[data-ia]').forEach(el => el.onclick = () => {

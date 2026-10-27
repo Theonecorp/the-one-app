@@ -5,7 +5,7 @@
  *    total, invTotal, mismatch, memo, repl, orig, disc,
  *    sb, rc, v, vn, settled, void, createdBy, createdAt, updatedAt }
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, invNo } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import * as Store from './store.js';
@@ -138,7 +138,7 @@ function collectForm() {
   F.d = $('fD') ? $('fD').value : F.d;
   F.pays.forEach((p, i) => { const r = document.querySelector('[data-pref="' + i + '"]'), a = document.querySelector('[data-pamt="' + i + '"]'), d = document.querySelector('[data-pdep="' + i + '"]'), m = document.querySelector('[data-pmob="' + i + '"]');
     if (r) p.ref = r.value.trim(); if (a) p.amt = a.value; if (d) p.dep = d.value; if (m) p.mob = m.checked; });
-  F.invs.forEach((v, i) => { const n = document.querySelector('[data-ino="' + i + '"]'), a = document.querySelector('[data-iamt="' + i + '"]'); if (n) v.no = n.value.trim().toUpperCase(); if (a) v.amt = a.value; });
+  F.invs.forEach((v, i) => { const n = document.querySelector('[data-ino="' + i + '"]'), a = document.querySelector('[data-iamt="' + i + '"]'); if (n) v.no = invNo(n.value); if (a) v.amt = a.value; });
   if ($('fMemo')) F.memo = $('fMemo').value; if ($('fOrig')) F.orig = $('fOrig').value.trim();
 }
 function payTotal() { return R2(F.pays.reduce((a, p) => a + num(p.amt), 0)); }
@@ -252,7 +252,7 @@ async function saveEntry() {
   const pays = F.pays.map(p => ({ m: p.m, ref: p.ref || '', amt: R2(num(p.amt)), dep: p.dep || '', mob: !!p.mob })).filter(p => p.amt);
   if (!pays.length) return toast('금액을 넣어 주세요', 'bad');
   if (pays.some(p => p.m === 'CHECK' && !p.ref)) return toast('체크 번호를 넣어 주세요', 'bad');
-  const invs = F.invs.map(v => ({ no: v.no || '', t: v.no ? invType(v.no) : '', amt: R2(num(v.amt)), acct: v.other ? v.acct : '', store: v.other ? v.store : '', partial: !!v.partial, ar: !!v.ar })).filter(v => v.no || v.amt);
+  const invs = F.invs.map(v => ({ no: invNo(v.no), t: v.no ? invType(v.no) : '', amt: R2(num(v.amt)), acct: v.other ? v.acct : '', store: v.other ? v.store : '', partial: !!v.partial, ar: !!v.ar })).filter(v => v.no || v.amt);
   if (invs.some(v => v.amt && !v.no)) return toast('인보이스 번호가 빈 줄이 있습니다', 'bad');
   const total = sum(pays, p => p.amt), invTot = sum(invs, v => v.amt);
   const mismatch = invs.length && Math.abs(total - invTot) > 0.009 ? '⚠️ 인보이스 합 ' + money(invTot) + ' ≠ 받은 돈 ' + money(total) + ' (차액 ' + money(R2(total - invTot)) + ')' : '';
