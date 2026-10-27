@@ -9,8 +9,8 @@ import { roleLabel, JOBS, jobLabel } from './main.js';
 import { seedImport } from './mg.js';
 import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
-import { acctImportCard, bindAcctImport } from './acctimp.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs } from './catalog.js';
+import { acctImportCard, bindAcctImport, acctFile, parseAcctList } from './acctimp.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs, parseSmartBeeItems, smartbeeDiff, applySmartBee, codeFamily } from './catalog.js';
 import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM, getInvoice } from './invoicing.js';
 
 let S = null, TAB = 'users';
@@ -278,9 +278,8 @@ async function invFmtScan() {
 }
 
 async function importer() {
-  $('adminBody').innerHTML = invFmtCard() + exportCard() + acctImportCard() + '<div class="card" style="border:2px solid #bfdbfe"><h2>📥 한 번에 올리기 <span class="en">Upload all at once</span></h2><div class="muted">파일을 여러 개 한꺼번에 고르세요 (수금 입력 · SALES · 커미션 · 수금 대시보드 · sales_invoice). 탭 이름으로 종류를 알아보고 ① → ② → ③ → ④ → ⑤ 순서로 넣습니다. 끝날 때까지 화면을 닫지 마세요.</div>' +
-    '<div class="two" style="margin-top:8px"><div class="fg"><label>인보이스는 이 날짜부터 <span class="muted">(비우면 파일 전체)</span></label><input type="date" id="allFrom" value=""></div><div class="fg"><label>AR 기준일 (비우면 오늘)</label><input type="date" id="allArD"></div></div>' +
-    '<input type="file" id="fAll" accept=".xlsx" multiple style="padding:8px"><div id="allOut"></div></div>' +
+  $('adminBody').innerHTML = anyImportCard() + '<details class="card" id="impOld"><summary><b>📥 종류별로 따로 올리기</b> <span class="muted">— 위 "파일 올리기" 하나로 다 되지만, 예전처럼 하나씩 올리려면 여기</span></summary><div id="impOldBody" style="margin-top:10px"></div></details>' + invFmtCard() + exportCard();
+  $('impOldBody').innerHTML = acctImportCard() +
     '<div class="card"><h2>📥 옛 시트에서 가져오기 (하나씩)</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
     '<div class="fg" style="margin-top:10px"><label>① The One 수금 입력 (2026).xlsx — 거래처 · 세일즈맨 · 수금 · <b>미수금(AR 탭)</b></label><input type="file" id="f1" accept=".xlsx"></div>' +
     '<div class="fg"><label>AR 기준일 (AR 탭을 마지막으로 새로고친 날 — 비우면 오늘)</label><input type="date" id="impArD"></div>' +
@@ -294,15 +293,132 @@ async function importer() {
     '<div class="card"><h2>④ THE ONE 수금 대시보드.xlsx — 공장 장부 · 1099 · 오피스 보너스 · 배분표 · 1099 대상 · 커미션 공제 · 정산 옵션</h2><div class="muted">경영 파일을 그대로 올리세요. 탭 이름(🏭 공장 이름 · 1099 2026 · 오피스 보너스 …)으로 찾고, 시트 안의 ID 를 그대로 써서 다시 올려도 두 번 쌓이지 않습니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="f4" accept=".xlsx"></div><div id="bossOut"></div>' +
     '<details style="margin-top:6px"><summary class="muted">변환해 둔 SEED_DATA(.js) 파일로 넣기</summary><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></details></div>';
-  bindExport(); bindAcctImport(S, readBook, aoa);
+  bindExport(); bindAcctImport(S, readBook, aoa); bindAnyImport();
   if ($('invStatGo')) $('invStatGo').onclick = invStat;
-  $('arF2').onchange = async () => { const f = $('arF2').files[0]; if (!f) return; const out = $('arOut2'); out.innerHTML = '<div class="muted">읽는 중…</div>'; try { const { XLSX, wb } = await readBook(f); const rows0 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }); const { rows } = parseArRows(rows0); busy(true); const r = await saveAr(rows, $('arD2').value || today()); busy(false); out.innerHTML = '<div class="alert a-grn">저장 — 인보이스 ' + rows.length + '건 · ' + money(sum(rows, x => x.bal)) + ' · 가게 ' + r.stores.length + '곳' + (r.unmatched.length ? '<br>거래처 목록에 없는 가게: ' + r.unmatched.slice(0, 20).map(esc).join(', ') : '') + '</div>'; } catch (e) { busy(false); out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; } };
+  $('arF2').onchange = () => { const f = $('arF2').files[0]; if (f) arFileImport(f, $('arOut2'), $('arD2').value || today()); };
   $('seedPick').onclick = () => $('seedFile').click();
   $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedImport(r.result); r.readAsText(f); };
   $('seedPaste').onclick = () => { openModal('<h2>📋 SEED_DATA 붙여넣기</h2><textarea id="seedTxt" style="width:100%;height:200px;font-size:11px"></textarea><div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sOk">읽기</button></div>'); $('sX').onclick = closeModal; $('sOk').onclick = () => { const t = $('seedTxt').value; seedImport(t); }; };
-  $('fAll').onchange = () => importAll(Array.from($('fAll').files));
   if ($('fmtScan')) $('fmtScan').onclick = () => invFmtScan().catch(e => { $('fmtOut').innerHTML = '<span class="warn">' + esc(e.code || e.message) + '</span>'; });
   $('f1').onchange = () => importMain($('f1').files[0]); $('f2').onchange = () => importSales($('f2').files[0]); $('f3').onchange = () => importComm($('f3').files[0]); $('f4').onchange = () => importBoss($('f4').files[0]); $('f5').onchange = () => importInvoices($('f5').files[0]);
+}
+/** 📤 AR 에이징 파일 하나 — 바로 저장 (세일즈맨별로 나눔) */
+async function arFileImport(f, out, asOf) {
+  out.innerHTML = '<div class="muted">읽는 중…</div>';
+  try { const { XLSX, wb } = await readBook(f); const rows0 = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }); const { rows, tail } = parseArRows(rows0); busy(true); const r = await saveAr(rows, asOf || today()); busy(false); out.innerHTML = '<div class="alert a-grn">저장 — 인보이스 ' + rows.length + '건 · ' + money(sum(rows, x => x.bal)) + ' · 가게 ' + r.stores.length + '곳 · 기준일 ' + esc(asOf || today()) + (tail ? ' · 지난번 붙여넣기 꼬리 ' + tail + '줄 뺌' : '') + (r.unmatched.length ? '<br>거래처 목록에 없는 가게: ' + r.unmatched.slice(0, 20).map(esc).join(', ') : '') + '</div>'; }
+  catch (e) { busy(false); out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+}
+
+/* ============================================================
+ *  📥 파일 올리기 — 종류 자동 인식 (하나의 버튼으로 모든 가져오기)
+ *    탭 이름 → 머리글 → 자리(머리글 없는 AR · 거래처 목록) 순으로 알아보고, 맞는 가져오기에 넘김
+ *    여러 파일은 ① 수금 입력 → ② SALES → ③ 커미션 → ④ 대시보드 → ⑤ 인보이스 → AR → 거래처 → 아이템 … 순서로
+ * ============================================================ */
+const KINDS = [
+  ['main', '① 수금 입력 (거래처 · 세일즈맨 · 수금 · AR 탭)'], ['sales', '② SALES (COD · 카드 · ACH · 확인 표시)'], ['comm', '③ 커미션 (요율 · 정산 기록)'], ['boss', '④ 수금 대시보드 (공장 · 1099 · 보너스)'], ['inv', '⑤ 인보이스 목록 (sales_invoice)'],
+  ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
+  ['sets', '🧩 세트 구성 (SET_MASTER)'], ['bulk', '📄 아이템 일괄 변경 (LEVEL_1_AND_2 · GROUP_NAME_CHANGE · TreeUpdate …)'], ['loc', '📍 창고 위치 (재고 사이트 통로)'], ['pop', '✨ 자주 나가는 아이템 (Item · Qty)'], ['seed', '🧪 SEED_DATA (.js · .json)']];
+const kindName = k => (KINDS.find(x => x[0] === k) || ['', '❓ 모르는 파일 — 종류를 골라 주세요'])[1];
+function anyImportCard() {
+  return '<div class="card" style="border:2px solid #2563eb"><h2>📥 파일 올리기 <span class="en">Upload any file</span> <span class="muted" style="font-weight:400;font-size:12px">— 종류는 앱이 알아봅니다</span></h2>' +
+    '<div class="muted">어떤 파일이든 여기 하나로 올리세요. 탭 이름 · 머리글을 보고 종류를 알아낸 뒤 맞는 자리에 넣습니다: 수금 입력 · SALES · 커미션 · 대시보드 · 인보이스 목록 · AR · 거래처 목록 · Item Master · <b>SmartBee ALL ITEMS</b> · 세트 구성 · 일괄 변경 · 창고 위치 · 자주 나가는 아이템. 여러 개를 한꺼번에 골라도 됩니다 (순서는 알아서). 바로 저장되는 종류(수금 · SALES · 커미션 · AR)는 바로 들어가고, 나머지는 미리보기 뒤 <b>적용</b>을 누릅니다.</div>' +
+    '<div class="two" style="margin-top:8px"><div class="fg"><label>인보이스 목록은 이 날짜부터 <span class="muted">(비우면 파일 전체)</span></label><input type="date" id="allFrom" value=""></div><div class="fg"><label>AR 기준일 <span class="muted">(비우면 오늘)</span></label><input type="date" id="allArD"></div></div>' +
+    '<label class="drop" id="anyDrop"><input type="file" id="fAny" multiple accept=".xlsx,.xls,.xlsm,.csv,.txt,.js,.json"><span>📂 <b>파일을 여기 끌어다 놓거나</b> 눌러서 고르세요</span><small>.xlsx · .csv · .js — 여러 개 가능</small></label>' +
+    '<div id="anyOut"></div></div>';
+}
+function bindAnyImport() {
+  const inp = $('fAny'), dz = $('anyDrop'); if (!inp) return;
+  inp.onchange = () => { const fs = Array.from(inp.files || []); inp.value = ''; if (fs.length) importAny(fs); };
+  ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('on'); }));
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('on'); }));
+  dz.addEventListener('drop', e => { const fs = Array.from(e.dataTransfer && e.dataTransfer.files || []); if (fs.length) importAny(fs); });
+}
+const csvDelim = first => (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : (first.match(/\t/g) || []).length > (first.match(/,/g) || []).length ? '\t' : ',';
+/** 파일을 읽어 종류를 알아냄 → { k, why } */
+export async function sniffFile(file) {
+  const lower = String(file.name || '').toLowerCase();
+  if (/\.(js|json)$/.test(lower)) return { k: 'seed', why: '.js / .json 파일' };
+  let XLSX = null, wb, sheets = {};
+  if (/\.(csv|txt)$/.test(lower)) { const text = (await file.text()).replace(/^﻿/, ''); const t = parseCsv(text, csvDelim(text.split(/\r?\n/)[0] || '')); sheets = { Sheet1: t }; wb = { SheetNames: ['Sheet1'] }; }
+  else ({ XLSX, wb } = await readBook(file));
+  const names = wb.SheetNames, get = n => (n in sheets ? sheets[n] : (sheets[n] = aoa(XLSX, wb, n)));
+  const has = re => names.find(n => re.test(String(n).trim()));
+  if (has(/^_(ENTRIES|ACCOUNTS)$/)) return { k: 'main', why: '탭 _ENTRIES · _ACCOUNTS' };
+  if (names.includes('COD 입력')) return { k: 'sales', why: '탭 COD 입력' };
+  if (has(/^(세일즈맨 요율|정산 기록)$/)) return { k: 'comm', why: '탭 세일즈맨 요율 · 정산 기록' };
+  if (names.includes('공장') || has(/^🏭/)) return { k: 'boss', why: '탭 공장 · 🏭' };
+  if (has(/세트\s*구성/)) return { k: 'sets', why: '탭 세트 구성' };
+  const hdrs = n => (get(n) || []).slice(0, 10).map(r => (r || []).map(v => String(v == null ? '' : v).trim().toLowerCase()));
+  const hasAll = (row, res) => res.every(re => row.some(h => h && re.test(h)));
+  const hit = (n, res) => hdrs(n).some(r => hasAll(r, res));
+  for (const n of names) {
+    if (/^(items)$/i.test(n.trim()) && hit(n, [/^code$/, /^description$/, /^price$/])) return { k: 'master', why: '탭 Items — Code · Description · Price' };
+    if (hit(n, [/^category$/, /^item\s*(3|#|no\.?|code)?$|^code$|^sku$/, /^description$/, /^price$/])) return { k: 'sbitems', why: '머리글 CATEGORY · ITEM 3 · DESCRIPTION · PRICE' };
+    if (hit(n, [/^(invoice|trans)\s*(#|no|3)?$/, /trans\s*date|invoice\s*date/, /^total$/])) return { k: 'inv', why: '머리글 invoice · trans date · Total' };
+    if (hit(n, [/^invoice$|invoice\s*#|invoice\s*no/, /^balance/, /customer\s*#|acct|account/])) return { k: 'ar', why: '머리글 Invoice · Balance · Customer #' };
+    if (hit(n, [/^set|^세트/, /^(item|code|아이템)/, /^(qty|quantity|수량)/])) return { k: 'sets', why: '머리글 SET · CODE · QTY' };
+    if (hit(n, [/^(code|item ?code|item|sku|c[oó]digo|c[oó]d\.?|product ?code|상품 ?코드|아이템 ?코드|코드)$/, /^(corredor|aisle|location|loc|bin|통로|위치|창고 ?위치)$/])) return { k: 'loc', why: '머리글 코드 + 통로(Corredor · Aisle)' };
+    if (hit(n, [/^(item ?code|code|코드|아이템 ?코드|sku)$/, /^(level ?1|l1|new ?code|새 ?코드|description|desc|price|group|current group ?name|new group ?name|group ?name|hide|hidden|delete|level ?2|level ?3|barcode|photo|location|loc)$/])) return { k: 'bulk', why: '머리글 ITEM CODE + LEVEL · GROUP · Description …' };
+    if (hit(n, [/^(item|item ?code|item ?#|item ?no|code|코드)$/, /^(total ?qty|qty|quantity|수량|sold|판매수량)$/])) return { k: 'pop', why: '머리글 Item · Qty' };
+  }
+  for (const n of names) {
+    const t = get(n); if (!t || t.length < 3) continue;
+    try { const { rows } = parseArRows(t); if (rows.length >= 3) return { k: 'ar', why: '머리글 없는 AR (SmartBee 붙여넣기 — 자리로 읽음)' }; } catch (e) {}
+    try { const r = parseAcctList(t); if (r.rows.length >= Math.max(5, Math.floor(t.length * 0.5))) return { k: 'acct', why: '거래처 목록 (계정코드 · 가게 · 주소 …)' }; } catch (e) {}
+  }
+  return { k: '', why: '탭 이름 · 머리글로 알 수 없음' };
+}
+const ORDER = KINDS.map(x => x[0]);
+async function importAny(files) {
+  const out = $('anyOut'); out.innerHTML = '<div class="load">파일 종류 알아보는 중… (' + files.length + '개)</div>';
+  const list = [];
+  for (const f of files) { let r; try { r = await sniffFile(f); } catch (e) { r = { k: '', why: '읽지 못함: ' + (e.message || e) }; } list.push({ f, k: r.k, why: r.why }); }
+  const paint = () => {
+    const unknown = list.filter(x => !x.k).length;
+    out.innerHTML = '<div class="sumbox" style="margin-top:8px">' + list.map((x, i) => '<div class="pr" style="padding:6px 0"><div class="ct"><b>' + (x.k ? '✅ ' : '❓ ') + esc(x.f.name) + '</b><small>' + esc(x.why) + '</small></div><select data-ak="' + i + '" style="width:auto;max-width:58%;font-size:13px;padding:6px 8px">' + [['', '— 종류 고르기 —']].concat(KINDS).map(k => '<option value="' + k[0] + '"' + (x.k === k[0] ? ' selected' : '') + '>' + esc(k[1]) + '</option>').join('') + '</select></div>').join('') + '</div>' +
+      (unknown ? '<div class="alert a-amb">종류를 모르는 파일 ' + unknown + '개 — 목록에서 골라 주세요. 그래도 모르는 파일이면 건너뜁니다.</div>' : '') +
+      '<div class="btns" style="justify-content:flex-start"><button class="b-blue" id="anyGo" style="width:auto">▶ ' + (list.length > 1 ? '순서대로 ' : '') + '넣기</button><button class="b-ghost" id="anyX" style="width:auto">취소</button></div><div id="anyLog"></div>';
+    out.querySelectorAll('[data-ak]').forEach(s => s.onchange = () => { list[+s.dataset.ak].k = s.value; });
+    $('anyX').onclick = () => { out.innerHTML = ''; };
+    $('anyGo').onclick = run;
+  };
+  const run = async () => {
+    out.querySelectorAll('select,button').forEach(el => el.disabled = true);
+    const log = $('anyLog');
+    if ($('impArD') && $('allArD').value) $('impArD').value = $('allArD').value; if ($('f5From')) $('f5From').value = $('allFrom').value;
+    const todo = list.filter(x => x.k).sort((a, b) => ORDER.indexOf(a.k) - ORDER.indexOf(b.k));
+    for (const x of todo) {
+      const sec = document.createElement('div'); sec.className = 'sumbox'; sec.style.marginTop = '8px';
+      sec.innerHTML = '<div style="margin-bottom:4px"><b>▶ ' + esc(x.f.name) + '</b> <span class="muted">→ ' + esc(kindName(x.k)) + '</span></div><div class="anyBody"></div>';
+      log.appendChild(sec); const body = sec.querySelector('.anyBody');
+      try { await runKind(x.k, x.f, body); }
+      catch (e) { body.innerHTML = '<div class="alert a-red">실패: ' + esc(e.code || e.message || String(e)) + '</div>'; }
+    }
+    const skipped = list.length - todo.length;
+    log.insertAdjacentHTML('beforeend', '<div class="alert a-grn">끝. ' + todo.length + '개 처리' + (skipped ? ' · 종류 모름 ' + skipped + '개 건너뜀' : '') + ' — 미리보기가 있는 것은 각각 <b>적용</b>을 눌러야 저장됩니다. 메뉴 → 🔎 연결 · 권한 점검의 📊 서버 자료 건수로 확인하세요.</div>');
+  };
+  paint();
+  if (list.length && list.every(x => x.k)) run();   // 다 알아봤으면 바로 시작
+}
+/** 종류별로 맞는 가져오기 — out 안에 결과 · 미리보기를 그림 */
+async function runKind(k, f, out) {
+  const stay = () => {};   // 미리보기 적용 뒤 화면을 바꾸지 않음 (📥 가져오기 탭에 그대로)
+  const asOf = ($('allArD') && $('allArD').value) || today(), fromD = ($('allFrom') && $('allFrom').value) || '';
+  if (k === 'main') { OUT = out; try { await importMain(f); } finally { OUT = null; } }
+  else if (k === 'sales') { OUT = out; try { await importSales(f); } finally { OUT = null; } }
+  else if (k === 'comm') { OUT = out; try { await importComm(f); } finally { OUT = null; } }
+  else if (k === 'boss') await importBoss(f, out);
+  else if (k === 'inv') await importInvoices(f, false, out, fromD);
+  else if (k === 'ar') await arFileImport(f, out, asOf);
+  else if (k === 'acct') await acctFile(S, f, out, readBook, aoa);
+  else if (k === 'master') await itemMasterFile(f, out, stay);
+  else if (k === 'sbitems') await smartbeeFile(f, out, stay);
+  else if (k === 'sets') await setBookFile(f, out, 'new', stay);
+  else if (k === 'bulk') await bulkFile(f, out, stay);
+  else if (k === 'loc') await locFileImport(f, out, stay);
+  else if (k === 'pop') await popFileImport(f, out, stay);
+  else if (k === 'seed') { const t = await f.text(); out.innerHTML = '<div class="muted">SEED_DATA 읽는 중…</div>'; seedImport(t); }
+  else throw new Error('모르는 종류');
 }
 async function loadXlsx() { if (window.XLSX) return window.XLSX; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); return window.XLSX; }
 async function readBook(file) { const XLSX = await loadXlsx(); const buf = await file.arrayBuffer(); return { XLSX, wb: XLSX.read(buf, { type: 'array', cellDates: true }) }; }
@@ -310,7 +426,9 @@ function aoa(XLSX, wb, name) { const ws = wb.Sheets[name]; if (!ws) return null;
 function dstr(v) { if (v instanceof Date) { const d = new Date(v.getTime() - v.getTimezoneOffset() * 60000); return d.toISOString().substring(0, 10); } const s = String(v || '').trim(); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10); if (typeof v === 'number' && v > 30000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().substring(0, 10); }   /* 엑셀 날짜 숫자 */
   const m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0'); return ''; }
 function hdrIdx(row, names) { const idx = {}; row = row.map(x => String(x || '').trim()); Object.keys(names).forEach(k => { const j = row.findIndex(h => names[k].test(h)); idx[k] = j; }); return idx; }
-const say = (h) => { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-blu">' + h + '</div>'); };
+let OUT = null;   // 📥 파일 올리기(자동 인식)에서 부를 때는 그 파일의 칸에 적음
+const outEl = () => OUT || $('impOut');
+const say = (h) => { outEl().insertAdjacentHTML('beforeend', '<div class="alert a-blu">' + h + '</div>'); };
 
 export function parseEntriesSheet(rows) {
   /* _ENTRIES 22칸 (ID, 입력시각, 세일즈맨, 이메일, 가게, 계정, 주소, Pay Type, Check#, 금액, 메모, Deposit, 신규, 리포트, 상태, Post, Invoices, 받은날짜, 모바일, 보관, 대체, 원래체크) */
@@ -330,7 +448,7 @@ export function parseEntriesSheet(rows) {
   return out;
 }
 async function importMain(file) {
-  if (!file) return; busy(true); $('impOut').innerHTML = '';
+  if (!file) return; busy(true); outEl().innerHTML = '';
   try {
     const { XLSX, wb } = await readBook(file);
     const acc = aoa(XLSX, wb, '_ACCOUNTS'), smv = aoa(XLSX, wb, '_SALESMEN'), ent = aoa(XLSX, wb, '_ENTRIES');
@@ -347,12 +465,12 @@ async function importMain(file) {
     if (ar) { try { const { rows } = parseArRows(ar); const asOf = $('impArD') && $('impArD').value ? $('impArD').value : today(); const r = await saveAr(rows, asOf); say('미수금(AR) 탭 "' + esc(arName) + '": 인보이스 ' + rows.length + '건 · ' + money(sum(rows, x => x.bal)) + ' · 가게 ' + r.stores.length + '곳 · 기준일 ' + asOf + (r.unmatched.length ? ' · 거래처 목록에 없는 가게 ' + r.unmatched.length : '')); } catch (e) { say('<span class="warn">AR 탭을 읽지 못했습니다: ' + esc(e.message) + '</span>'); } }
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] }); S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
     say('<b>저장 완료</b> — 다음은 ② SALES 파일');
-  } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
+  } catch (e) { outEl().insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
 }
 /** SALES 파일: COD 입력 탭 + 세일즈맨 탭들(머리글 이름으로 찾음) */
 async function importSales(file) {
-  if (!file) return; busy(true); $('impOut').innerHTML = '';
+  if (!file) return; busy(true); outEl().innerHTML = '';
   try {
     const { XLSX, wb } = await readBook(file);
     const ops = []; let nC = 0, nF = 0, missing = 0, nShift = 0;
@@ -384,43 +502,8 @@ async function importSales(file) {
     await S.DB.batch(ops);
     dropBossCache();
     say('COD·카드·ACH ' + nC + '건' + (nShift ? ' (칸 밀린 옛 줄 ' + nShift + '건 바로잡음)' : '') + ' · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
-  } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
+  } catch (e) { outEl().insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
-}
-/* 📥 한 번에 올리기 — 탭 이름으로 종류를 알아내 순서대로 */
-async function detectKind(file) {
-  try { const { wb } = await readBook(file); const n = wb.SheetNames;
-    if (n.includes('_ENTRIES') || n.includes('_ACCOUNTS')) return 'main';
-    if (n.includes('COD 입력')) return 'sales';
-    if (n.includes('세일즈맨 요율') || n.includes('정산 기록')) return 'comm';
-    if (n.includes('공장') || n.some(x => x.indexOf('🏭') === 0)) return 'boss';
-    const first = wb.Sheets[n[0]]; const h = window.XLSX.utils.sheet_to_json(first, { header: 1, range: 0 })[0] || []; const hs = h.map(x => String(x || '').toLowerCase());
-    if (hs.some(x => /^invoice/.test(x)) && hs.some(x => /trans\s*date|invoice\s*date/.test(x))) return 'inv';
-    if (n.includes('Items')) return 'items';
-  } catch (e) {}
-  return '';
-}
-async function importAll(files) {
-  const out = $('allOut'); if (!files.length) return; out.innerHTML = '<div class="muted">파일 종류 확인 중…</div>';
-  const kinds = []; for (const f of files) kinds.push({ f, k: await detectKind(f) });
-  const ORDER = ['main', 'sales', 'comm', 'boss', 'inv'], NAME = { main: '① 수금 입력 (거래처 · 세일즈맨 · 수금 · AR)', sales: '② SALES (COD · 카드 · ACH)', comm: '③ 커미션 (요율 · 정산 기록)', boss: '④ 수금 대시보드 (공장 · 1099 · 보너스)', inv: '⑤ 인보이스 목록', items: '아이템 (관리 → 📦 아이템에서 올리세요)', '': '모르는 파일' };
-  out.innerHTML = '<div class="sumbox">' + kinds.map(x => (x.k && ORDER.includes(x.k) ? '✅ ' : '⚠️ ') + esc(x.f.name) + ' → ' + NAME[x.k]).join('<br>') + '</div><div id="allLog"></div>';
-  if ($('impArD') && $('allArD').value) $('impArD').value = $('allArD').value; if ($('f5From')) $('f5From').value = $('allFrom').value;
-  const log = (h) => $('allLog').insertAdjacentHTML('beforeend', '<div class="alert a-blu">' + h + '</div>');
-  for (const k of ORDER) {
-    const x = kinds.find(y => y.k === k); if (!x) continue;
-    log('▶ ' + NAME[k] + ' 넣는 중…');
-    try {
-      if (k === 'main') { $('impOut').innerHTML = ''; await importMain(x.f); }
-      else if (k === 'sales') { $('impOut').innerHTML = ''; await importSales(x.f); }
-      else if (k === 'comm') { $('impOut').innerHTML = ''; await importComm(x.f); }
-      else if (k === 'boss') { await importBoss(x.f); if ($('bossGo')) { $('bossGo').click(); await new Promise(r => { const t = setInterval(() => { if ($('bossOut') && /넣었습니다|실패|❌/.test($('bossOut').textContent)) { clearInterval(t); r(); } }, 500); }); } }
-      else if (k === 'inv') { await importInvoices(x.f, true); }
-      const msg = k === 'boss' ? $('bossOut').textContent : k === 'inv' ? $('invOut').textContent : $('impOut').textContent;
-      log('✓ ' + NAME[k] + ' — ' + esc(String(msg).replace(/\s+/g, ' ').slice(0, 240)));
-    } catch (e) { log('<span class="warn">✗ ' + NAME[k] + ' 실패: ' + esc(e.code || e.message) + '</span>'); }
-  }
-  log('<b>끝.</b> 메뉴 → 🔎 연결 · 권한 점검의 📊 서버 자료 건수로 확인하세요.');
 }
 /** 📊 앱에 들어 있는 인보이스 — 2024-01 부터 달마다 몇 장인지 (개수만 세서 빠름). 빈 달 = 아직 안 올라간 달 */
 async function invStat() {
@@ -456,12 +539,12 @@ export function parseInvoiceList(aoa, fromD) {
   }
   return { rows: out, skipped, old, hasBal: ix.bal != null };
 }
-async function importInvoices(file, auto) {
-  if (!file) return; const out = $('invOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
+async function importInvoices(file, auto, outBox, fromD) {
+  if (!file) return; const out = outBox || $('invOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
   try {
     const { XLSX, wb } = await readBook(file);
     const sheet = aoa(XLSX, wb, wb.SheetNames[0]);
-    const P = parseInvoiceList(sheet, $('f5From').value || ''), { skipped, old } = P;
+    const P = parseInvoiceList(sheet, fromD != null ? fromD : (($('f5From') && $('f5From').value) || '')), { skipped, old } = P;
     /* 이미 있는 인보이스 — 앱에서 만든 것(줄 · 픽킹 기록 있음)은 건드리지 않음. 잔액 열이 없는 파일이면 있던 잔액 · 상태는 그대로 */
     const ds = P.rows.map(r => r.d).sort(), ex = {};
     if (ds.length) (await S.DB.list('invoices', { where: [['d', '>=', ds[0]], ['d', '<=', ds[ds.length - 1]]] })).forEach(v => { ex[invNo(v.id || v.no)] = v; });   // 옛 번호 모양(A43350)도 같은 인보이스로
@@ -535,8 +618,8 @@ export function parseBossBook(XLSX, wb) {
   const so = get('세일즈맨 정산 옵션'); if (so) for (let i = 1; i < so.length; i++) { const sm = sv(so[i][0]).toUpperCase(); if (sm) out.opts.push({ sm, cashKeep: /^Y/i.test(sv(so[i][1])), defaultPer: R2(num(so[i][2])) }); }
   return out;
 }
-async function importBoss(file) {
-  if (!file) return; const out = $('bossOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
+async function importBoss(file, outBox) {
+  if (!file) return; const out = outBox || $('bossOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
   try {
     const { XLSX, wb } = await readBook(file);
     const P = parseBossBook(XLSX, wb), n99 = (P.inv99 || []).length;
@@ -571,7 +654,7 @@ async function importBoss(file) {
   } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
 async function importComm(file) {
-  if (!file) return; busy(true); $('impOut').innerHTML = '';
+  if (!file) return; busy(true); outEl().innerHTML = '';
   try {
     const { XLSX, wb } = await readBook(file); const ops = []; let nR = 0, nL = 0;
     const rt = aoa(XLSX, wb, '세일즈맨 요율');
@@ -593,7 +676,7 @@ async function importComm(file) {
     S.sms = await S.DB.list('salesmen', { order: ['code', 'asc'] }); S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
     dropBossCache();
     say('요율 ' + nR + '명 · 정산 기록 ' + nL + '줄 (현장 수금 ' + ok + ' · COD·ACH·카드 ' + okCod + ' 정산됨 · 못 찾음 ' + fail + ') · 📁 정산 완료 ' + Object.keys(grp).length + '건<br><b>가져오기 끝</b> — ④ 대시보드 파일도 올리면 정산 미룸 · 정산 제외가 반영됩니다');
-  } catch (e) { $('impOut').insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
+  } catch (e) { outEl().insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
 }
 
@@ -604,12 +687,17 @@ async function catalogAdmin() {
   const meta = await S.DB.get('catalog', 'meta');
   $('adminBody').innerHTML = '<div class="card"><h2>📦 아이템 목록 (주문용)</h2>' +
     (meta ? '<div class="sumbox">지금: <b>' + (meta.count || 0).toLocaleString() + '개</b> · ' + esc(String(meta.updatedAt || '').substring(0, 16).replace('T', ' ')) + ' · ' + esc(meta.by || '') + '</div>' : '<div class="alert a-amb">아직 올린 아이템 목록이 없습니다</div>') +
-    '<div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽습니다. Hide 에 x 표시된 것은 <b>숨김</b>으로 올립니다 (목록엔 있고 세일즈맨 주문 화면에만 안 보임). 시트가 바뀔 때마다 다시 올리면 됩니다.</div>' +
-    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div>' +
-    '<div class="btns" style="justify-content:flex-start"><button class="b-ghost" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 등록 · 숨기기 · 분류 옮기기</button></div><div class="hint">분류별로 훑어보며 여러 개를 체크해 한 번에 숨기기 · 보이기 · 옮기기 · 삭제 (담당자도 가능). 엑셀은 대량 변경용.</div></div>' +
+    '<div class="btns" style="justify-content:flex-start;margin-top:8px"><button class="b-ghost" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 등록 · 숨기기 · 분류 옮기기</button></div><div class="hint">분류별로 훑어보며 여러 개를 체크해 한 번에 숨기기 · 보이기 · 옮기기 · 삭제 (담당자도 가능). 엑셀은 대량 변경용.</div></div>' +
+    '<div class="card" style="border:2px solid #fcd34d"><h2>🐝 SmartBee ALL ITEMS 로 맞추기 <span class="en">Sync from SmartBee export</span></h2>' +
+    '<div class="muted">SmartBee 에서 <b>ALL ITEMS</b>(CATEGORY · ITEM 3 · DESCRIPTION · PRICE · BARCODE)를 엑셀로 뽑아 <b>그대로</b> 올리세요 — Item Master 모양으로 고칠 필요 없습니다. 새 코드는 비슷한 코드 · 이름으로 분류를 추정해 추가하고(미리보기에서 고쳐 쓸 수 있음), 이미 있는 코드는 <b>이름 · 가격 · 바코드가 바뀐 것만</b> 고칩니다. 앱에서 정한 분류 · 숨김 · 창고 위치 · 사진 · SRP 는 그대로 둡니다. 관리 → 📥 가져오기의 "파일 올리기"에 넣어도 같은 결과입니다.</div>' +
+    '<div class="fg" style="margin-top:10px"><input type="file" id="sbFile" accept=".xlsx,.xls,.csv"></div><div id="sbOut"></div></div>' +
+    '<div class="card"><h2>📦 Item Master 엑셀 — 전체 바꾸기</h2><div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽습니다. Hide 에 x 표시된 것은 <b>숨김</b>으로 올립니다. <b>목록 전체가 파일대로 바뀝니다</b> — 앱에서 고친 숨김 · 위치 · 분류가 시트에 없으면 사라지니, 새 아이템만 넣을 때는 위 🐝 SmartBee 파일을 쓰세요.</div>' +
+    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' +
     '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
     photoCard();
   setAdmin();
+  $('sbFile').onchange = () => { const f = $('sbFile').files[0]; if (f) smartbeeFile(f, $('sbOut'), catalogAdmin); };
+  $('catFile').onchange = () => { const f = $('catFile').files[0]; if (f) itemMasterFile(f, $('catOut'), catalogAdmin); };
   $('phDrive').onclick = async () => {
     const on = !S.settings.photoDrive;
     busy(true);
@@ -623,27 +711,89 @@ async function catalogAdmin() {
     const img = new Image(); img.onload = () => { out.innerHTML = '<div class="alert a-grn">✅ 드라이브 사진이 열립니다 — 켜도 됩니다</div>'; }; img.onerror = () => { out.innerHTML = '<div class="alert a-red">❌ 열리지 않습니다 — 구글이 로그인 화면으로 돌려보냅니다 (회사 계정 전용 공유). 고치는 법:<br>① 드라이브에서 <b>item_picture</b> 폴더와 <b>The One item</b>(세트 사진) 폴더 → 공유 → 일반 액세스 → <b>링크가 있는 모든 사용자 · 뷰어</b><br>② 공유 드라이브라서 이 메뉴가 회색이면: 공유 드라이브 설정 → "외부 사용자 액세스 허용" 켜기, 그래도 안 되면 admin.google.com → 앱 → Google Workspace → 드라이브 및 문서 → 공유 설정 → theonefl.com 외부 공유 허용<br>바꾼 뒤 이 버튼을 다시 눌러 ✅ 가 나오면 됩니다.</div>'; };
     img.src = driveUrl(id, 100) + '&t=' + Date.now();
   };
-  $('catFile').onchange = async () => {
-    const file = $('catFile').files[0]; if (!file) return;
-    const out = $('catOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
-    try {
-      const { XLSX, wb } = await readBook(file);
-      const p = parseItemMaster(aoa(XLSX, wb, 'Items'), aoa(XLSX, wb, 'Categories'));
-      const warn = [];
-      if (p.dup.length) warn.push('같은 코드가 두 번: ' + p.dup.length + '개 (첫 줄만 씀) — ' + p.dup.slice(0, 8).join(', '));
-      if (p.dupBar.length) warn.push('같은 바코드를 쓰는 코드: ' + p.dupBar.length + '쌍 (스캔하면 앞의 것이 담김) — ' + p.dupBar.slice(0, 5).join(', '));
-      if (p.noPrice.length) warn.push('가격 없음: ' + p.noPrice.length + '개 — ' + p.noPrice.slice(0, 8).join(', '));
-      out.innerHTML = '<div class="alert a-blu">아이템 <b>' + p.rows.length.toLocaleString() + '개</b> · 사진 ' + p.photos.toLocaleString() + '개 · 카테고리 ' + p.cats.length + '줄 · 🙈 숨김 ' + p.hidden + '개</div>' +
-        warn.map(w => '<div class="alert a-amb">' + esc(w) + '</div>').join('') +
-        '<button class="b-blue" id="catGo" style="margin-top:10px">이대로 올리기</button>';
-      $('catGo').onclick = async () => {
-        busy(true);
-        try { const r = await publishCatalog(S, p); await loadCatalog(S, true); toast('아이템 ' + p.rows.length + '개 올림 (' + r.chunks + '묶음)', 'good'); catalogAdmin(); }
-        catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
-        busy(false);
-      };
-    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
-  };
+}
+/** 📦 Item Master 엑셀(Items · Categories 탭) — 목록 전체를 파일대로 */
+async function itemMasterFile(file, out, after) {
+  out.innerHTML = '<div class="load">읽는 중…</div>';
+  try {
+    const { XLSX, wb } = await readBook(file);
+    const p = parseItemMaster(aoa(XLSX, wb, 'Items'), aoa(XLSX, wb, 'Categories'));
+    const warn = [];
+    if (p.dup.length) warn.push('같은 코드가 두 번: ' + p.dup.length + '개 (첫 줄만 씀) — ' + p.dup.slice(0, 8).join(', '));
+    if (p.dupBar.length) warn.push('같은 바코드를 쓰는 코드: ' + p.dupBar.length + '쌍 (스캔하면 앞의 것이 담김) — ' + p.dupBar.slice(0, 5).join(', '));
+    if (p.noPrice.length) warn.push('가격 없음: ' + p.noPrice.length + '개 — ' + p.noPrice.slice(0, 8).join(', '));
+    try { await loadCatalog(S); } catch (e) {}
+    const C = catalog(); let lost = 0, locs = 0;
+    if (C && C.items.length) { const inF = new Set(p.rows.map(r => r[0])); C.items.forEach(x => { if (x.virt) return; if (!inF.has(x.c)) lost++; if (x.loc) locs++; }); }
+    out.innerHTML = '<div class="alert a-blu">아이템 <b>' + p.rows.length.toLocaleString() + '개</b> · 사진 ' + p.photos.toLocaleString() + '개 · 카테고리 ' + p.cats.length + '줄 · 🙈 숨김 ' + p.hidden + '개</div>' +
+      warn.map(w => '<div class="alert a-amb">' + esc(w) + '</div>').join('') +
+      (lost || locs ? '<div class="alert a-amb">⚠️ 전체 바꾸기입니다 — ' + (lost ? '지금 목록에 있는데 파일에 없는 아이템 <b>' + lost.toLocaleString() + '개</b>가 빠지고, ' : '') + (locs ? '📍 창고 위치가 있는 아이템 ' + locs.toLocaleString() + '개는 파일의 Location 열이 없으면 위치가 비며, ' : '') + '앱에서 바꾼 숨김 · 분류도 파일대로 됩니다. 새 아이템만 넣으려면 🐝 SmartBee ALL ITEMS 로 올리세요.</div>' : '') +
+      '<button class="b-blue" id="catGo" style="margin-top:10px">이대로 전체 바꾸기</button>';
+    $('catGo').onclick = async () => {
+      if (lost && !(await confirmBox(lost.toLocaleString() + '개 아이템이 목록에서 빠집니다. 그래도 파일대로 전체를 바꿀까요?', '전체 바꾸기'))) return;
+      busy(true);
+      try { const r = await publishCatalog(S, p); await loadCatalog(S, true); toast('아이템 ' + p.rows.length + '개 올림 (' + r.chunks + '묶음)', 'good'); out.innerHTML = '<div class="alert a-grn">올렸습니다 — ' + p.rows.length.toLocaleString() + '개</div>'; (after || catalogAdmin)(); }
+      catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+}
+/* ---- 🐝 SmartBee ALL ITEMS — 새 아이템 추가 · 이름 · 가격 · 바코드 맞추기 (분류 · 숨김 · 위치는 그대로) ---- */
+let SBM_HID = null;
+async function sbmHidden() { if (SBM_HID) return SBM_HID; try { const r = await fetch('data/sbm-hidden.json'); SBM_HID = r.ok ? await r.json() : []; } catch (e) { SBM_HID = []; } return SBM_HID; }
+async function smartbeeFile(file, out, after) {
+  out.innerHTML = '<div class="load">읽는 중…</div>';
+  try {
+    try { await loadCatalog(S); } catch (e) {}
+    const C = catalog(); if (!C || !C.items.length) throw new Error('아직 아이템 목록이 없습니다 — 먼저 📦 Item Master 엑셀을 한 번 올려 주세요');
+    let P = null, err = '';
+    if (/\.(csv|txt)$/i.test(file.name)) { const text = (await file.text()).replace(/^﻿/, ''); P = parseSmartBeeItems(parseCsv(text, csvDelim(text.split(/\r?\n/)[0] || ''))); }
+    else { const { XLSX, wb } = await readBook(file); for (const n of wb.SheetNames) { try { P = parseSmartBeeItems(aoa(XLSX, wb, n)); break; } catch (e) { err = e.message; } } }
+    if (!P) throw new Error(err || '읽지 못했습니다');
+    const D = smartbeeDiff(P, C, await sbmHidden());
+    /* 새 아이템을 코드 가족 + 추정 분류로 묶어 보여 줌 */
+    const G = {}; D.add.forEach(x => { const fam = codeFamily(x.c), k = fam + '\u0001' + x.g.path.join('\u0001'); const g = G[k] = G[k] || { fam, path: x.g.path.slice(), conf: x.g.conf, why: x.g.why, items: [], cats: {} }; g.items.push(x); g.cats[x.cat || '—'] = (g.cats[x.cat || '—'] || 0) + 1; });
+    const groups = Object.values(G).sort((a, b) => b.items.length - a.items.length || a.fam.localeCompare(b.fam));
+    const junk = g => Object.keys(g.cats).every(c => /^(CREDIT|DISCOUNT|NOTE)$/.test(c)) || g.items.every(x => !(x.p > 0));
+    const CONF = { high: '✅ 확실', mid: '🔶 추정', low: '❔ 짐작', none: '❌ 모름' };
+    const names = { g: new Set(), l1: new Set(), l2: new Set(), l3: new Set() };
+    C.cats.forEach(p => ['g', 'l1', 'l2', 'l3'].forEach((k, j) => { if (p[j]) names[k].add(p[j]); })); C.items.forEach(x => ['g', 'l1', 'l2', 'l3'].forEach(k => { if (x[k]) names[k].add(x[k]); }));
+    const dl = k => '<datalist id="sbdl_' + k + '">' + Array.from(names[k]).sort().map(v => '<option value="' + esc(v) + '">').join('') + '</datalist>';
+    const lvIn = (i, k, j, v) => '<input data-sblv="' + i + ':' + j + '" list="sbdl_' + k + '" value="' + esc(v) + '" placeholder="' + ['Group', 'Level 1', 'Level 2', 'Level 3'][j] + '" autocomplete="off" class="sm">';
+    const chgLine = x => '<div class="muted"><b>' + esc(x.c) + '</b> ' + ['d', 'p', 'b'].filter(k => x.ch[k] != null).map(k => k === 'd' ? '이름 ' + esc(x.it.d) + ' → <b>' + esc(x.ch.d) + '</b>' : k === 'p' ? '가격 ' + money(x.it.p) + ' → <b>' + money(x.ch.p) + '</b>' : '바코드 ' + esc(x.it.b || '—') + ' → <b>' + esc(x.ch.b) + '</b>').join(' · ') + '</div>';
+    const more = (L, f, max) => L.slice(0, max).map(f).join('') + (L.length > max ? '<div class="muted">… ' + (L.length - max).toLocaleString() + '개 더</div>' : '');
+    out.innerHTML = '<div class="alert a-blu">파일 <b>' + P.items.length.toLocaleString() + '</b>개 코드 · 지금 목록 ' + C.items.filter(x => !x.virt).length.toLocaleString() + '개<br>같음 ' + D.same.toLocaleString() + ' · <b>바뀐 것 ' + D.chg.length.toLocaleString() + '</b> (이름 ' + D.cnt.d + ' · 가격 ' + D.cnt.p + ' · 바코드 ' + D.cnt.b + ') · <b>새 코드 ' + D.add.length.toLocaleString() + '</b>' + (D.oldHid.length ? ' · 이전 시스템 단종(숨김) ' + D.oldHid.length.toLocaleString() : '') + (D.gone.length ? ' · 파일에 없는 아이템 ' + D.gone.length.toLocaleString() : '') + '</div>' +
+      (P.fixed.length ? '<div class="alert a-grn">엑셀로 복사하다 깨진 줄 ' + P.fixed.length + '개를 살려 읽었습니다: ' + esc(P.fixed.slice(0, 10).join(', ')) + '</div>' : '') +
+      (P.dup.length ? '<div class="alert a-amb">같은 코드가 두 번 ' + P.dup.length + '개 (첫 줄만 씀): ' + esc(P.dup.slice(0, 8).join(', ')) + '</div>' : '') +
+      (D.chg.length ? '<details class="sumbox" open><summary><b>✏️ 바뀐 것 ' + D.chg.length.toLocaleString() + '개</b> <span class="muted">— 체크한 항목만 고칩니다</span></summary><div style="display:flex;gap:14px;flex-wrap:wrap;margin:6px 0"><label><input type="checkbox" id="sbFd" checked> 이름 ' + D.cnt.d + '</label><label><input type="checkbox" id="sbFp" checked> 가격 ' + D.cnt.p + '</label><label><input type="checkbox" id="sbFb" checked> 바코드 ' + D.cnt.b + '</label></div>' + more(D.chg, chgLine, 60) + '</details>' : '') +
+      (groups.length ? '<div class="sumbox"><b>＋ 새 아이템 ' + D.add.length.toLocaleString() + '개 — ' + groups.length + '묶음</b><div class="muted">분류는 비슷한 코드 · 이름으로 추정했습니다. 틀리면 고쳐 쓰고(목록에서 고르거나 새 이름), 넣지 않을 묶음은 체크를 푸세요. 비워 두면 "분류 없음"(검색만 됨). Group 은 인보이스 종류(Jewelry → A · Other → P · Set &amp; Display → W).</div>' + dl('g') + dl('l1') + dl('l2') + dl('l3') +
+        groups.map((g, i) => { const off = junk(g); const px = g.items.map(x => x.p).filter(p => p > 0); const pr = px.length ? (Math.min(...px) === Math.max(...px) ? money(px[0]) : money(Math.min(...px)) + '~' + money(Math.max(...px))) : '가격 없음';
+          return '<div class="pr" style="flex-wrap:wrap;align-items:flex-start"><label style="display:flex;gap:6px;align-items:flex-start;flex:1 1 100%;cursor:pointer"><input type="checkbox" data-sbg="' + i + '" ' + (off ? '' : 'checked') + ' style="width:20px;height:20px;flex:0 0 auto;margin-top:2px"><span style="flex:1"><b>' + esc(g.fam) + '</b> <span class="muted">' + g.items.length + '개 · ' + esc(Object.keys(g.cats).join(' · ')) + ' · ' + pr + '</span><small style="display:block;color:#64748b">' + esc(g.items.slice(0, 3).map(x => x.c + ' ' + x.d).join(' / ')) + (g.items.length > 3 ? ' …' : '') + '</small><small style="display:block;color:' + (g.conf === 'high' ? '#15803d' : g.conf === 'none' ? '#b91c1c' : '#b45309') + '">' + CONF[g.conf] + ' — ' + esc(g.why) + '</small></span></label>' +
+            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;flex:1 1 100%;margin:4px 0 0 26px">' + g.path.map((v, j) => lvIn(i, ['g', 'l1', 'l2', 'l3'][j], j, v)).join('') + '</div>' +
+            (off ? '<small class="muted" style="margin-left:26px">크레딧 · 디스카운트 · 가격 없는 코드라 기본으로 뺐습니다</small>' : '') + '</div>'; }).join('') + '</div>' : '') +
+      (D.oldHid.length ? '<details class="sumbox"><summary><b>🗂 이전 시스템에서 레벨을 비워 둔 코드 ' + D.oldHid.length.toLocaleString() + '개</b> <span class="muted">— 단종 · 안 파는 것으로 보고 넣지 않습니다</span></summary><label class="pick" id="sbOldP" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>이것도 🙈 숨김으로 목록에 넣기</b><small>바코드 스캔 · 지난 인보이스 조회에는 잡히고 주문 화면에는 안 보임</small></span></label>' + more(D.oldHid, x => '<div class="muted">' + esc(x.c + ' ' + x.d) + '</div>', 40) + '</details>' : '') +
+      (D.gone.length ? '<details class="sumbox"><summary><b>📭 목록에는 있는데 파일에 없는 아이템 ' + D.gone.length.toLocaleString() + '개</b></summary><label class="pick" id="sbGoneP" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>🙈 숨기기</b><small>SmartBee 에서 지운 것이면 숨김으로 (삭제는 안 함 — 🏷 아이템 관리에서 언제든 되돌림)</small></span></label>' + more(D.gone, x => '<div class="muted">' + esc(x.c + ' ' + x.d) + (x.h ? ' 🙈' : '') + '</div>', 40) + '</details>' : '') +
+      (D.noPrice.length ? '<div class="alert a-amb">가격이 0 인 새 코드 ' + D.noPrice.length + '개: ' + esc(D.noPrice.slice(0, 10).join(', ')) + (D.noPrice.length > 10 ? ' …' : '') + '</div>' : '') +
+      '<button class="b-blue" id="sbGo" style="margin-top:10px">✅ 적용</button><div class="hint">분류 · 숨김 · 위치 · 사진 · SRP 는 건드리지 않습니다. 적용하면 모든 폰이 새 목록을 받습니다.</div>';
+    ['sbOldP', 'sbGoneP'].forEach(id => { if ($(id)) $(id).onclick = () => $(id).classList.toggle('on'); });
+    $('sbGo').onclick = async () => {
+      const fields = { d: $('sbFd') ? $('sbFd').checked : true, p: $('sbFp') ? $('sbFp').checked : true, b: $('sbFb') ? $('sbFb').checked : true };
+      const add = []; groups.forEach((g, i) => { const ck = out.querySelector('[data-sbg="' + i + '"]'); if (!ck || !ck.checked) return; const lv = [0, 1, 2, 3].map(j => { const el = out.querySelector('[data-sblv="' + i + ':' + j + '"]'); return el ? el.value.trim() : ''; }); g.items.forEach(x => add.push({ c: x.c, d: x.d, p: x.p, b: x.b, lv, h: false })); });
+      if ($('sbOldP') && $('sbOldP').classList.contains('on')) D.oldHid.forEach(x => add.push({ c: x.c, d: x.d, p: x.p, b: x.b, lv: ['', '', '', ''], h: true }));
+      const hide = $('sbGoneP') && $('sbGoneP').classList.contains('on') ? D.gone.filter(x => !x.h).map(x => x.c) : [];
+      const nChg = D.chg.filter(x => (fields.d && x.ch.d != null) || (fields.p && x.ch.p != null) || (fields.b && x.ch.b != null)).length;
+      if (!nChg && !add.length && !hide.length) return toast('바꿀 것이 없습니다', 'bad');
+      if (!(await confirmBox('고침 ' + nChg + ' · 새 아이템 ' + add.length + (hide.length ? ' · 숨김 ' + hide.length : '') + ' — 적용할까요? 모든 폰이 새 목록을 받습니다.', '적용'))) return;
+      busy(true);
+      try {
+        const r = await editCatalog(S, (rows, cats) => applySmartBee(rows, cats, { chg: D.chg, fields, add, hide }));
+        toast('🐝 고침 ' + r.changed + ' · 새 아이템 ' + r.added + (r.hidden ? ' · 숨김 ' + r.hidden : ''), 'good');
+        out.innerHTML = '<div class="alert a-grn">적용했습니다 — 고침 ' + r.changed + ' · 새 아이템 ' + r.added + (r.addedHidden ? ' (숨김 ' + r.addedHidden + ')' : '') + (r.hidden ? ' · 숨김 ' + r.hidden : '') + '. 분류를 비워 둔 새 아이템은 🏷 아이템 관리 → 📥 레벨 · 그룹 일괄 변경 → ❔ 분류 없음 에서 고치세요.</div>';
+        (after || catalogAdmin)();
+      } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
 
 /* ---- 📤 자료 내려받기 — 앱에 쌓인 자료(주문 · 인보이스 · 수금 · 거래처 · 아이템)를 달 단위 엑셀로 (보관 · 회계 · 시트 분석용) ---- */
@@ -749,25 +899,27 @@ async function setAdmin() {
   $('setQ').oninput = debounceA(() => { SETQ = $('setQ').value; setAdmin().then(() => { const q = $('setQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }); }, 300);
   document.querySelectorAll('[data-set]').forEach(el => el.onclick = () => setForm(el.dataset.set, sets));
   $('setNew').onclick = () => setForm('', sets);
-  $('setFile').onchange = async () => {
-    const file = $('setFile').files[0]; if (!file) return;
-    const out = $('setOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
-    try {
-      const { XLSX, wb } = await readBook(file);
-      const names = wb.SheetNames;
-      const comp = aoa(XLSX, wb, names.find(n => /세트\s*구성/.test(n)) || names.find(n => /SET/i.test(n) && !/목록|LIST|요약/i.test(n)) || names[0]);
-      const list = aoa(XLSX, wb, names.find(n => /세트\s*목록/.test(n)) || '');
-      const r = parseSetBook(comp, list, which);
-      const C2 = catalog(); const miss = {}; let missN = 0;
-      Object.values(r.sets).forEach(st => st.k.forEach(x => { if (C2 && !C2.byCode[x[0]]) { miss[x[0]] = 1; } }));
-      missN = Object.keys(miss).length;
-      const inCat = C2 ? Object.keys(r.sets).filter(k => C2.byCode[k] && !C2.byCode[k].virt).length : 0;
-      out.innerHTML = '<div class="alert a-blu">세트 <b>' + Object.keys(r.sets).length + '개</b> · 구성 ' + r.lines.toLocaleString() + '줄 · 이름 있는 세트 ' + r.named + '개<br>아이템 목록에 같은 코드가 있는 세트 ' + inCat + '개 (그 가격 사용) · 나머지는 세트 목록의 리스트 가격 (없으면 구성품 합)</div>' +
-        (missN ? '<div class="alert a-amb">아이템 목록에 없는 구성품 코드 ' + missN + '개 — 주문는 되지만 사진 · 가격이 비어 있습니다: ' + esc(Object.keys(miss).slice(0, 12).join(', ')) + '</div>' : '') +
-        '<button class="b-blue" id="setGo" style="margin-top:8px">이대로 세트 올리기</button>';
-      $('setGo').onclick = async () => { busy(true); try { await publishSets(S, r.sets); await loadCatalog(S, true); toast('세트 ' + Object.keys(r.sets).length + '개 올림', 'good'); setAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
-  };
+  $('setFile').onchange = () => { const file = $('setFile').files[0]; if (file) setBookFile(file, $('setOut'), which, setAdmin); };
+}
+/** 🧩 세트 엑셀 하나 — 미리보기 → 올리기. which: 'new' | 'old' (세트 코드 기준) */
+async function setBookFile(file, out, which, after) {
+  out.innerHTML = '<div class="load">읽는 중…</div>';
+  try {
+    try { await loadCatalog(S, false); } catch (e) {}
+    const { XLSX, wb } = await readBook(file);
+    const names = wb.SheetNames;
+    const comp = aoa(XLSX, wb, names.find(n => /세트\s*구성/.test(n)) || names.find(n => /SET/i.test(n) && !/목록|LIST|요약/i.test(n)) || names[0]);
+    const list = aoa(XLSX, wb, names.find(n => /세트\s*목록/.test(n)) || '');
+    const r = parseSetBook(comp, list, which || 'new');
+    const C2 = catalog(); const miss = {}; let missN = 0;
+    Object.values(r.sets).forEach(st => st.k.forEach(x => { if (C2 && !C2.byCode[x[0]]) { miss[x[0]] = 1; } }));
+    missN = Object.keys(miss).length;
+    const inCat = C2 ? Object.keys(r.sets).filter(k => C2.byCode[k] && !C2.byCode[k].virt).length : 0;
+    out.innerHTML = '<div class="alert a-blu">세트 <b>' + Object.keys(r.sets).length + '개</b> · 구성 ' + r.lines.toLocaleString() + '줄 · 이름 있는 세트 ' + r.named + '개 (' + (which === 'old' ? '기존 코드 기준' : '새 세트 코드 기준') + ')<br>아이템 목록에 같은 코드가 있는 세트 ' + inCat + '개 (그 가격 사용) · 나머지는 세트 목록의 리스트 가격 (없으면 구성품 합)</div>' +
+      (missN ? '<div class="alert a-amb">아이템 목록에 없는 구성품 코드 ' + missN + '개 — 주문는 되지만 사진 · 가격이 비어 있습니다: ' + esc(Object.keys(miss).slice(0, 12).join(', ')) + '</div>' : '') +
+      '<button class="b-blue" id="setGo" style="margin-top:8px">이대로 세트 올리기 (전체 바꿈)</button>';
+    $('setGo').onclick = async () => { busy(true); try { await publishSets(S, r.sets); await loadCatalog(S, true); toast('세트 ' + Object.keys(r.sets).length + '개 올림', 'good'); out.innerHTML = '<div class="alert a-grn">세트 ' + Object.keys(r.sets).length + '개 올렸습니다</div>'; (after || setAdmin)(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
 function debounceA(fn, ms) { let t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
 function setForm(code, sets) {
@@ -921,19 +1073,7 @@ async function treeAdmin() {
   };
   document.querySelectorAll('[data-tup]').forEach(b => b.onclick = () => pin(b.dataset.tup, 'top'));
   document.querySelectorAll('[data-tdn]').forEach(b => b.onclick = () => pin(b.dataset.tdn, 'bottom'));
-  $('popFile').onchange = async () => {
-    const file = $('popFile').files[0]; if (!file) return;
-    const out = $('popOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
-    try {
-      const { XLSX, wb } = await readBook(file);
-      let best = null;
-      for (const name of wb.SheetNames) { const t = aoa(XLSX, wb, name); const r = parsePop(t); if (r && (!best || r.length > best.length)) best = r; }
-      if (!best || !best.length) throw new Error('Item(코드) 열과 Qty(수량) 열을 찾지 못했습니다');
-      const C = catalog(), known = best.filter(r => C.byCode[r[0]]);
-      out.innerHTML = '<div class="alert a-blu">' + best.length + '개 코드 (목록에 있는 것 ' + known.length + '개). 상위: ' + esc(known.slice(0, 8).map(r => r[0] + ' ' + r[1]).join(', ')) + '</div><div class="btns"><button class="b-blue" id="popGo">저장</button></div>';
-      $('popGo').onclick = async () => { busy(true); try { await S.DB.set('catalog', 'pop', { j: JSON.stringify(known.slice(0, 1000)), n: known.length, updatedAt: new Date().toISOString(), by: S.user.email }); await loadCatalog(S, true); toast('✨ 자주 나가는 ' + known.length + '개 저장', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
-  };
+  $('popFile').onchange = () => { const file = $('popFile').files[0]; if (file) popFileImport(file, $('popOut'), treeAdmin); };
   /* ➡️ 분류 옮기기 — 같은 단계의 다른 상위를 고름 (Level 1 은 Group 으로, Level 2 는 다른 Level 1 로 …) */
   const parents = (() => { const out = []; const walk = (nd, path) => { if (path.length === depth) { out.push(path); return; } nd.kids.forEach(k => walk(k, path.concat([k.name]))); }; walk(C.tree, []); return out; })();
   document.querySelectorAll('[data-tmv]').forEach(b => b.onclick = () => {
@@ -1005,45 +1145,8 @@ async function treeAdmin() {
   $('tDlLevel').onclick = () => dlXlsx(sbmLevelRows(), 'LEVEL_1_AND_2_' + today() + '.xlsx');
   $('tDlGroup').onclick = () => dlXlsx(sbmGroupRows(), 'GROUP_NAME_CHANGE_' + today() + '.xlsx');
   $('tCsv').onclick = () => { const blob = new Blob([catalogCsv()], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'the-one-items-' + today() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); };
-  $('locFile').onchange = async () => {
-    const file = $('locFile').files[0]; if (!file) return; const out = $('locOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
-    try {
-      let t;
-      if (/\.(csv|txt)$/i.test(file.name)) { const text = (await file.text()).replace(/^\ufeff/, ''); const first = text.split(/\r?\n/)[0] || ''; const dl = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : (first.match(/\t/g) || []).length > (first.match(/,/g) || []).length ? '\t' : ','; t = parseCsv(text, dl); }
-      else { const { XLSX, wb } = await readBook(file); t = aoa(XLSX, wb, wb.SheetNames[0]); }
-      const r = parseLocSheet(t);
-      const rows = catalog().rows.map(x => x.slice()), cats = catalog().cats.map(x => x.slice()), sets = JSON.parse(JSON.stringify(catalog().sets || {}));
-      const sum = applyBulk(rows, cats, sets, r.patches);
-      const sug = suggestCatLocs(rows), cur = catLocs(), newSug = Object.keys(sug).filter(k => cur[k] !== sug[k]);
-      const aisles = {}; r.patches.forEach(p => { const a = p.set.loc.split(/[-.\s/]/)[0]; aisles[a] = (aisles[a] || 0) + 1; });
-      const al = Object.keys(aisles).sort(new Intl.Collator('en', { numeric: true }).compare);
-      out.innerHTML = '<div class="alert a-blu">파일 위치 <b>' + r.patches.length.toLocaleString() + '</b>줄 · 목록에 있는 아이템 중 바뀌는 것 <b>' + sum.changed.toLocaleString() + '</b>개 · 통로 ' + al.length + '개 (' + esc(al.slice(0, 30).join(' · ')) + (al.length > 30 ? ' …' : '') + ')' + (r.blank ? '<br>통로가 비어 있는 줄 ' + r.blank + '개는 건너뜀' : '') + '</div>' +
-        (sum.missing.length ? '<div class="alert a-amb">우리 아이템 목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 12).join(', ')) + '</div>' : '') +
-        (newSug.length ? '<label class="pick on" id="locCat" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>분류 기본 위치도 채우기 · ' + newSug.length + '개 분류</b><small>' + esc(newSug.slice(0, 8).map(k => k.split('\u0001').join(' › ') + ' → ' + sug[k]).join(' / ')) + (newSug.length > 8 ? ' …' : '') + '</small></span></label>' : '') +
-        (sum.changed || newSug.length ? '<button class="b-blue" id="locGo" style="margin-top:8px">이대로 적용</button>' : '<div class="none">바뀌는 것이 없습니다</div>');
-      if ($('locCat')) $('locCat').onclick = () => $('locCat').classList.toggle('on');
-      if ($('locGo')) $('locGo').onclick = async () => {
-        const withCat = $('locCat') && $('locCat').classList.contains('on');
-        if (!(await confirmBox(sum.changed.toLocaleString() + '개 아이템 위치' + (withCat ? ' + 분류 ' + newSug.length + '개 기본 위치' : '') + '를 저장할까요? 모든 폰의 픽킹 리스트에 반영됩니다.', '적용'))) return;
-        busy(true);
-        try {
-          if (sum.changed) await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches));
-          if (withCat) { const app = (await S.DB.get('settings', 'app')) || {}; const m = Object.assign({}, app.catLoc || {}); newSug.forEach(k => { m[k] = sug[k]; }); app.catLoc = m; await S.DB.set('settings', 'app', app); S.settings.catLoc = m; setLocs(m); }
-          toast('📍 위치 저장 — 아이템 ' + sum.changed + (withCat ? ' · 분류 ' + newSug.length : ''), 'good'); treeAdmin();
-        } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
-        busy(false);
-      };
-    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
-  };
-  $('tFile').onchange = async () => {
-    const file = $('tFile').files[0]; if (!file) return;
-    const out = $('tOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
-    try {
-      const { XLSX, wb } = await readBook(file);
-      const name = wb.SheetNames.find(n => /treeupdate|items|아이템|변경/i.test(n)) || wb.SheetNames[0];
-      previewBulk(aoa(XLSX, wb, name), name, out);
-    } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
-  };
+  $('locFile').onchange = () => { const file = $('locFile').files[0]; if (file) locFileImport(file, $('locOut'), treeAdmin); };
+  $('tFile').onchange = () => { const file = $('tFile').files[0]; if (file) bulkFile(file, $('tOut'), treeAdmin); };
   /* 📊 구글 시트에서 바로 읽기 */
   const sheetIdOf = v => { const m = String(v || '').match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/) || String(v || '').match(/^([A-Za-z0-9_-]{20,})$/); return m ? m[1] : ''; };
   $('gsSave').onclick = async () => {
@@ -1066,8 +1169,65 @@ async function treeAdmin() {
     } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '<br><span class="muted">시트가 "링크가 있는 모든 사용자 · 뷰어" 로 공유돼 있는지, 탭 이름이 맞는지 확인하세요.</span></div>'; }
   });
 }
+/** ✨ 자주 나가는 아이템 파일 하나 (Item · Qty) */
+async function popFileImport(file, out, after) {
+  out.innerHTML = '<div class="load">읽는 중…</div>';
+  try {
+    try { await loadCatalog(S); } catch (e) {}
+    const { XLSX, wb } = await readBook(file);
+    let best = null;
+    for (const name of wb.SheetNames) { const t = aoa(XLSX, wb, name); const r = parsePop(t); if (r && (!best || r.length > best.length)) best = r; }
+    if (!best || !best.length) throw new Error('Item(코드) 열과 Qty(수량) 열을 찾지 못했습니다');
+    const C = catalog(), known = best.filter(r => C.byCode[r[0]]);
+    out.innerHTML = '<div class="alert a-blu">' + best.length + '개 코드 (목록에 있는 것 ' + known.length + '개). 상위: ' + esc(known.slice(0, 8).map(r => r[0] + ' ' + r[1]).join(', ')) + '</div><div class="btns"><button class="b-blue" id="popGo">저장</button></div>';
+    $('popGo').onclick = async () => { busy(true); try { await S.DB.set('catalog', 'pop', { j: JSON.stringify(known.slice(0, 1000)), n: known.length, updatedAt: new Date().toISOString(), by: S.user.email }); await loadCatalog(S, true); toast('✨ 자주 나가는 ' + known.length + '개 저장', 'good'); out.innerHTML = '<div class="alert a-grn">✨ 자주 나가는 ' + known.length + '개 저장</div>'; (after || treeAdmin)(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+}
+/** 📍 창고 위치 파일 하나 (코드 + 통로) */
+async function locFileImport(file, out, after) {
+  out.innerHTML = '<div class="load">읽는 중…</div>';
+  try {
+    try { await loadCatalog(S); } catch (e) {}
+    let t;
+    if (/\.(csv|txt)$/i.test(file.name)) { const text = (await file.text()).replace(/^﻿/, ''); t = parseCsv(text, csvDelim(text.split(/\r?\n/)[0] || '')); }
+    else { const { XLSX, wb } = await readBook(file); t = aoa(XLSX, wb, wb.SheetNames[0]); }
+    const r = parseLocSheet(t);
+    const rows = catalog().rows.map(x => x.slice()), cats = catalog().cats.map(x => x.slice()), sets = JSON.parse(JSON.stringify(catalog().sets || {}));
+    const sum = applyBulk(rows, cats, sets, r.patches);
+    const sug = suggestCatLocs(rows), cur = catLocs(), newSug = Object.keys(sug).filter(k => cur[k] !== sug[k]);
+    const aisles = {}; r.patches.forEach(p => { const a = p.set.loc.split(/[-.\s/]/)[0]; aisles[a] = (aisles[a] || 0) + 1; });
+    const al = Object.keys(aisles).sort(new Intl.Collator('en', { numeric: true }).compare);
+    out.innerHTML = '<div class="alert a-blu">파일 위치 <b>' + r.patches.length.toLocaleString() + '</b>줄 · 목록에 있는 아이템 중 바뀌는 것 <b>' + sum.changed.toLocaleString() + '</b>개 · 통로 ' + al.length + '개 (' + esc(al.slice(0, 30).join(' · ')) + (al.length > 30 ? ' …' : '') + ')' + (r.blank ? '<br>통로가 비어 있는 줄 ' + r.blank + '개는 건너뜀' : '') + '</div>' +
+      (sum.missing.length ? '<div class="alert a-amb">우리 아이템 목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 12).join(', ')) + '</div>' : '') +
+      (newSug.length ? '<label class="pick on" id="locCat" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>분류 기본 위치도 채우기 · ' + newSug.length + '개 분류</b><small>' + esc(newSug.slice(0, 8).map(k => k.split('\u0001').join(' › ') + ' → ' + sug[k]).join(' / ')) + (newSug.length > 8 ? ' …' : '') + '</small></span></label>' : '') +
+      (sum.changed || newSug.length ? '<button class="b-blue" id="locGo" style="margin-top:8px">이대로 적용</button>' : '<div class="none">바뀌는 것이 없습니다</div>');
+    if ($('locCat')) $('locCat').onclick = () => $('locCat').classList.toggle('on');
+    if ($('locGo')) $('locGo').onclick = async () => {
+      const withCat = $('locCat') && $('locCat').classList.contains('on');
+      if (!(await confirmBox(sum.changed.toLocaleString() + '개 아이템 위치' + (withCat ? ' + 분류 ' + newSug.length + '개 기본 위치' : '') + '를 저장할까요? 모든 폰의 픽킹 리스트에 반영됩니다.', '적용'))) return;
+      busy(true);
+      try {
+        if (sum.changed) await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches));
+        if (withCat) { const app = (await S.DB.get('settings', 'app')) || {}; const m = Object.assign({}, app.catLoc || {}); newSug.forEach(k => { m[k] = sug[k]; }); app.catLoc = m; await S.DB.set('settings', 'app', app); S.settings.catLoc = m; setLocs(m); }
+        toast('📍 위치 저장 — 아이템 ' + sum.changed + (withCat ? ' · 분류 ' + newSug.length : ''), 'good'); out.innerHTML = '<div class="alert a-grn">📍 위치 저장 — 아이템 ' + sum.changed + (withCat ? ' · 분류 ' + newSug.length : '') + '</div>'; (after || treeAdmin)();
+      } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+}
+/** 📄 일괄 변경 파일 하나 (LEVEL_1_AND_2 · GROUP_NAME_CHANGE · TreeUpdate · Code + 바꿀 열) */
+async function bulkFile(file, out, after) {
+  out.innerHTML = '<div class="load">읽는 중…</div>';
+  try {
+    try { await loadCatalog(S); } catch (e) {}
+    let t, name;
+    if (/\.(csv|txt)$/i.test(file.name)) { const text = (await file.text()).replace(/^﻿/, ''); t = parseCsv(text, csvDelim(text.split(/\r?\n/)[0] || '')); name = file.name; }
+    else { const { XLSX, wb } = await readBook(file); name = wb.SheetNames.find(n => /treeupdate|items|아이템|변경|level|group/i.test(n)) || wb.SheetNames[0]; t = aoa(XLSX, wb, name); }
+    previewBulk(t, name, out, after);
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+}
 /** 일괄 변경 미리보기 → 적용 (파일 · 구글 시트 공용) */
-function previewBulk(t, name, out) {
+function previewBulk(t, name, out, after) {
   const r = parseBulkSheet(t);
   const rows = catalog().rows.map(x => x.slice()), cats = catalog().cats.map(x => x.slice()), sets = JSON.parse(JSON.stringify(catalog().sets || {}));
   const sum = applyBulk(rows, cats, sets, r.patches);
@@ -1079,7 +1239,7 @@ function previewBulk(t, name, out) {
     (sum.missing.length ? '<div class="alert a-amb">목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 10).join(', ')) + '</div>' : '') +
     (sum.dupNew.length ? '<div class="alert a-red">새 코드가 이미 있어 바꾸지 못함 ' + sum.dupNew.length + '개: ' + esc(sum.dupNew.slice(0, 10).join(', ')) + '</div>' : '') +
     (sum.changed ? '<button class="b-blue" id="tGo" style="margin-top:8px">이대로 적용 (' + sum.changed.toLocaleString() + '개)</button>' : '<div class="none">바뀌는 것이 없습니다</div>');
-  if ($('tGo')) $('tGo').onclick = async () => { if (!(await confirmBox(sum.changed.toLocaleString() + '개 아이템을 바꿀까요? 모든 폰이 새 목록을 받습니다.', '적용'))) return; busy(true); try { await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches)); toast('적용했습니다 — 모든 폰이 새 목록을 받습니다', 'good'); treeAdmin(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('tGo')) $('tGo').onclick = async () => { if (!(await confirmBox(sum.changed.toLocaleString() + '개 아이템을 바꿀까요? 모든 폰이 새 목록을 받습니다.', '적용'))) return; busy(true); try { await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches)); toast('적용했습니다 — 모든 폰이 새 목록을 받습니다', 'good'); out.innerHTML = '<div class="alert a-grn">적용했습니다 — ' + sum.changed.toLocaleString() + '개</div>'; (after || treeAdmin)(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
 }
 /** 공개(링크 공유) 구글 시트의 탭을 CSV 로 읽어 2차원 배열로 */
 async function readSheetTab(id, tab) {

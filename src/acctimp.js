@@ -16,11 +16,13 @@ export function acctImportCard() {
 }
 export function bindAcctImport(state, readBook, aoa) {
   S = state;
-  $('acImpF').onchange = async () => {
-    const f = $('acImpF').files[0]; if (!f) return; const out = $('acImpOut'); out.innerHTML = '<div class="load">읽는 중…</div>';
-    try { const { XLSX, wb } = await readBook(f); await preview(parseAcctList(aoa(XLSX, wb, wb.SheetNames[0])), out); }
-    catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
-  };
+  $('acImpF').onchange = () => { const f = $('acImpF').files[0]; if (f) acctFile(state, f, $('acImpOut'), readBook, aoa); };
+}
+/** 거래처 목록 파일 하나 — 미리보기 → 적용 (📥 파일 올리기 자동 인식에서도 씀) */
+export async function acctFile(state, f, out, readBook, aoa) {
+  S = state; out.innerHTML = '<div class="load">읽는 중…</div>';
+  try { const { XLSX, wb } = await readBook(f); await preview(parseAcctList(aoa(XLSX, wb, wb.SheetNames[0])), out); }
+  catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
 
 const sv = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();

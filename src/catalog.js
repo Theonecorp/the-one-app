@@ -546,6 +546,127 @@ export function applyBulk(rows, cats, sets, patches) {
   ensureCats(rows, cats);
   return sum;
 }
+/* ============================================================
+ *  🐝 SmartBee "ALL ITEMS" 내보내기 그대로 → 지금 목록과 맞추기 (Item Master 모양으로 고칠 필요 없음)
+ *    열: CATEGORY · ITEM 3(코드) · DESCRIPTION · PRICE · BARCODE  — 머리글 이름으로 찾음
+ *    · 목록에 있는 코드: 이름 · 가격 · 바코드가 다르면 그것만 고침 (분류 · 숨김 · 위치 · 사진 · SRP 는 그대로)
+ *    · 목록에 없는 코드: 새 아이템 — 분류는 ① 같은 접두어 코드 ② 이름이 비슷한 아이템 으로 추정 (미리보기에서 고침)
+ *    · 이전 시스템에서 레벨을 비워 둔 코드(data/sbm-hidden.json) 는 단종으로 보고 따로 보여 줌
+ *    · 엑셀로 복사하다 깨진 줄(디스크립션 칸에 탭 · 줄바꿈으로 다음 아이템이 붙은 것)도 살려 읽음
+ * ============================================================ */
+const SB_HDR = { cat: [/^category$/i, /^cat$/i, /^분류$/], c: [/^item\s*(3|#|no\.?|code|id)?$/i, /^code$/i, /^sku$/i, /^코드$/, /^아이템\s*코드$/], d: [/^description$/i, /^desc$/i, /^item\s*name$/i, /^name$/i, /^설명$/], p: [/^price$/i, /^unit\s*price$/i, /^wholesale/i, /^sell(ing)?\s*price$/i, /^가격$/], b: [/^bar\s*code$/i, /^upc$/i, /^ean$/i, /^바코드$/] };
+export function parseSmartBeeItems(aoa) {
+  if (!aoa || aoa.length < 2) throw new Error('시트가 비어 있습니다');
+  const str = v => String(v == null ? '' : v).trim();
+  let hi = -1, ix = null;
+  for (let r = 0; r < Math.min(6, aoa.length); r++) {
+    const hr = (aoa[r] || []).map(h => str(h).toLowerCase());
+    const f = res => hr.findIndex(h => h && res.some(re => re.test(h)));
+    const m = { cat: f(SB_HDR.cat), c: f(SB_HDR.c), d: f(SB_HDR.d), p: f(SB_HDR.p), b: f(SB_HDR.b) };
+    if (m.c >= 0 && m.d >= 0 && m.p >= 0) { hi = r; ix = m; break; }
+  }
+  if (!ix) throw new Error('머리글(CATEGORY · ITEM 3 · DESCRIPTION · PRICE · BARCODE)을 찾지 못했습니다');
+  const items = [], seen = {}, dup = [], fixed = [];
+  const bar = v => { let s = str(v).replace(/\.0+$/, ''); if (/^\d+(\.\d+)?e\+\d+$/i.test(s)) s = String(Math.round(Number(s))); if (/^\d{11}$/.test(s)) s = '0' + s; return s; };
+  const push = (cat, code, d, p, b) => { code = str(code).toUpperCase(); if (!code) return; if (seen[code]) { dup.push(code); return; } seen[code] = 1; items.push({ c: code, d: str(d).replace(/\s+/g, ' '), p: R2(num(p)), b: bar(b), cat: str(cat).toUpperCase() }); };
+  for (let i = hi + 1; i < aoa.length; i++) {
+    const r = aoa[i] || []; const code = str(r[ix.c]); if (!code) continue;
+    const dcell = String(r[ix.d] == null ? '' : r[ix.d]);
+    if (!/[\n\r\t]|_x000D_/.test(dcell)) { push(ix.cat < 0 ? '' : r[ix.cat], code, dcell, r[ix.p], ix.b < 0 ? '' : r[ix.b]); continue; }
+    /* 깨진 줄: "이름 \t 재고 \t 0 \t 18.00 \t\t 10282 \r\n \t JEWELRY \t\t\t 다음코드 \t 다음이름" — 이 줄의 가격 · 바코드 칸은 마지막 아이템 것 */
+    const lines = dcell.replace(/_x000D_/g, '').split(/\r?\n/).filter(l => l.trim());
+    const first = lines[0].split('\t').map(str), tail = first.slice(1).filter(Boolean);
+    const p0 = tail.filter(x => /^\d+\.\d{1,2}$/.test(x)).pop() || '', b0 = tail.filter(x => /^\d{4,}$/.test(x)).pop() || '';
+    const rowCat = ix.cat < 0 ? '' : r[ix.cat];
+    push(rowCat, code, first[0], lines.length > 1 ? p0 : (p0 || r[ix.p]), lines.length > 1 ? b0 : (b0 || (ix.b < 0 ? '' : r[ix.b]))); fixed.push(code.toUpperCase());
+    lines.slice(1).forEach((ln, j) => {
+      const t = ln.split('\t').map(str).filter(Boolean); if (t.length < 2) return;
+      const last = j === lines.length - 2;
+      const cat = t.length >= 3 ? t[0] : rowCat, c2 = t.length >= 3 ? t[1] : t[0], d2 = t.slice(t.length >= 3 ? 2 : 1).join(' ');
+      push(cat, c2, d2, last ? r[ix.p] : '', last && ix.b >= 0 ? r[ix.b] : ''); fixed.push(str(c2).toUpperCase());
+    });
+  }
+  if (!items.length) throw new Error('아이템 줄이 없습니다');
+  return { items, dup, fixed };
+}
+/** 새 코드의 분류 추정기 — ① 같은 접두어 코드 ② 이름 단어가 겹치는 아이템 ③ 카테고리로 Group 만 */
+export function levelGuesser(C) {
+  const pool = C.items.filter(x => !x.virt && x.l1 && !x.h);   // 보이는 · 분류 있는 아이템만 기준 (숨긴 단종품은 기준에서 뺌)
+  const codes = pool.map(x => x.c).sort(), byC = {}; pool.forEach(x => { byC[x.c] = x; });
+  const STOP = new Set(['PC', 'PCS', 'SET', 'STYLE', 'THE', 'AND', 'WITH', 'FOR', 'OZ', 'FL', 'ML', 'MM', 'IN', 'NEW', 'EACH', 'SINGLE', 'PRICE', 'PACK', 'BOX', 'DZ', 'DOZEN', 'PER', 'OF', 'NO']);
+  const toks = d => Array.from(new Set(String(d || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').split(' ').filter(w => w.length >= 2 && !/^\d+$/.test(w) && !STOP.has(w))));
+  const inv = {}; pool.forEach((x, i) => toks(x.d).forEach(w => (inv[w] = inv[w] || []).push(i)));
+  const N = pool.length || 1, idf = w => Math.log(1 + N / ((inv[w] || []).length || N));
+  const pathOf = x => [x.g || '', x.l1 || '', x.l2 || '', x.l3 || ''];
+  const vote = list => { const m = {}; let tot = 0; list.forEach(([x, w]) => { const k = pathOf(x).join('\u0001'); m[k] = (m[k] || 0) + w; tot += w; }); const best = Object.keys(m).sort((a, b) => m[b] - m[a])[0]; return best ? { path: best.split('\u0001'), share: tot ? m[best] / tot : 0, n: list.length } : null; };
+  const bisect = pre => { let lo = 0, hi = codes.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (codes[mid] < pre) lo = mid + 1; else hi = mid; } return lo; };
+  const groups = {}; pool.forEach(x => { if (x.g) groups[x.g] = (groups[x.g] || 0) + 1; });
+  const topGroup = Object.keys(groups).sort((a, b) => groups[b] - groups[a])[0] || '';
+  const groupLike = re => Object.keys(groups).find(g => re.test(g)) || '';
+  return function guess(code, desc, cat) {
+    code = String(code || '').toUpperCase();
+    const root = (code.match(/^[A-Z]+/) || [''])[0];
+    /* ① 접두어 — 뒤에서 한 글자씩 줄이되 영문 머리(root)보다 짧게는 안 감 (BAND → BANGLE 같은 엉뚱한 매칭 방지) */
+    for (let n = code.length - 1; n >= Math.max(3, root.length || 3); n--) {
+      const pre = code.substring(0, n); if (/[-_ .]$/.test(pre)) continue;
+      let i = bisect(pre); const hits = []; while (i < codes.length && codes[i].startsWith(pre) && hits.length < 400) hits.push([byC[codes[i++]], 1]);
+      if (hits.length >= 2 || (hits.length >= 1 && n >= 5)) {
+        const v = vote(hits); if (!v) break;
+        const conf = v.share >= 0.6 && (n > root.length || v.n >= 4) ? 'high' : 'mid';
+        return { path: v.path, conf, why: '코드 ' + pre + '… ' + v.n + '개와 같은 분류' + (v.share < 0.99 ? ' (' + Math.round(v.share * 100) + '%)' : '') };
+      }
+    }
+    /* ② 이름 단어 — 겹치는 단어가 드물수록(IDF) 점수 높음, 상위 15개의 분류 중 다수 */
+    const tw = toks(desc);
+    if (tw.length) {
+      const sc = {}; tw.forEach(w => (inv[w] || []).forEach(i => { sc[i] = (sc[i] || 0) + idf(w); }));
+      const top = Object.keys(sc).map(i => [pool[i], sc[i], i]).sort((a, b) => b[1] - a[1]).slice(0, 15);
+      const minShare = tw.length >= 2 ? 2 : 1;   // 최소 두 단어는 겹쳐야 (한 단어짜리 이름이면 한 단어)
+      const good = top.filter(([x]) => toks(x.d).filter(w => tw.includes(w)).length >= minShare);
+      if (good.length) { const v = vote(good); if (v) return { path: v.path, conf: v.share >= 0.5 && good.length >= 3 ? 'mid' : 'low', why: '이름이 비슷한 아이템 ' + good.length + '개 (' + Math.round(v.share * 100) + '%)' }; }
+    }
+    /* ③ 카테고리로 Group 만 — Level 1 은 비움 (검색만 되고 분류엔 "NO LEVEL") */
+    const jewel = /JEW/i.test(cat || ''), g = jewel ? (groupLike(/^jewel/i) || topGroup) : (groupLike(/^other/i) || groupLike(/^(beauty|hair|general)/i) || '');
+    return { path: [g, '', '', ''], conf: 'none', why: '비슷한 아이템을 못 찾음 — 분류를 적어 주세요' };
+  };
+}
+/** 파일 ↔ 지금 목록 비교. hiddenOld = 이전 시스템에서 레벨 비워 둔 코드 목록 */
+export function smartbeeDiff(P, C, hiddenOld) {
+  const hid = new Set(hiddenOld || []), guess = levelGuesser(C);
+  const nd = s => String(s || '').replace(/\s+/g, ' ').trim();   // 띄어쓰기만 다른 이름은 같은 것으로
+  const out = { same: 0, chg: [], add: [], oldHid: [], gone: [], noPrice: [], cnt: { d: 0, p: 0, b: 0 }, inFile: {} };
+  P.items.forEach(x => {
+    out.inFile[x.c] = 1;
+    const it = C.byCode[x.c];
+    if (it && !it.virt && it.c === x.c) {
+      const ch = {};
+      if (x.d && nd(x.d) !== nd(it.d)) { ch.d = x.d; out.cnt.d++; }
+      if (x.p > 0 && Math.abs(x.p - (Number(it.p) || 0)) > 0.004) { ch.p = x.p; out.cnt.p++; }
+      if (x.b && x.b !== String(it.b || '')) { ch.b = x.b; out.cnt.b++; }
+      if (Object.keys(ch).length) out.chg.push({ c: x.c, it, ch }); else out.same++;
+      return;
+    }
+    if (hid.has(x.c)) { out.oldHid.push(x); return; }
+    if (!(x.p > 0)) out.noPrice.push(x.c);
+    out.add.push(Object.assign({}, x, { g: guess(x.c, x.d, x.cat), set: !!(it && it.virt) }));
+  });
+  C.items.forEach(it => { if (!it.virt && !out.inFile[it.c]) out.gone.push(it); });
+  return out;
+}
+/** 코드 가족 — 미리보기에서 묶어 보이기 (CHG01 → CHG · C4-HDB2 → C4 · BJDG61 → BJDG) */
+export function codeFamily(code) { const s = String(code || '').toUpperCase().split(/[-_ ]/)[0]; const m = s.match(/^([A-Z]{2,})\d+[A-Z]?$/); return m ? m[1] : s || String(code || ''); }
+/** 적용 — plan: { chg:[{c, ch}], fields:{d,p,b}, add:[{c,d,p,b,lv:[g,l1,l2,l3],h}], hide:[codes] } */
+export function applySmartBee(rows, cats, plan) {
+  const at = {}; rows.forEach((r, i) => { at[r[0]] = i; });
+  const F = Object.assign({ d: true, p: true, b: true }, plan.fields || {});
+  const sum = { changed: 0, added: 0, addedHidden: 0, hidden: 0 };
+  (plan.chg || []).forEach(x => { const r = rows[at[x.c]]; if (!r) return; let ch = false; if (F.d && x.ch.d != null && r[1] !== x.ch.d) { r[1] = x.ch.d; ch = true; } if (F.p && x.ch.p != null && r[2] !== x.ch.p) { r[2] = x.ch.p; ch = true; } if (F.b && x.ch.b != null && r[4] !== x.ch.b) { r[4] = x.ch.b; ch = true; } if (ch) sum.changed++; });
+  (plan.add || []).forEach(x => { if (at[x.c] != null) return; const L = (x.lv || []).concat(['', '', '', '']).slice(0, 4); rows.push([x.c, x.d, x.p || 0, 0, x.b || '', L[0], L[1], L[2], L[3], '', x.h ? 1 : 0, '']); at[x.c] = rows.length - 1; sum.added++; if (x.h) sum.addedHidden++; });
+  (plan.hide || []).forEach(c => { const r = rows[at[c]]; if (!r) return; while (r.length < 11) r.push(r.length === 10 ? 0 : ''); if (!r[10]) { r[10] = 1; sum.hidden++; } });
+  ensureCats(rows, cats);
+  return sum;
+}
+
 /** 지금 아이템 전체를 CSV 로 (엑셀에서 고쳐서 다시 올리는 용) */
 /** 이전 시스템 편의 파일 모양으로 내려받기 — LEVEL_1_AND_2 (ITEM CODE · LEVEL 1 · LEVEL 2) / GROUP_NAME_CHANGE (ITEM CODE · CURRENT GROUP NAME · NEW GROUP NAME) */
 export function sbmLevelRows() { return [['ITEM CODE', 'LEVEL 1', 'LEVEL 2']].concat(CAT.items.map(x => x.h ? [x.c, '', ''] : [x.c, x.l1 || '', x.l2 || ''])); }   // 숨김은 옛 시스템처럼 레벨을 비워서 내보냄
