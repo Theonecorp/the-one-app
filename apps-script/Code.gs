@@ -13,6 +13,8 @@
  *   5. testMail 실행 → 내 메일함에 시험 메일이 오면 끝
  *
  * 🔔 앱 알림(notifyq): 주문 확인 요청 · 주문 문제 · 문의를 이메일로, 스크립트 속성 CHAT_WEBHOOK 이 있으면 구글 챗 스페이스에도 (5분마다 같이)
+ *    세일즈맨에게 가는 것은 챗에서 그 사람을 @멘션 → 구글 챗이 폰 알림을 보냄. 멘션에 쓰는 사용자 ID 는 Admin Directory 로 찾음
+ *    (appsscript.json 에 AdminDirectory 서비스 · 권한 포함 — setup 을 다시 ▶ 실행해 권한 허용, testChat 으로 확인)
  *
  * 메일은 이 스크립트를 설치한 계정(luke@)에서 나갑니다. Workspace 하루 한도 1,500명 — 충분합니다.
  * Firestore 는 설치한 계정의 권한(프로젝트 소유자)으로 읽고 씁니다. 키 · 비밀번호를 어디에도 저장하지 않습니다.
@@ -96,7 +98,9 @@ function notifyRun_() {
           (n.url ? '<p><a href="' + esc_(n.url) + '" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:bold">앱에서 열기 · Open in app</a></p>' : '') + '</div>' });
       let chat = '';
       if (n.chat && hook) {
-        const r = UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: String(n.text || '') + (n.byName ? '\n— ' + n.byName : '') + (n.url ? '\n' + n.url : '') }), muteHttpExceptions: true });
+        /* 받는 세일즈맨을 @멘션 — 구글 챗이 그 사람 폰에 알림을 보냄 (앱이 닫혀 있어도) */
+        const mention = to.filter(e => n.toSm).map(chatId_).filter(Boolean).map(id => '<users/' + id + '>').join(' ');
+        const r = UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: (mention ? mention + ' ' : '') + String(n.text || '') + (n.byName ? '\n— ' + n.byName : '') + (n.url ? '\n' + n.url : '') }), muteHttpExceptions: true });
         chat = r.getResponseCode() === 200 ? 'ok' : 'error ' + r.getResponseCode();
       }
       patch_('notifyq', n._id, { st: 'sent', sentAt: new Date().toISOString(), mailTo: to.join(', '), chat: chat || (n.chat ? 'no webhook' : '') });
@@ -104,6 +108,23 @@ function notifyRun_() {
       patch_('notifyq', n._id, { st: 'error', err: String(e && e.message || e).substring(0, 300), sentAt: new Date().toISOString() });
     }
   });
+}
+
+/** 이메일 → 구글 사용자 ID (챗 @멘션용). Admin Directory 로 한 번 찾고 스크립트 속성에 기억. 못 찾으면 '' (멘션 없이 올림) */
+function chatId_(email) {
+  const P = PropertiesService.getScriptProperties(), k = 'CHATID_' + String(email).toLowerCase();
+  const c = P.getProperty(k); if (c) return c === '-' ? '' : c;
+  let id = '';
+  try { id = String(AdminDirectory.Users.get(email, { fields: 'id' }).id || ''); } catch (e) { Logger.log('사용자 ID 못 찾음 ' + email + ': ' + e.message); }
+  P.setProperty(k, id || '-'); return id;
+}
+/** 시험 — 챗 스페이스에 나를 멘션해서 한 줄 (CHAT_WEBHOOK 설정 뒤 실행) */
+function testChat() {
+  const hook = PropertiesService.getScriptProperties().getProperty('CHAT_WEBHOOK');
+  if (!hook) { Logger.log('스크립트 속성 CHAT_WEBHOOK 이 없습니다'); return; }
+  const me = Session.getActiveUser().getEmail(), id = chatId_(me);
+  const r = UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: (id ? '<users/' + id + '> ' : '') + '🔔 THE ONE 알림 시험 — ' + (id ? '멘션 OK' : '멘션 못 함 (Admin Directory 권한 확인)') }), muteHttpExceptions: true });
+  Logger.log('챗 ' + r.getResponseCode() + ' · 내 ID ' + (id || '없음'));
 }
 
 /* ---------- 메일 본문 (예전 Daily Collection Report 와 같은 모양) ---------- */
