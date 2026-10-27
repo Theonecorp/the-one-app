@@ -70,7 +70,8 @@ async function autoComplete(rows) {
   }
   return keep;
 }
-function bucket(o) { const t = today(); if (o.st === 'NSF') return 'nsf'; if (o.st === 'HOLD') return 'hold'; if (o.drawOn && o.drawOn < t) return 'late'; if (!o.setup) return 'need'; return 'wait'; }
+/* 옛 ACH v20: 셋업 ☑ = 예약됨 — 인출일이 지나도 자동 완료(예정일 + 3영업일)까지 여기 (지연 아님). 지연 = 셋업 안 했는데 인출일 지남 */
+function bucket(o) { const t = today(); if (o.st === 'NSF') return 'nsf'; if (o.st === 'HOLD') return 'hold'; if (o.setup) return 'wait'; if (o.drawOn && o.drawOn < t) return 'late'; return 'need'; }
 export function mailDue(o) { if (!o.setup || o.mail || o.st === 'NSF' || o.st === 'HOLD' || !o.drawOn || o.drawOn < today()) return false; let d = o.drawOn; for (let i = 0; i < 2; i++) { d = addDays(d, -1); while (!isBizDay(d)) d = addDays(d, -1); } return d <= today(); }
 function isBizDay(d) { const w = new Date(d + 'T12:00:00').getDay(); return w !== 0 && w !== 6 && !holidays()[d]; }
 function isSoon(o) { return !!o.setup && o.st !== 'HOLD' && o.drawOn >= today() && o.drawOn <= nextBiz(today(), 1); }
