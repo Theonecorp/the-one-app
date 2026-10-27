@@ -77,7 +77,7 @@ export async function adminRequestsCard(el) {
     busy(true);
     try {
       let acct = r.acct;
-      if (!acct && r.no) { const inv = await S.DB.get('invoices', r.no); acct = inv ? inv.acct : ''; }
+      if (!acct && r.no) { const { getInvoice } = await import('./invoicing.js'); const inv = await getInvoice(S, r.no); acct = inv ? inv.acct : ''; }
       if (!acct) throw new Error(bt('인보이스를 찾지 못해 가게를 알 수 없습니다', 'Invoice not found'));
       const until = Date.now() + Number(b.dataset.days) * 86400000, now = new Date().toISOString(), a = acctOf(acct);
       await S.DB.batch([{ op: 'set', col: 'grants', id: r.by + '__' + acct, data: { email: r.by, acct, store: (a && a.store) || r.store || '', untilMs: until, by: S.user.email, at: now, reqId: r.id } },

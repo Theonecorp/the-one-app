@@ -9,7 +9,7 @@
  *  자료: ach/{id} (건) · achBank/{acct} (은행 정보 — achAccess 있는 사람만) · accounts/{acct}.ach* (상태 표시용)
  *  인출 완료(수동 · 자동: 예정일 + 3영업일) → cod 컬렉션에 method 'ACH' 로 넣어 수금 확인 · 정산으로 흐름
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, md, addDays, daysBetween, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, pad4, nz, sel, hasWords } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, addDays, daysBetween, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, pad4, nz, sel, hasWords, invNo } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, sortStores } from './accounts.js';
 import { invType } from './comm.js';
@@ -108,7 +108,7 @@ async function paintNew() {
 }
 function lineRow(v, i) { const t = v.no ? invType(v.no) : '?'; return '<div class="ivr" data-li="' + i + '"><span class="ity ' + (t === '?' ? '' : t) + '">' + t + '</span><input class="ino" data-lno="' + i + '" value="' + esc(v.no) + '" placeholder="A00001 / CM0001" autocomplete="off" autocapitalize="characters"><input class="iam" data-lamt="' + i + '" inputmode="decimal" value="' + esc(v.amt) + '" placeholder="0.00"><button type="button" class="idel" data-ldel="' + i + '">✕</button></div>'; }
 function lineTotal() { return sum(F.lines, v => num(v.amt)); }
-function collectNew() { F.invDate = $('aInvD').value; F.terms = $('aTerms').value; F.note = $('aNote').value; F.lines = Array.from(document.querySelectorAll('[data-lno]')).map(el => ({ no: el.value.trim().toUpperCase(), amt: document.querySelector('[data-lamt="' + el.dataset.lno + '"]').value })); }
+function collectNew() { F.invDate = $('aInvD').value; F.terms = $('aTerms').value; F.note = $('aNote').value; F.lines = Array.from(document.querySelectorAll('[data-lno]')).map(el => ({ no: invNo(el.value), amt: document.querySelector('[data-lamt="' + el.dataset.lno + '"]').value })); }
 function bindNew() {
   const q = $('aQ');
   if (q) {

@@ -3,8 +3,8 @@
  *    미수금(AR) · 에이징 · 지난 주문 · 수금 기록, 그리고 아이템별 "이 가게가 최근에 산 기록"
  *  세일즈맨은 자기 가게(자기 sm 의 AR · 수금)만, 담당자는 가게 담당 세일즈맨 기준으로 봅니다
  * ============================================================ */
-import { $, esc, money, R2, num, md, toast, openModal, closeModal, sortBy, daysBetween, today, bi, bt, printOpen } from './ui.js';
-import { company, docHead, termDays } from './invoicing.js';
+import { $, esc, money, R2, num, md, toast, openModal, closeModal, sortBy, daysBetween, today, bi, bt, printOpen, sortInv, invNo } from './ui.js';
+import { company, docHead, termDays, getInvoice } from './invoicing.js';
 import { recentYms, stTag } from './orders.js';
 import * as Notes from './notes.js';
 import { shipmentsOf, shipmentsHtml, bindShipments, openStore } from './track.js';
@@ -99,11 +99,11 @@ export function lastPrice(info, code) { const h = info && info.hist[code]; retur
 
 /** 인보이스 탭 — 인보이스 기록(이전 시스템 + 앱) 과 AR 미결을 번호로 합침. 상태는 AR 이 기준 (AR 에 있으면 미결, 기준일 전 것이 AR 에 없으면 완납) */
 function invhHtml(info) {
-  const ar = {}; (info.invs || []).forEach(v => { ar[v.no] = v; });
-  const rows = (info.invHist || []).map(x => ({ x, v: ar[x.no] }));
-  const have = {}; rows.forEach(r => { have[r.x.no] = 1; });
-  (info.invs || []).forEach(v => { if (!have[v.no]) rows.push({ x: { no: v.no, d: v.d, total: v.amt, t: String(v.no).charAt(0), arOnly: true }, v }); });
-  rows.sort((a, b) => String(b.x.d).localeCompare(String(a.x.d)) || String(b.x.no).localeCompare(String(a.x.no)));
+  const ar = {}; (info.invs || []).forEach(v => { ar[invNo(v.no)] = v; });
+  const rows = (info.invHist || []).map(x => ({ x, v: ar[invNo(x.no)] }));
+  const have = {}; rows.forEach(r => { have[invNo(r.x.no)] = 1; });
+  (info.invs || []).forEach(v => { if (!have[invNo(v.no)]) rows.push({ x: { no: v.no, d: v.d, total: v.amt, t: String(v.no).charAt(0), arOnly: true }, v }); });
+  rows.splice(0, rows.length, ...sortInv(rows, r => r.x.no, false));   // 인보이스 번호 순 (종류별)
   if (!rows.length) return '<div class="none">인보이스 기록 없음 · No invoices</div>';
   const st = r => { const x = r.x, v = r.v;
     if (v) return Math.abs(v.bal) > 0.005 ? '<span class="warn">' + (v.bal < 0 ? bt('크레딧', 'Credit') : bt('미결', 'Open')) + ' ' + money(v.bal) + '</span>' : bt('완납', 'Paid');
@@ -117,14 +117,15 @@ function invhHtml(info) {
 export async function invDetail(no, acct, back) {
   if (!back) openModal('<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>', { wide: true }); else $('mbox').innerHTML = '<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>';
   let x = null, denied = false;
-  try { x = await S.DB.get('invoices', no); } catch (e) { denied = /permission/i.test(String(e.code || e.message)); }
+  no = invNo(no);
+  try { x = await getInvoice(S, no); } catch (e) { denied = /permission/i.test(String(e.code || e.message)); }
   acct = acct || (x && x.acct) || '';
-  if (!acct && !x && !isStaff()) { /* 내 AR 에서 찾기 */ try { const ar = await S.DB.get('ar', mySm()); const st = ar && (ar.stores || []).find(s => (s.invs || []).some(v => v.inv === no)); if (st) acct = st.acct; } catch (e) {} }
-  if (!acct && !x && isStaff()) { try { for (const d of await S.DB.list('ar')) { const st = (d.stores || []).find(s => (s.invs || []).some(v => v.inv === no)); if (st) { acct = st.acct; break; } } } catch (e) {} }
+  if (!acct && !x && !isStaff()) { /* 내 AR 에서 찾기 */ try { const ar = await S.DB.get('ar', mySm()); const st = ar && (ar.stores || []).find(s => (s.invs || []).some(v => invNo(v.inv) === no)); if (st) acct = st.acct; } catch (e) {} }
+  if (!acct && !x && isStaff()) { try { for (const d of await S.DB.list('ar')) { const st = (d.stores || []).find(s => (s.invs || []).some(v => invNo(v.inv) === no)); if (st) { acct = st.acct; break; } } } catch (e) {} }
   const a = acct && S.accounts.byCode ? S.accounts.byCode[acct] : null;
   const info = acct ? await storeInfo(acct) : null;
-  const v = info ? (info.invs || []).find(z => z.no === no) : null;
-  const pays = info ? (info.pays || []).filter(e => (e.invs || []).some(y => y.no === no)) : [];
+  const v = info ? (info.invs || []).find(z => invNo(z.no) === no) : null;
+  const pays = info ? (info.pays || []).filter(e => (e.invs || []).some(y => invNo(y.no) === no)) : [];
   const box = $('mbox'); if (!box) return;
   if (!x && !v) {
     box.innerHTML = '<h2>📄 ' + esc(no) + '</h2>' + (denied || (info && info.access && info.access.k === 'none')

@@ -9,7 +9,7 @@
  *    미수금: 내 담당 AR (오래된 순 · 구간 · 💤 · ✅) → 가게 → 바로 수금 입력
  *  자료는 Firestore entries (기존 모양 그대로) + reports (Daily Report · 체크 사진)
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, debounce } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, debounce, invNo } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts } from './accounts.js';
 import { invType } from './comm.js';
@@ -153,7 +153,7 @@ function invLine(v, i) {
 function collectForm() {
   F.d = $('fRcv') ? $('fRcv').value || today() : F.d;
   F.pays.forEach((p, i) => { const q = k => document.querySelector('[data-' + k + '="' + i + '"]'); const r = q('pref'), a = q('pamt'), d = q('pdep'), o = q('porig'); if (r) p.ref = r.value.trim(); if (a) p.amt = a.value; if (d) p.dep = d.value; if (o) p.orig = o.value.trim(); });
-  F.invs.forEach((v, i) => { const n = document.querySelector('[data-ino="' + i + '"]'), a = document.querySelector('[data-iamt="' + i + '"]'); if (n) v.no = n.value.trim().toUpperCase(); if (a) v.amt = a.value; });
+  F.invs.forEach((v, i) => { const n = document.querySelector('[data-ino="' + i + '"]'), a = document.querySelector('[data-iamt="' + i + '"]'); if (n) v.no = invNo(n.value); if (a) v.amt = a.value; });
   if ($('fMemo')) F.memo = $('fMemo').value; if ($('fAddr')) F.addr = $('fAddr').value.trim();
 }
 const payTotal = () => R2(F.pays.reduce((a, p) => a + amtOf(p.amt), 0));
@@ -314,7 +314,7 @@ async function saveEntry() {
   if (F.d > today()) return toast('받은 날짜는 오늘 이후로 할 수 없습니다. · Received date can’t be in the future.', 'bad');
   const seen = {}; for (const p of pays) { if (p.m === 'CHECK') { if (seen[p.ref]) return toast('Check #' + p.ref + ' 가 두 번 들어갔습니다. · entered twice.', 'bad'); seen[p.ref] = 1; } }
   const replAll = pays.every(p => p.repl);
-  const invs = replAll ? [] : F.invs.filter(v => !v.zero).map(v => ({ no: (v.no || '').toUpperCase(), t: v.no ? invType(v.no) : '', amt: R2(amtOf(v.amt)), acct: v.other ? v.acct : '', store: v.other ? v.store : '', partial: !!v.partial, ar: !!v.ar })).filter(v => v.no || v.amt);
+  const invs = replAll ? [] : F.invs.filter(v => !v.zero).map(v => ({ no: invNo(v.no), t: v.no ? invType(v.no) : '', amt: R2(amtOf(v.amt)), acct: v.other ? v.acct : '', store: v.other ? v.store : '', partial: !!v.partial, ar: !!v.ar })).filter(v => v.no || v.amt);
   const ivs = {};
   for (let j = 0; j < invs.length; j++) { const iv = invs[j], it = '인보이스 ' + (j + 1) + ': '; const src = F.invs.filter(v => !v.zero)[j]; if (src && src.other && !src.acct) return toast(it + '🏬 다른 가게를 목록에서 고르세요. · Pick the other store from the list.', 'bad'); if (!iv.no) return toast(it + '번호를 입력하세요. · Enter invoice #.', 'bad'); if (iv.amt === 0) return toast(it + '금액을 입력하세요 (크레딧은 ＋ 를 눌러 －). · Enter amount.', 'bad'); if (invTypeOf(iv.no) === 'X') return toast(it + 'A·P·W·CM 으로 시작하는 번호만. · Only A/P/W/CM invoices.', 'bad'); if (ivs[iv.no]) return toast(iv.no + ' 가 두 번 들어갔습니다. · entered twice.', 'bad'); ivs[iv.no] = 1; }
   const total = R2(sum(pays, p => p.amt)), invTot = R2(sum(invs, v => v.amt));

@@ -25,6 +25,14 @@ export const STAGES = [
   ['shipped', '📬', '오늘 출고', 'Shipped today', o => o.st === 'shipped', o => o.shipAt, 0]
 ];
 const stageOf = o => STAGES.find(s => s[4](o));
+/** 이 주문이 지금 단계에 얼마나 머물렀나 — 주문 목록 줄의 ⏱ 표시 · 밀린 주문 (orders.js)
+ *  { key, since, ms, t: '5시간' · '2일째', late: 단계 기준 넘음, day: 하루(24시간) 넘음 } */
+export function stageAge(o) {
+  const st = stageOf(o); if (!st || st[0] === 'shipped') return null;
+  const since = st[5](o) || o.updatedAt || o.createdAt; if (!since) return null;
+  const ms = Math.max(0, Date.now() - new Date(since).getTime()), m = Math.round(ms / 60000);
+  return { key: st[0], since, ms, t: m < 60 ? m + bt('분', 'm') : m < 1440 ? Math.floor(m / 60) + bt('시간', 'h') : Math.floor(m / 1440) + bt('일째', 'd'), late: !!(st[6] && ms > st[6] * 3600000), day: ms > 86400000 };
+}
 const LIVE = ['sent', 'pick', 'ok', 'picked', 'done', 'packed'];
 
 export function register(state) {

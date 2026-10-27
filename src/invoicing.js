@@ -5,7 +5,7 @@
  *  accounts/{acct}.disc = { A: 20, W: 10 }  ← 거래처 기본 할인 % (종류별)
  *  invoices/{no} = { no, t, order, acct, store, sm, d, ym, lines:[{c,d,q,p,lp}], sub, disc, total, bal, terms, st:'open'|'x', memo, createdBy, createdAt }
  * ============================================================ */
-import { esc, money, R2, addDays } from './ui.js';
+import { esc, money, R2, addDays, invNoOld } from './ui.js';
 import { catalog } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
@@ -18,7 +18,7 @@ export const INV_DEFAULT = [
   { c: 'W', n: '주얼리 · 디스플레이/세트 (커미션 제한) Jewelry display & set', comm: 'W', match: 'Set & Display, Set Orders & Displays, 🧩 세트 · 인서트', start: 612 }
 ];
 const OLD_DEFAULT = 'G,J,H,D,R';   // v0.6.x 임시 종류 — 저장돼 있어도 무시
-export const NUM_DIGITS = 5, NUM_MAX = 99999;
+export const NUM_DIGITS = 6, NUM_MAX = 999999;
 const LEVELS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';   // I · O 는 숫자와 헷갈려서 뺌
 export function invTypes(S) {
   let t = (S.settings && Array.isArray(S.settings.invTypes) && S.settings.invTypes.length) ? S.settings.invTypes : INV_DEFAULT;
@@ -78,11 +78,11 @@ export function priceDiff(lines, useQ) {
   lines.forEach(l => { const q = useQ === 'pq' ? (l.pq == null ? l.q : l.pq) : l.q; if (l.lp == null || !q) return; list += q * l.lp; real += q * l.p; if (Math.abs(l.lp - l.p) > 0.0001) n++; });
   return { list: R2(list), real: R2(real), diff: R2(real - list), n, pct: list ? R2((real - list) / list * 100) : 0 };
 }
-/** n 번째 인보이스 번호 — 1 → G00001 · 99999 → G99999 · 100000 → GA00001 · … */
+/** n 번째 인보이스 번호 — 1 → A-000001 · 999999 → A-999999 · 1000000 → AA-000001 · 1999998 → AA-999999 → AB-000001 … (I · O 는 건너뜀) */
 export function fmtNo(t, n) {
   n = Math.max(1, Math.floor(Number(n) || 1));
   const lv = Math.floor((n - 1) / NUM_MAX), k = ((n - 1) % NUM_MAX) + 1;
-  return t.c + (lv ? LEVELS[lv - 1] || ('Z' + lv) : '') + String(k).padStart(NUM_DIGITS, '0');
+  return t.c + (lv ? LEVELS[lv - 1] || ('Z' + lv) : '') + '-' + String(k).padStart(NUM_DIGITS, '0');
 }
 /* ---------- 인보이스 읽기 캐시 — 달 단위로 한 번만 읽고 기간은 메모리에서 거름 (읽기 횟수 · 비용 절약) ---------- */
 const INV_M = new Map();   // 'YYYY-MM' → rows (st != 'x' 포함 전부)
@@ -183,6 +183,8 @@ export async function rebuildSalesM(S, months) {
   for (const k of uniq) await S.DB.set('salesM', k, buildSalesM(k, by[k] || []));
   return uniq.length;
 }
+/** 인보이스 한 장 읽기 — 새 형식(A-043350)으로 먼저, 없으면 형식 통일 전 모양(A43350 …)으로 */
+export async function getInvoice(S, no) { for (const k of invNoOld(no)) { const x = await S.DB.get('invoices', k); if (x) return x; } return null; }
 export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, t.start || 1); return fmtNo(t, n); }
 
 /* ---------- 회사 정보 (관리 → 설정) ---------- */

@@ -1,7 +1,7 @@
 /* ============================================================
  *  관리 — 사용자 · 세일즈맨(요율) · 설정 · 옛 시트에서 가져오기
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt } from './ui.js';
+import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt, invNo } from './ui.js';
 import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
@@ -11,7 +11,7 @@ import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
 import { acctImportCard, bindAcctImport } from './acctimp.js';
 import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs } from './catalog.js';
-import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM } from './invoicing.js';
+import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM, getInvoice } from './invoicing.js';
 
 let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); }
@@ -186,7 +186,7 @@ async function settings() {
     box.innerHTML = '<div class="sumbox"><b>📡 UPS 계정 출고 기록 (Quantum View)</b><div class="muted">' + (sync ? '마지막 ' + esc(String(sync.at || '').substring(0, 16).replace('T', ' ')) + ' · 출고 ' + (sync.ship || 0) + ' · 주문에 붙음 ' + (sync.matched || 0) + ' · 배달 ' + (sync.deliv || 0) : '아직 받아온 적 없음 — UPS 스크립트에 UPS_QV_NAME 을 넣고 setup 을 다시 실행하세요') + '</div>' +
       (logs.length ? '<div style="margin-top:6px"><b>주문을 못 찾은 출고 ' + logs.length + '건</b> — 인보이스 · 주문 번호를 넣어 연결</div>' + logs.map(l => '<div class="pr"><div class="ct"><b>' + esc(l.store || '?') + '</b><small>' + esc(l.d || '') + ' · ' + esc(l.trk) + (l.refs ? ' · 참조 ' + esc(l.refs) : '') + '</small></div><button class="b-ghost b-sm" data-qvl="' + esc(String(l.trk).split(' ')[0]) + '">연결</button></div>').join('') : '') + '</div>';
     box.querySelectorAll('[data-qvl]').forEach(b => b.onclick = async () => { const l = logs.find(x => String(x.trk).split(' ')[0] === b.dataset.qvl); const no = (prompt('이 출고를 붙일 인보이스 번호 또는 주문 번호', '') || '').trim().toUpperCase(); if (!no) return;
-      busy(true); try { let oid = ''; const inv = await S.DB.get('invoices', no).catch(() => null); if (inv && inv.orderId) oid = inv.orderId; else if (await S.DB.get('orders', no).catch(() => null)) oid = no; if (!oid) throw new Error(no + ' 를 찾지 못했습니다');
+      busy(true); try { let oid = ''; const inv = await getInvoice(S, no).catch(() => null); if (inv && inv.orderId) oid = inv.orderId; else if (await S.DB.get('orders', no).catch(() => null)) oid = no; if (!oid) throw new Error(no + ' 를 찾지 못했습니다');
         const o = await S.DB.get('orders', oid); const have = String(o.track || '').split(/\s+/).filter(Boolean), trks = String(l.trk).split(/\s+/).filter(t => !have.includes(t)); const patch = { track: have.concat(trks).join(' '), shipVia: 'UPS', updatedAt: new Date().toISOString() }; if (o.st === 'done') { patch.st = 'shipped'; patch.shipAt = new Date().toISOString(); patch.shipBy = S.user.email; } if (l.delivered) patch.deliveredAt = l.delivered;
         await S.DB.update('orders', oid, patch); for (const t of String(l.trk).split(/\s+/)) await S.DB.update('upsLog', t, { orderId: oid }); toast('연결 — ' + (o.store || oid), 'good'); settings(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
   })();
@@ -212,8 +212,66 @@ async function settings() {
  *   · THE ONE 수금 (SALES).xlsx → COD 입력 → cod · 세일즈맨 탭 → entries 의 sb/rc/v/disc/note/인보이스 금액
  *   · THE ONE 커미션.xlsx → 세일즈맨 요율 · 정산 기록(settled)
  * ============================================================ */
+/* ---------- 🔢 인보이스 번호 형식 통일 — A43350 · P007803 → A-043350 · P-007803 (글자 + 하이픈 + 6자리)
+ *  invoices 문서 이름을 새 번호로 옮기고, 번호를 적어 둔 곳(미수금 · 수금 · COD · ACH · 주문 · 배송 · 정산 …)도 같이 바꿈.
+ *  여러 번 눌러도 됨 (이미 바뀐 것은 건너뜀) ---------- */
+const FMT_COLS = ['ar', 'entries', 'cod', 'ach', 'orders', 'shipments', 'shipq', 'pickups', 'invReq', 'backorders', 'settlements', 'deductions', 'reports'];
+function invFmtCard() {
+  const f = S.settings && S.settings.invFmt;
+  return '<div class="card" style="border:2px solid ' + (f ? '#bbf7d0' : '#fcd34d') + '"><h2>🔢 ' + bt('인보이스 번호 형식 통일', 'Unify invoice number format') + '</h2><div class="muted">' +
+    bt('모든 인보이스 번호를 <b>글자 + 하이픈 + 6자리</b>로 맞춥니다 — A43350 → <b>A-043350</b>, P007803 → <b>P-007803</b>, CM161 → <b>CM-000161</b>. 인보이스와, 번호를 적어 둔 미수금 · 수금 · COD · ACH · 주문 · 배송 · 정산 기록을 함께 바꿉니다. 새로 만드는 인보이스 · 새로 넣는 번호는 이미 이 형식입니다.', 'Make every invoice number letter + hyphen + 6 digits (A43350 → A-043350) — invoices and every record that mentions them.') + '</div>' +
+    (f ? '<div class="alert a-grn" style="margin-top:8px">✅ ' + bt('통일했습니다', 'Done') + ' — ' + esc(String(f.at || '').substring(0, 16).replace('T', ' ')) + ' · ' + bt('인보이스', 'invoices') + ' ' + (f.inv || 0) + ' · ' + bt('기록', 'records') + ' ' + (f.rec || 0) + '</div>' : '<div class="alert a-amb" style="margin-top:8px">' + bt('아직 안 했습니다 — 한 번 눌러 주세요 (몇 분 걸릴 수 있습니다)', 'Not done yet — run once (may take a few minutes)') + '</div>') +
+    '<button class="' + (f ? 'b-ghost' : 'b-blue') + '" id="fmtScan" style="margin-top:8px">🔎 ' + bt('바꿀 것 찾기', 'Scan') + (f ? ' (' + bt('다시', 'again') + ')' : '') + '</button><div id="fmtOut" class="muted" style="margin-top:6px"></div></div>';
+}
+async function invFmtScan() {
+  const out = $('fmtOut'), say = t => { if (out) out.innerHTML = t; };
+  const T = invTypes(S).map(t => t.c).concat(['CM']).filter((x, i, a) => x && a.indexOf(x) === i);
+  const re = new RegExp('^(' + T.join('|') + ')[A-HJ-NP-Z]?-?\\d{1,6}$');
+  const fixTok = t => re.test(t.toUpperCase()) ? invNo(t) : t;
+  const fixStr = v => v.split(/([\s,;\/]+)/).map((p, i) => i % 2 ? p : fixTok(p)).join('');
+  const KEY = /^(no|inv|invs|invNo|invoice|inv[A-Z]{1,2})$/;
+  const walk = (v, key, top, col) => {
+    if (typeof v === 'string') return key && KEY.test(key) && !(top && key === 'no' && /^(orders|shipments|shipq|pickups|backorders)$/.test(col)) ? fixStr(v) : v;
+    if (Array.isArray(v)) return v.map(x => walk(x, key, false, col));
+    if (v && typeof v === 'object') { const o = {}; Object.keys(v).forEach(k => { o[k] = walk(v[k], k, false, col); }); return o; }
+    return v;
+  };
+  const ops = [], cnt = {};
+  say(bt('인보이스 읽는 중…', 'Reading invoices…'));
+  const invs = await S.DB.list('invoices'), ids = new Set(invs.map(x => x.id));
+  let nInv = 0;
+  for (const x of invs) {
+    const id = x.id, nid = re.test(String(id).toUpperCase()) ? invNo(id) : id;
+    const d = Object.assign(walk(x, '', true, 'invoices'), { id: nid, no: nid });
+    if (nid !== id) { if (!ids.has(nid)) ops.push({ op: 'set', col: 'invoices', id: nid, data: d }); ops.push({ op: 'del', col: 'invoices', id }); nInv++; }
+    else if (JSON.stringify(d) !== JSON.stringify(x)) { ops.push({ op: 'set', col: 'invoices', id, data: d }); nInv++; }
+  }
+  cnt.invoices = nInv;
+  for (const c of FMT_COLS) {
+    say(bt('읽는 중', 'Reading') + ' ' + c + '…');
+    let L = []; try { L = await S.DB.list(c); } catch (e) { continue; }
+    let n = 0; L.forEach(x => { const d = walk(x, '', true, c); if (JSON.stringify(d) !== JSON.stringify(x)) { ops.push({ op: 'set', col: c, id: x.id, data: d }); n++; } });
+    if (n) cnt[c] = n;
+  }
+  const rec = Object.keys(cnt).filter(k => k !== 'invoices').reduce((a, k) => a + cnt[k], 0);
+  if (!ops.length) { say('✅ ' + bt('바꿀 것이 없습니다 — 모두 새 형식입니다', 'Nothing to change — all in the new format')); await S.DB.update('settings', 'app', { invFmt: { at: new Date().toISOString(), inv: 0, rec: 0 } }).catch(() => {}); return; }
+  say(Object.keys(cnt).map(k => '<b>' + esc(k) + '</b> ' + cnt[k]).join(' · ') + '<br><button class="b-blue" id="fmtGo" style="margin-top:6px">🔢 ' + bt('바꾸기', 'Convert') + ' (' + ops.length.toLocaleString() + ' ' + bt('번 저장', 'writes') + ')</button>');
+  $('fmtGo').onclick = async () => {
+    if (!(await confirmBox(bt('인보이스 ' + cnt.invoices + '장 · 기록 ' + rec + '개의 번호를 새 형식으로 바꿀까요?', 'Convert ' + cnt.invoices + ' invoices and ' + rec + ' records?'), bt('바꾸기', 'Convert')))) return;
+    busy(true); let done = 0;
+    try {
+      for (let i = 0; i < ops.length; i += 400) { await S.DB.batch(ops.slice(i, i + 400)); done = Math.min(ops.length, i + 400); say('🔢 ' + done.toLocaleString() + ' / ' + ops.length.toLocaleString() + '…'); }
+      const f = { at: new Date().toISOString(), inv: cnt.invoices, rec };
+      await S.DB.update('settings', 'app', { invFmt: f }); S.settings.invFmt = f;
+      dropInvCache(); dropBossCache();
+      toast('🔢 ' + bt('번호 형식을 통일했습니다', 'Invoice numbers unified'), 'good'); importer();
+    } catch (e) { say('<span class="warn">' + done + bt('번까지 저장하고 멈춤', ' saved, then stopped') + ': ' + esc(e.code || e.message) + ' — ' + bt('다시 누르면 남은 것만 이어서 합니다', 'run again to continue') + '</span>'); }
+    busy(false);
+  };
+}
+
 async function importer() {
-  $('adminBody').innerHTML = exportCard() + acctImportCard() + '<div class="card" style="border:2px solid #bfdbfe"><h2>📥 한 번에 올리기 <span class="en">Upload all at once</span></h2><div class="muted">파일을 여러 개 한꺼번에 고르세요 (수금 입력 · SALES · 커미션 · 수금 대시보드 · sales_invoice). 탭 이름으로 종류를 알아보고 ① → ② → ③ → ④ → ⑤ 순서로 넣습니다. 끝날 때까지 화면을 닫지 마세요.</div>' +
+  $('adminBody').innerHTML = invFmtCard() + exportCard() + acctImportCard() + '<div class="card" style="border:2px solid #bfdbfe"><h2>📥 한 번에 올리기 <span class="en">Upload all at once</span></h2><div class="muted">파일을 여러 개 한꺼번에 고르세요 (수금 입력 · SALES · 커미션 · 수금 대시보드 · sales_invoice). 탭 이름으로 종류를 알아보고 ① → ② → ③ → ④ → ⑤ 순서로 넣습니다. 끝날 때까지 화면을 닫지 마세요.</div>' +
     '<div class="two" style="margin-top:8px"><div class="fg"><label>인보이스는 이 날짜부터 <span class="muted">(비우면 파일 전체)</span></label><input type="date" id="allFrom" value=""></div><div class="fg"><label>AR 기준일 (비우면 오늘)</label><input type="date" id="allArD"></div></div>' +
     '<input type="file" id="fAll" accept=".xlsx" multiple style="padding:8px"><div id="allOut"></div></div>' +
     '<div class="card"><h2>📥 옛 시트에서 가져오기 (하나씩)</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
@@ -236,6 +294,7 @@ async function importer() {
   $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedImport(r.result); r.readAsText(f); };
   $('seedPaste').onclick = () => { openModal('<h2>📋 SEED_DATA 붙여넣기</h2><textarea id="seedTxt" style="width:100%;height:200px;font-size:11px"></textarea><div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sOk">읽기</button></div>'); $('sX').onclick = closeModal; $('sOk').onclick = () => { const t = $('seedTxt').value; seedImport(t); }; };
   $('fAll').onchange = () => importAll(Array.from($('fAll').files));
+  if ($('fmtScan')) $('fmtScan').onclick = () => invFmtScan().catch(e => { $('fmtOut').innerHTML = '<span class="warn">' + esc(e.code || e.message) + '</span>'; });
   $('f1').onchange = () => importMain($('f1').files[0]); $('f2').onchange = () => importSales($('f2').files[0]); $('f3').onchange = () => importComm($('f3').files[0]); $('f4').onchange = () => importBoss($('f4').files[0]); $('f5').onchange = () => importInvoices($('f5').files[0]);
 }
 async function loadXlsx() { if (window.XLSX) return window.XLSX; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); return window.XLSX; }
@@ -256,7 +315,7 @@ export function parseEntriesSheet(rows) {
     const pay = String(r[7] || '').toUpperCase(), amt = R2(num(r[9]));
     const m = /CASH/.test(pay) ? 'CASH' : /ZELLE/.test(pay) ? 'ZELLE' : 'CHECK';
     const invs = [];
-    String(r[16] || '').split('|').forEach(tok => { tok = tok.trim(); if (!tok) return; const mm = tok.match(/^([^:]+):(.+)$/); if (!mm) return; const nos = mm[1].split(/[\s,]+/).filter(Boolean), a = R2(num(mm[2])); nos.forEach((no, j) => invs.push({ no: no.toUpperCase(), t: invType(no), amt: j === 0 ? a : 0 })); });
+    String(r[16] || '').split('|').forEach(tok => { tok = tok.trim(); if (!tok) return; const mm = tok.match(/^([^:]+):(.+)$/); if (!mm) return; const nos = mm[1].split(/[\s,]+/).filter(Boolean), a = R2(num(mm[2])); nos.forEach((no, j) => invs.push({ no: invNo(no), t: invType(no), amt: j === 0 ? a : 0 })); });
     out.push({ id: String(r[0]).trim(), d, ym: ym(d), sm: String(r[2] || '').trim().toUpperCase(), acct: pad4(r[5]), store: String(r[4] || '').trim(), addr: String(r[6] || '').trim(), newStore: /^Y/i.test(String(r[12] || '')),
       pays: [{ m, ref: String(r[8] || '').trim(), amt, dep: dstr(r[11]), mob: /^Y/i.test(String(r[18] || '')) }], invs, total: amt, invTotal: sum(invs, v => v.amt), mismatch: '', memo: String(r[10] || '').trim(),
       repl: /^Y/i.test(String(r[20] || '')), orig: String(r[21] || '').trim(), disc: '', sb: false, rc: false, v: false, vn: '', settled: '', void: false, createdBy: String(r[3] || '').trim().toLowerCase(), createdAt: dstr(r[1]), imported: true });
@@ -298,7 +357,7 @@ async function importSales(file) {
         /* 칸 밀린 옛 줄 (대시보드 b21 과 같은 규칙): ID 칸이 비고 "디스카운트 %" 칸에 D######-… → 그게 ID, "W 인보이스" 칸의 10% 가 디스카운트 */
         const shifted = !String(r0[H.id] || '').trim() && H.disc >= 0 && /^D\d{6}-/.test(String(r0[H.disc] || '').trim());
         const r = shifted ? Object.assign([], r0, { [H.id]: r0[H.disc], [H.disc]: r0[H.invW], [H.invW]: '' }) : r0; if (shifted) nShift++;
-        const d = dstr(r[H.d]); if (!d || !r[H.sm]) continue; const invs = []; ['A', 'P', 'CM', 'W'].forEach(t => { const no = String(r[H['inv' + t]] || '').trim().toUpperCase(), a = R2(num(r[H['amt' + t]])); if (no) no.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: x, t, amt: j === 0 ? a : 0 })); });
+        const d = dstr(r[H.d]); if (!d || !r[H.sm]) continue; const invs = []; ['A', 'P', 'CM', 'W'].forEach(t => { const no = invNo(r[H['inv' + t]]), a = R2(num(r[H['amt' + t]])); if (no) no.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: x, t, amt: j === 0 ? a : 0 })); });
         const id = String(r[H.id] || '').trim() || newId('C'); const method = String(r[H.method] || 'COD').trim().toUpperCase();
         ops.push({ op: 'set', col: 'cod', id, data: { id, d, ym: ym(d), sm: String(r[H.sm]).trim().toUpperCase(), acct: pad4(r[H.acct]), store: String(r[H.store] || '').trim(), method: /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', ref: String(r[H.ref] || '').trim(), amt: R2(num(r[H.amt])), invs, disc: r[H.disc] === '' ? '' : num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1), note: String(r[H.note] || '').trim(), v: r[H.v] === true || /TRUE/i.test(String(r[H.v])), vn: String(r[H.vn] || '').trim(), settled: '', void: false, imported: true } }); nC++; }
     }
@@ -311,7 +370,7 @@ async function importSales(file) {
       for (let i = 1; i < t.length; i++) { const r = t[i]; const id = String(r[H.id] || '').trim().split('@')[0]; if (!id) continue; const e = ents[id]; if (!e) { missing++; continue; }
         const tv = v => v === true || /TRUE/i.test(String(v));
         const patch = { sb: tv(r[H.sb]), rc: tv(r[H.rc]), v: tv(r[H.v]), vn: String(r[H.vn] || '').trim(), disc: H.disc >= 0 && r[H.disc] !== '' ? num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1) : '', settled: H.comm >= 0 && r[H.comm] ? 'sheet:' + dstr(r[H.comm]) : '' };
-        if (!(e.invs || []).length) { const invs = []; ['A', 'P', 'CM', 'W'].forEach(tt => { const no = String(r[H['inv' + tt]] || '').trim().toUpperCase(), a = R2(num(r[H['amt' + tt]])); if (no) no.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: x, t: tt, amt: j === 0 ? a : 0 })); }); if (invs.length) { patch.invs = invs; patch.invTotal = sum(invs, v => v.amt); } }
+        if (!(e.invs || []).length) { const invs = []; ['A', 'P', 'CM', 'W'].forEach(tt => { const no = invNo(r[H['inv' + tt]]), a = R2(num(r[H['amt' + tt]])); if (no) no.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: x, t: tt, amt: j === 0 ? a : 0 })); }); if (invs.length) { patch.invs = invs; patch.invTotal = sum(invs, v => v.amt); } }
         if (!e._p) { e._p = patch; nF++; } else Object.assign(e._p, patch); }
     });
     Object.values(ents).forEach(e => { if (e._p) ops.push({ op: 'update', col: 'entries', id: e.id, data: e._p }); });
@@ -379,7 +438,7 @@ export function parseInvoiceList(aoa, fromD) {
   const out = [], seen = {}; let skipped = 0, old = 0;
   for (let r = hi + 1; r < aoa.length; r++) {
     const row = aoa[r]; if (!row) continue;
-    const no = String(row[ix.no] == null ? '' : row[ix.no]).trim().toUpperCase(); if (!no) continue;
+    const no = invNo(row[ix.no]); if (!no) continue;
     const d = dstr(row[ix.d]); if (!d) { skipped++; continue; }
     if (fromD && d < fromD) { old++; continue; }
     if (seen[no]) { skipped++; continue; } seen[no] = 1;
@@ -398,7 +457,7 @@ async function importInvoices(file, auto) {
     const P = parseInvoiceList(sheet, $('f5From').value || ''), { skipped, old } = P;
     /* 이미 있는 인보이스 — 앱에서 만든 것(줄 · 픽킹 기록 있음)은 건드리지 않음. 잔액 열이 없는 파일이면 있던 잔액 · 상태는 그대로 */
     const ds = P.rows.map(r => r.d).sort(), ex = {};
-    if (ds.length) (await S.DB.list('invoices', { where: [['d', '>=', ds[0]], ['d', '<=', ds[ds.length - 1]]] })).forEach(v => { ex[v.id || v.no] = v; });
+    if (ds.length) (await S.DB.list('invoices', { where: [['d', '>=', ds[0]], ['d', '<=', ds[ds.length - 1]]] })).forEach(v => { ex[invNo(v.id || v.no)] = v; });   // 옛 번호 모양(A43350)도 같은 인보이스로
     const appMade = P.rows.filter(r => ex[r.id] && ex[r.id].src !== 'legacy'), rows = P.rows.filter(r => !(ex[r.id] && ex[r.id].src !== 'legacy'));
     const nNew = rows.filter(r => !ex[r.id]).length;
     if (!P.hasBal) rows.forEach(r => { if (ex[r.id]) { delete r.bal; delete r.st; } else { r.bal = 0; r.st = 'paid'; } });
@@ -410,7 +469,7 @@ async function importInvoices(file, auto) {
       busy(true); const prog = $('invProg'); let done = 0;
       try {
         const now = new Date().toISOString();
-        for (let i = 0; i < rows.length; i += 400) { const part = rows.slice(i, i + 400); await S.DB.batch(part.map(r => ex[r.id] ? { op: 'update', col: 'invoices', id: r.id, data: Object.assign({}, r, { importedAt: now }) } : { op: 'set', col: 'invoices', id: r.id, data: Object.assign({}, r, { createdAt: now, importedAt: now }) })); done += part.length; prog.textContent = done.toLocaleString() + ' / ' + rows.length.toLocaleString() + ' 저장 중…'; }
+        for (let i = 0; i < rows.length; i += 400) { const part = rows.slice(i, i + 400); await S.DB.batch([].concat(...part.map(r => ex[r.id] && (ex[r.id].id || ex[r.id].no) !== r.id ? [{ op: 'set', col: 'invoices', id: r.id, data: Object.assign({}, ex[r.id], r, { id: r.id, no: r.id, importedAt: now }) }, { op: 'del', col: 'invoices', id: ex[r.id].id || ex[r.id].no }] : [ex[r.id] ? { op: 'update', col: 'invoices', id: r.id, data: Object.assign({}, r, { importedAt: now }) } : { op: 'set', col: 'invoices', id: r.id, data: Object.assign({}, r, { createdAt: now, importedAt: now }) }]))); done += part.length; prog.textContent = done.toLocaleString() + ' / ' + rows.length.toLocaleString() + ' 저장 중…'; }
         dropInvCache(); dropBossCache();
         prog.textContent = '월별 매출 요약 계산 중…'; try { await rebuildSalesM(S, rows.map(r => r.ym)); } catch (e) {}
         out.insertAdjacentHTML('beforeend', '<div class="alert a-grn">넣었습니다 — ' + done.toLocaleString() + '장. 현황 · 리포트 · 가게 창에 바로 보입니다.</div>'); toast('인보이스 ' + done.toLocaleString() + '장', 'good');

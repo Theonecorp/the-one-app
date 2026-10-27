@@ -7,10 +7,10 @@
  *  backorders/{orderId} = { id, order, acct, store, sm, d, lines:[{c,d,q,p,lp,t}], qty, amt, st:'open'|'used'|'closed', newOrders:[], createdAt }
  * ============================================================ */
 import { timelineHtml } from './flow.js';
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM, invoicesBetween } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM, invoicesBetween, getInvoice } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
@@ -205,9 +205,9 @@ export function manage(o, lines) {
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);
   if ($('mCancel')) $('mCancel').onclick = async () => { if (!(await confirmBox('이 주문를 취소할까요?', '주문 취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'x', updatedAt: new Date().toISOString(), cancelBy: S.user.email }); toast('취소했습니다'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-  if ($('mInvPrint')) $('mInvPrint').onclick = async () => { busy(true); try { const invs = []; for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (x) invs.push(x); } if (invs.length) await printInvoices(invs, acctOf(o.acct)); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mInvPrint')) $('mInvPrint').onclick = async () => { busy(true); try { const invs = []; for (const n of (o.invs || [])) { const x = await getInvoice(S, n); if (x) invs.push(x); } if (invs.length) await printInvoices(invs, acctOf(o.acct)); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mInv')) $('mInv').onclick = () => confirmInvoice(o, lines);
-  if ($('mVoid')) $('mVoid').onclick = async () => { busy(true); const invs = []; try { for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (x) invs.push(x); } } catch (e) {} busy(false); voidModal(invs, () => goOrder(o.id)); };
+  if ($('mVoid')) $('mVoid').onclick = async () => { busy(true); const invs = []; try { for (const n of (o.invs || [])) { const x = await getInvoice(S, n); if (x) invs.push(x); } } catch (e) {} busy(false); voidModal(invs, () => goOrder(o.id)); };
 }
 
 /* ============================================================
@@ -275,7 +275,7 @@ export function changeStore(o, done) {
       if (smChg) ops.push({ op: 'update', col: 'orderLines', id: o.id, data: { sm: patch.sm } });
       const invs = [];
       if (staff) {
-        for (const n of (o.invs || [])) { const x = await S.DB.get('invoices', n); if (!x) continue; invs.push(x); const ip = { store: patch.store, shipTo: patch.shipTo === undefined ? (x.shipTo || null) : patch.shipTo, updatedAt: now }; if (patch.acct) ip.acct = patch.acct; if (smChg) ip.sm = patch.sm; ops.push({ op: 'update', col: 'invoices', id: n, data: ip }); }
+        for (const n of (o.invs || [])) { const x = await getInvoice(S, n); if (!x) continue; invs.push(x); const ip = { store: patch.store, shipTo: patch.shipTo === undefined ? (x.shipTo || null) : patch.shipTo, updatedAt: now }; if (patch.acct) ip.acct = patch.acct; if (smChg) ip.sm = patch.sm; ops.push({ op: 'update', col: 'invoices', id: x.id || n, data: ip }); }
         if (o.bo) { const b = await S.DB.get('backorders', o.id).catch(() => null); if (b) ops.push({ op: 'update', col: 'backorders', id: o.id, data: Object.assign({ store: patch.store }, patch.acct ? { acct: patch.acct } : {}, smChg ? { sm: patch.sm } : {}) }); }
       }
       await S.DB.batch(ops);
@@ -564,7 +564,7 @@ export async function invBrowser(LF, head) {
   let rows = [], err = '';
   try {
     if (acc) rows = await S.DB.list('invoices', { where: [['acct', '==', acc.acct]] });
-    else if (isNo) { const x = await S.DB.get('invoices', q.toUpperCase()); rows = x ? [x] : await S.DB.list('invoices', { where: [['order', '==', q.toUpperCase()]] }); }
+    else if (isNo) { const x = await getInvoice(S, q); rows = x ? [x] : await S.DB.list('invoices', { where: [['order', '==', q.toUpperCase()]] }); }
     else rows = await invoicesBetween(S, from, to);
   } catch (e) { err = String(e.code || e.message); }
   if (!$('iList')) return;
@@ -572,22 +572,22 @@ export async function invBrowser(LF, head) {
   if (LF.it) rows = rows.filter(r => r.t === LF.it);
   if (!LF.ivoid) rows = rows.filter(r => r.st !== 'x');
   if (q && !acc && !isNo) { const qq = q.toUpperCase(); rows = rows.filter(r => String(r.store || '').toUpperCase().includes(qq) || String(r.no).includes(qq) || String(r.order || '').includes(qq) || String(r.acct || '') === qq); }
-  rows = sortBy(rows, r => r.d + ' ' + String(r.no || '').replace(/^([A-Z]+)-?(\d+)$/i, (m, a, n) => a + n.padStart(8, '0')), true);   // 날짜 → 인보이스 번호 순
+  rows = sortInv(rows, r => r.no, !!LF.idesc);   // 인보이스 번호 순 (종류별로 묶음)
   const live = rows.filter(r => r.st !== 'x'), tot = live.reduce((a, r) => a + (r.total || 0), 0), bal = live.reduce((a, r) => a + (r.bal != null ? r.bal : r.total || 0), 0);
-  const days = {}; rows.forEach(r => { (days[r.d] = days[r.d] || []).push(r); });
-  const dayKeys = Object.keys(days).sort().reverse();
+  const days = {}, dayKeys = []; rows.forEach(r => { const k = invParts(r.no)[0]; if (!days[k]) { days[k] = []; dayKeys.push(k); } days[k].push(r); });   // 종류(A · P · W · CM)별 묶음
   let h = '';
   if (err) h += '<div class="alert a-red">' + esc(err) + '</div>';
   if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 ' + bi('가게 창', 'Store') + '</button></div></div>';
-  h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스 Invoices</span></div><div><b>' + money(tot) + '</b><span>합계 Total</span></div><div><b>' + money(bal) + '</b><span>미수 Balance</span></div><div><b>' + dayKeys.length + '</b><span>날짜 Days</span></div></div>' +
-    '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + '</div>' +
-    (rows.length ? dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<div class="iday"><b>' + esc(dayLabel(d)) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>' + L.map(r => invRow(r)).join(''); }).join('') : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
+  h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스 Invoices</span></div><div><b>' + money(tot) + '</b><span>합계 Total</span></div><div><b>' + money(bal) + '</b><span>미수 Balance</span></div><div><b>' + new Set(rows.map(r => r.d)).size + '</b><span>날짜 Days</span></div></div>' +
+    '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + (rows.length > 1 ? ' · <a id="iSort" href="#" onclick="return false">' + (LF.idesc ? bt('번호 큰 것부터 ↓', 'Highest # first ↓') : bt('번호 작은 것부터 ↑', 'Lowest # first ↑')) + '</a>' : '') + '</div>' +
+    (rows.length ? dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<div class="iday"><b>' + esc(d) + ' ' + esc(((types.find(t => t.c === d) || {}).n) || '') + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>' + L.map(r => invRow(r)).join(''); }).join('') : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
   $('iList').innerHTML = h;
   /* 인보이스를 누르면 인보이스 · AR 잔액 · 수금을 한 화면에 (가게 창 · 미수금과 같은 화면) */
   document.querySelectorAll('#iList [data-go]').forEach(el => el.onclick = () => { const g = el.dataset.go; if (g.indexOf('inv:') === 0) invDetail(g.substring(4)); else Router.go('order', g); });
   if (isNo && !rows.length && $('iList')) { $('iList').insertAdjacentHTML('afterbegin', '<div class="card"><button class="b-blue" id="iArFind">🔎 ' + bt('AR(미수금)에서 이 번호 찾기', 'Look up this number in A/R') + '</button></div>'); $('iArFind').onclick = () => invDetail(q.toUpperCase()); }
   if ($('iAcc')) $('iAcc').onclick = () => storeSheet(acc.acct, null, 'invh');
-  if ($('iCsv')) $('iCsv').onclick = () => {
+  if ($('iSort')) $('iSort').onclick = e => { e.preventDefault(); LF.idesc = !LF.idesc; invBrowser(LF, head); };
+  if ($('iCsv')) $('iCsv').onclick = e => { e.preventDefault();
     const csv = [['Invoice', 'Date', 'Type', 'Acct', 'Store', 'SalesRep', 'Terms', 'Order', 'Qty', 'Sub', 'Disc%', 'Total', 'Balance', 'Status']].concat(rows.map(r => [r.no, r.d, r.t, r.acct, r.store, r.sm, r.terms || '', r.order, r.qty, r.sub, r.disc || 0, r.total, r.bal != null ? r.bal : r.total, r.st === 'x' ? 'VOID' : 'open'])).map(a => a.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'invoices-' + (acc ? acc.acct : from + '_' + to) + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   };
@@ -632,7 +632,7 @@ function acctList(LF, head, modeSeg) {
 }
 function invRow(r) {
   const bal = r.bal != null ? r.bal : r.total;
-  return '<div class="pr tap" data-go="inv:' + esc(r.no) + '"><div class="ct"><b>' + esc(r.store) + ' <span class="muted" style="font-weight:400">' + esc(r.acct || '') + '</span></b><small><b>' + esc(r.no) + '</b> <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.src === 'legacy' ? ' <span class="tag t-c">' + bt('이전', 'Legacy') + '</span>' : '') + (r.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + ' · ' + esc(r.sm) + (r.terms ? ' · ' + esc(r.terms) : '') + ' · ' + esc(r.order) + (r.disc ? ' · 할인 ' + r.disc + '%' : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + r.qty + '개' + (r.st !== 'x' && Math.abs(bal - r.total) > 0.005 ? ' · 잔액 ' + money(bal) : '') + '</small></div></div>';
+  return '<div class="pr tap" data-go="inv:' + esc(r.no) + '"><div class="ct"><b>' + esc(r.no) + ' <span class="tag t-g">' + esc(r.t || '') + '</span> <span style="font-weight:600">' + esc(r.store) + '</span> <span class="muted" style="font-weight:400">' + esc(r.acct || '') + '</span></b><small>' + esc(md(r.d)) + '' + (r.src === 'legacy' ? ' <span class="tag t-c">' + bt('이전', 'Legacy') + '</span>' : '') + (r.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + ' · ' + esc(r.sm) + (r.terms ? ' · ' + esc(r.terms) : '') + ' · ' + esc(r.order) + (r.disc ? ' · 할인 ' + r.disc + '%' : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + r.qty + '개' + (r.st !== 'x' && Math.abs(bal - r.total) > 0.005 ? ' · 잔액 ' + money(bal) : '') + '</small></div></div>';
 }
 
 export async function openBackorder(id) {
@@ -667,7 +667,7 @@ export async function openBackorder(id) {
 
 export async function openInvoice(no) {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
-  const x = await S.DB.get('invoices', no);
+  const x = await getInvoice(S, no);
   if (!x) { $('page').innerHTML = '<div class="card"><div class="none">인보이스를 찾지 못했습니다</div></div>'; return; }
   if (x.src === 'legacy' && !(x.lines || []).length) return legacyInvoice(x);
   $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between"><div><h2 style="margin:0">📄 ' + esc(x.no) + (x.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(x.store) + '</div><div class="muted">' + esc(x.sm) + ' · ' + esc(x.d) + ' · 주문 <a href="#/order/' + esc(x.orderId) + '">' + esc(x.order) + '</a></div></div><button class="b-ghost b-sm" id="iBack">‹ ' + bi('목록', 'List') + '</button></div>' +

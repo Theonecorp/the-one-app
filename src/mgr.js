@@ -1,8 +1,8 @@
 /* ============================================================
  *  담당자(회계) 화면 — 수금 확인(① 접수 확인 · ② 체크 수령) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
  * ============================================================ */
-import { invTypes } from './invoicing.js';
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt } from './ui.js';
+import { invTypes, getInvoice } from './invoicing.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt, invNo } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, dropAccountCache, activeOnly, sortStores } from './accounts.js';
 import { inactiveTool, reactivate, register as regInactive } from './inactive.js';
@@ -32,13 +32,13 @@ const VSEL = new Set();   // ☑ 체크해서 한 번에 ① 접수 확인 · �
 export async function applyToInvoices(key, invs, on) {
   let n = 0;
   for (const v of (invs || [])) {
-    const no = String(v.no || '').trim().toUpperCase(); if (!no) continue;
-    let inv = null; try { inv = await S.DB.get('invoices', no); } catch (e) {}
+    const no = invNo(v.no); if (!no) continue;
+    let inv = null; try { inv = await getInvoice(S, no); } catch (e) {}
     if (!inv || inv.st === 'x') continue;
     const pays = Object.assign({}, inv.pays || {});
     if (on) pays[key] = R2(num(v.amt)); else delete pays[key];
     const paid = R2(Object.values(pays).reduce((a, x) => a + (Number(x) || 0), 0));
-    try { await S.DB.update('invoices', no, { pays, paid, bal: R2(Math.max(0, (inv.total || 0) - paid)), paidAt: on ? today() : inv.paidAt || '' }); n++; } catch (e) {}
+    try { await S.DB.update('invoices', inv.id || no, { pays, paid, bal: R2(Math.max(0, (inv.total || 0) - paid)), paidAt: on ? today() : inv.paidAt || '' }); n++; } catch (e) {}
   }
   return n;
 }
@@ -209,7 +209,7 @@ function codForm(r) {
   $('cSave').onclick = async () => {
     const sm = $('cSm').value, store = $('cStore').value.trim(), amt = R2(num($('cAmt').value)), d = $('cD').value;
     if (!sm) return toast('세일즈맨을 고르세요', 'bad'); if (!store) return toast('가게를 넣으세요', 'bad'); if (!amt) return toast('금액을 넣으세요', 'bad');
-    const invList = []; document.querySelectorAll('[data-cno]').forEach(el => { const i = el.dataset.cno, a = document.querySelector('[data-camt="' + i + '"]'); const no = el.value.trim().toUpperCase(); if (no || num(a.value)) invList.push({ no, t: no ? invType(no) : '', amt: R2(num(a.value)) }); });
+    const invList = []; document.querySelectorAll('[data-cno]').forEach(el => { const i = el.dataset.cno, a = document.querySelector('[data-camt="' + i + '"]'); const no = invNo(el.value); if (no || num(a.value)) invList.push({ no, t: no ? invType(no) : '', amt: R2(num(a.value)) }); });
     if (invList.some(v => !v.no)) return toast('인보이스 번호가 빈 줄이 있습니다', 'bad');
     if (method === 'ACH' && !r.id && !r.achId) {
       /* 옛 규칙(ACH_COMM_SOURCE): ACH 커미션은 한쪽에서만. 🏦 ACH 허브에 같은 가게·금액 건이 있으면 겹치니 막습니다 */
@@ -385,7 +385,7 @@ export function parseArRows(aoa) {
   const dateOf = v => { if (v instanceof Date) return v.toISOString().substring(0, 10); const s = String(v || '').trim(); const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0'); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10); if (typeof v === 'number' && v > 30000) { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().substring(0, 10); } return ''; };
   for (let r = hi + 1; r < aoa.length; r++) {
     const row = aoa[r]; if (!row || !row.length) continue;
-    const inv = String(row[idx.inv] == null ? '' : row[idx.inv]).trim(), acct = String(row[idx.acct] == null ? '' : row[idx.acct]).trim();
+    const inv = invNo(row[idx.inv]), acct = String(row[idx.acct] == null ? '' : row[idx.acct]).trim();
     const bal = num(row[idx.bal]);
     const rep = String(row[idx.rep] == null ? '' : row[idx.rep]).trim().toUpperCase(), repLab = rep.replace(/\s*\(\d+\)\s*$/, '');
     if (!inv) { const lab = String(row[idx.rep] == null ? '' : row[idx.rep]).trim() || String(row[idx.store] == null ? '' : row[idx.store]).trim(); if (/\(\d+\)\s*$/.test(rep) && repLab !== 'ALL') { if (closed[repLab]) { tail++; continue; } closed[repLab] = 1; } if (lab && bal) subtotals.push({ label: lab, bal }); continue; }
