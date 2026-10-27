@@ -327,7 +327,8 @@ export function storeForm(a) {
     '<div class="fg"><label>메모 (주문 화면에 보임)</label><input id="sNote" value="' + esc(a.note || '') + '"></div>' +
     '<div class="fg"><label>기본 할인 % (인보이스 종류별 — 주문에 자동으로 들어감)</label><div class="three">' + invTypes(S).map(t => '<div><small class="muted">' + esc(t.c) + ' ' + esc(t.n) + '</small><input type="number" inputmode="decimal" min="0" max="100" data-sd="' + esc(t.c) + '" value="' + esc((a.disc || {})[t.c] || '') + '" placeholder="0"></div>').join('') + '</div></div>' +
     (a.acct ? '<label class="pick ' + (a.inactive ? 'on' : '') + '" id="sInact" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>💤 ' + bi('비활성 (목록 · 지도에서 뺌)', 'Inactive (hide from lists)') + '</b><small>' + (a.lastTx ? bt('마지막 거래', 'last activity') + ' ' + esc(a.lastTx) : '') + '</small></span></label>' : '') +
-    '<div class="btns"><button class="b-blue" id="sSave">저장</button></div>');
+    '<div class="btns">' + (a.acct && a.pending ? '<span class="tag t-b" style="align-self:center">🆕 ' + bt('임시 번호 — 코드 부여 기다리는 중', 'Temporary number — waiting for a code') + '</span>' : '') + (a.acct && S.role !== 'salesman' ? '<button class="b-ghost" id="sRen">' + (a.pending ? '🆕 ' + bt('코드 부여', 'Assign code') : '🔁 ' + bt('코드 바꾸기', 'Change code')) + '</button>' : '') + '<button class="b-blue" id="sSave">저장</button></div>');
+  if ($('sRen')) $('sRen').onclick = async () => { const NA = await import('./newacct.js'); if (!NA.canAssign()) return toast(bt('주문 배정 매니저 · 관리자만 바꿀 수 있습니다', 'Only assigning managers / admins'), 'bad'); closeModal(); if (a.pending) NA.pendingModal(() => pageStores()); else NA.renameForm(a.acct, () => pageStores()); };
   if ($('sInact')) $('sInact').onclick = e => { e.preventDefault(); $('sInact').classList.toggle('on'); };
   $('sSave').onclick = async () => {
     const acct = pad4($('sAcct').value.trim()), store = $('sStore').value.trim().toUpperCase();
