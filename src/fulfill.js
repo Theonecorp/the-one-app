@@ -414,6 +414,7 @@ function csv(o, lines) {
 
 /* ---- 🧾 인보이스 확정 ---- */
 async function confirmInvoice(o, lines) {
+  if (/^N\d{6}-/.test(String(o.acct || ''))) { const NA = await import('./newacct.js'); toast('🆕 ' + bt('신규 거래처라 아직 코드가 없습니다 — 코드를 먼저 붙여 주세요', 'New account has no code yet — assign the code first'), 'bad'); if (NA.canAssign()) NA.pendingModal(() => goOrder(o.id)); return; }
   try { await loadCatalog(S); } catch (e) {}
   const groups = Object.values(splitByType(lines, o.disc, 'pq')).filter(g => g.qty > 0);
   const bo = lines.filter(l => (l.pq || 0) < l.q).map(l => Object.assign({ c: l.c, d: l.d, q: l.q - (l.pq || 0), p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }, l.kit ? { kit: l.kit } : {}));

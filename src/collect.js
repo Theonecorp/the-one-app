@@ -199,7 +199,8 @@ function bindEntry() {
       box.style.display = ''; box.querySelectorAll('[data-ac]').forEach(d => d.onclick = () => pickStore(d.dataset.ac));
     };
     q.oninput = search; q.onfocus = search; q.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const f = box.querySelector('[data-ac]'); if (f) f.click(); } };
-    $('btnNewStore').onclick = () => { F.store = q.value.trim().toUpperCase(); F.newStore = true; F.acct = ''; F.addr = $('fAddr').value.trim(); paintEntry(); };
+    /* 🆕 목록에 없는 가게 — 새 거래처로 열어서 (임시 번호, 매니저가 코드를 붙임) 바로 그 가게로 */
+    $('btnNewStore').onclick = async () => { const NA = await import('./newacct.js'); NA.newAcctForm(q.value.trim(), a => { pickStore(a.acct); F.newStore = true; paintEntry(); }); };
     document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('#sList, #fStore')) { const b = $('sList'); if (b) b.style.display = 'none'; } }, { once: true });
     if (!('ontouchstart' in window)) acct.focus();
   } else {

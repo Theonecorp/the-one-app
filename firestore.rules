@@ -22,7 +22,15 @@ service cloud.firestore {
     }
     // ---------- 기준 자료 ----------
     match /salesmen/{id} { allow read: if registered(); allow write: if isAdmin(); }   // 요율 · 캐쉬 보관은 루크만
-    match /accounts/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /accounts/{id} {
+      allow read: if registered();
+      allow write: if isStaff();
+      // 🆕 세일즈맨이 새 거래처를 임시 번호(N261027-AB12)로 열기 · 코드 받기 전까지 자기가 연 것 고치기 — 정식 코드는 매니저가 붙임
+      allow create: if registered() && id.matches('^N[0-9]{6}-[A-Z0-9]{4}$') && request.resource.data.pending == true
+                    && request.resource.data.sm == mySm() && request.resource.data.newBy == email();
+      allow update: if registered() && resource.data.pending == true && resource.data.newBy == email()
+                    && request.resource.data.pending == true && request.resource.data.sm == resource.data.sm && request.resource.data.newBy == resource.data.newBy;
+    }
     match /settings/{id} {
       allow read: if registered();
       allow create, delete: if isAdmin();
