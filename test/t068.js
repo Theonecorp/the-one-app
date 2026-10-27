@@ -37,7 +37,7 @@ const path = require('path'), fs = require('fs');
   const opts = await pg.$$eval('[data-pk]', e => e.map(x => (x.classList.contains('on') ? '*' : '') + x.querySelector('b').textContent.trim() + ' / ' + x.querySelector('small').textContent.trim()));
   log('popup options:', opts);
   const names = opts.map(t => t.replace(/^\*/, '').split(' / ')[0].replace(/^[^ ]+ /, '').replace(/ \(.*$/, ''));
-  const want = ['Pick 1', 'Pick 2', 'Pick 3', 'Pick 10', 'Warehouse Mgr', 'Luke', 'Amy Office', '회계 담당'];   // 창고 직원(숫자 순) → 창고 매니저 → 나 → 그 밖의 담당자
+  const want = ['Pick 1', 'Pick 2', 'Pick 3', 'Pick 10', 'Amy Office', '회계 담당', 'Warehouse Mgr', 'Luke'];   // 창고 직원(숫자 순) → 오피스 · 인보이스 담당 → 창고 매니저 → 나
   if (names.join('|') !== want.join('|')) errs.push('picker order wrong: ' + names.join('|') + ' (want ' + want.join('|') + ')');
   if (!opts.length || !opts[0].startsWith('*')) errs.push('first picker should be preselected');
   if (!/2건 진행 중|2 in progress/.test(opts[0] || '')) errs.push('Pick 1 should show 2 in progress: ' + opts[0]);

@@ -80,6 +80,55 @@ async function loadPop(S) {
  *   2) 시트 Photo 칸 — 여러 아이템이 같은 URL 을 쓰는데 골드 · 실버가 섞여 있으면, URL 에 코드가 들어 있는 아이템만 씀
  *   3) 세트는 구성품 사진을 빌려 쓰지 않음 */
 let PHX = null, DRIVE_ON = false, DRIVE_BAD = 0, DRIVE_OK = 0;
+/* 📷 앱에서 올린 사진 — itemPhotos/{code} = { code, data(작게 줄인 JPEG dataURL) | none: true(사진 안 씀), by, at }
+ *   catalog/meta.photoVer 가 바뀔 때만 다시 읽고 폰(IndexedDB)에 보관. 우선순위: 앱 사진 > 드라이브 > 시트 Photo 칸 */
+let OV = {}, OV_VER = null;
+async function loadPhotoOv(S, meta) {
+  const ver = (meta && meta.photoVer) || '';
+  if (OV_VER === ver) return;
+  const c = await idbGet(IDB_KEY + '.ov');
+  if (c && c.ver === ver && c.m) { OV = c.m; OV_VER = ver; return; }
+  try { const L = await S.DB.list('itemPhotos'); OV = {}; L.forEach(d => { OV[d.code || d.id] = { data: d.data || '', none: !!d.none }; }); OV_VER = ver; await idbSet(IDB_KEY + '.ov', { ver, m: OV }); }
+  catch (e) { if (c && c.m) { OV = c.m; OV_VER = c.ver; } }
+}
+export const photoOv = code => OV[code] || null;
+/** 📷 아이템 사진 바꾸기 — o: { data } 올린 사진 · { none: true } 사진 안 쓰기 · { clear: true } 앱 사진 지우고 원래(드라이브 · 시트)대로 */
+export async function setItemPhoto(S, code, o) {
+  const now = new Date().toISOString(), by = (S.user && S.user.email) || '';
+  if (o.clear) { await S.DB.del('itemPhotos', code); delete OV[code]; }
+  else { const d = { code, data: o.none ? '' : (o.data || ''), none: !!o.none, by, at: now }; await S.DB.set('itemPhotos', code, d); OV[code] = { data: d.data, none: d.none }; }
+  const meta = (await S.DB.get('catalog', 'meta')) || {}; OV_VER = now;
+  await S.DB.update('catalog', 'meta', { photoVer: now }).catch(() => S.DB.set('catalog', 'meta', Object.assign(meta, { photoVer: now })));
+  await idbSet(IDB_KEY + '.ov', { ver: now, m: OV });
+  if (CAT) { fixPhotos(CAT); CAT.photoStat = CAT.photoStat || {}; }
+}
+/** 사진 파일 → 작게 줄인 JPEG dataURL (긴 쪽 max px · maxBytes 넘으면 더 줄임) — Firestore 문서에 들어갈 크기로 */
+export function shrinkImage(file, max, maxBytes) {
+  max = max || 480; maxBytes = maxBytes || 60000;
+  return new Promise((res, rej) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight, side = max, q = 0.82, out = '';
+      for (let k = 0; k < 6; k++) {
+        const sc = Math.min(1, side / Math.max(w, h)), cw = Math.max(1, Math.round(w * sc)), ch = Math.max(1, Math.round(h * sc));
+        const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch; const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cw, ch); cx.drawImage(img, 0, 0, cw, ch);
+        out = cv.toDataURL('image/jpeg', q);
+        if (out.length * 0.75 <= maxBytes) break;
+        if (q > 0.6) q -= 0.12; else side = Math.round(side * 0.8);
+      }
+      res(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('이미지를 읽지 못했습니다')); };
+    img.src = url;
+  });
+}
+/** 📷 사진 통계 — 없는 아이템을 Level 1 별로 (숨김 · 세트 제외 옵션) */
+export function photoStats(C) {
+  const by = {}, miss = []; let app = 0, drive = 0, sheet = 0;
+  (C.items || []).forEach(x => { if (x.h) return; if (x.phSrc === 'app') app++; else if (x.phSrc === 'drive') drive++; else if (x.phSrc === 'sheet') sheet++; if (!x.ph) { miss.push(x); const k = x.lv1 || x.l1 || '—'; by[k] = (by[k] || 0) + 1; } });
+  return { app, drive, sheet, miss, by: Object.keys(by).sort((a, b) => by[b] - by[a]).map(k => [k, by[k]]) };
+}
 const ALT = {};   // 드라이브 사진 id → 시트(Shopify) 사진 — 드라이브가 막히면 이걸로 바꿔 보여 줌
 /** 드라이브 사진 상태 — 'ok'(열림) · 'blocked'(로그인 요구로 막힘) · ''(아직 모름) */
 export function driveState() { return DRIVE_BAD >= 3 && DRIVE_OK === 0 ? 'blocked' : DRIVE_OK ? 'ok' : ''; }
@@ -110,7 +159,8 @@ export function fixPhotos(C) {
     if (x.ph0 && !sheet) dropped++;
     let d = '';
     if (DRIVE_ON && PHX) { const id = PHX.pic[x.c] || PHX.gal[x.c] || (x.old && (PHX.pic[x.old] || PHX.gal[x.old])); if (id) { d = driveUrl(id); drive++; if (sheet) ALT[id] = sheet; } }
-    x.ph = driveState() === 'blocked' ? (sheet || d) : (d || sheet);
+    x.ph = driveState() === 'blocked' ? (sheet || d) : (d || sheet); x.phSrc = x.ph ? (x.ph === d ? 'drive' : 'sheet') : '';
+    const ov = OV[x.c]; if (ov) { if (ov.none) { x.ph = ''; x.phSrc = 'none'; } else if (ov.data) { x.ph = ov.data; x.phSrc = 'app'; } }
   });
   C.photoStat = { dropped, drive };
   return C.photoStat;
@@ -142,6 +192,7 @@ export async function loadCatalog(S, force) {
     throw e;
   }
   if (!meta || !meta.ver) { CAT = index({ ver: '', rows: [], cats: [] }); return CAT; }
+  await loadPhotoOv(S, meta);
   const sv = meta.setsVer || '';
   if (CAT && CAT.ver === meta.ver && CAT.setsVer === sv && !force) return CAT;
   const cached = force ? null : await idbGet(IDB_KEY);

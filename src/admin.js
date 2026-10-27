@@ -1,20 +1,40 @@
 /* ============================================================
  *  관리 — 사용자 · 세일즈맨(요율) · 설정 · 옛 시트에서 가져오기
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt, invNo } from './ui.js';
+import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt, invNo, bi } from './ui.js';
 import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
-import { roleLabel, JOBS, jobLabel } from './main.js';
+import { roleLabel, JOBS, jobLabel, can } from './main.js';
 import { seedImport } from './mg.js';
 import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
 import { acctImportCard, bindAcctImport, acctFile, parseAcctList } from './acctimp.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs, parseSmartBeeItems, smartbeeDiff, applySmartBee, codeFamily } from './catalog.js';
+import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs, parseSmartBeeItems, smartbeeDiff, applySmartBee, codeFamily, photoStats } from './catalog.js';
 import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM, getInvoice } from './invoicing.js';
 
 let S = null, TAB = 'users';
-export function register(state) { S = state; Router.on('admin', pageAdmin); }
+export function register(state) { S = state; Router.on('admin', pageAdmin); Router.on('catmg', pageCatMg); }
+/** 📷 사진 없는 아이템 — Level 1 별 숫자, 누르면 아이템 화면에서 그 분류의 사진 없는 것만 (카탈로그 담당의 작업 목록) */
+function photoMissingCard() {
+  const C = catalog(); if (!C || !C.items.length || !$('adminBody')) return;
+  const st = photoStats(C), vis = C.items.filter(x => !x.h).length;
+  $('adminBody').insertAdjacentHTML('afterbegin', '<div class="card" style="border:2px solid ' + (st.miss.length ? '#fcd34d' : '#bbf7d0') + '"><h2>📷 ' + bt('사진 없는 아이템', 'Items without a photo') + ' <span class="tag ' + (st.miss.length ? 't-c' : 't-k') + '">' + st.miss.length.toLocaleString() + ' / ' + vis.toLocaleString() + '</span></h2>' +
+    '<div class="muted">' + bt('보이는 아이템 기준 · 앱에서 올린 사진', 'Visible items · uploaded in app') + ' ' + st.app + ' · ' + bt('드라이브', 'Drive') + ' ' + st.drive + ' · ' + bt('시트', 'Sheet') + ' ' + st.sheet + '. ' + bt('분류를 누르면 그 분류의 사진 없는 아이템만 나옵니다 — 아이템을 열어 📷 사진 올리기.', 'Tap a category to list its items without a photo — open an item and upload.') + '</div>' +
+    (st.miss.length ? '<div class="chips" style="margin-top:8px"><button data-nop="">' + bt('전체', 'All') + ' <span class="en">' + st.miss.length + '</span></button>' + st.by.map(([k, n]) => '<button data-nop="' + esc(k) + '">' + esc(cleanName(k)) + ' <span class="en">' + n + '</span></button>').join('') + '</div>' : '<div class="none">✅ ' + bt('모든 아이템에 사진이 있습니다', 'Every item has a photo') + '</div>') + '</div>');
+  document.querySelectorAll('[data-nop]').forEach(b => b.onclick = () => { const k = b.dataset.nop; const x = k ? C.items.find(i => (i.lv1 || i.l1) === k) : null; Router.go('items', 'noph' + (x ? ':' + encodeURIComponent([x.g, k].filter(Boolean).join('/')) : '')); });
+}
+/* 🎨 디자인 · 카탈로그 담당 홈 — 관리 화면 중 📦 아이템 · 🗂 분류만 (사진 · 세트 · 바코드 · 분류 · 레벨 도구) */
+let CTAB = 'cat';
+async function pageCatMg(arg) {
+  if (!(S.role === 'admin' || S.role === 'owner' || can('catalog'))) { $('page').innerHTML = '<div class="card"><div class="none">' + bt('디자인 · 카탈로그 담당 · 관리자만 쓰는 화면입니다', 'Design & Catalog staff / admins only') + '</div></div>'; return; }
+  if (arg) CTAB = arg;
+  $('page').innerHTML = '<div class="card" style="padding:12px 14px"><h2 style="margin:0 0 8px">🎨 ' + bi('디자인 · 카탈로그', 'Design & Catalog') + '</h2><div class="seg">' + [['cat', '📦 ' + bt('아이템 · 사진 · 세트', 'Items · Photos · Sets')], ['tree', '🗂 ' + bt('분류', 'Categories')]].map(t => '<button class="' + (CTAB === t[0] ? 'on' : '') + '" data-ct2="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
+    '<div class="btns" style="justify-content:flex-start;margin:8px 0 0;flex-wrap:wrap"><button class="b-ghost b-sm" onclick="location.hash=\'#/items\'">🏷 ' + bt('아이템 전체 · 등록 · 숨기기', 'All items · add · hide') + '</button><button class="b-ghost b-sm" onclick="location.hash=\'#/cat\'">📒 ' + bt('카탈로그 · 바코드 보기', 'Catalog · barcodes') + '</button></div></div><div id="adminBody"><div class="load">읽는 중…</div></div>';
+  document.querySelectorAll('[data-ct2]').forEach(b => b.onclick = () => { CTAB = b.dataset.ct2; pageCatMg(); });
+  try { await loadCatalog(S).catch(() => {}); if (CTAB === 'tree') await treeAdmin(); else await catalogAdmin(); photoMissingCard(); }
+  catch (e) { $('adminBody').innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; }
+}
 /* 💾 드라이브 자동 백업 상태 — apps-script/Backup.gs 가 settings/app.backup 에 적음 */
 function bkLine() {
   const b = S.settings && S.settings.backup, dt = b && new Date(b.at), at = dt && !isNaN(dt) ? dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0') + ' ' + String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0') : '';

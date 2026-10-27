@@ -501,18 +501,17 @@ export function monthEnd(d) { const y = Number(d.substring(0, 4)), m = Number(d.
 let PICKERS = null;
 export async function pickers() {
   if (PICKERS) return PICKERS;
-  /* 순서: 창고 직원(pick1 · pick2 …) → 창고 매니저 → 그 밖의 담당자, 같은 묶음 안은 이름 순 (숫자 순서로) */
-  const rank = u => u.job === 'pick' ? 0 : u.job === 'whmgr' ? 1 : 2, coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  /* 순서: 창고 직원(pick1 · pick2 …) → 오피스 · 인보이스 담당(EUNJI · EUNJU · BEA …) → 창고 매니저, 같은 묶음 안은 이름 순 (숫자 순서로) */
+  const rank = u => u.job === 'pick' ? 0 : u.job === 'whmgr' ? 2 : 1, coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
   try { PICKERS = (await S.DB.list('users', {})).filter(u => u.active !== false && u.role === 'manager' && jobCan(u.job || 'office', 'pick')).map(u => ({ email: u.email || u.id, name: u.name || (u.email || u.id).split('@')[0], job: u.job || 'office', pick: u.job === 'pick' || u.job === 'whmgr', rank: rank(u) })).sort((a, b) => a.rank - b.rank || coll.compare(a.name, b.name)); }
   catch (e) { PICKERS = []; }
   return PICKERS;
 }
-/** 할당 창에 보일 사람 목록 — 창고 직원(pick1~) 먼저, 나는 창고 직원 뒤 (내가 창고 직원이면 그 자리 그대로) */
+/** 할당 창에 보일 사람 목록 — 창고 직원(pick1~) → 오피스 · 인보이스 담당 → 창고 매니저, 나는 맨 뒤 (목록에 이미 있으면 그 자리 그대로) */
 export async function assignOpts() {
   const list = await pickers(), me = S.user.email;
   if (list.some(p => p.email === me)) return list.map(p => Object.assign({}, p, { me: p.email === me }));
-  const mine = { email: me, name: S.user.name || me.split('@')[0], pick: false, rank: 1.5, me: true };
-  return list.filter(p => p.rank <= 1).concat([mine], list.filter(p => p.rank > 1));
+  return list.concat([{ email: me, name: S.user.name || me.split('@')[0], pick: false, rank: 9, me: true }]);
 }
 /** 주문들을 픽킹 직원에게 할당 (접수 → 픽킹 중) — 팝업에서 사람을 고름. 창고 직원(pick1~4)이 먼저 · 지금 맡은 건수 표시. 픽킹 인보이스 인쇄는 선택 */
 export async function assignPicker(orders, done) {
