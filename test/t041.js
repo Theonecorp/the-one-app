@@ -43,7 +43,12 @@ const path = require('path'), fs = require('fs');
   log('after save hash:', await pg.evaluate(() => location.hash)); await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(500); await pg.evaluate(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'draft' }))); await pg.waitForTimeout(500);
   log('review card (staff):', !!(await pg.$('#oSendAll')));
   await pg.click('#oSendAll'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(900);
-  await pg.click('[data-lf="sent"]'); await pg.waitForTimeout(600); log('sent oids:', await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid + '|' + x.className)), await pg.evaluate(() => location.hash), (await pg.textContent('#page')).replace(/\s+/g, ' ').slice(0, 200)); await pg.click('#page [data-oid]'); await pg.waitForSelector('#mPick');
+  await pg.click('[data-lf="sent"]'); await pg.waitForTimeout(600); log('sent oids:', await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid + '|' + x.className)), await pg.evaluate(() => location.hash), (await pg.textContent('#page')).replace(/\s+/g, ' ').slice(0, 200)); /* v0.8.79: 신규 주문을 누르면 할당 팝업(확인 전이면 "그래도 배정?" 먼저) — 팝업에서 [주문 열기] 로 상세 */
+  await pg.click('#page [data-oid]'); await pg.waitForSelector('#modal.on', { timeout: 5000 }).catch(() => {});
+  log('row tap →', (await pg.textContent('#mbox').catch(() => '')).replace(/\s+/g, ' ').slice(0, 60));
+  if (await pg.$('#cfOk')) { await pg.click('#cfOk'); await pg.waitForTimeout(300); }
+  if (await pg.$('#pkOpen')) await pg.click('#pkOpen'); else errs.push('assign popup should offer [주문 열기]');
+  await pg.waitForSelector('#mPick');
   log('before pick:', await pg.evaluate(() => location.hash), 'errs so far:', errs);
   await pg.click('#mPick'); await pg.waitForTimeout(1500); log('prt:', await pg.evaluate(() => document.getElementById('prt').className), 'errs:', errs, (await pg.textContent('#page')).replace(/\s+/g, ' ').slice(0, 100)); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(400); await pg.screenshot({ path: path.resolve(__dirname, 'out', 'g5_pickprint.png'), fullPage: true }); await pg.click('#prtClose'); await pg.waitForTimeout(300);
   await pg.click('#mPickDone'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForSelector('#mInv');
