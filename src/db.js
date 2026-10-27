@@ -59,6 +59,8 @@ function makeMemoryDB(seed) {
     async del(c, id) { delete col(c)[id]; },
     async seq(id, key, start) { const d = col('counters')[id] = col('counters')[id] || { id }; const cur = d[key] != null ? Number(d[key]) : Number(start || 1); d[key] = cur + 1; return cur; },
     async batch(ops) { for (const o of ops) { if (o.op === 'set') await this.set(o.col, o.id, o.data); else if (o.op === 'update') await this.update(o.col, o.id, o.data); else if (o.op === 'del') await this.del(o.col, o.id); } },
+    /** 실시간 보기 (시험용 메모리 DB 는 1.5초마다 비교) — 바뀔 때마다 cb(rows), 돌려준 함수를 부르면 멈춤 */
+    watch(c, q, cb) { let last = null; const tick = () => this.list(c, q).then(r => { const j = JSON.stringify(r); if (j !== last) { last = j; cb(r); } }); tick(); const t = setInterval(tick, 1500); return () => clearInterval(t); },
     _dump() { return clone(store); }
   };
 }
@@ -114,6 +116,13 @@ async function makeFirestoreDB() {
       return snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
     },
     /** 개수만 (문서를 받지 않음 — 1,000건에 읽기 1번) */
+    /** 실시간 보기 — Firestore onSnapshot (처음 한 번 + 바뀐 문서만 읽음 → 1분마다 다시 읽는 것보다 훨씬 쌈). 돌려준 함수를 부르면 멈춤 */
+    watch(c, q, cb) {
+      q = q || {};
+      const parts = [fs.collection(db, c)];
+      (q.where || []).forEach(w => parts.push(fs.where(w[0], w[1], w[2])));
+      return fs.onSnapshot(fs.query.apply(null, parts), snap => cb(snap.docs.map(d => Object.assign({ id: d.id }, d.data()))), e => console.warn('watch', c, e));
+    },
     async count(c, q) {
       q = q || {};
       const parts = [fs.collection(db, c)];

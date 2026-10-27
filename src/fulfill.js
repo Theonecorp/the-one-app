@@ -56,6 +56,7 @@ export function manage(o, lines) {
     '<div class="muted">' + esc(o.sm) + ' · ' + esc(o.d) + (o.sentAt ? ' · 들어옴 ' + esc(o.sentAt.substring(5, 16).replace('T', ' ')) : '') + (o.pickAt ? ' · 픽킹 ' + esc(o.pickAt.substring(5, 16).replace('T', ' ')) + (o.pickerName ? ' 👷 ' + esc(o.pickerName) : '') : '') + (o.pickDoneAt ? ' · 픽킹 완료 ' + esc(o.pickDoneAt.substring(5, 16).replace('T', ' ')) : '') + (o.shipAt ? ' · 출고 ' + esc(o.shipAt.substring(5, 16).replace('T', ' ')) + (o.track ? ' 🚚 ' + esc(o.track) : '') : '') + '</div>' + cfTag(o) + '</div>' +
     '<button class="b-ghost b-sm" id="mBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     (acc && acc.note ? '<div class="alert a-blu">🏬 ' + esc(acc.note) + '</div>' : '') + '<div id="mNotes"></div>' +
+    (o.cfIssueOpen ? '<div class="alert a-red">⚠️ ' + bi('세일즈맨이 이 주문에 문제가 있다고 알렸습니다', 'The salesman flagged this order') + ': <b>' + esc(o.cfIssue || '') + '</b> <span class="muted">' + esc(String(o.cfIssueAt || '').substring(5, 16).replace('T', ' ')) + '</span><div class="btns" style="justify-content:flex-start;margin-top:6px"><button class="b-ghost b-sm" id="mIssueOk">✅ ' + bt('해결', 'Resolved') + '</button></div></div>' : '') + (o.cfReq && !o.cfOk && o.cfNote ? '<div class="alert a-amb">❓ ' + bt('세일즈맨에게 물어본 것', 'Asked the salesman') + ': ' + esc(o.cfNote) + '</div>' : '') +
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
     '<div id="mSum"></div>' +
     (S.role !== 'salesman' ? timelineHtml(o) : '');
@@ -88,6 +89,7 @@ export function manage(o, lines) {
     (o.st === 'packed' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('포장 대기로 되돌리기', 'Back to packing') + '</button>' : '') +
     (o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('출고 취소', 'Undo shipping') + '</button><button class="b-ghost b-sm" id="mTrk">📦 ' + bi('배송 조회', 'Tracking') + '</button>' : '') +
     ((o.st === 'sent' || o.st === 'pick' || o.st === 'ok') && !o.cfOk ? '<button class="b-ghost b-sm" id="mCfReq">❓ ' + bi(o.cfReq ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman') + '</button>' : '') +
+    '<button class="b-ghost b-sm" id="mAsk">💬 ' + bi('구글 챗으로 묻기', 'Ask on Google Chat') + '</button>' + ((S.settings && S.settings.chatUrl) ? '<button class="b-ghost b-sm" id="mChat">💬 ' + bi('챗 열기', 'Open Chat') + '</button>' : '') +
     (o.st === 'done' || o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 ' + bi('인보이스 인쇄', 'Print invoice') + '</button>' : '') +
     ((o.st === 'done' || o.st === 'shipped') && can('void') ? '<button class="b-ghost b-sm" id="mVoid" style="color:#991b1b">🚫 ' + bi('인보이스 VOID', 'Void invoice') + '</button>' : '') +
     '<button class="b-ghost b-sm" id="mCsv">⬇️ CSV</button>' +
@@ -191,7 +193,11 @@ export function manage(o, lines) {
     busy(true); try { await saveLines({ st: 'picked', pickDoneAt: new Date().toISOString(), pickDoneBy: S.user.email }); dirty = false; toast('✅ 작업 완료 — 검수 대기 · Ready for Review', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
   };
   if ($('mRepick')) $('mRepick').onclick = async () => { busy(true); try { await saveLines({ st: 'pick' }); toast('출고 작업으로 되돌림 · Back to Fulfillment'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-  if ($('mCfReq')) $('mCfReq').onclick = async () => { if (!(await confirmBox(o.sm + ' 에게 이 주문 내용 확인을 요청할까요? 세일즈맨 앱 홈에 "확인 요청" 으로 뜹니다.', '요청'))) return; busy(true); try { await S.DB.update('orders', o.id, { cfReq: true, cfReqAt: new Date().toISOString(), cfReqBy: S.user.email, cfOk: false }); toast('확인 요청 보냄', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  /* ❓ 자세한 확인 요청 (질문 적기) — 세일즈맨 앱에 소리 · 띠, 이메일 · 구글 챗 (notify.js) */
+  if ($('mCfReq')) $('mCfReq').onclick = async () => { const N = await import('./notify.js'); N.askForm(o, 'cfreq', () => goOrder(o.id)); };
+  if ($('mAsk')) $('mAsk').onclick = async () => { const N = await import('./notify.js'); N.askForm(o, 'ask'); };
+  if ($('mChat')) $('mChat').onclick = async () => { const N = await import('./notify.js'); window.open(N.chatUrl(), '_blank', 'noopener'); };
+  if ($('mIssueOk')) $('mIssueOk').onclick = async () => { busy(true); try { await S.DB.update('orders', o.id, { cfIssueOpen: false, cfIssueDoneAt: new Date().toISOString(), cfIssueDoneBy: S.user.email }); toast('✅ ' + bt('해결로 표시했습니다', 'Marked resolved'), 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mShip')) $('mShip').onclick = () => shipModal(o);
   if ($('mPickup')) $('mPickup').onclick = () => { Router.go('order'); setTimeout(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'packed' })), 0); };
   if ($('mCfOk')) $('mCfOk').onclick = async () => { if (!(await confirmBox(bt('세일즈맨 확인 완료로 바꿀까요? (전화 · 문자로 확인한 경우)', 'Mark as confirmed by the salesman?'), '👍'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { cfReq: true, cfOk: true, cfAt: now, cfBy: S.user.email, cfHow: 'staff' }); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };

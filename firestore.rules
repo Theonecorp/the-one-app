@@ -22,6 +22,11 @@ service cloud.firestore {
     }
     // ---------- 기준 자료 ----------
     match /salesmen/{id} { allow read: if registered(); allow write: if isAdmin(); }   // 요율 · 캐쉬 보관은 루크만
+    // 🔔 알림 대기열 — 앱이 넣고 Apps Script(THE ONE Mail)가 이메일 · 구글 챗으로 보냄
+    match /notifyq/{id} {
+      allow create: if registered() && request.resource.data.by == email() && request.resource.data.st == 'wait';
+      allow read, update, delete: if isStaff();
+    }
     match /accounts/{id} {
       allow read: if registered();
       allow write: if isStaff();
@@ -81,7 +86,7 @@ service cloud.firestore {
       allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email() && okSt(request.resource.data.st));
       allow update: if isStaff() || (registered() && resource.data.sm == mySm() && okSt(resource.data.st)
                                      && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st))
-                    || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cfOk', 'cfAt', 'cfBy']));   // 세일즈맨 "맞습니다" 확인
+                    || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cfOk', 'cfAt', 'cfBy', 'cfHow', 'cfIssue', 'cfIssueAt', 'cfIssueOpen']));   // 세일즈맨 "맞습니다" 확인 (한 건 · 그날 일괄) · ⚠️ 문제 알리기
       allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.st == 'draft');
     }
     match /orderLines/{id} {
