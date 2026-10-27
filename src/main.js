@@ -25,7 +25,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.80';
+export const VER = 'v0.8.81';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -43,7 +43,7 @@ const NAV = {
   acct:     fixed(['verify', '🏠', '홈', 'Home'], [['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH']]),   // 회계: 홈 = 수금 확인
   pickinv:  fixed(HOME_STAFF, [['items', '🏷', '아이템·위치', 'Items']]),
   invoice:  fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments']]),
-  whmgr:    fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory']]),
+  whmgr:    fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory'], ['track', '🚚', '배송 조회', 'Tracking']]),   // 창고 매니저: 재고 · 출고 중심
   pick:     fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory']]),
   owner:    fixed(HOME_TOP, [['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['flow', '🧭', '세일 흐름', 'Sales flow'], ['cat', '📒', '카탈로그', 'Catalog']]),
   admin:    fixed(HOME_TOP, [['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']])

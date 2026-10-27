@@ -26,7 +26,7 @@ export function register(state) {
   S = state; Router.on('order', arg => { if (!arg && Router.navTap === 'order') LF.list = false; Router.navTap = ''; return pageOrder(arg); });   // 아래 메뉴 🛒 세일 = 세일 처리 첫 화면
   Router.on('home', pageHome);
   /* 🏠 담당자 홈 = 내 일 목록 (창고 직원: 내 배정 작업 · 인보이스 담당: 검수 대기 · 출고/창고 매니저: 배정 대기 · 오피스: 신규 주문) */
-  Router.on('shome', () => { LF.init = true; LF.list = true; LF.st = { pick: 'mine', invoice: 'picked', whmgr: 'cfok', pickinv: 'cfok' }[jobOf()] || 'sent'; return pageOrder(''); }); Fulfill.register(state); Store.register(state);
+  Router.on('shome', () => { LF.init = true; LF.list = true; LF.st = { pick: 'mine', invoice: 'picked', whmgr: 'ups', pickinv: 'cfok' }[jobOf()] || 'sent'; return pageOrder(''); }); Fulfill.register(state); Store.register(state);
   /* ‹ 뒤로: 주문 목록(신규 · 출고 작업 …) → 주문 처리 첫 화면 */
   Router.up.order = arg => { if (!arg && isStaff() && LF.list) { LF.list = false; pageOrder(''); return true; } return false; };
   Router.upHas.order = () => isStaff() && !!LF.list;
@@ -131,7 +131,7 @@ async function pageOrder(arg) {
   if (arg) return openOrder(arg);
   if (!isStaff() && !mySm()) { $('page').innerHTML = '<div class="card"><div class="none">이 계정에 세일즈맨 코드가 연결돼 있지 않습니다.</div></div>'; return; }
   O = null; Router.refreshBack();
-  if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(), first = { invoice: 'picked', acct: 'inv', pick: 'mine', whmgr: 'cfok', pickinv: 'cfok' }[j]; if (first) LF.st = first; }
+  if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(), first = { invoice: 'picked', acct: 'inv', pick: 'mine', whmgr: 'ups', pickinv: 'cfok' }[j]; if (first) LF.st = first; }
   if (isStaff() && !LF.list) return staffHome();
   if (isStaff() && !chipsFor().some(c => c[0] === LF.st)) LF.st = chipsFor()[0][0];
   if (isStaff() && (LF.st === 'bo' || LF.st === 'inv' || LF.st === 'ups' || LF.st === 'packed')) return Fulfill.pageLists(LF, listHead());
@@ -225,7 +225,7 @@ async function pageOrder(arg) {
 }
 /* 담당자의 일(job) 에 따라 보이는 칩이 다름 — 픽킹: 들어온 주문 · 픽킹 중 · 백오더 / 인보이스: 픽킹 중(확정 대기) · 완료 · 인보이스 찾기 · 백오더 */
 const CHIPS = [['mine', '👷 내 배정 작업', 'My Assignments'], ['sent', '📥 신규 주문', 'New Orders'], ['cfw', '❓ 확인 대기', 'Awaiting Salesman'], ['cfok', '👍 확인 완료 · 배정 대기', 'Confirmed · To Assign'], ['pick', '📦 출고 작업', 'In Fulfillment'], ['picked', '✅ 검수 대기', 'Ready for Review'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'], ['ups', '🚚 UPS 출고', 'UPS Shipping'], ['packed', '📮 UPS 픽업', 'UPS Pickup'], ['shipped', '📬 출고 완료', 'Shipped'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoice Lookup'], ['draft', '💾 임시 저장', 'Drafts'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체 주문', 'All Orders']];
-const JOB_CHIPS = { pick: ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo'], whmgr: ['cfok', 'sent', 'cfw', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo', 'all'], pickinv: ['sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'inv', 'bo', 'all'], invoice: ['sent', 'cfw', 'cfok', 'picked', 'pick', 'done', 'packed', 'shipped', 'inv', 'bo', 'draft', 'all'], acct: ['inv', 'done', 'packed', 'shipped', 'bo', 'all'] };
+const JOB_CHIPS = { pick: ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo'], whmgr: ['ups', 'packed', 'done', 'shipped', 'bo', 'picked', 'pick', 'mine', 'cfok', 'sent', 'cfw', 'all'], pickinv: ['sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'inv', 'bo', 'all'], invoice: ['sent', 'cfw', 'cfok', 'picked', 'pick', 'done', 'packed', 'shipped', 'inv', 'bo', 'draft', 'all'], acct: ['inv', 'done', 'packed', 'shipped', 'bo', 'all'] };
 const LIVE_ST = ['sent', 'pick', 'ok', 'picked', 'done', 'packed'];
 const OPEN_CH = ['mine', 'pick', 'picked', 'done', 'packed'];   // 목록 칩 중 아직 안 끝난 일 (오래된 것이 위)   // 아직 끝나지 않은 주문 (출고 전)
 export function chipsFor() { const j = jobOf(); const keys = JOB_CHIPS[j]; return (keys ? keys.map(k => CHIPS.find(c => c[0] === k)) : CHIPS).filter(c => c[0] !== 'ups' || can('ship')); }
@@ -272,8 +272,17 @@ async function staffHome() {
   A.push(tile('track', '🚚', bi('배송 조회', 'Tracking'), '가게 · 인보이스 · 트래킹'));
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
   /* 담당자 홈 = 주문 처리 먼저 (접수 · 픽킹 · 인보이스 · 포장), 바로가기, 매출은 맨 아래 */
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📦 ' + bi('주문 처리', 'Order processing') + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
-    '<div id="naBanH"></div><div id="hOld"></div><div class="hgrid">' + T.join('') + '</div><div class="hgrid">' + A.join('') + '</div>' +
+  /* 🏭 창고 매니저 — 주문 처리보다 재고 · UPS 출고 · 픽업 · 백오더가 먼저 (주문 처리 타일은 아래 작은 칸) */
+  let grids = '<div class="hgrid">' + T.join('') + '</div><div class="hgrid">' + A.join('') + '</div>';
+  if (j === 'whmgr') {
+    const all = T.concat(A), pick = ks => ks.map(k => all.find(h => h.indexOf('data-hg="' + k + '"') >= 0)).filter(Boolean);
+    const WH = ['items', 'ups', 'packed', 'done', 'bo', 'shipped', 'track', 'cat'], OR = ['flow', 'mine', 'sent', 'cfok', 'cfw', 'pick', 'picked', 'all', 'stores'];
+    grids = '<h2 class="hsec">🏭 ' + bi('창고 · 재고 · 출고', 'Warehouse · Inventory · Shipping') + '</h2><div class="hgrid">' + pick(WH).join('') + '</div>' +
+      '<h2 class="hsec">📦 ' + bi('주문 처리', 'Order processing') + '</h2><div class="hgrid hsmall">' + pick(OR).join('') + '</div>' +
+      all.filter(h => !WH.concat(OR).some(k => h.indexOf('data-hg="' + k + '"') >= 0)).join('');
+  }
+  $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">' + (j === 'whmgr' ? '🏭 ' + bi('창고', 'Warehouse') : '📦 ' + bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
+    '<div id="naBanH"></div><div id="hOld"></div>' + grids +
     '<div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div>';
   document.querySelectorAll('[data-hp]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp; staffHome(); });
   /* ◀ ▶ — 같은 길이만큼 앞뒤로 (달 단위 기간은 달로) */
@@ -600,6 +609,12 @@ const QUICK = [1, 2, 3, 6, 12, 0];
 let PRE = (() => { try { return Number(localStorage.getItem('theone.order.pre')) || 0; } catch (e) { return 0; } })();
 function setPre(n) { PRE = n; try { localStorage.setItem('theone.order.pre', String(n)); } catch (e) {} document.querySelectorAll('[data-qk]').forEach(b => b.classList.toggle('on', Number(b.dataset.qk) === PRE && PRE > 0)); const w = $('qbarWho'); if (w && !FOCUS) w.textContent = PRE ? '프리셋 ' + PRE + '개 — 카드를 누르면 ' + PRE + '개씩' : '수량 버튼을 누르면 프리셋'; }
 function tapQty(c) { const cur = IDX[c] ? IDX[c].q : 0; return PRE > 0 ? (cur ? cur + PRE : PRE) : cur + 1; }
+/* 카드 · 줄을 눌러 담기 — 같은 아이템을 프리셋으로 두 번 · 세 번 누르면 tap 이 2 · 3 → 주황색 + ×2 로 표시 (실수로 여러 번 누른 것을 알아채게).
+ * 수량을 직접 넣거나(숫자 창 · 빠른 수량 버튼) ＋/− 로 고치면 일부러 정한 것으로 보고 표시를 지움 */
+function tapAdd(c) { const had = IDX[c] ? IDX[c].q : 0, n = setQty(c, tapQty(c)), l = IDX[c]; if (l) { if (PRE > 0 && had) l.tap = (l.tap || 1) + 1; else delete l.tap; saveWip(); } return n; }
+function sure(c) { const l = IDX[c]; if (l && l.tap) { delete l.tap; saveWip(); } }
+const multi = l => !!(l && l.tap >= 2);
+const tapTag = l => multi(l) ? ' <span class="tag tapx" title="' + esc(bt('같은 아이템을 ' + l.tap + '번 눌렀습니다 — 수량을 확인하세요', 'Tapped ' + l.tap + ' times — check the quantity')) + '">×' + l.tap + ' ' + bt('눌림', 'taps') + '</span>' : '';
 function quickBar() { return '<div class="qbar" id="qbar"><span id="qbarWho">' + (FOCUS ? esc(FOCUS) : PRE ? '프리셋 ' + PRE + '개 — 카드를 누르면 ' + PRE + '개씩' : '수량 버튼을 누르면 프리셋') + '</span>' + QUICK.map(n => '<button data-qk="' + n + '" class="' + (n && n === PRE ? 'on' : '') + '">' + (n ? n : '✕') + '</button>').join('') + '</div>'; }
 function setFocus(c) { FOCUS = c; const w = $('qbarWho'); if (w) w.textContent = c + (IDX[c] ? ' · ' + IDX[c].q + '개' : ''); }
 function bindQuick(root) {
@@ -608,7 +623,7 @@ function bindQuick(root) {
     if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {}
     if (k > 0) { setPre(k === PRE ? 0 : k); if (!FOCUS) return; }
     else if (!FOCUS) return setPre(0);
-    const n = setQty(FOCUS, k); setFocus(FOCUS);
+    const n = setQty(FOCUS, k); sure(FOCUS); setFocus(FOCUS); refreshCard(FOCUS);
     const inp = document.querySelector('[data-qi="' + CSS.escape(FOCUS) + '"]'); if (inp) { inp.value = n || ''; markRow($('eRes') || $('eCart'), FOCUS, n); }
     refreshCard(FOCUS);
   });
@@ -640,7 +655,7 @@ function paintAdd() {
     e.preventDefault();
     const it = exactItem(q.value);
     if (it && it.h && !isStaff()) { toast('🙈 지금은 주문할 수 없는 아이템입니다 (단종 · 재입고 지연) — 담당자에게 문의 · Not available', 'bad'); return; }
-    if (it) { if (it.h) toast('🙈 숨김 아이템을 담았습니다 (담당자 전용)'); const n = setQty(it.c, tapQty(it.c)); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
+    if (it) { if (it.h) toast('🙈 숨김 아이템을 담았습니다 (담당자 전용)'); const n = tapAdd(it.c); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
     else { run(); toast('정확히 맞는 코드가 없습니다 — 아래에서 고르세요', 'bad'); }
   };
   document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.pop = false; O.all = false; PAGE = 60; paintAdd(); });
@@ -654,7 +669,7 @@ function paintAdd() {
 function itemRow(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const t = typeOfItem(S, it), dc = Number((O.disc || {})[t]) || 0, hist = Store.histText(INFO, it.c), lp = Store.lastPrice(INFO, it.c);
-  return '<div class="pr irow' + (cur ? ' v' : '') + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
+  return '<div class="pr irow' + (cur ? ' v' : '') + (multi(IDX[it.c]) ? ' multi' : '') + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
     (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
     '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') + '</b><small class="desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</small>' + (it.k ? '<small>' + esc(kitLine(it)) + '</small>' : '') +
     '<small><button class="pedit" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</button>' + (dc ? ' → 할인가 ' + money(it.p * (1 - dc / 100)) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · 지난번 ' + money(lp) : '') + (it.s ? ' · SRP ' + money(it.s) : '') + '</small>' +
@@ -673,10 +688,11 @@ function kitLine(it) { return it.k.slice(0, 3).map(x => x[0] + '×' + x[1]).join
 function itemCard(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const name = it.k ? (it.kn || it.d) : it.d;
-  return '<div class="gcard' + (cur ? ' on' : '') + (it.k ? ' kit' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
+  const ln = IDX[it.c];
+  return '<div class="gcard' + (cur ? ' on' : '') + (multi(ln) ? ' multi' : '') + (it.k ? ' kit' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
     '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'">' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + '</div>' +
     (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') +
-    '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
+    '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (multi(ln) ? '<span class="gtap">×' + ln.tap + '</span>' : '') + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
     '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</span></div></div>';
 }
 /** 담은 줄의 가격 (바꿨으면 그 가격 · 목록가 줄긋기) — ✎ 누르면 가격 · 수량 */
@@ -706,7 +722,7 @@ function paintResults() {
   if ($('eMore')) $('eMore').onclick = () => { PAGE += 60; paintResults(); };
   root.querySelectorAll('[data-big]').forEach(el => el.onclick = () => { const i = LAST.findIndex(x => x.c === el.dataset.big); showMode(LAST, Math.max(0, i)); });
   /* 목록 보기에서 줄(이름 · 사진)을 누르면 카드처럼 담김 (프리셋 적용) */
-  root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = setQty(c, tapQty(c)); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
+  root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = tapAdd(c); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
   root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
   root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); });
   root.querySelectorAll('[data-pe]').forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); qtyPad(b.dataset.pe, true); });
@@ -715,15 +731,16 @@ function paintResults() {
     let t = null, long = false;
     el.addEventListener('pointerdown', () => { long = false; t = setTimeout(() => { long = true; qtyPad(el.dataset.gc); }, 550); });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
-    el.onclick = () => { if (long) return; const c = el.dataset.gc; setQty(c, tapQty(c)); refreshCard(c); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); };
+    el.onclick = () => { if (long) return; const c = el.dataset.gc; tapAdd(c); refreshCard(c); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); };
     el.oncontextmenu = e => e.preventDefault();
   });
 }
 function refreshCard(c) {
   const el = document.querySelector('[data-gc="' + CSS.escape(c) + '"]'); if (!el) return;
   const n = IDX[c] ? IDX[c].q : 0;
-  el.classList.toggle('on', !!n);
+  el.classList.toggle('on', !!n); el.classList.toggle('multi', multi(IDX[c]));
   el.querySelector('[data-gq]').textContent = n || '';
+  let x = el.querySelector('.gtap'); if (multi(IDX[c])) { if (!x) { x = document.createElement('span'); x.className = 'gtap'; el.appendChild(x); } x.textContent = '×' + IDX[c].tap; } else if (x) x.remove();
   let m = el.querySelector('[data-gm]');
   if (n && !m) { m = document.createElement('button'); m.className = 'gm'; m.dataset.gm = c; m.textContent = '−'; m.onclick = e => { e.stopPropagation(); setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); }; el.appendChild(m); }
   if (!n && m) m.remove();
@@ -743,7 +760,7 @@ function qtyPad(c, focusPrice) {
   $('qpP').onclick = () => { v.value = (Number(v.value) || 0) + 1; };
   document.querySelectorAll('[data-qp]').forEach(b => b.onclick = () => { v.value = b.dataset.qp; });
   /* 가격만 고치러 왔는데 아직 안 담은 아이템이면 1개(프리셋)로 담고 가격 적용 */
-  const ok = () => { let q = Math.max(0, Math.floor(Number(v.value) || 0)); const np = R2(pr.value); const pchg = pr.value !== '' && Math.abs(np - (IDX[c] ? IDX[c].p : it.p)) > 0.0001; if (!q && pchg) q = tapQty(c) || 1; setQty(c, q); if (IDX[c] && pr.value !== '') { IDX[c].p = np; saveWip(); refreshTotals(); } closeModal(); if (O.view === 'add') { refreshCard(c); refreshRowPrice(c); } else paintCart(); };
+  const ok = () => { let q = Math.max(0, Math.floor(Number(v.value) || 0)); const np = R2(pr.value); const pchg = pr.value !== '' && Math.abs(np - (IDX[c] ? IDX[c].p : it.p)) > 0.0001; if (!q && pchg) q = tapQty(c) || 1; setQty(c, q); sure(c); if (IDX[c] && pr.value !== '') { IDX[c].p = np; saveWip(); refreshTotals(); } closeModal(); if (O.view === 'add') { refreshCard(c); refreshRowPrice(c); } else paintCart(); };
   $('qpOk').onclick = ok; v.onkeydown = e => { if (e.key === 'Enter') ok(); }; pr.onkeydown = e => { if (e.key === 'Enter') ok(); };
   $('qpX').onclick = closeModal;
 }
@@ -787,12 +804,12 @@ function bindQty(root) {
   root.querySelectorAll('[data-dq]').forEach(b => b.onclick = () => {
     const c = b.dataset.dq, inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]');
     const d = Number(b.dataset.d), cur = IDX[c] ? IDX[c].q : 0;
-    const n = setQty(c, d > 0 ? tapQty(c) : cur - 1);   // ＋ 는 프리셋(있으면) 만큼, − 는 1개
+    const n = setQty(c, d > 0 ? tapQty(c) : cur - 1); sure(c);   // ＋ 는 프리셋(있으면) 만큼, − 는 1개 (일부러 고친 것 — ×2 표시 지움)
     if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {}
     if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c);
   });
   root.querySelectorAll('[data-qi]').forEach(inp => {
-    inp.onchange = () => { const n = setQty(inp.dataset.qi, inp.value); inp.value = n || ''; markRow(root, inp.dataset.qi, n); };
+    inp.onchange = () => { const n = setQty(inp.dataset.qi, inp.value); sure(inp.dataset.qi); inp.value = n || ''; markRow(root, inp.dataset.qi, n); };
     inp.onfocus = () => { inp.select(); setFocus(inp.dataset.qi); root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); const r = inp.closest('[data-row]'); if (r) r.classList.add('foc'); };
     inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); const q = $('eQ1'); if (q) q.focus(); } };
   });
@@ -800,7 +817,8 @@ function bindQty(root) {
 function markRow(root, c, n) {
   const row = root.querySelector('[data-row="' + CSS.escape(c) + '"]'); if (!row) return;
   if (O.view === 'cart' && !n) { row.remove(); return; }
-  row.classList.toggle('v', !!n);
+  row.classList.toggle('v', !!n); row.classList.toggle('multi', multi(IDX[c]));
+  if (!multi(IDX[c])) { const t = row.querySelector('.tapx'); if (t) t.remove(); }
   if (O.view === 'cart') { const l = IDX[c]; const a = row.querySelector('.lamt'); if (a && l) a.textContent = money(l.q * l.p); }
 }
 
@@ -821,7 +839,7 @@ function paintCart() {
     const rows = O.lines.slice().reverse().filter(l => !f || (l.c + ' ' + l.d).toUpperCase().includes(f));
     $('eCart').innerHTML = rows.length ? rows.map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001;
-      return '<div class="pr irow v" data-row="' + esc(l.c) + '"><div class="ct"><b>' + esc(l.c) + ' <span class="tag t-g">' + esc(l.t || DT()) + '</span>' + (l.kit ? ' <span class="tag t-a" data-kitl="' + esc(l.c) + '">🧩 ' + l.kit.length + '종</span>' : '') + '</b><small>' + esc(l.d) + '</small>' +
+      return '<div class="pr irow v' + (multi(l) ? ' multi' : '') + '" data-row="' + esc(l.c) + '"><div class="ct"><b>' + esc(l.c) + ' <span class="tag t-g">' + esc(l.t || DT()) + '</span>' + tapTag(l) + (l.kit ? ' <span class="tag t-a" data-kitl="' + esc(l.c) + '">🧩 ' + l.kit.length + '종</span>' : '') + '</b><small>' + esc(l.d) + '</small>' +
         '<small>$ <input class="sm pin' + (chg ? ' chg' : '') + '" type="number" step="0.01" inputmode="decimal" data-pi="' + esc(l.c) + '" value="' + l.p + '">' + (chg ? ' <span class="tag t-c">목록 ' + money(l.lp) + '</span>' : '') + ' · <b class="lamt">' + money(l.q * l.p) + '</b></small></div>' +
         qtyBox(l.c, l.q) + '</div>';
     }).join('') : '<div class="none">아직 담은 아이템이 없습니다 — 🔍 아이템 담기</div>';
@@ -856,7 +874,8 @@ async function saveOrder(st) {
   if (!O.lines.length) return toast('아이템을 담으세요', 'bad');
   const t = totals();
   if (st === 'sent' && O.st === 'draft' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + money(t.amt) + ' 주문를 보낼까요? / Send this order?', '보내기 Send'))) return;
-  if (st !== 'sent' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + t.qty + '개 · ' + money(t.amt) + '\n저장할까요? (보내기는 주문 목록의 "보낼 주문"에서) / Save this order?', '저장 Save'))) return;
+  const mt = O.lines.filter(multi);
+  if (st !== 'sent' && !(await confirmBox((mt.length ? '⚠️ ' + bt('여러 번 눌린 아이템', 'Tapped several times') + ' ' + mt.length + bt('개 (주황색)', ' (orange)') + ': ' + mt.slice(0, 5).map(l => l.c + ' ' + l.q + bt('개', 'pcs') + ' ×' + l.tap).join(', ') + ' — ' + bt('수량을 확인하세요', 'check the quantities') + '\n\n' : '') + O.store + ' — ' + O.lines.length + '줄 · ' + t.qty + '개 · ' + money(t.amt) + '\n저장할까요? (보내기는 주문 목록의 "보낼 주문"에서) / Save this order?', '저장 Save'))) return;
   const now = new Date().toISOString();
   if (!O.id) { O.no = newNo(); O.id = O.no; }
   const base = { id: O.id, no: O.no, d: O.d || today(), ym: ym(O.d || today()), sm: O.sm, acct: O.acct || '', store: O.store, st, memo: O.memo || '', updatedAt: now,
