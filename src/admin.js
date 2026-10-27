@@ -157,8 +157,8 @@ function smForm(s) {
 async function formsCard(el) {
   const { formLinks } = await import('./newacct.js'), f = formLinks();
   el.insertAdjacentHTML('afterbegin', '<div class="card"><h2>🆕 ' + bt('새 거래처 서류 양식', 'New account forms') + '</h2><div class="muted">' + bt('세일즈맨이 새 거래처를 열 때 보이는 양식 링크 (구글 드라이브 · 공유 링크)', 'Links shown when a salesman opens a new account (Google Drive share links)') + '</div>' +
-    '<div class="fg"><label>New Account Application</label><input id="nfApp" value="' + esc(f.app || '') + '"></div><button class="b-blue b-sm" id="nfSave">' + bt('저장', 'Save') + '</button></div>');
-  $('nfSave').onclick = async () => { const v = { app: $('nfApp').value.trim() }; busy(true); try { await S.DB.update('settings', 'app', { newAcctForms: v }); S.settings.newAcctForms = v; toast(bt('저장', 'Saved'), 'good'); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
+    '<div class="fg"><label>New Account Application</label><input id="nfApp" value="' + esc(f.app || '') + '"></div><div class="fg"><label>💬 ' + bt('구글 챗 스페이스 링크 (주문 문의 — "챗 열기" 버튼)', 'Google Chat space link (order questions)') + '</label><input id="nfChat" value="' + esc((S.settings && S.settings.chatUrl) || '') + '" placeholder="https://chat.google.com/room/…"></div><div class="muted" style="font-size:12px">' + bt('챗으로 메시지를 보내려면 그 스페이스의 웹훅 주소를 Apps Script(THE ONE Mail) 스크립트 속성 CHAT_WEBHOOK 에 넣으세요 — 앱에는 저장하지 않습니다.', 'To post messages, put the space webhook URL in the Apps Script (THE ONE Mail) script property CHAT_WEBHOOK — not stored in the app.') + '</div><button class="b-blue b-sm" id="nfSave">' + bt('저장', 'Save') + '</button></div>');
+  $('nfSave').onclick = async () => { const v = { app: $('nfApp').value.trim() }, ch = $('nfChat').value.trim(); busy(true); try { await S.DB.update('settings', 'app', { newAcctForms: v, chatUrl: ch }); S.settings.newAcctForms = v; S.settings.chatUrl = ch; toast(bt('저장', 'Saved'), 'good'); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
 }
 async function settings() {
   const s = S.settings || {};

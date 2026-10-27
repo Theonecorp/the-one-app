@@ -12,6 +12,8 @@
  *   4. 위 함수 목록에서 setup 고르고 ▶ 실행 → 권한 허용 (Firestore 읽기/쓰기 · 메일 보내기 · 트리거)
  *   5. testMail 실행 → 내 메일함에 시험 메일이 오면 끝
  *
+ * 🔔 앱 알림(notifyq): 주문 확인 요청 · 주문 문제 · 문의를 이메일로, 스크립트 속성 CHAT_WEBHOOK 이 있으면 구글 챗 스페이스에도 (5분마다 같이)
+ *
  * 메일은 이 스크립트를 설치한 계정(luke@)에서 나갑니다. Workspace 하루 한도 1,500명 — 충분합니다.
  * Firestore 는 설치한 계정의 권한(프로젝트 소유자)으로 읽고 씁니다. 키 · 비밀번호를 어디에도 저장하지 않습니다.
  */
@@ -43,6 +45,7 @@ function run() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return;
   try {
+    try { notifyRun_(); } catch (e) { Logger.log('알림 보내기 실패: ' + e.message); }
     let list = [];
     try { list = query_('reports', 'mail', 'wait', 20); }
     catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면 이어서 보냅니다'); return; } throw e; }
@@ -71,6 +74,36 @@ function run() {
       }
     });
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- 🔔 앱 알림 (notifyq) — 주문 확인 요청 · 세일즈맨이 알린 주문 문제 · 주문 문의 → 이메일 + 구글 챗 ----------
+ *  받는 사람: toSm → 그 세일즈맨 코드의 사용자 이메일 · toStaff → 설정의 담당자 알림 이메일(reportTo)
+ *  구글 챗: 스크립트 속성 CHAT_WEBHOOK (챗 스페이스 → 앱 및 통합 → 웹훅 추가 → 주소 복사) 이 있으면 그 스페이스에도 올림 */
+function notifyRun_() {
+  const list = query_('notifyq', 'st', 'wait', 30);
+  if (!list.length) return;
+  const settings = getDoc_('settings', 'app') || {};
+  const staff = String(settings.reportTo || DEFAULT_TO).split(/[,;\s]+/).filter(isEmail_);
+  const hook = PropertiesService.getScriptProperties().getProperty('CHAT_WEBHOOK');
+  list.forEach(n => {
+    try {
+      const to = [];
+      if (n.toSm) query_('users', 'sm', String(n.toSm), 5).forEach(u => { const e = u.email || u._id; if (isEmail_(e) && to.indexOf(e) < 0) to.push(e); });
+      if (n.toStaff) staff.forEach(e => { if (to.indexOf(e) < 0) to.push(e); });
+      const lines = String(n.text || '').split('\n');
+      if (to.length) MailApp.sendEmail({ to: to.join(','), subject: n.subject || '[THE ONE] 알림', name: 'THE ONE', replyTo: isEmail_(n.by) ? n.by : REPLY_TO,
+        htmlBody: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px">' + lines.map(esc_).join('<br>') + (n.byName || n.by ? '<p style="color:#64748b;font-size:13px">— ' + esc_(n.byName || n.by) + '</p>' : '') +
+          (n.url ? '<p><a href="' + esc_(n.url) + '" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:bold">앱에서 열기 · Open in app</a></p>' : '') + '</div>' });
+      let chat = '';
+      if (n.chat && hook) {
+        const r = UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: String(n.text || '') + (n.byName ? '\n— ' + n.byName : '') + (n.url ? '\n' + n.url : '') }), muteHttpExceptions: true });
+        chat = r.getResponseCode() === 200 ? 'ok' : 'error ' + r.getResponseCode();
+      }
+      patch_('notifyq', n._id, { st: 'sent', sentAt: new Date().toISOString(), mailTo: to.join(', '), chat: chat || (n.chat ? 'no webhook' : '') });
+    } catch (e) {
+      patch_('notifyq', n._id, { st: 'error', err: String(e && e.message || e).substring(0, 300), sentAt: new Date().toISOString() });
+    }
+  });
 }
 
 /* ---------- 메일 본문 (예전 Daily Collection Report 와 같은 모양) ---------- */

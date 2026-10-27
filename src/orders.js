@@ -19,6 +19,7 @@ import * as Store from './store.js';
 import * as Notes from './notes.js';
 import { stageAge } from './flow.js';
 import * as NewAcct from './newacct.js';
+import * as Notify from './notify.js';
 
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
@@ -98,6 +99,9 @@ async function pageHome() {
     '<button class="b-ghost" id="hMine" style="margin-top:4px">📋 ' + bi('내 수금 기록', 'My payment log') + '</button>';
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
   $('hMine').onclick = () => Router.go('mine');
+  /* 📋 보낸 주문 한 번에 확인 · 🔔 알림 켜기 */
+  $('page').querySelector('.card').insertAdjacentHTML('afterend', '<div id="dayCf"></div>' + (Notify.notifyState() === 'default' ? '<button class="b-ghost" id="hNotif" style="margin:0 0 10px">🔔 ' + bi('폰 알림 켜기 (사무실 확인 요청)', 'Turn on phone notifications') + '</button>' : ''));
+  Notify.dayCard($('dayCf')); if ($('hNotif')) $('hNotif').onclick = async () => { await Notify.askPermission(); $('hNotif').remove(); };
   try {
     const rows = await S.DB.list('orders', { where: [['sm', '==', mySm()], ['ym', 'in', recentYms(2)]] });
     const d = rows.filter(o => o.st === 'draft').length + out, sent = rows.filter(o => o.st === 'sent').length;
@@ -173,6 +177,7 @@ async function pageOrder(arg) {
   if (out.length) h += '<div class="card" style="border:2px solid #fecaca"><h2>📤 아직 회사로 안 간 주문 ' + out.length + '건</h2><div class="muted">폰에 안전하게 저장돼 있습니다. 인터넷이 되면 자동으로 보내고, 아래 버튼으로 바로 보낼 수도 있습니다.</div>' +
     out.map(x => orderRow(x.o, true, x.err)).join('') + '<button class="b-blue" id="oSync" style="margin-top:8px">📤 지금 모두 보내기</button></div>';
   if (err) h += '<div class="alert a-amb">회사 기록을 읽지 못했습니다 (' + esc(err) + ') — 인터넷이 안 되면 폰에 저장된 것만 보입니다.</div>';
+  if (!isStaff()) h += '<div id="dayCfL"></div>';
   const cfs = isStaff() ? [] : rows.filter(o => o.cfReq && !o.cfOk && o.st !== 'x');
   if (cfs.length) h += '<div class="card" style="border:2px solid #fde68a"><h2>❓ ' + bi('사무실에서 확인 요청한 주문', 'Office asks you to confirm') + ' ' + cfs.length + '건</h2><div class="muted">열어서 내용이 맞으면 <b>✅ 맞습니다</b>, 아니면 <b>✏️ 수정</b>. <span class="en">Open each order and confirm or edit.</span></div>' + cfs.map(o => orderRow(o)).join('') + '</div>';
   const drafts = isStaff() ? (LF.st === 'draft' ? rows : []) : rows.filter(o => o.st === 'draft');
@@ -190,6 +195,7 @@ async function pageOrder(arg) {
   h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' + (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문가 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead(); fillStrip();
+  if ($('dayCfL')) Notify.dayCard($('dayCfL'));
   if ($('oOld')) $('oOld').onclick = () => { LF.old = !LF.old; pageOrder(''); };
   NewAcct.pendingBanner($('naBanL'));
   const picked = () => Array.from(document.querySelectorAll('[data-ck]:checked')).map(x => x.dataset.ck);
@@ -383,7 +389,7 @@ function dayGroups(rows) {
 }
 const WDK = ['일', '월', '화', '수', '목', '금', '토'];
 function dayLbl(d) { const t = today(); const x = new Date(d + 'T12:00:00'); return (d === t ? '오늘 Today · ' : '') + Number(d.substring(5, 7)) + '/' + Number(d.substring(8, 10)) + ' (' + WDK[x.getDay()] + ')'; }
-export const cfTag = o => o.cfOk ? ' <span class="tag t-k" title="Confirmed by salesman">✅ 세일즈맨 확인</span>' : o.cfReq ? ' <span class="tag t-c" title="Waiting for salesman">❓ 확인 대기</span>' : '';
+export const cfTag = o => (o.cfIssueOpen ? ' <span class="tag t-r" title="' + esc(o.cfIssue || '') + '">⚠️ ' + bt('세일즈맨 문의', 'Salesman flagged') + '</span>' : '') + (o.cfOk ? ' <span class="tag t-k" title="Confirmed by salesman">✅ 세일즈맨 확인' + (o.cfHow === 'day' ? ' (' + bt('일괄', 'batch') + ')' : '') + '</span>' : o.cfReq ? ' <span class="tag t-c" title="Waiting for salesman">❓ 확인 대기</span>' : '');
 function orderRow(o, local, err, ck) {
   const flags = (NewAcct.isTemp(o.acct) ? ' <span class="tag t-b">🆕 ' + bt('신규 거래처', 'New account') + '</span>' : '') + (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '') + (isStaff() ? cfTag(o) : (o.cfReq && !o.cfOk ? ' <span class="tag t-c">❓ 확인 요청</span>' : o.cfOk ? ' <span class="tag t-k">✅ 확인함</span>' : ''));
   const who = o.pickerName || o.picker ? ' · 👷 ' + esc(o.pickerName || String(o.picker).split('@')[0]) : '';
@@ -415,7 +421,7 @@ function viewOrder(o, lines, local) {
     (pd.n ? '<div class="alert a-amb">가격 수정 ' + pd.n + '줄 · 목록가 대비 ' + (pd.diff >= 0 ? '+' : '') + money(pd.diff) + ' (' + pd.pct + '%)</div>' : '') +
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
     (local ? '<div class="alert a-red">📤 아직 회사로 안 갔습니다 — 폰에 저장돼 있습니다</div>' : '') +
-    (o.cfReq && !o.cfOk ? '<div class="alert a-amb">❓ ' + bi('사무실에서 이 주문 내용이 맞는지 확인을 요청했습니다. 아래 아이템을 보고 맞으면 ✅, 아니면 ✏️ 수정.', 'The office asks you to confirm this order.') + '</div>' : o.cfOk ? '<div class="alert a-grn">✅ ' + bi('확인한 주문', 'Confirmed') + ' ' + esc(String(o.cfAt || '').substring(0, 16).replace('T', ' ')) + '</div>' : '') + '</div>';
+    (o.cfReq && !o.cfOk ? '<div class="alert a-amb">❓ ' + bi('사무실에서 이 주문 내용이 맞는지 확인을 요청했습니다. 아래 아이템을 보고 맞으면 ✅, 아니면 ✏️ 수정.', 'The office asks you to confirm this order.') + (o.cfNote ? '<div style="margin-top:6px;font-weight:800">💬 ' + esc(o.cfNote) + '</div>' : '') + '</div>' : o.cfOk ? '<div class="alert a-grn">✅ ' + bi('확인한 주문', 'Confirmed') + ' ' + esc(String(o.cfAt || '').substring(0, 16).replace('T', ' ')) + '</div>' : '') + '</div>';
   const B = [];
   if (o.acct) B.push('<button class="b-ghost" id="oStoreI">📋 가게 기록</button>');
   if (canEdit(o)) B.push('<button class="b-ghost" id="oEdit">✏️ 수정</button>');

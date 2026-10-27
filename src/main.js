@@ -13,6 +13,7 @@ import * as Boss from './boss.js';
 import * as Admin from './admin.js';
 import * as Orders from './orders.js';
 import * as NewAcct from './newacct.js';
+import * as Notify from './notify.js';
 import * as Items from './items.js';
 import * as CatPage from './catpage.js';
 import * as Track from './track.js';
@@ -25,7 +26,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.81';
+export const VER = 'v0.8.82';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -218,7 +219,7 @@ function switchRole(r) {
   if (!viewsOf(S.me).includes(r)) return;
   S.role = r; try { localStorage.setItem(VIEW_KEY(), r); } catch (e) {}
   Router.stack = [];   // 새 역할의 첫 화면이 뒤로가기의 끝
-  paintNav();
+  paintNav(); Notify.start();
   Router.go(navFor(r)[0][0]);
 }
 /* 아래 메뉴의 실제 높이를 CSS 변수로 — 고정 바(.sticky) 와 본문 여백이 메뉴에 가리지 않게 */
@@ -263,6 +264,7 @@ async function afterLogin(user) {
   } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   busy(false);
   paintNav();
+  Notify.start();   // 🔔 확인 요청 · 주문 문제 실시간 알림
   const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) location.hash = '#/' + navFor(S.role)[0][0];
   Router.stack = [];
@@ -297,7 +299,7 @@ async function boot() {
   setTimeout(checkUpdate, 4000);
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); NewAcct.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
