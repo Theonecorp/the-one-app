@@ -102,6 +102,9 @@ nav button.on{color:var(--blue)}
 .pick.on .ck{background:var(--blue);border-color:var(--blue)}.pick .pm{flex:1}.pick small{color:var(--muted);display:block;font-size:11px}
 .ck-big{width:22px;height:22px}
 .sumbox{background:#f8fafc;border-radius:10px;padding:10px 12px;font-size:13.5px;margin:8px 0}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;margin-top:8px;padding:22px 12px;border:2px dashed #93c5fd;border-radius:14px;background:#eff6ff;color:#1e3a8a;text-align:center;cursor:pointer;font-size:14.5px}
+.drop small{color:#64748b;font-size:12px}.drop input{display:none}.drop.on{background:#dbeafe;border-color:#2563eb}
+details.card>summary{cursor:pointer;list-style:none}details.card>summary::-webkit-details-marker{display:none}details.card>summary::after{content:' ▾';color:#94a3b8}details.card[open]>summary::after{content:' ▴'}
 .sumbox b{font-variant-numeric:tabular-nums}
 .stage{display:inline-flex;gap:3px}.stage i{width:10px;height:10px;border-radius:3px;background:#e2e8f0;display:inline-block}.stage i.sb{background:#eab308}.stage i.rc{background:#2563eb}.stage i.v{background:#16a34a}
 .irow{gap:10px;padding:11px 2px}.irow.v{background:#f0fdf4}.irow .ct b{font-size:15px}.irow .ct small.desc{font-size:13.5px;color:#1e293b;white-space:normal;line-height:1.3}
