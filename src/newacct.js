@@ -18,8 +18,8 @@ export const isPending = a => !!a && (a.pending === true || isTemp(a.acct || a.i
 export const canAssign = () => !!S && (S.role === 'admin' || S.role === 'owner' || (S.role === 'manager' && can('assign')));
 const mySm = () => String((S.me && S.me.sm) || '').toUpperCase();
 const tempId = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return 'N' + String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate()) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, '0'); };
-/** New Account Application · Resale Certificate 양식 (관리 → 설정에서 바꿀 수 있음) */
-export const formLinks = () => Object.assign({ app: 'https://drive.google.com/file/d/1ZU8o3eYrd8adSxaR3aXImttnfeZI4cJ4/view', resale: '' }, (S.settings && S.settings.newAcctForms) || {});
+/** New Account Application 양식 (관리 → 설정에서 바꿀 수 있음). Resale Certificate 는 양식 없이 손님이 준비해 줌 */
+export const formLinks = () => Object.assign({ app: 'https://drive.google.com/file/d/1ZU8o3eYrd8adSxaR3aXImttnfeZI4cJ4/view' }, (S.settings && S.settings.newAcctForms) || {});
 
 /* ---------- ① 세일즈맨: 새 거래처 열기 ---------- */
 /** 새 거래처 폼 — done(account) 로 만든 임시 거래처를 돌려줌 */
@@ -37,7 +37,7 @@ export function newAcctForm(name, done) {
     '<label class="pick" id="naWh" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>' + bi('홀세일 어카운트', 'Wholesale account') + '</b><small>' + bt('홀세일이면 9000번대 코드를 붙입니다', 'Wholesale accounts get a 9000-range code') + '</small></span></label>' +
     '<div class="card" style="background:#f8fafc;margin:10px 0 0;padding:10px 12px"><b>📎 ' + bi('받아서 보관할 서류', 'Paperwork to collect') + '</b> <span class="muted" style="font-size:12px">(' + bt('필수 아님', 'optional') + ')</span>' +
       '<label class="pick" id="naApp" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>New Account Application</b><small>' + (F.app ? '<a href="' + esc(F.app) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + bt('양식 열기', 'Open form') + ' ↗</a>' : '') + '</small></span></label>' +
-      '<label class="pick" id="naRs"><span class="ck">✓</span><span class="pm"><b>Resale Certificate</b><small>' + (F.resale ? '<a href="' + esc(F.resale) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + bt('양식 열기', 'Open form') + ' ↗</a>' : bt('받았으면 체크', 'check when received')) + '</small></span></label>' +
+      '<label class="pick" id="naRs"><span class="ck">✓</span><span class="pm"><b>Resale Certificate</b><small>' + bt('손님이 준비해 주는 서류 — 받았으면 체크', 'Provided by the customer — check when received') + '</small></span></label>' +
       fld('naMemo', '메모', 'Note', '') + '</div>' +
     '<div class="btns"><button class="b-ghost" id="naX">' + bt('취소', 'Cancel') + '</button><button class="b-blue" id="naGo">🆕 ' + bt('저장', 'Save') + '</button></div>');
   ['naWh', 'naApp', 'naRs'].forEach(id => { $(id).onclick = e => { if (e.target.tagName === 'A') return; $(id).classList.toggle('on'); }; });

@@ -157,8 +157,8 @@ function smForm(s) {
 async function formsCard(el) {
   const { formLinks } = await import('./newacct.js'), f = formLinks();
   el.insertAdjacentHTML('afterbegin', '<div class="card"><h2>🆕 ' + bt('새 거래처 서류 양식', 'New account forms') + '</h2><div class="muted">' + bt('세일즈맨이 새 거래처를 열 때 보이는 양식 링크 (구글 드라이브 · 공유 링크)', 'Links shown when a salesman opens a new account (Google Drive share links)') + '</div>' +
-    '<div class="fg"><label>New Account Application</label><input id="nfApp" value="' + esc(f.app || '') + '"></div><div class="fg"><label>Resale Certificate</label><input id="nfRs" value="' + esc(f.resale || '') + '" placeholder="https://drive.google.com/…"></div><button class="b-blue b-sm" id="nfSave">' + bt('저장', 'Save') + '</button></div>');
-  $('nfSave').onclick = async () => { const v = { app: $('nfApp').value.trim(), resale: $('nfRs').value.trim() }; busy(true); try { await S.DB.update('settings', 'app', { newAcctForms: v }); S.settings.newAcctForms = v; toast(bt('저장', 'Saved'), 'good'); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
+    '<div class="fg"><label>New Account Application</label><input id="nfApp" value="' + esc(f.app || '') + '"></div><button class="b-blue b-sm" id="nfSave">' + bt('저장', 'Save') + '</button></div>');
+  $('nfSave').onclick = async () => { const v = { app: $('nfApp').value.trim() }; busy(true); try { await S.DB.update('settings', 'app', { newAcctForms: v }); S.settings.newAcctForms = v; toast(bt('저장', 'Saved'), 'good'); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
 }
 async function settings() {
   const s = S.settings || {};
