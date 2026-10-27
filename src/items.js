@@ -7,7 +7,7 @@
  *  행 모양: [code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide]
  * ============================================================ */
 import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt } from './ui.js';
-import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1 } from './catalog.js';
+import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1, setItemPhoto, shrinkImage, photoOv } from './catalog.js';
 import { typeOfItem, invTypes } from './invoicing.js';
 import { can } from './main.js';
 import { levelTool } from './lvtool.js';
@@ -25,14 +25,15 @@ export function register(state) {
 const isStaff = () => S.role !== 'salesman';
 const isAdmin = () => S.role === 'admin';
 /** 창고 매니저 · 창고 직원 — 아이템은 찾아보고 📍 위치만 바꿈 (가격 · 이름 · 숨김 · 등록은 오피스 · 인보이스 쪽) */
-const locOnly = () => S.role !== 'admin' && !can('newOrder') && !can('invoice');
+const locOnly = () => S.role !== 'admin' && !can('newOrder') && !can('invoice') && !can('catalog');
 const LV = ['Group', 'Level 1', 'Level 2', 'Level 3'];
 const pathOf = x => [x.g, x.l1, x.l2, x.l3];
 const inPath = (x, path) => { const L = x.lv1 == null ? [x.g, x.l1, x.l2, x.l3] : [x.g, x.lv1, x.lv2, x.lv3]; return path.every((p, i) => L[i] === p); };   // 분류 트리와 같게 (Level 1 빈 것 = NO LEVEL · 세트 = SET ORDER)
 
 async function page(arg) {
   if (!isStaff()) { $('page').innerHTML = '<div class="card"><div class="none">담당자 · 관리자만 쓰는 화면입니다</div></div>'; return; }
-  if (arg) { IT.q = decodeURIComponent(arg); IT.path = []; }
+  if (arg === 'noph' || String(arg || '').indexOf('noph:') === 0) { IT.q = ''; IT.mode = 'noph'; IT.path = arg.length > 5 ? decodeURIComponent(arg.substring(5)).split('/').filter(Boolean) : []; }   // 📷 사진 없는 아이템 (분류 경로)
+  else if (arg) { IT.q = decodeURIComponent(arg); IT.path = []; }
   $('page').innerHTML = '<div class="load">아이템 목록 읽는 중…</div>';
   try { await loadCatalog(S); } catch (e) { if (!catalog()) { $('page').innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; } }
   IT.page = 100; paint();
@@ -47,25 +48,25 @@ function current() {
   if (qU && !/\s/.test(qU)) { const have = new Set(list.map(x => x.c)), byLoc = C.items.filter(x => !have.has(x.c) && locOf(x).toUpperCase().startsWith(qU)); if (byLoc.length) list = list.concat(byLoc); }
   if (IT.aisle) list = list.filter(x => (aisleOf(locOf(x)) || '—') === IT.aisle).sort((a, b) => COLL.compare(locOf(a), locOf(b)) || COLL.compare(a.c, b.c));
   if (IT.path.length) list = list.filter(x => inPath(x, IT.path));
-  if (IT.mode === 'vis') list = list.filter(x => !x.h); else if (IT.mode === 'hid') list = list.filter(x => x.h);
+  if (IT.mode === 'vis') list = list.filter(x => !x.h); else if (IT.mode === 'hid') list = list.filter(x => x.h); else if (IT.mode === 'noph') list = list.filter(x => !x.ph && !x.h);   // 📷 사진 없음 (숨김 제외)
   return list;
 }
 
 function paint() {
   const C = catalog();
-  const nAll = C.items.filter(x => !x.virt).length, nHid = C.items.filter(x => x.h && !x.virt).length;
+  const nAll = C.items.filter(x => !x.virt).length, nHid = C.items.filter(x => x.h && !x.virt).length, nNoPh = C.items.filter(x => !x.ph && !x.h).length;
   let node = C.treeA; const under = [];
   for (const p of IT.path) { if (node.map[p]) { node = node.map[p]; under.push(p); } else break; }
   IT.path = under;
   const depth = under.length;
   const crumbs = '<div class="chips crumbs" style="margin-top:8px">' + (depth ? '<button class="up" data-ip="' + (depth - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (depth ? '' : 'on') + '" data-ip="0">' + bi('전체', 'All') + '</button>' + under.map((p, i) => '<button class="' + (i === depth - 1 ? 'on' : '') + '" data-ip="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
-  const kids = node.kids.filter(k => IT.mode === 'hid' ? k.nh > 0 : IT.mode === 'vis' ? k.n > 0 : true);
+  const kids = node.kids.filter(k => IT.mode === 'hid' ? k.nh > 0 : IT.mode === 'vis' || IT.mode === 'noph' ? k.n > 0 : true);
   const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
   $('page').innerHTML = '<div class="card"><h2>🏷 ' + bi('아이템 관리', 'Items') + ' <span class="muted" style="font-weight:400;font-size:12px">' + nAll.toLocaleString() + '개 · 👁 보임 ' + (nAll - nHid).toLocaleString() + ' · 🙈 숨김 ' + nHid.toLocaleString() + '</span></h2>' +
     '<div class="muted">분류를 눌러 내려가거나 검색해서 전체를 훑어보세요. 체크해서 여러 개를 한 번에 <b>숨기기 · 보이기 · 분류 옮기기 · 삭제</b>. 🙈 숨김 아이템은 목록엔 있지만 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연). 저장하면 모든 폰에 반영됩니다.</div>' +
     (locOnly() ? '' : '<button class="b-ghost" id="itLv" style="margin-top:8px">📥 ' + bi('레벨 · 그룹 일괄 변경 (엑셀)', 'Level · Group bulk update (Excel)') + '</button>') +
     '<div style="display:flex;gap:6px;margin-top:10px"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
-    '<div class="seg" style="margin-top:8px">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()]].map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
+    '<div class="seg" style="margin-top:8px">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()]].map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
     crumbs + tiles + aisleRow(C) + '</div>' +
     '<div class="card"><div id="itList"></div></div>' + (isAdmin() ? '<div id="itSbm"></div>' : '') +
     '<div class="bulkbar" id="itBulk" style="display:none"></div>';
@@ -108,7 +109,7 @@ function list() {
 }
 function row(it) {
   return '<div class="pr irow' + (it.h ? ' hid' : '') + '"><input type="checkbox" data-ic="' + esc(it.c) + '" ' + (IT.sel.has(it.c) ? 'checked' : '') + ' style="width:20px;height:20px;margin-right:8px;flex:0 0 auto">' +
-    (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:8px" alt="">' : '') +
+    (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:8px" alt="">' : '<span class="noph" title="' + esc(bt('사진 없음', 'No photo')) + '">📷✕</span>') +
     '<div class="ct tap" data-it="' + esc(it.c) + '"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a">🧩 세트</span>' : '') + (it.h ? ' <span class="tag t-x">🙈 숨김</span>' : '') + (locOf(it) ? ' <span class="loc"' + (it.loc ? '' : ' style="background:#64748b" title="분류 기본 위치"') + '>📍' + esc(locOf(it)) + '</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + esc(pathOf(it).filter(Boolean).map(cleanName).join(' › ') || '분류 없음') + (it.b ? ' · ' + esc(it.b) : '') + '</small></div>' +
     '<div class="pa"><b>' + money(it.p) + '</b>' + (it.s ? '<small>SRP ' + money(it.s) + '</small>' : '') + '</div>' +
     (it.virt || locOnly() ? '' : '<button class="b-ghost b-sm" data-ih="' + esc(it.c) + '" data-on="' + (it.h ? '0' : '1') + '" title="' + (it.h ? '보이기' : '숨기기') + '" style="margin-left:6px">' + (it.h ? '👁' : '🙈') + '</button>') + '</div>';
@@ -198,11 +199,26 @@ function form(it, newCode) {
     '<div class="two"><div class="fg"><label>도매가 <span class="en">Price</span> * $</label><input id="fP" value="' + esc(x.p === '' ? '' : x.p) + '" inputmode="decimal" style="font-weight:800;text-align:right"></div><div class="fg"><label>소비자가 <span class="en">SRP</span> $</label><input id="fS" value="' + esc(x.s || '') + '" inputmode="decimal" style="text-align:right"></div></div>' +
     '<div class="two">' + catPick('fG', '그룹 <span class="en">Group</span>', L.groups, x.g) + catPick('fL1', 'Level 1', L.l1s(x.g), x.l1) + '</div>' +
     '<div class="two">' + catPick('fL2', 'Level 2', L.l2s(x.g, x.l1), x.l2) + catPick('fL3', 'Level 3', L.l3s(x.g, x.l1, x.l2), x.l3) + '</div>' +
-    '<div class="two"><div class="fg"><label>📍 창고 위치 <span class="en">Location</span></label><input id="fLoc" value="' + esc(x.loc || '') + '" placeholder="' + esc(it ? (locOf(Object.assign({}, x, { loc: '' })) || 'A-03-2') : 'A-03-2') + '" autocapitalize="characters" style="text-transform:uppercase"></div><div class="fg"><label>사진 주소 <span class="en">Photo URL</span></label><input id="fPh" value="' + esc(x.ph || '') + '" placeholder="https://…"></div></div>' +
+    '<div class="two"><div class="fg"><label>📍 창고 위치 <span class="en">Location</span></label><input id="fLoc" value="' + esc(x.loc || '') + '" placeholder="' + esc(it ? (locOf(Object.assign({}, x, { loc: '' })) || 'A-03-2') : 'A-03-2') + '" autocapitalize="characters" style="text-transform:uppercase"></div><div class="fg"><label>사진 주소 <span class="en">Photo URL</span></label><input id="fPh" value="' + esc(x.phSrc === 'app' || x.phSrc === 'none' ? (x.ph0 || '') : (x.ph || '')) + '" placeholder="https://…"></div></div>' +
+    (isNew ? '' : '<div class="phbox" id="fPhBox"></div>') +
     (x.virt ? '' : '<label class="pick ' + (x.h ? '' : 'on') + '" id="fVis"><span class="ck">✓</span><span class="pm"><b>👁 세일즈맨 주문 화면에 보이기 <span class="en">Visible to salesmen</span></b><small>끄면 🙈 숨김 — 목록 · 기록엔 남고 주문 분류 · 검색에서만 빠집니다 (단종 · 재입고 지연)</small></span></label>') +
     '<div class="sumbox" id="fType"></div>' +
     '<div class="btns">' + (isNew ? '' : '<button class="b-ghost" id="fDel" style="color:#991b1b">🗑 삭제</button>') + '<button class="b-ghost" id="fX">취소</button><button class="b-blue" id="fOk">' + (isNew ? '등록' : '저장') + '</button></div>');
   let vis = !x.h;
+  /* 📷 사진 — 지금 사진 · 어디서 온 것인지 · 올리기(폰 카메라 · 파일) · 안 쓰기 · 원래대로 */
+  const paintPh = () => {
+    const box = $('fPhBox'); if (!box) return;
+    const cur = C.byCode[x.c] || x, src = cur.phSrc || '', ov = photoOv(x.c);
+    const lab = { app: bt('앱에서 올린 사진', 'Uploaded in app'), drive: bt('드라이브 item_picture', 'Drive item_picture'), sheet: bt('시트 Photo 칸', 'Sheet Photo column'), none: bt('사진 안 씀 (앱에서 끔)', 'Photo turned off in app') }[src] || bt('사진 없음', 'No photo');
+    box.innerHTML = '<div style="display:flex;gap:10px;align-items:center">' + (cur.ph ? '<img src="' + esc(thumb(cur.ph, 240)) + '" style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--line)" alt="">' : '<div class="noph big">📷✕</div>') +
+      '<div style="flex:1;min-width:0"><b>📷 ' + bt('사진', 'Photo') + '</b><div class="muted" style="font-size:12px">' + lab + '</div><div class="btns" style="justify-content:flex-start;margin-top:6px;flex-wrap:wrap"><label class="b-blue b-sm" style="margin:0;cursor:pointer">📷 ' + bt('사진 올리기', 'Upload photo') + '<input type="file" id="fPhFile" accept="image/*" style="display:none"></label>' +
+      (cur.ph && src !== 'none' ? '<button type="button" class="b-ghost b-sm" id="fPhNone">🚫 ' + bt('이 사진 안 쓰기', 'Don\'t use this photo') + '</button>' : '') + (ov ? '<button type="button" class="b-ghost b-sm" id="fPhClear">↩ ' + bt('원래 사진으로', 'Back to original') + '</button>' : '') + '</div></div></div>';
+    const go = async (o, msg) => { busy(true); try { await setItemPhoto(S, x.c, o); toast('📷 ' + x.c + ' — ' + msg, 'good'); paintPh(); list(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
+    $('fPhFile').onchange = async () => { const f = $('fPhFile').files[0]; if (!f) return; busy(true); let data = ''; try { data = await shrinkImage(f); } catch (e) { busy(false); return toast(e.message, 'bad'); } busy(false); await go({ data }, bt('사진 올림', 'photo uploaded')); };
+    if ($('fPhNone')) $('fPhNone').onclick = () => go({ none: true }, bt('사진 안 씀', 'photo off'));
+    if ($('fPhClear')) $('fPhClear').onclick = () => go({ clear: true }, bt('원래 사진으로', 'back to original'));
+  };
+  paintPh();
   if (locOnly()) {   /* 창고: 위치 칸만 고칠 수 있음 */
     document.querySelectorAll('#mbox input, #mbox select').forEach(el => { if (el.id !== 'fLoc') { el.readOnly = true; el.disabled = el.tagName === 'SELECT'; el.style.background = '#f1f5f9'; } });
     if ($('fDel')) $('fDel').remove(); if ($('fVis')) $('fVis').style.pointerEvents = 'none';

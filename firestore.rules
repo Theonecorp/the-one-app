@@ -39,7 +39,8 @@ service cloud.firestore {
     match /settings/{id} {
       allow read: if registered();
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountsVer', 'arAsOf', 'updatedAt']));   // 담당자는 버전 · AR 기준일만
+      allow update: if isAdmin() || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountsVer', 'arAsOf', 'updatedAt']))   // 담당자는 버전 · AR 기준일만
+                    || (role() == 'manager' && userDoc().get('job', '') == 'catalog' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoDrive', 'catStart', 'catLoc', 'catPins', 'updatedAt']));   // 🎨 디자인 · 카탈로그 담당: 사진 · 분류 시작 · 위치 · 고정
     }
 
     // ---------- 현장 수금 ----------
@@ -80,6 +81,7 @@ service cloud.firestore {
 
     // ---------- 아이템 목록 · 오더 ----------
     match /catalog/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /itemPhotos/{id} { allow read: if registered(); allow write: if isStaff(); }   // 📷 앱에서 올린 아이템 사진 (디자인 · 카탈로그 담당 · 담당자)
     function okSt(st) { return st == 'draft' || st == 'sent'; }
     match /orders/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
