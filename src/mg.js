@@ -129,6 +129,8 @@ function seedOps(o) {
   if ((o.split || []).length && !(D.split.rows || []).filter(r => r.who).length) { ops.push({ op: 'set', col: 'bonusSplit', id: 'main', data: { id: 'main', rows: o.split.map(r => ({ grp: r.grp || 'A', who: String(r.name || r.who || '').toUpperCase(), pct: num(r.pct), share: num(r.share) || 100 })), updatedAt: now } }); cnt.split = o.split.length; }
   return { ops, cnt };
 }
+/** 🏠 오너 홈이 쓰는 숫자 — 공장별 잔액 · 올해 구매 · 송금 · 운임% (+ 파일 BALANCE 대조용 stmt) · 1099 · 보너스 */
+export async function mgNumbers(year) { await load(); return { facs: D.fac.map(f => Object.assign({ code: f.code, name: f.name, stmt: f.stmt || null }, facStat(f.code, year))), p99: p99Stat(year), bonus: bonusStat() }; }
 /** 관리 → 가져오기에서 부름 — 경영 자료를 읽은 뒤 미리보기 */
 export async function seedImport(txt) { await load(); seedPreview(txt); }
 /** 관리 → 가져오기(공장 명세서 등)가 자료를 바꾼 뒤 — 다음에 경영 탭을 열 때 다시 읽게 */

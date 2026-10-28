@@ -149,6 +149,8 @@ function overview(from, to) {
   const list = sms.map(sm => { const a = live.filter(e => e.sm === sm), b = cods.filter(c => c.sm === sm); const ready = a.filter(e => e.rc && e.sb); const ok = [].concat(...ready.filter(e => e.v).map(linesOfEntry)).concat(b.filter(c => c.v).map(lineOfOther)); const c = computeComm(ok, ratesOf(S.smByCode[sm]), commSettings(S.settings)); return { sm, total: c.totals.total, pay: isSal(sm) ? 0 : c.pay, sal: isSal(sm), pend: ready.filter(e => !e.v).length + b.filter(x => !x.v).length, wait: a.filter(e => !e.rc).length, bad: c.skipped.length, n: ready.length + b.length, done: ok.length, amt: sum(ready, e => e.total) + sum(b, x => x.amt), c }; });
   return { from, to, list: sortBy(list, x => x.pay, true), tot: { pay: sum(list, x => x.pay), total: sum(list, x => x.total), pend: list.reduce((a, x) => a + x.pend, 0), wait: list.reduce((a, x) => a + x.wait, 0), bad: list.reduce((a, x) => a + x.bad, 0) } };
 }
+/** 🏠 오너 홈 — 이번 정산 기간 커미션 예상 (✓ 확인된 줄 기준) */
+export async function commEstimate() { await loadAll(); const pr = presets(), cur = pr.list.find(x => x.k === pr.cur), o = overview(cur.from, cur.to); return { label: cur.label, from: o.from, to: o.to, pay: o.tot.pay, total: o.tot.total, pend: o.tot.pend, wait: o.tot.wait }; }
 function paintEstimate() {
   const box = $('estBox'); if (!box) return;
   const pr = presets(), cur = pr.list.find(x => x.k === pr.cur), o = overview(cur.from, cur.to);
