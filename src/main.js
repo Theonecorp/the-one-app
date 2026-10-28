@@ -31,7 +31,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.100';
+export const VER = 'v0.8.101';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -52,7 +52,7 @@ const NAV = {
   whmgr:    fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory'], ['track', '🚚', '배송 조회', 'Tracking']]),   // 창고 매니저: 재고 · 출고 중심
   pick:     fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory']]),
   catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['catmg/tree', '🗂', '분류', 'Categories'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 분류 · 카탈로그만 (주문 · 수금 없음)
-  owner:    fixed(HOME_TOP, [['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['flow', '🧭', '세일 흐름', 'Sales flow'], ['cat', '📒', '카탈로그', 'Catalog']]),
+  owner:    fixed(['mg', '🏠', '홈', 'Home'], [['mg/sales', '📈', '매출', 'Sales'], ['bossar', '💰', '미수금', 'A/R'], ['now', '💵', '수금 현황', 'Collections'], ['cat', '📒', '카탈로그', 'Catalog']]),   // 오너: 홈 = 경영 요약(매출 먼저) · 세일즈 겸용은 아래 🚗 모드 탭
   admin:    fixed(HOME_TOP, [['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']])
 };
 NAV.manager = NAV.office;
@@ -77,7 +77,7 @@ export const isTop = () => S.role === 'admin' || S.role === 'owner';
 export function viewsOf(me) {
   me = me || {}; const r = me.role || 'salesman', ex = Array.isArray(me.extra) ? me.extra : [];
   if (r === 'admin') return ['admin', 'owner', 'manager', 'salesman'];
-  const v = [r]; ['manager', 'salesman'].forEach(x => { if (x !== r && ex.includes(x) && (x !== 'salesman' || me.sm)) v.push(x); });
+  const v = [r]; ['manager', 'salesman'].forEach(x => { if (x !== r && (ex.includes(x) || (x === 'salesman' && r === 'owner' && me.sm)) && (x !== 'salesman' || me.sm)) v.push(x); });   // 오너는 세일즈맨 코드만 있으면 세일즈 모드도
   return r === 'salesman' ? ['salesman'] : v;
 }
 const VIEW_KEY = () => 'theone.view.' + ((S.user && S.user.email) || '');
@@ -91,6 +91,10 @@ function navFor(r) {
   let items = (NAV[key] || NAV.office).slice();
   if (r === 'salesman') items = items.filter(x => x[0] !== 'mine');   // 내 기록은 홈 안의 버튼으로
   if (!items.length) items = [['stores', '🏬', '거래처', 'Stores']];
+  /* 🔁 모드 탭 — 여러 화면을 쓰는 사람(오너 겸 세일즈 등)은 아래 메뉴에서 바로 바꿈 */
+  const vs = viewsOf(S.me || {}), base = (S.me && S.me.role) || r;
+  if (r !== 'salesman' && vs.includes('salesman')) items.push(['view/salesman', '🚗', '세일즈 모드', 'Sales mode']);
+  else if (r === 'salesman' && base !== 'salesman' && vs.includes(base)) items.push(['view/' + base, base === 'owner' ? '🏭' : base === 'admin' ? '⚙️' : '🧑‍💼', base === 'owner' ? '경영 모드' : base === 'admin' ? '관리 모드' : '담당 모드', base === 'owner' ? 'Business' : base === 'admin' ? 'Admin' : 'Staff']);
   return items;
 }
 
@@ -317,6 +321,7 @@ async function boot() {
   setTimeout(checkUpdate, 4000);
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
+  Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
   Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
