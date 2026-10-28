@@ -12,7 +12,7 @@
  *   1. script.google.com → 새 프로젝트 "THE ONE 백업" → 이 내용을 Code.gs 에 붙여넣기 → 저장
  *   2. ⚙️ 프로젝트 설정 → "appsscript.json 매니페스트 파일 표시" 켜기 → 편집기의 appsscript.json 에 Backup.appsscript.json 내용 붙여넣기
  *   3. 함수 목록에서 setup 고르고 ▶ 실행 → 권한 허용 → 첫 백업을 바로 하고, 매일 새벽 2시 트리거가 생김
- *   4. 되살리기가 필요하면 루크에게 — 파일은 그냥 JSON 이라 엑셀 · 다른 프로그램으로도 열 수 있음
+ *   4. 되살리기가 필요하면 관리자에게 — 파일은 그냥 JSON 이라 엑셀 · 다른 프로그램으로도 열 수 있음
  *      (.gz 는 7-Zip · 맥 기본 압축 풀기로 열림)
  */
 const PROJECT = 'the-one-app-ff40e';
