@@ -194,6 +194,13 @@ function moveForm(codes) {
   };
 }
 
+/* 📍 통로 안내 — 지금 쓰는 통로를 눌러 앞부분을 채움 (통로-선반-칸, 픽킹 리스트가 이 순서) */
+function aisleHint(C) {
+  const A = {}; C.items.forEach(x => { if (x.virt) return; const a = aisleOf(locOf(x)); if (a) A[a] = (A[a] || 0) + 1; });
+  const keys = Object.keys(A).sort(COLL.compare);
+  return '<div class="muted" style="font-size:12px;margin:-4px 0 8px">' + bt('통로-선반-칸 순으로 적습니다 (예: A-03-2). 픽킹 리스트가 이 순서로 정렬됩니다. 비우면 분류 기본 위치.', 'Aisle-shelf-bin (e.g. A-03-2). Picking lists sort in this order. Blank = category default.') +
+    (keys.length ? '<div class="chips" style="margin-top:4px">' + keys.map(k => '<button type="button" data-fa="' + esc(k) + '">📍 ' + esc(k) + ' <span class="en">' + A[k] + '</span></button>').join('') + '</div>' : '') + '</div>';
+}
 /** 하나 등록 · 수정 */
 function form(it, newCode) {
   const C = catalog(), isNew = !it;
@@ -206,12 +213,15 @@ function form(it, newCode) {
     '<div class="two"><div class="fg"><label>도매가 <span class="en">Price</span> * $</label><input id="fP" value="' + esc(x.p === '' ? '' : x.p) + '" inputmode="decimal" style="font-weight:800;text-align:right"></div><div class="fg"><label>소비자가 <span class="en">SRP</span> $</label><input id="fS" value="' + esc(x.s || '') + '" inputmode="decimal" style="text-align:right"></div></div>' +
     '<div class="two">' + catPick('fG', '그룹 <span class="en">Group</span>', L.groups, x.g) + catPick('fL1', 'Level 1', L.l1s(x.g), x.l1) + '</div>' +
     '<div class="two">' + catPick('fL2', 'Level 2', L.l2s(x.g, x.l1), x.l2) + catPick('fL3', 'Level 3', L.l3s(x.g, x.l1, x.l2), x.l3) + '</div>' +
-    '<div class="two"><div class="fg"><label>📍 창고 위치 <span class="en">Location</span></label><input id="fLoc" value="' + esc(x.loc || '') + '" placeholder="' + esc(it ? (locOf(Object.assign({}, x, { loc: '' })) || 'A-03-2') : 'A-03-2') + '" autocapitalize="characters" style="text-transform:uppercase"></div><div class="fg"><label>사진 주소 <span class="en">Photo URL</span></label><input id="fPh" value="' + esc(x.phSrc === 'app' || x.phSrc === 'none' ? (x.ph0 || '') : (x.ph || '')) + '" placeholder="https://…"></div></div>' +
-    (isNew ? '' : '<div class="phbox" id="fPhBox"></div>') +
+    '<div class="two"><div class="fg"><label>📍 창고 위치 · 통로 <span class="en">Location · Aisle</span></label><input id="fLoc" value="' + esc(x.loc || '') + '" placeholder="' + esc(it ? (locOf(Object.assign({}, x, { loc: '' })) || 'A-03-2') : 'A-03-2') + '" autocapitalize="characters" style="text-transform:uppercase"></div><div class="fg"><label>사진 주소 <span class="en">Photo URL</span></label><input id="fPh" value="' + esc(x.phSrc === 'app' || x.phSrc === 'none' ? (x.ph0 || '') : (x.ph || '')) + '" placeholder="https://…"></div></div>' +
+    aisleHint(C) +
+    (isNew ? '<div class="phbox"><b>📷 ' + bt('사진', 'Photo') + '</b> <label class="b-blue b-sm" style="margin:0;cursor:pointer">📷 ' + bt('사진 고르기', 'Pick photo') + '<input type="file" id="fPhNew" accept="image/*" style="display:none"></label> <span class="muted" id="fPhNewN" style="font-size:12px">' + bt('등록할 때 함께 저장됩니다. 드라이브 item_picture 폴더에 코드 이름(예: 18KCNG01.jpg)으로 사진을 넣으면 사진 주소 없이도 자동으로 붙습니다.', 'Saved with the item. A photo named by the code (e.g. 18KCNG01.jpg) in the Drive item_picture folder attaches automatically — no URL needed.') + '</span></div>' : '<div class="phbox" id="fPhBox"></div>') +
     (x.virt ? '' : '<label class="pick ' + (x.h ? '' : 'on') + '" id="fVis"><span class="ck">✓</span><span class="pm"><b>👁 세일즈맨 주문 화면에 보이기 <span class="en">Visible to salesmen</span></b><small>끄면 🙈 숨김 — 목록 · 기록엔 남고 주문 분류 · 검색에서만 빠집니다 (단종 · 재입고 지연)</small></span></label>') +
     '<div class="sumbox" id="fType"></div>' +
     '<div class="btns">' + (isNew ? '' : '<button class="b-ghost" id="fDel" style="color:#991b1b">🗑 삭제</button>') + '<button class="b-ghost" id="fX">취소</button><button class="b-blue" id="fOk">' + (isNew ? '등록' : '저장') + '</button></div>');
   let vis = !x.h;
+  document.querySelectorAll('[data-fa]').forEach(b => b.onclick = () => { const f = $('fLoc'); f.value = b.dataset.fa + '-'; f.focus(); });
+  if ($('fPhNew')) $('fPhNew').onchange = () => { const f = $('fPhNew').files[0]; $('fPhNewN').textContent = f ? '✓ ' + f.name + ' — ' + bt('등록할 때 저장됩니다', 'saved on register') : ''; };
   /* 📷 사진 — 지금 사진 · 어디서 온 것인지 · 올리기(폰 카메라 · 파일) · 안 쓰기 · 원래대로 */
   const paintPh = () => {
     const box = $('fPhBox'); if (!box) return;
@@ -254,6 +264,7 @@ function form(it, newCode) {
     if (v.b) { const dup = C.items.find(i => i.b === v.b && i.c !== v.c); if (dup && !(await confirmBox('바코드 ' + v.b + ' 는 ' + dup.c + ' 에도 있습니다. 그래도 저장할까요?', '저장'))) return; }
     if (v.ph && !/^https?:\/\//i.test(v.ph)) return toast('사진 주소는 https:// 로 시작해야 합니다', 'bad');
     const locV = $('fLoc') ? $('fLoc').value.trim().toUpperCase() : (x.loc || '');
+    const phNew = $('fPhNew') && $('fPhNew').files[0];
     closeModal();
     IT.q = v.c;
     await save((rows, cats) => {
@@ -261,6 +272,7 @@ function form(it, newCode) {
       const i = rows.findIndex(r => r[0] === v.c); if (i >= 0) rows[i] = row; else rows.push(row);
       ensureCats(rows, cats); return 1;
     }, () => (isNew ? '등록 — ' : '저장 — ') + v.c + (vis ? '' : ' (🙈 숨김)'));
+    if (phNew) { busy(true); try { const data = await shrinkImage(phNew); await setItemPhoto(S, v.c, { data }); toast('📷 ' + v.c + ' — ' + bt('사진 저장', 'photo saved'), 'good'); list(); } catch (e) { toast(bt('사진 저장 실패', 'Photo failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); }
   };
   setTimeout(() => $(isNew && !newCode ? 'fC' : 'fD').focus(), 50);
 }

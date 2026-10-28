@@ -24,10 +24,11 @@ import * as Notify from './notify.js';
 let S = null;
 const DT = () => invTypes(S)[0].c;   // 기본 인보이스 종류
 export function register(state) {
-  S = state; Router.on('order', arg => { if (!arg && Router.navTap === 'order') LF.list = false; Router.navTap = ''; return pageOrder(arg); });   // 아래 메뉴 🛒 세일 = 세일 처리 첫 화면
+  /* 아래 메뉴: 🏠 홈 = 할 일 타일(현황 · 바로가기) · 🛒 세일 = 내 일의 첫 목록 (세일즈맨 앱과 같은 순서 — 홈은 보기, 세일은 작업) */
+  S = state; Router.on('order', arg => { if (!arg && Router.navTap === 'order') { LF.init = true; LF.list = true; LF.st = firstList(); } Router.navTap = ''; return pageOrder(arg); });   // 아래 메뉴 🛒 세일 = 세일 처리 첫 화면
   Router.on('home', pageHome);
   /* 🏠 담당자 홈 = 내 일 목록 (창고 직원: 내 배정 작업 · 인보이스 담당: 검수 대기 · 출고/창고 매니저: 배정 대기 · 오피스: 신규 주문) */
-  Router.on('shome', () => { LF.init = true; LF.list = true; LF.st = { pick: 'mine', invoice: 'picked', whmgr: 'ups', pickinv: 'cfok' }[jobOf()] || 'sent'; return pageOrder(''); }); Fulfill.register(state); Store.register(state);
+  Router.on('shome', () => { LF.init = true; LF.list = false; return pageOrder(''); }); Fulfill.register(state); Store.register(state);
   /* ‹ 뒤로: 주문 목록(신규 · 출고 작업 …) → 주문 처리 첫 화면 */
   Router.up.order = arg => { if (!arg && isStaff() && LF.list) { LF.list = false; pageOrder(''); return true; } return false; };
   Router.upHas.order = () => isStaff() && !!LF.list;
@@ -128,6 +129,7 @@ export function invTab() {
 }
 /** 다른 화면(관리자 현황)에서 주문 목록을 바로 열기 — st: sent · pick · picked · done · shipped · bo · inv · all, 기간은 선택 */
 export function openList(st, from, to) { LF.init = true; LF.list = true; LF.st = st; if (from) { LF.hp = 'custom'; LF.hfrom = from; LF.hto = to; LF.ip = 'custom'; LF.ifrom = from; LF.ito = to; LF.im = 'date'; } if (location.hash === '#/order') pageOrder(''); else Router.go('order'); }
+const firstList = () => ({ pick: 'mine', invoice: 'picked', whmgr: 'ups', pickinv: 'cfok', acct: 'inv' }[jobOf()] || 'sent');
 async function pageOrder(arg) {
   if (arg === 'new') return openEditor(null, readWip());
   if (arg && arg.indexOf('bo:') === 0) return Fulfill.openBackorder(arg.substring(3));
@@ -621,7 +623,10 @@ function tapQty(c) { const cur = IDX[c] ? IDX[c].q : 0; return PRE > 0 ? (cur ? 
 function tapAdd(c) { const had = IDX[c] ? IDX[c].q : 0, n = setQty(c, tapQty(c)), l = IDX[c]; if (l) { if (PRE > 0 && had) l.tap = (l.tap || 1) + 1; else delete l.tap; saveWip(); } return n; }
 function sure(c) { const l = IDX[c]; if (l && l.tap) { delete l.tap; saveWip(); } }
 const multi = l => !!(l && l.tap >= 2);
-const tapTag = l => multi(l) ? ' <span class="tag tapx" title="' + esc(bt('같은 아이템을 ' + l.tap + '번 눌렀습니다 — 수량을 확인하세요', 'Tapped ' + l.tap + ' times — check the quantity')) + '">×' + l.tap + ' ' + bt('눌림', 'taps') + '</span>' : '';
+/* 여러 번 눌린 횟수별 색 — 2번 주황 · 3번 빨강 · 4번 보라 · 5번 이상 검정 (카드 · 줄 · 담은 목록 태그 모두 같은 색) */
+const tapCls = l => multi(l) ? ' multi m' + Math.min(l.tap, 5) : '';
+function setTapCls(el, l) { el.classList.remove('multi', 'm2', 'm3', 'm4', 'm5'); if (multi(l)) el.classList.add('multi', 'm' + Math.min(l.tap, 5)); }
+const tapTag = l => multi(l) ? ' <span class="tag tapx m' + Math.min(l.tap, 5) + '" title="' + esc(bt('같은 아이템을 ' + l.tap + '번 눌렀습니다 — 수량을 확인하세요', 'Tapped ' + l.tap + ' times — check the quantity')) + '">×' + l.tap + ' ' + bt('눌림', 'taps') + '</span>' : '';
 function quickBar() { return '<div class="qbar" id="qbar"><span id="qbarWho">' + (FOCUS ? esc(FOCUS) : PRE ? '프리셋 ' + PRE + '개 — 카드를 누르면 ' + PRE + '개씩' : '수량 버튼을 누르면 프리셋') + '</span>' + QUICK.map(n => '<button data-qk="' + n + '" class="' + (n && n === PRE ? 'on' : '') + '">' + (n ? n : '✕') + '</button>').join('') + '</div>'; }
 function setFocus(c) { FOCUS = c; const w = $('qbarWho'); if (w) w.textContent = c + (IDX[c] ? ' · ' + IDX[c].q + '개' : ''); }
 function bindQuick(root) {
@@ -676,7 +681,7 @@ function paintAdd() {
 function itemRow(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const t = typeOfItem(S, it), dc = Number((O.disc || {})[t]) || 0, hist = Store.histText(INFO, it.c), lp = Store.lastPrice(INFO, it.c);
-  return '<div class="pr irow' + (cur ? ' v' : '') + (multi(IDX[it.c]) ? ' multi' : '') + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
+  return '<div class="pr irow' + (cur ? ' v' : '') + tapCls(IDX[it.c]) + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
     (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
     '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') + '</b><small class="desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</small>' + (it.k ? '<small>' + esc(kitLine(it)) + '</small>' : '') +
     '<small><button class="pedit" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</button>' + (dc ? ' → 할인가 ' + money(it.p * (1 - dc / 100)) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · 지난번 ' + money(lp) : '') + (it.s ? ' · SRP ' + money(it.s) : '') + '</small>' +
@@ -696,10 +701,10 @@ function itemCard(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const name = it.k ? (it.kn || it.d) : it.d;
   const ln = IDX[it.c];
-  return '<div class="gcard' + (cur ? ' on' : '') + (multi(ln) ? ' multi' : '') + (it.k ? ' kit' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
+  return '<div class="gcard' + (cur ? ' on' : '') + tapCls(ln) + (it.k ? ' kit' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
     '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'">' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + '</div>' +
     (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') +
-    '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (multi(ln) ? '<span class="gtap">×' + ln.tap + '</span>' : '') + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
+    '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (multi(ln) ? '<span class="gtap" data-gt="' + esc(it.c) + '">×' + ln.tap + '</span>' : '') + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
     '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</span></div></div>';
 }
 /** 담은 줄의 가격 (바꿨으면 그 가격 · 목록가 줄긋기) — ✎ 누르면 가격 · 수량 */
@@ -734,6 +739,7 @@ function paintResults() {
   root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); });
   root.querySelectorAll('[data-pe]').forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); qtyPad(b.dataset.pe, true); });
   root.querySelectorAll('[data-gq]').forEach(b => b.onclick = e => { if (!b.textContent) return; e.stopPropagation(); qtyPad(b.dataset.gq); });
+  root.querySelectorAll('[data-gt]').forEach(b => b.onclick = e => { e.stopPropagation(); qtyPad(b.dataset.gt); });   /* ×N 배지를 눌러도 수량 입력 */
   root.querySelectorAll('[data-gc]').forEach(el => {
     let t = null, long = false;
     el.addEventListener('pointerdown', () => { long = false; t = setTimeout(() => { long = true; qtyPad(el.dataset.gc); }, 550); });
@@ -745,9 +751,9 @@ function paintResults() {
 function refreshCard(c) {
   const el = document.querySelector('[data-gc="' + CSS.escape(c) + '"]'); if (!el) return;
   const n = IDX[c] ? IDX[c].q : 0;
-  el.classList.toggle('on', !!n); el.classList.toggle('multi', multi(IDX[c]));
+  el.classList.toggle('on', !!n); setTapCls(el, IDX[c]);
   el.querySelector('[data-gq]').textContent = n || '';
-  let x = el.querySelector('.gtap'); if (multi(IDX[c])) { if (!x) { x = document.createElement('span'); x.className = 'gtap'; el.appendChild(x); } x.textContent = '×' + IDX[c].tap; } else if (x) x.remove();
+  let x = el.querySelector('.gtap'); if (multi(IDX[c])) { if (!x) { x = document.createElement('span'); x.className = 'gtap'; x.dataset.gt = c; x.onclick = e => { e.stopPropagation(); qtyPad(c); }; el.appendChild(x); } x.textContent = '×' + IDX[c].tap; } else if (x) x.remove();
   let m = el.querySelector('[data-gm]');
   if (n && !m) { m = document.createElement('button'); m.className = 'gm'; m.dataset.gm = c; m.textContent = '−'; m.onclick = e => { e.stopPropagation(); setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); }; el.appendChild(m); }
   if (!n && m) m.remove();
@@ -824,7 +830,7 @@ function bindQty(root) {
 function markRow(root, c, n) {
   const row = root.querySelector('[data-row="' + CSS.escape(c) + '"]'); if (!row) return;
   if (O.view === 'cart' && !n) { row.remove(); return; }
-  row.classList.toggle('v', !!n); row.classList.toggle('multi', multi(IDX[c]));
+  row.classList.toggle('v', !!n); setTapCls(row, IDX[c]);
   if (!multi(IDX[c])) { const t = row.querySelector('.tapx'); if (t) t.remove(); }
   if (O.view === 'cart') { const l = IDX[c]; const a = row.querySelector('.lamt'); if (a && l) a.textContent = money(l.q * l.p); }
 }
@@ -846,7 +852,7 @@ function paintCart() {
     const rows = O.lines.slice().reverse().filter(l => !f || (l.c + ' ' + l.d).toUpperCase().includes(f));
     $('eCart').innerHTML = rows.length ? rows.map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001;
-      return '<div class="pr irow v' + (multi(l) ? ' multi' : '') + '" data-row="' + esc(l.c) + '"><div class="ct"><b>' + esc(l.c) + ' <span class="tag t-g">' + esc(l.t || DT()) + '</span>' + tapTag(l) + (l.kit ? ' <span class="tag t-a" data-kitl="' + esc(l.c) + '">🧩 ' + l.kit.length + '종</span>' : '') + '</b><small>' + esc(l.d) + '</small>' +
+      return '<div class="pr irow v' + tapCls(l) + '" data-row="' + esc(l.c) + '"><div class="ct"><b>' + esc(l.c) + ' <span class="tag t-g">' + esc(l.t || DT()) + '</span>' + tapTag(l) + (l.kit ? ' <span class="tag t-a" data-kitl="' + esc(l.c) + '">🧩 ' + l.kit.length + '종</span>' : '') + '</b><small>' + esc(l.d) + '</small>' +
         '<small>$ <input class="sm pin' + (chg ? ' chg' : '') + '" type="number" step="0.01" inputmode="decimal" data-pi="' + esc(l.c) + '" value="' + l.p + '">' + (chg ? ' <span class="tag t-c">목록 ' + money(l.lp) + '</span>' : '') + ' · <b class="lamt">' + money(l.q * l.p) + '</b></small></div>' +
         qtyBox(l.c, l.q) + '</div>';
     }).join('') : '<div class="none">아직 담은 아이템이 없습니다 — 🔍 아이템 담기</div>';
@@ -882,7 +888,7 @@ async function saveOrder(st) {
   const t = totals();
   if (st === 'sent' && O.st === 'draft' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + money(t.amt) + ' 주문를 보낼까요? / Send this order?', '보내기 Send'))) return;
   const mt = O.lines.filter(multi);
-  if (st !== 'sent' && !(await confirmBox((mt.length ? '⚠️ ' + bt('여러 번 눌린 아이템', 'Tapped several times') + ' ' + mt.length + bt('개 (주황색)', ' (orange)') + ': ' + mt.slice(0, 5).map(l => l.c + ' ' + l.q + bt('개', 'pcs') + ' ×' + l.tap).join(', ') + ' — ' + bt('수량을 확인하세요', 'check the quantities') + '\n\n' : '') + O.store + ' — ' + O.lines.length + '줄 · ' + t.qty + '개 · ' + money(t.amt) + '\n저장할까요? (보내기는 주문 목록의 "보낼 주문"에서) / Save this order?', '저장 Save'))) return;
+  if (st !== 'sent' && !(await confirmBox((mt.length ? '⚠️ ' + bt('여러 번 눌린 아이템', 'Tapped several times') + ' ' + mt.length + bt('개 (색 표시 · ×N)', ' (colored · ×N)') + ': ' + mt.slice(0, 5).map(l => l.c + ' ' + l.q + bt('개', 'pcs') + ' ×' + l.tap).join(', ') + ' — ' + bt('수량을 확인하세요', 'check the quantities') + '\n\n' : '') + O.store + ' — ' + O.lines.length + '줄 · ' + t.qty + '개 · ' + money(t.amt) + '\n저장할까요? (보내기는 주문 목록의 "보낼 주문"에서) / Save this order?', '저장 Save'))) return;
   const now = new Date().toISOString();
   if (!O.id) { O.no = newNo(); O.id = O.no; }
   const base = { id: O.id, no: O.no, d: O.d || today(), ym: ym(O.d || today()), sm: O.sm, acct: O.acct || '', store: O.store, st, memo: O.memo || '', updatedAt: now,

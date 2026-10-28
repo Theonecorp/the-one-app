@@ -864,7 +864,7 @@ function photoCard() {
   const withPh = C ? C.items.filter(x => x.ph).length : 0;
   return '<div class="card"><h2>🖼 사진 규칙 — 코드와 맞는 사진만</h2><div class="muted">① 드라이브 item_picture 에 <b>코드 이름</b>으로 있는 사진 (세트 · 인서트는 Gallery 의 세트 사진) ② 시트 Photo 칸 — 같은 사진을 골드 · 실버 아이템이 같이 쓰면 URL 에 코드가 들어 있는 것만 ③ 세트는 구성품 사진을 빌리지 않음.</div>' +
     '<div class="sumbox" style="margin-top:8px">지금 사진 있는 아이템 <b>' + withPh.toLocaleString() + '</b>개 · 골드/실버 섞여서 뺀 것 <b>' + st.dropped + '</b>개 · 드라이브 사진 ' + (S.settings.photoDrive ? '<b>' + st.drive + '</b>개 사용 중' : '꺼짐') + (px ? ' · 드라이브 색인 ' + Object.keys(px.pic).length + ' + 세트 ' + Object.keys(px.gal).length : '') + '</div>' +
-    '<label class="pick ' + (S.settings.photoDrive ? 'on' : '') + '" id="phDrive" style="margin-top:8px"><span class="ck">✓</span><span class="pm"><b>드라이브 item_picture 사진 쓰기</b><small>폴더가 "링크가 있는 모든 사용자 · 뷰어" 로 공유돼 있어야 앱에서 보입니다. <b>회사(theonefl.com) 안에서만</b> 공유하면 앱에서는 구글이 로그인 화면으로 돌려보내서 사진이 안 뜹니다 (예전 Apps Script 는 구글 주소 안에서 돌아서 보였던 것). 안 열리는 동안은 Shopify 사진이 있는 아이템만 그걸로 대신 보여 줍니다.</small></span></label>' +
+    '<label class="pick ' + (S.settings.photoDrive ? 'on' : '') + '" id="phDrive" style="margin-top:8px"><span class="ck">✓</span><span class="pm"><b>드라이브 item_picture 사진 쓰기</b><small>새 사진은 코드 이름(예: 18KCNG01.jpg)으로 item_picture 폴더에 넣으면 THE ONE Mail 스크립트가 한 시간 안에 색인해 자동으로 붙습니다. 폴더가 "링크가 있는 모든 사용자 · 뷰어" 로 공유돼 있어야 앱에서 보입니다. <b>회사(theonefl.com) 안에서만</b> 공유하면 앱에서는 구글이 로그인 화면으로 돌려보내서 사진이 안 뜹니다 (예전 Apps Script 는 구글 주소 안에서 돌아서 보였던 것). 안 열리는 동안은 Shopify 사진이 있는 아이템만 그걸로 대신 보여 줍니다.</small></span></label>' +
     '<div class="btns"><button class="b-ghost b-sm" id="phTest">🔎 드라이브 사진 시험</button></div><div id="phTestOut"></div></div>';
 }
 /* ---- 인보이스 종류 — 아이템이 어느 인보이스로 갈지, 커미션은 어느 칸으로 셀지 ---- */
