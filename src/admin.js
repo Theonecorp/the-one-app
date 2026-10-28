@@ -697,7 +697,8 @@ async function factoryStatementFile(file, out) {
     const P = parseFactoryStatement(wb.SheetNames.map(n => ({ name: n, rows: aoa(XLSX, wb, n) || [] })));
     if (!P.sheets.length) throw new Error('공장 명세서 모양이 아닙니다 (머리글 Date · PAID DATE · DEPOSIT MONEY 가 있는 탭이 없음)');
     const facs = (await S.DB.list('factories')).filter(f => f.active !== false), hit = matchFactory(P.name, facs), sug = suggestFactoryCode(P.name);
-    const years = P.sheets.map(s => s.year).filter(Boolean);
+    /* 교체 범위 = 탭 연도 + 실제 줄 날짜의 연도 (SHENGXING 처럼 2025 탭이 2024-12 날짜 줄로 시작하면 2024 줄도 같이 교체) */
+    const years = Array.from(new Set(P.sheets.map(s => s.year).filter(Boolean).concat(P.inv.concat(P.pay).map(x => String(x.d || '').substring(0, 4)).filter(Boolean)))).sort();
     const rowsHtml = P.sheets.map(s => '<tr><td><b>' + esc(s.year || '?') + '</b></td><td class="r">' + s.inv.length + '줄 · ' + money(s.sumInv) + (s.fwdSkipped ? '<br><small class="muted">이월 ' + money(s.fwdSkipped) + ' 은 앞 연도 줄로 계산 (안 넣음)</small>' : s.fwd ? '<br><small class="muted">이월 ' + money(s.fwd) + ' 포함</small>' : '') + '</td><td class="r">' + (s.hdr.total == null ? '—' : money(s.hdr.total) + ' ' + (s.okTotal ? '<b class="ok">✓</b>' : '<b class="warn">≠ ' + money(s.sumInvAll) + '</b>')) + '</td><td class="r">' + s.pay.length + '줄 · ' + money(s.sumPay) + '</td><td class="r">' + (s.hdr.deposit == null ? '—' : money(s.hdr.deposit) + ' ' + (s.okDep ? '<b class="ok">✓</b>' : '<b class="warn">≠</b>')) + '</td></tr>').join('');
     out.innerHTML = '<div class="card"><h2>🏭 공장 명세서 — ' + esc(P.name || file.name) + '</h2>' +
       '<div class="two"><div class="fg"><label>공장</label>' + sel('fsFac', facs.map(f => [f.code, f.name + ' (' + f.code + ')']).concat([['__new', '＋ 새 공장으로 등록: ' + (P.name || '?')]]), hit ? hit.code : '__new') + '</div><div class="fg" id="fsCodeBox" style="' + (hit ? 'display:none' : '') + '"><label>새 공장 코드 (영문 2~4자)</label><input id="fsCode" value="' + esc(sug) + '" maxlength="4" style="text-transform:uppercase"></div></div>' +
@@ -714,7 +715,11 @@ async function factoryStatementFile(file, out) {
       busy(true);
       try {
         const now = new Date().toISOString(), ops = [], ys = new Set(years);
-        if (isNew) ops.push({ op: 'set', col: 'factories', id: code, data: { id: code, code, name: P.name || code, note: '명세서 가져오기', active: true, createdAt: now } });
+        /* 파일 머리의 TOTAL · DEPOSIT · BALANCE 를 공장 문서에 남겨 두어 공장 화면에서 앱 잔액과 대조 */
+        const stmtHdr = {}; P.sheets.forEach(sh => { if (sh.year) stmtHdr[sh.year] = { total: sh.hdr.total, deposit: sh.hdr.deposit, balance: sh.hdr.balance, file: file.name, at: now }; });
+        const exF = facs.find(f => f.code === code) || {};
+        if (isNew) ops.push({ op: 'set', col: 'factories', id: code, data: { id: code, code, name: P.name || code, note: '명세서 가져오기', active: true, createdAt: now, stmt: stmtHdr } });
+        else ops.push({ op: 'update', col: 'factories', id: code, data: { stmt: Object.assign({}, exF.stmt || {}, stmtHdr), updatedAt: now } });
         const [oldI, oldP] = await Promise.all([S.DB.list('factoryInvoices', { where: [['f', '==', code]] }).catch(() => []), S.DB.list('factoryPayments', { where: [['f', '==', code]] }).catch(() => [])]);
         const repl = $('fsRepl') && $('fsRepl').checked, gone = x => ys.has(String(x.d || '').substring(0, 4)) && (repl || x.src === 'stmt');
         let del = 0; oldI.forEach(x => { if (gone(x)) { ops.push({ op: 'del', col: 'factoryInvoices', id: x.id }); del++; } });
