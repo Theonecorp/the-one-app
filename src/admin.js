@@ -24,15 +24,26 @@ function photoMissingCard() {
     (st.miss.length ? '<div class="chips" style="margin-top:8px"><button data-nop="">' + bt('전체', 'All') + ' <span class="en">' + st.miss.length + '</span></button>' + st.by.map(([k, n]) => '<button data-nop="' + esc(k) + '">' + esc(cleanName(k)) + ' <span class="en">' + n + '</span></button>').join('') + '</div>' : '<div class="none">✅ ' + bt('모든 아이템에 사진이 있습니다', 'Every item has a photo') + '</div>') + '</div>');
   document.querySelectorAll('[data-nop]').forEach(b => b.onclick = () => { const k = b.dataset.nop; const x = k ? C.items.find(i => (i.lv1 || i.l1) === k) : null; Router.go('items', 'noph' + (x ? ':' + encodeURIComponent([x.g, k].filter(Boolean).join('/')) : '')); });
 }
-/* 🎨 디자인 · 카탈로그 담당 홈 — 관리 화면 중 📦 아이템 · 🗂 분류만 (사진 · 세트 · 바코드 · 분류 · 레벨 도구) */
-let CTAB = 'cat';
+/* 🎨 디자인 · 카탈로그 담당 홈 — 할 일이 한눈에: 사진 없음 · 분류 없음 · 가격 없음 · 숨김 · 세트, 바로가기. 올리기 · 세트 · 분류는 아래 탭 (관리 화면과 같은 것) */
+let CTAB = '';
 async function pageCatMg(arg) {
   if (!(S.role === 'admin' || S.role === 'owner' || can('catalog'))) { $('page').innerHTML = '<div class="card"><div class="none">' + bt('디자인 · 카탈로그 담당 · 관리자만 쓰는 화면입니다', 'Design & Catalog staff / admins only') + '</div></div>'; return; }
-  if (arg) CTAB = arg;
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px"><h2 style="margin:0 0 8px">🎨 ' + bi('디자인 · 카탈로그', 'Design & Catalog') + '</h2><div class="seg">' + [['cat', '📦 ' + bt('아이템 · 사진 · 세트', 'Items · Photos · Sets')], ['tree', '🗂 ' + bt('분류', 'Categories')]].map(t => '<button class="' + (CTAB === t[0] ? 'on' : '') + '" data-ct2="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
-    '<div class="btns" style="justify-content:flex-start;margin:8px 0 0;flex-wrap:wrap"><button class="b-ghost b-sm" onclick="location.hash=\'#/items\'">🏷 ' + bt('아이템 전체 · 등록 · 숨기기', 'All items · add · hide') + '</button><button class="b-ghost b-sm" onclick="location.hash=\'#/cat\'">📒 ' + bt('카탈로그 · 바코드 보기', 'Catalog · barcodes') + '</button></div></div><div id="adminBody"><div class="load">읽는 중…</div></div>';
-  document.querySelectorAll('[data-ct2]').forEach(b => b.onclick = () => { CTAB = b.dataset.ct2; pageCatMg(); });
-  try { await loadCatalog(S).catch(() => {}); if (CTAB === 'tree') await treeAdmin(); else await catalogAdmin(); photoMissingCard(); }
+  CTAB = arg || '';
+  $('page').innerHTML = '<div class="load">' + bt('아이템 읽는 중…', 'Loading items…') + '</div>';
+  try { await loadCatalog(S); } catch (e) {}
+  const C = catalog() || { items: [] }, vis = C.items.filter(x => !x.h), st = photoStats(C);
+  const noLv = vis.filter(x => !x.l1 && !x.virt).length, noPr = vis.filter(x => !(x.p > 0)).length, hid = C.items.filter(x => x.h).length, sets = C.items.filter(x => x.k).length, noBar = vis.filter(x => !x.b && !x.virt).length;
+  const tile = (go, n, label, warn) => '<button data-cg="' + go + '" class="' + (warn && n ? 'warn' : '') + '"><b>' + n.toLocaleString() + '</b><small>' + label + '</small></button>';
+  const tabs = [['', '🏠 ' + bt('할 일', 'To do')], ['cat', '📥 ' + bt('올리기 · 세트 · 사진 설정', 'Upload · Sets · Photo settings')], ['tree', '🗂 ' + bt('분류', 'Categories')]];
+  $('page').innerHTML = '<div class="card" style="padding:12px 14px"><h2 style="margin:0 0 6px">🎨 ' + bi('디자인 · 카탈로그', 'Design & Catalog') + ' <span class="muted" style="font-weight:400;font-size:12px">' + bt('아이템', 'items') + ' ' + vis.length.toLocaleString() + (C.updatedAt ? ' · ' + esc(String(C.updatedAt).substring(0, 10)) : '') + '</span></h2>' +
+    '<div class="seg">' + tabs.map(t => '<button class="' + (CTAB === t[0] ? 'on' : '') + '" data-ct2="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
+    (CTAB ? '' : '<div class="cdash">' + tile('photos/noph', st.miss.length, '📷✕ ' + bt('사진 없음', 'No photo'), true) + tile('items/nolv', noLv, '🗂 ' + bt('분류 없음', 'No category'), true) + tile('items/nopr', noPr, '💲 ' + bt('가격 없음', 'No price'), true) + tile('items/nobar', noBar, '🏷 ' + bt('바코드 없음', 'No barcode'), false) + tile('items/hid', hid, '🙈 ' + bt('숨김', 'Hidden'), false) + tile('catmg/cat', sets, '🧩 ' + bt('세트', 'Sets'), false) + '</div>' +
+    '<div class="btns" style="justify-content:flex-start;margin:10px 0 0;flex-wrap:wrap"><button class="b-blue b-sm" data-cg="items/new">＋ ' + bt('새 아이템', 'New item') + '</button><button class="b-ghost b-sm" data-cg="photos">📷 ' + bt('사진 작업대', 'Photo workbench') + '</button><button class="b-ghost b-sm" data-cg="items">🏷 ' + bt('아이템 전체', 'All items') + '</button><button class="b-ghost b-sm" data-cg="cat">📒 ' + bt('카탈로그 · 바코드 라벨', 'Catalog · labels') + '</button></div>') + '</div>' +
+    (CTAB ? '<div id="adminBody"><div class="load">읽는 중…</div></div>' : '<div id="adminBody"></div>');
+  document.querySelectorAll('[data-ct2]').forEach(b => b.onclick = () => pageCatMg(b.dataset.ct2));
+  document.querySelectorAll('[data-cg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.cg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
+  if (!CTAB) { photoMissingCard(); return; }
+  try { if (CTAB === 'tree') await treeAdmin(); else await catalogAdmin(); }
   catch (e) { $('adminBody').innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; }
 }
 /* 💾 드라이브 자동 백업 상태 — apps-script/Backup.gs 가 settings/app.backup 에 적음 */

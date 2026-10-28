@@ -10,8 +10,17 @@ const path = require('path');
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'design@x.com', name: 'Dee' }; window.__AFTER_SEED__ = s => { s.users.push({ id: 'design@x.com', email: 'design@x.com', name: 'Dee', role: 'manager', job: 'catalog', active: true }); }; });
   await pg.goto('http://127.0.0.1:8805/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(800);
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go).join(',')); log('nav:', nav, 'hash:', await pg.evaluate(() => location.hash));
-  if (!/^catmg,order,invs,stores,items,cat$/.test(nav)) errs.push('catalog job nav wrong: ' + nav);
+  if (nav !== 'catmg,items,photos,catmg/tree,cat') errs.push('catalog job nav wrong: ' + nav);
   await pg.waitForSelector('[data-nop]', { timeout: 8000 }).catch(() => errs.push('photo missing card not shown'));
+  const tiles = await pg.$$eval('.cdash button', b => b.map(x => x.dataset.cg + '=' + x.querySelector('b').textContent)); log('tiles:', tiles); if (!tiles.some(t => /^photos\/noph=\d/.test(t))) errs.push('dashboard tiles missing');
+  /* 📷 사진 작업대 — 카드에서 바로 올리기 → 사진 없음 목록에서 사라짐 */
+  await pg.click('[data-cg="photos/noph"]'); await pg.waitForSelector('.phcard', { timeout: 8000 }); const n0 = await pg.$$eval('.phcard', c => c.length); const c0 = await pg.$eval('.phcard', c => c.dataset.pc);
+  await pg.setInputFiles('.phcard [data-pf="' + c0 + '"]', path.resolve(__dirname, 'fixtures', 'check.png')); await pg.waitForTimeout(1800);
+  const n1 = await pg.$$eval('.phcard', c => c.length), saved = await pg.evaluate(c => !!(window.__MOCK_STORE__.itemPhotos && window.__MOCK_STORE__.itemPhotos[c]), c0); log('workbench:', c0, n0, '→', n1, 'saved', saved); if (!saved || n1 !== n0 - 1) errs.push('workbench upload should save and drop the card');
+  await pg.click('[data-pm="app"]'); await pg.waitForTimeout(500); const appN = await pg.$$eval('.phcard', c => c.length); if (appN !== 1) errs.push('app-photo filter should show 1');
+  await pg.screenshot({ path: path.resolve(__dirname, 'out', 'photo_bench.png') });
+  await pg.click('[data-pr="' + c0 + '"]'); await pg.waitForTimeout(800);
+  await pg.evaluate(() => { location.hash = '#/catmg'; }); await pg.waitForTimeout(800);
   const card = (await pg.textContent('#adminBody').catch(() => '')).replace(/\s+/g, ' '); log('home:', card.slice(0, 150));
   const miss0 = await pg.evaluate(() => [...document.querySelectorAll('[data-nop]')].map(b => b.textContent.trim()));
   log('missing chips:', miss0);

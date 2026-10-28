@@ -14,6 +14,7 @@ import * as Admin from './admin.js';
 import * as Orders from './orders.js';
 import * as NewAcct from './newacct.js';
 import * as Notify from './notify.js';
+import * as Photos from './photos.js';
 import * as Items from './items.js';
 import * as CatPage from './catpage.js';
 import * as Track from './track.js';
@@ -26,7 +27,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.83';
+export const VER = 'v0.8.84';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -46,7 +47,7 @@ const NAV = {
   invoice:  fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments']]),
   whmgr:    fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory'], ['track', '🚚', '배송 조회', 'Tracking']]),   // 창고 매니저: 재고 · 출고 중심
   pick:     fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory']]),
-  catalog:  fixed(['catmg', '🏠', '홈', 'Home'], [['items', '🏷', '아이템', 'Items'], ['cat', '📒', '카탈로그', 'Catalog']]),   // 🎨 디자인 · 카탈로그 담당
+  catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['catmg/tree', '🗂', '분류', 'Categories'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 분류 · 카탈로그만 (주문 · 수금 없음)
   owner:    fixed(HOME_TOP, [['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['flow', '🧭', '세일 흐름', 'Sales flow'], ['cat', '📒', '카탈로그', 'Catalog']]),
   admin:    fixed(HOME_TOP, [['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']])
 };
@@ -233,7 +234,7 @@ function paintNav() {
   const items = navFor(S.role);
   Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '<span class="en">' + (x[3] || '') + '</span></button>').join('');
-  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go; Router.navTap = g; if (location.hash === '#/' + g) { const f = Router.routes[g]; if (f) f(''); } else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
+  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go, [r, a] = g.split('/'); Router.navTap = r; if (location.hash === '#/' + g) { const f = Router.routes[r]; if (f) f(a || ''); } else if (a) Router.go(r, a); else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
   navH();
   $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
   const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? userMenu : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
@@ -301,7 +302,7 @@ async function boot() {
   setTimeout(checkUpdate, 4000);
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); NewAcct.register(S); Notify.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
