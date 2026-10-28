@@ -13,7 +13,8 @@
  *   5. testMail 실행 → 내 메일함에 시험 메일이 오면 끝
  *
  * 🔔 앱 알림(notifyq): 주문 확인 요청 · 주문 문제 · 문의를 이메일로, 스크립트 속성 CHAT_WEBHOOK 이 있으면 구글 챗 스페이스에도 (5분마다 같이)
- *    세일즈맨에게 가는 것은 챗에서 그 사람을 @멘션 → 구글 챗이 폰 알림을 보냄. 멘션에 쓰는 사용자 ID 는 Admin Directory 로 찾음
+ *    세일즈맨에게 가는 것은 그 세일즈맨 전용 방(스크립트 속성 CHAT_WEBHOOK_BRANDON 처럼 코드별 웹훅)으로 — 다른 세일즈맨은 못 봄. 전용 방이 없으면 공용 방.
+ *    방에서는 그 사람을 @멘션 → 구글 챗이 폰 알림을 보냄. 멘션에 쓰는 사용자 ID 는 Admin Directory 로 찾음
  *    (appsscript.json 에 AdminDirectory 서비스 · 권한 포함 — setup 을 다시 ▶ 실행해 권한 허용, testChat 으로 확인)
  *
  * 메일은 이 스크립트를 설치한 계정(luke@)에서 나갑니다. Workspace 하루 한도 1,500명 — 충분합니다.
@@ -86,7 +87,8 @@ function notifyRun_() {
   if (!list.length) return;
   const settings = getDoc_('settings', 'app') || {};
   const staff = String(settings.reportTo || DEFAULT_TO).split(/[,;\s]+/).filter(isEmail_);
-  const hook = PropertiesService.getScriptProperties().getProperty('CHAT_WEBHOOK');
+  const props = PropertiesService.getScriptProperties();
+  const hookOf = sm => (sm && props.getProperty('CHAT_WEBHOOK_' + String(sm).toUpperCase().replace(/[^A-Z0-9]/g, '_'))) || props.getProperty('CHAT_WEBHOOK');   // 세일즈맨 전용 방이 있으면 거기로, 없으면 공용 방
   list.forEach(n => {
     try {
       const to = [];
@@ -97,6 +99,7 @@ function notifyRun_() {
         htmlBody: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px">' + lines.map(esc_).join('<br>') + (n.byName || n.by ? '<p style="color:#64748b;font-size:13px">— ' + esc_(n.byName || n.by) + '</p>' : '') +
           (n.url ? '<p><a href="' + esc_(n.url) + '" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:bold">앱에서 열기 · Open in app</a></p>' : '') + '</div>' });
       let chat = '';
+      const hook = hookOf(n.toSm);
       if (n.chat && hook) {
         /* 받는 세일즈맨을 @멘션 — 구글 챗이 그 사람 폰에 알림을 보냄 (앱이 닫혀 있어도) */
         const mention = to.filter(e => n.toSm).map(chatId_).filter(Boolean).map(id => '<users/' + id + '>').join(' ');
@@ -117,6 +120,12 @@ function chatId_(email) {
   let id = '';
   try { id = String(AdminDirectory.Users.get(email, { fields: 'id' }).id || ''); } catch (e) { Logger.log('사용자 ID 못 찾음 ' + email + ': ' + e.message); }
   P.setProperty(k, id || '-'); return id;
+}
+/** 시험 — 세일즈맨 전용 방 전부에 한 줄씩 (CHAT_WEBHOOK_BRANDON 처럼 만든 뒤 실행) */
+function testChatRooms() {
+  const P = PropertiesService.getScriptProperties().getProperties(), keys = Object.keys(P).filter(k => k.indexOf('CHAT_WEBHOOK_') === 0).sort();
+  if (!keys.length) { Logger.log('세일즈맨 전용 방(CHAT_WEBHOOK_코드)이 없습니다 — 공용 방(CHAT_WEBHOOK)만 씁니다'); return; }
+  keys.forEach(k => { const r = UrlFetchApp.fetch(P[k], { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: '🔔 THE ONE 알림 시험 — ' + k.replace('CHAT_WEBHOOK_', '') + ' 방' }), muteHttpExceptions: true }); Logger.log(k + ' → ' + r.getResponseCode()); });
 }
 /** 시험 — 챗 스페이스에 나를 멘션해서 한 줄 (CHAT_WEBHOOK 설정 뒤 실행) */
 function testChat() {
