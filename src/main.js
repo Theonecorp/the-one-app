@@ -18,6 +18,7 @@ import * as Photos from './photos.js';
 import * as Envelope from './envelope.js';
 import * as Credit from './credit.js';
 import * as Bounce from './bounce.js';
+import * as Offline from './offline.js';
 import * as Items from './items.js';
 import * as CatPage from './catpage.js';
 import * as Track from './track.js';
@@ -30,7 +31,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.97';
+export const VER = 'v0.8.98';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -132,8 +133,8 @@ function shell() {
       (off ? bt('인터넷이 안 됩니다. 주문 · 수금은 그대로 입력하세요 — 폰에 저장했다가 인터넷이 되면 자동으로 회사로 올라갑니다. 다시 입력하지 마세요.', 'No internet. Keep entering orders and payments — they are saved on this phone and upload automatically when online. Don\'t re-enter.') : bt('회사 서버와 연결되어 있습니다.', 'Connected to the company server.')) + '<br>' +
       (n ? '📤 ' + bt('아직 안 보낸 주문', 'Orders waiting to send') + ': <b>' + n + '</b><br>' : '') + (pend ? '📤 ' + bt('올라가는 중인 수금 · 기록이 있습니다', 'Payments / records still uploading') + '<br>' : '') +
       (!n && !pend ? '✅ ' + bt('폰에 남은 것 없음 — 모두 회사에 올라갔습니다', 'Nothing waiting — everything is uploaded') + '<br>' : '<b class="warn">' + bt('다 올라가기 전에는 로그아웃 · 앱 데이터 삭제를 하지 마세요.', 'Don\'t sign out or clear app data until everything is uploaded.') + '</b>') +
-      '</div><div class="btns">' + (n && !off ? '<button class="b-blue" id="netSend">📤 ' + bt('지금 보내기', 'Send now') + '</button>' : '') + '<button class="b-ghost" id="netX">' + bt('닫기', 'Close') + '</button></div>');
-    $('netX').onclick = closeModal;
+      '</div><div id="netOff" style="margin-top:8px"></div><div class="btns">' + (n && !off ? '<button class="b-blue" id="netSend">📤 ' + bt('지금 보내기', 'Send now') + '</button>' : '') + '<button class="b-ghost" id="netX">' + bt('닫기', 'Close') + '</button></div>');
+    $('netX').onclick = closeModal; Offline.homeCard($('netOff'), false);
     if ($('netSend')) $('netSend').onclick = async () => { busy(true); await Orders.syncOutbox(false); busy(false); closeModal(); net(); };
   };
 }
@@ -305,7 +306,7 @@ async function boot() {
   setTimeout(checkUpdate, 4000);
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
