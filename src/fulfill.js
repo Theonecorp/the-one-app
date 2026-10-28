@@ -57,6 +57,7 @@ export function manage(o, lines) {
     '<button class="b-ghost b-sm" id="mBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     (acc && acc.note ? '<div class="alert a-blu">🏬 ' + esc(acc.note) + '</div>' : '') + '<div id="mNotes"></div>' +
     (o.cfIssueOpen ? '<div class="alert a-red">⚠️ ' + bi('세일즈맨이 이 주문에 문제가 있다고 알렸습니다', 'The salesman flagged this order') + ': <b>' + esc(o.cfIssue || '') + '</b> <span class="muted">' + esc(String(o.cfIssueAt || '').substring(5, 16).replace('T', ' ')) + '</span><div class="btns" style="justify-content:flex-start;margin-top:6px"><button class="b-ghost b-sm" id="mIssueOk">✅ ' + bt('해결', 'Resolved') + '</button></div></div>' : '') + (o.cfReq && !o.cfOk && o.cfNote ? '<div class="alert a-amb">❓ ' + bt('세일즈맨에게 물어본 것', 'Asked the salesman') + ': ' + esc(o.cfNote) + '</div>' : '') +
+    (o.st === 'x' ? cancelledBox(o) : '') +
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
     '<div id="mSum"></div>' +
     (S.role !== 'salesman' ? timelineHtml(o) : '');
@@ -210,7 +211,7 @@ export function manage(o, lines) {
   if ($('mStoreChg')) $('mStoreChg').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 가게를 바꿀까요? (픽킹 입력은 사라집니다)')) return; changeStore(o, () => goOrder(o.id)); };
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);
-  if ($('mCancel')) $('mCancel').onclick = async () => { if (!(await confirmBox('이 주문를 취소할까요?', '주문 취소'))) return; busy(true); try { await S.DB.update('orders', o.id, { st: 'x', updatedAt: new Date().toISOString(), cancelBy: S.user.email }); toast('취소했습니다'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mCancel')) $('mCancel').onclick = () => cancelAsk(o);
   if ($('mInvPrint')) $('mInvPrint').onclick = async () => { busy(true); try { const invs = []; for (const n of (o.invs || [])) { const x = await getInvoice(S, n); if (x) invs.push(x); } if (invs.length) await printInvoices(invs, acctOf(o.acct)); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mInv')) $('mInv').onclick = () => confirmInvoice(o, lines);
   if ($('mVoid')) $('mVoid').onclick = async () => { busy(true); const invs = []; try { for (const n of (o.invs || [])) { const x = await getInvoice(S, n); if (x) invs.push(x); } } catch (e) {} busy(false); voidModal(invs, () => goOrder(o.id)); };
@@ -717,6 +718,34 @@ function legacyInvoice(x) {
   $('iStore').onclick = () => storeSheet(x.acct);
 }
 
+/* ---- ✕ 주문 취소 — 사유를 꼭 적고 한 번 더 확인 (잘못 눌러 바로 취소되는 일 방지) · 세일즈맨에게 사유와 함께 알림 ---- */
+const CANCEL_WHY = [['가게가 주문 취소', 'Store cancelled'], ['중복 주문', 'Duplicate order'], ['세일즈맨 요청', 'Salesman asked'], ['재고 없음 · 출고 불가', 'Out of stock'], ['잘못 넣은 주문', 'Entered by mistake']];
+export function cancelledBox(o) {
+  return '<div class="alert a-red">✕ <b>' + bi('취소된 주문', 'Cancelled order') + '</b>' + (o.cancelWhy ? ' — ' + bi('사유', 'Reason') + ': <b>' + esc(o.cancelWhy) + '</b>' : '') + '<div class="muted" style="font-size:12px;margin-top:2px">' + esc(String(o.cancelBy || '').split('@')[0]) + (o.cancelAt ? ' · ' + esc(String(o.cancelAt).substring(0, 16).replace('T', ' ')) : '') + '</div></div>';
+}
+async function cancelAsk(o) {
+  openModal('<h2 style="color:#991b1b">✕ ' + bi('주문 취소', 'Cancel order') + '</h2>' +
+    '<div class="sumbox"><b>' + esc(o.no || o.id) + '</b> · ' + esc(o.store) + '<br><span class="muted">' + esc(o.sm || '') + ' · ' + esc(o.d || '') + ' · ' + (o.qty || 0) + bi('개', ' pcs') + ' · ' + money(o.amt || 0) + '</span></div>' +
+    '<div class="alert a-amb">' + bi('취소하면 이 주문은 작업 목록에서 빠지고 되돌릴 수 없습니다. 세일즈맨에게 사유와 함께 알림이 갑니다.', 'Cancelling removes this order from the work list and cannot be undone. The salesman is notified with the reason.') + '</div>' +
+    '<div class="fg"><label>' + bi('취소 사유 (필수)', 'Reason (required)') + '</label><div class="chips" style="margin:0 0 6px">' + CANCEL_WHY.map(w => '<button data-cxw="' + esc(w[0]) + '">' + bi(w[0], w[1]) + '</button>').join('') + '</div><input id="cxWhy" placeholder="' + esc(bi('사유를 적으세요', 'Type the reason')) + '" autocomplete="off"></div>' +
+    '<div class="btns"><button class="b-ghost" id="cxX">' + bi('돌아가기', 'Back') + '</button><button class="b-red" id="cxGo" disabled>✕ ' + bi('이 주문을 취소합니다', 'Cancel this order') + '</button></div>');
+  const chk = () => { $('cxGo').disabled = !$('cxWhy').value.trim(); };
+  document.querySelectorAll('[data-cxw]').forEach(b => b.onclick = () => { $('cxWhy').value = b.dataset.cxw; document.querySelectorAll('[data-cxw]').forEach(x => x.classList.toggle('on', x === b)); chk(); });
+  $('cxWhy').oninput = chk; $('cxX').onclick = closeModal;
+  $('cxGo').onclick = async () => {
+    const why = $('cxWhy').value.trim(); if (!why) return;
+    if (!(await confirmBox(bt('정말 취소할까요?', 'Really cancel?') + '\n' + (o.no || o.id) + ' · ' + o.store + '\n' + bt('사유', 'Reason') + ': ' + why, '✕ ' + bt('취소 확정', 'Confirm cancel')))) return;
+    busy(true);
+    try {
+      const now = new Date().toISOString();
+      await S.DB.update('orders', o.id, { st: 'x', updatedAt: now, cancelBy: S.user.email, cancelWhy: why, cancelAt: now });
+      try { const N = await import('./notify.js'); await N.queue({ kind: 'cancel', toSm: o.sm, chat: true, orderId: o.id, subject: '[THE ONE] ✕ 주문 취소 — ' + o.store, text: '✕ 주문 취소 → ' + o.sm + ' · ' + o.store + ' (' + (o.no || o.id) + ', ' + money(o.amt || 0) + ')\n사유: ' + why, url: N.appUrl('order/' + o.id) }); } catch (e) {}
+      closeModal(); toast(bt('취소했습니다', 'Cancelled') + ' — ' + why); goOrder(o.id);
+    } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+}
+
 /* ============================================================
  *  🚫 인보이스 VOID — 잘못 만든 · 중복 · 가게가 틀린 인보이스 (오피스 매니저 · 인보이스 담당 · 관리자만)
  *    번호는 다시 쓰지 않음 (VOID 로 남음). 이유를 꼭 남김. 매출 집계에서 빠짐
@@ -756,7 +785,7 @@ export async function voidModal(invs, done) {
         if (o) {
           const vd = (o.voidedInvs || []).concat(L.map(x => x.no)), p = { voidedInvs: vd, updatedAt: now };
           if (act === 'redo') Object.assign(p, { st: 'picked', invs: [], doneAt: null, bo: '' });
-          if (act === 'cancel') Object.assign(p, { st: 'x', cancelBy: S.user.email, cancelWhy: reason });
+          if (act === 'cancel') Object.assign(p, { st: 'x', cancelBy: S.user.email, cancelWhy: reason, cancelAt: now });
           ops.push({ op: 'update', col: 'orders', id: o.id, data: p });
           if ((act === 'redo' || act === 'cancel') && o.bo) { const b = await S.DB.get('backorders', o.id).catch(() => null); if (b && b.st === 'open') ops.push(act === 'redo' ? { op: 'del', col: 'backorders', id: o.id } : { op: 'update', col: 'backorders', id: o.id, data: { st: 'closed', closedAt: now, closedBy: S.user.email } }); }
         }

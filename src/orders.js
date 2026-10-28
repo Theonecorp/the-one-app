@@ -419,6 +419,7 @@ function viewOrder(o, lines, local) {
     '<div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div><div class="muted">' + esc([o.acct, acc ? [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : ''].filter(Boolean).join(' · ')) + '</div><div class="muted">' + esc(o.sm) + ' · ' + esc(o.d) + '</div></div>' +
     '<button class="b-ghost b-sm" id="oBack">‹ 목록</button></div>' + typeSummary(by) +
     (pd.n ? '<div class="alert a-amb">가격 수정 ' + pd.n + '줄 · 목록가 대비 ' + (pd.diff >= 0 ? '+' : '') + money(pd.diff) + ' (' + pd.pct + '%)</div>' : '') +
+    (o.st === 'x' ? '<div class="alert a-red">✕ <b>' + bi('취소된 주문', 'Cancelled order') + '</b>' + (o.cancelWhy ? ' — ' + bi('사유', 'Reason') + ': <b>' + esc(o.cancelWhy) + '</b>' : '') + (o.cancelAt ? ' <span class="muted">' + esc(String(o.cancelAt).substring(0, 16).replace('T', ' ')) + '</span>' : '') + '</div>' : '') +
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
     (local ? '<div class="alert a-red">📤 아직 회사로 안 갔습니다 — 폰에 저장돼 있습니다</div>' : '') +
     (o.cfReq && !o.cfOk ? '<div class="alert a-amb">❓ ' + bi('사무실에서 이 주문 내용이 맞는지 확인을 요청했습니다. 아래 아이템을 보고 맞으면 ✅, 아니면 ✏️ 수정.', 'The office asks you to confirm this order.') + (o.cfNote ? '<div style="margin-top:6px;font-weight:800">💬 ' + esc(o.cfNote) + '</div>' : '') + '</div>' : o.cfOk ? '<div class="alert a-grn">✅ ' + bi('확인한 주문', 'Confirmed') + ' ' + esc(String(o.cfAt || '').substring(0, 16).replace('T', ' ')) + '</div>' : '') + '</div>';
