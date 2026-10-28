@@ -130,6 +130,8 @@ function seedOps(o) {
 }
 /** 관리 → 가져오기에서 부름 — 경영 자료를 읽은 뒤 미리보기 */
 export async function seedImport(txt) { await load(); seedPreview(txt); }
+/** 관리 → 가져오기(공장 명세서 등)가 자료를 바꾼 뒤 — 다음에 경영 탭을 열 때 다시 읽게 */
+export function dropMgCache() { D.fac = null; }
 function seedPreview(txt) {
   let o; try { o = seedParse(txt); } catch (e) { return toast('읽을 수 없습니다: ' + e.message, 'bad'); }
   const { ops, cnt } = seedOps(o), has = D.inv.some(x => x.seed) || D.p99.some(x => x.seed);

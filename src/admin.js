@@ -6,7 +6,8 @@ import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
 import { roleLabel, JOBS, jobLabel, can } from './main.js';
-import { seedImport } from './mg.js';
+import { seedImport, dropMgCache } from './mg.js';
+import { parseFactoryStatement, looksLikeStatement, suggestFactoryCode, matchFactory } from './facstmt.js';
 import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
 import { acctImportCard, bindAcctImport, acctFile, parseAcctList } from './acctimp.js';
@@ -348,7 +349,7 @@ async function arFileImport(f, out, asOf) {
  * ============================================================ */
 const KINDS = [
   ['main', '① 수금 입력 (거래처 · 세일즈맨 · 수금 · AR 탭)'], ['sales', '② SALES (COD · 카드 · ACH · 확인 표시)'], ['comm', '③ 커미션 (요율 · 정산 기록)'], ['boss', '④ 수금 대시보드 (공장 · 1099 · 보너스)'], ['inv', '⑤ 인보이스 목록 (sales_invoice)'],
-  ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
+  ['facstmt', '🏭 공장 명세서 (공장별 엑셀 — Date · ITEM · FREIGHT · Amount | PAID DATE · DEPOSIT MONEY)'], ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
   ['sets', '🧩 세트 구성 (SET_MASTER)'], ['bulk', '📄 아이템 일괄 변경 (LEVEL_1_AND_2 · GROUP_NAME_CHANGE · TreeUpdate …)'], ['loc', '📍 창고 위치 (재고 사이트 통로)'], ['pop', '✨ 자주 나가는 아이템 (Item · Qty)'], ['seed', '🧪 SEED_DATA (.js · .json)']];
 const kindName = k => (KINDS.find(x => x[0] === k) || ['', '❓ 모르는 파일 — 종류를 골라 주세요'])[1];
 function anyImportCard() {
@@ -384,6 +385,7 @@ export async function sniffFile(file) {
   const hasAll = (row, res) => res.every(re => row.some(h => h && re.test(h)));
   const hit = (n, res) => hdrs(n).some(r => hasAll(r, res));
   for (const n of names) {
+    if (looksLikeStatement(get(n))) return { k: 'facstmt', why: '머리글 Date · PAID DATE · DEPOSIT MONEY — 공장 명세서 (' + (sv((get(n)[0] || [])[0]) || n) + ')' };
     if (/^(items)$/i.test(n.trim()) && hit(n, [/^code$/, /^description$/, /^price$/])) return { k: 'master', why: '탭 Items — Code · Description · Price' };
     if (hit(n, [/^category$/, /^item\s*(3|#|no\.?|code)?$|^code$|^sku$/, /^description$/, /^price$/])) return { k: 'sbitems', why: '머리글 CATEGORY · ITEM 3 · DESCRIPTION · PRICE' };
     if (hit(n, [/^(invoice|trans)\s*(#|no|3)?$/, /trans\s*date|invoice\s*date/, /^total$/])) return { k: 'inv', why: '머리글 invoice · trans date · Total' };
@@ -440,6 +442,7 @@ async function runKind(k, f, out) {
   else if (k === 'sales') { OUT = out; try { await importSales(f); } finally { OUT = null; } }
   else if (k === 'comm') { OUT = out; try { await importComm(f); } finally { OUT = null; } }
   else if (k === 'boss') await importBoss(f, out);
+  else if (k === 'facstmt') await factoryStatementFile(f, out);
   else if (k === 'inv') await importInvoices(f, false, out, fromD);
   else if (k === 'ar') await arFileImport(f, out, asOf);
   else if (k === 'acct') await acctFile(S, f, out, readBook, aoa);
@@ -680,6 +683,48 @@ async function importBoss(file, outBox) {
         if (nDf || nEx) toast('정산 미룸 ' + nDf + ' · 정산 제외 ' + nEx + '건 반영', 'good');
         dropBossCache();
         out.innerHTML = '<div class="alert a-grn">넣었습니다 — ' + ops.length + '건. 경영 탭에서 확인하세요.</div>'; toast('경영 자료 ' + ops.length + '건', 'good');
+      } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+      busy(false);
+    };
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+}
+/* ---- 🏭 공장 명세서 (공장별 엑셀) → factories · factoryInvoices · factoryPayments ----
+ *  같은 공장 · 같은 연도의 지난 명세서 줄(src 'stmt')은 지우고 새로 넣음 → 고친 파일을 다시 올려도 겹치지 않음. 앱에서 손으로 넣은 줄은 그대로. */
+async function factoryStatementFile(file, out) {
+  out.innerHTML = '<div class="load">읽는 중…</div>';
+  try {
+    const { XLSX, wb } = await readBook(file);
+    const P = parseFactoryStatement(wb.SheetNames.map(n => ({ name: n, rows: aoa(XLSX, wb, n) || [] })));
+    if (!P.sheets.length) throw new Error('공장 명세서 모양이 아닙니다 (머리글 Date · PAID DATE · DEPOSIT MONEY 가 있는 탭이 없음)');
+    const facs = (await S.DB.list('factories')).filter(f => f.active !== false), hit = matchFactory(P.name, facs), sug = suggestFactoryCode(P.name);
+    const years = P.sheets.map(s => s.year).filter(Boolean);
+    const rowsHtml = P.sheets.map(s => '<tr><td><b>' + esc(s.year || '?') + '</b></td><td class="r">' + s.inv.length + '줄 · ' + money(s.sumInv) + (s.fwdSkipped ? '<br><small class="muted">이월 ' + money(s.fwdSkipped) + ' 은 앞 연도 줄로 계산 (안 넣음)</small>' : s.fwd ? '<br><small class="muted">이월 ' + money(s.fwd) + ' 포함</small>' : '') + '</td><td class="r">' + (s.hdr.total == null ? '—' : money(s.hdr.total) + ' ' + (s.okTotal ? '<b class="ok">✓</b>' : '<b class="warn">≠ ' + money(s.sumInvAll) + '</b>')) + '</td><td class="r">' + s.pay.length + '줄 · ' + money(s.sumPay) + '</td><td class="r">' + (s.hdr.deposit == null ? '—' : money(s.hdr.deposit) + ' ' + (s.okDep ? '<b class="ok">✓</b>' : '<b class="warn">≠</b>')) + '</td></tr>').join('');
+    out.innerHTML = '<div class="card"><h2>🏭 공장 명세서 — ' + esc(P.name || file.name) + '</h2>' +
+      '<div class="two"><div class="fg"><label>공장</label>' + sel('fsFac', facs.map(f => [f.code, f.name + ' (' + f.code + ')']).concat([['__new', '＋ 새 공장으로 등록: ' + (P.name || '?')]]), hit ? hit.code : '__new') + '</div><div class="fg" id="fsCodeBox" style="' + (hit ? 'display:none' : '') + '"><label>새 공장 코드 (영문 2~4자)</label><input id="fsCode" value="' + esc(sug) + '" maxlength="4" style="text-transform:uppercase"></div></div>' +
+      (hit ? '<div class="muted" style="font-size:12px">이름이 맞는 기존 공장 <b>' + esc(hit.name) + '</b> 으로 들어갑니다. 다른 공장이면 위에서 바꾸세요.</div>' : '<div class="muted" style="font-size:12px">맞는 기존 공장이 없어 새 공장으로 등록합니다. 이미 있는 공장이면 위에서 고르세요.</div>') +
+      '<table style="margin-top:8px"><tr><th>연도</th><th class="r">인보이스 (물품+운임)</th><th class="r">파일 TOTAL</th><th class="r">송금</th><th class="r">파일 DEPOSIT</th></tr>' + rowsHtml + '</table>' +
+      (P.warn.length ? '<div class="alert a-amb" style="margin-top:8px">⚠️ ' + P.warn.length + '줄은 읽지 못해 빠집니다<div style="font-size:12px;max-height:120px;overflow:auto">' + P.warn.slice(0, 30).map(esc).join('<br>') + '</div></div>' : '') +
+      '<div class="hint">같은 공장 · 같은 연도(' + esc(years.join(', ')) + ')의 지난 명세서 줄은 지우고 이 파일대로 다시 넣습니다. 앱에서 직접 넣은 줄은 건드리지 않습니다. 파일 TOTAL · DEPOSIT 과 ✓ 가 맞는지 확인하고 넣으세요.</div>' +
+      '<div class="btns"><button class="b-blue" id="fsGo">' + (P.inv.length + P.pay.length) + '줄 넣기</button></div></div>';
+    $('fsFac').onchange = () => { $('fsCodeBox').style.display = $('fsFac').value === '__new' ? '' : 'none'; };
+    $('fsGo').onclick = async () => {
+      let code = $('fsFac').value; const isNew = code === '__new';
+      if (isNew) { code = $('fsCode').value.trim().toUpperCase(); if (!/^[A-Z0-9]{2,4}$/.test(code)) return toast('새 공장 코드는 영문 · 숫자 2~4자', 'bad'); if (facs.some(f => f.code === code)) return toast('이미 있는 코드입니다 — 위에서 그 공장을 고르세요', 'bad'); }
+      busy(true);
+      try {
+        const now = new Date().toISOString(), ops = [], ys = new Set(years);
+        if (isNew) ops.push({ op: 'set', col: 'factories', id: code, data: { id: code, code, name: P.name || code, note: '명세서 가져오기', active: true, createdAt: now } });
+        const [oldI, oldP] = await Promise.all([S.DB.list('factoryInvoices', { where: [['f', '==', code]] }).catch(() => []), S.DB.list('factoryPayments', { where: [['f', '==', code]] }).catch(() => [])]);
+        let del = 0; oldI.forEach(x => { if (x.src === 'stmt' && ys.has(String(x.d || '').substring(0, 4))) { ops.push({ op: 'del', col: 'factoryInvoices', id: x.id }); del++; } });
+        oldP.forEach(x => { if (x.src === 'stmt' && ys.has(String(x.d || '').substring(0, 4))) { ops.push({ op: 'del', col: 'factoryPayments', id: x.id }); del++; } });
+        const seen = {}; const idOf = (pre, d, amt) => { const k = pre + '-' + code + '-' + d + '-' + Math.round(amt * 100); seen[k] = (seen[k] || 0) + 1; return k + (seen[k] > 1 ? '-' + seen[k] : ''); };
+        P.inv.forEach(x => { const id = idOf('FSI', x.d, x.amt); ops.push({ op: 'set', col: 'factoryInvoices', id, data: { id, f: code, d: x.d, type: x.type, item: x.item, frt: x.frt, amt: x.amt, note: x.note, src: 'stmt', file: file.name, createdAt: now, updatedAt: now } }); });
+        P.pay.forEach(x => { const id = idOf('FSP', x.d, x.amt); ops.push({ op: 'set', col: 'factoryPayments', id, data: { id, f: code, d: x.d, amt: x.amt, note: '', src: 'stmt', file: file.name, createdAt: now } }); });
+        await S.DB.batch(ops);
+        dropMgCache(); dropBossCache();
+        out.innerHTML = '<div class="alert a-grn">넣었습니다 — ' + esc(P.name || code) + ' (' + esc(code) + ') · 인보이스 ' + P.inv.length + '줄 · 송금 ' + P.pay.length + '줄' + (del ? ' · 지난 명세서 줄 ' + del + '개 교체' : '') + '. <u data-gomg style="cursor:pointer">🏭 경영 → 공장</u>에서 확인하세요.</div>';
+        out.querySelectorAll('[data-gomg]').forEach(u => u.onclick = () => Router.go('mg', 'fac'));
+        toast('🏭 ' + (P.name || code) + ' 명세서 ' + (P.inv.length + P.pay.length) + '줄', 'good');
       } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
       busy(false);
     };
