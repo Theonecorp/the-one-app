@@ -8,7 +8,7 @@
  * ============================================================ */
 import { $, esc, toast, bt, bi } from './ui.js';
 import { loadCatalog, catalog, thumb } from './catalog.js';
-import { loadAccounts, dropAccountCache } from './accounts.js';
+import { loadAccounts } from './accounts.js';
 import { mySm } from './access.js';
 
 let S = null, RUNNING = false;
@@ -31,12 +31,12 @@ async function prepareRun(onStep) {
   RUNNING = true; const sm = mySm(), isSales = S.role === 'salesman';
   const steps = [
     [bt('설정 · 세일즈맨', 'Settings · salesmen'), async () => { await S.DB.get('settings', 'app'); await S.DB.list('salesmen'); }],
-    [bt('거래처 목록', 'Accounts'), async () => { dropAccountCache(); S.accounts = await loadAccounts(S); }],
-    [bt('아이템 · 카탈로그 · 사진 목록', 'Items · catalog'), async () => { await loadCatalog(S, true); }],
+    [bt('거래처 목록', 'Accounts'), async () => { S.accounts = await loadAccounts(S); }],   /* 버전이 같으면 폰 것 그대로 (다시 받지 않음) */
+    [bt('아이템 · 카탈로그 · 사진 목록', 'Items · catalog'), async () => { await loadCatalog(S); }],   /* 목록 버전이 바뀐 경우에만 다시 받음 */
     [bt('내 미수금(AR) · 미결 인보이스', 'My A/R · open invoices'), async () => { if (!sm) return; await S.DB.get('ar', sm).catch(() => null); await S.DB.list('invoices', { where: [['sm', '==', sm], ['st', '==', 'open']] }).catch(() => []); }],
     [bt('내 주문 (2달) · 수금 (3달)', 'My orders · payments'), async () => { if (!sm) return; await S.DB.list('orders', { where: [['sm', '==', sm], ['ym', 'in', yms(2)]] }).catch(() => []); await S.DB.list('entries', { where: [['sm', '==', sm], ['ym', 'in', yms(3)]] }).catch(() => []); }],
     [bt('바운스 · 체크 요청 · 크레딧 · 봉투', 'Bounces · requests · credits'), async () => { if (!sm) return; await Promise.all([S.DB.list('bounces', { where: [['sm', '==', sm]] }).catch(() => []), S.DB.list('checkReq', { where: [['sm', '==', sm]] }).catch(() => []), S.DB.list('envelopes', { where: [['sm', '==', sm]] }).catch(() => []), S.DB.list('invoices', { where: [['sm', '==', sm], ['t', '==', 'CM']] }).catch(() => [])]); }],
-    [bt('자주 쓰는 가게 기록', 'Frequent stores'), async () => { if (!sm || !isSales) return; try { const { storeInfo } = await import('./store.js'); const ords = await S.DB.list('orders', { where: [['sm', '==', sm], ['ym', 'in', yms(2)]] }).catch(() => []); const accts = Array.from(new Set(ords.map(o => o.acct).filter(Boolean))).slice(0, 25); for (const a of accts) { try { await storeInfo(a, true); } catch (e) {} } } catch (e) {} }]
+    [bt('자주 쓰는 가게 기록', 'Frequent stores'), async () => { if (!sm || !isSales) return; try { const { storeInfo } = await import('./store.js'); const ords = await S.DB.list('orders', { where: [['sm', '==', sm], ['ym', 'in', yms(2)]] }).catch(() => []); const accts = Array.from(new Set(ords.map(o => o.acct).filter(Boolean))).slice(0, 12); for (const a of accts) { try { await storeInfo(a); } catch (e) {} await new Promise(r => setTimeout(r, 150)); } } catch (e) {} }]
   ];
   try { for (let i = 0; i < steps.length; i++) { if (onStep) onStep(steps[i][0], i, steps.length); try { await steps[i][1](); } catch (e) {} } try { localStorage.setItem(K_AT, new Date().toISOString()); } catch (e) {} if (onStep) onStep(bt('완료', 'Done'), steps.length, steps.length); }
   finally { RUNNING = false; }
@@ -67,9 +67,13 @@ export function homeCard(el, auto) {
     '<div class="btns" style="margin:0"><button class="b-ghost b-sm" id="ofGo">🔄 ' + bt('지금 준비', 'Prepare now') + '</button><button class="b-ghost b-sm" id="ofPh">📷 ' + bt('사진까지', 'Photos too') + '</button></div></div>' +
     '<div class="muted" style="font-size:11.5px;margin-top:4px">' + bt('인터넷이 없는 곳에서도 주문 · 수금 입력이 됩니다 (폰에 저장 → 인터넷이 되면 자동 전송). 거래처 · 아이템 · 내 미수금을 미리 받아 두면 오프라인에서도 그대로 보입니다. 사진은 와이파이에서 받으세요.', 'Orders and payments work without internet (saved on the phone, sent when online). Preparing stores, items and your A/R in advance makes them available offline. Fetch photos on Wi-Fi.') + '</div>' +
     '<div id="ofBar" style="display:none;margin-top:6px"><div class="paybar"><i id="ofFill" style="width:0;background:var(--blue)"></i></div><div class="muted" id="ofTxt" style="font-size:11.5px"></div></div></div>';
-  const bar = (t, i, n) => { const b = $('ofBar'); if (!b) return; b.style.display = ''; $('ofFill').style.width = Math.round(i / Math.max(1, n) * 100) + '%'; $('ofTxt').textContent = t; };
-  const again = () => homeCard(el.isConnected ? el : ($('offCard') || $('netOff') || el), false);   /* 홈이 다시 그려졌으면 새 칸에 */
-  const run = async photos => { $('ofGo').disabled = $('ofPh').disabled = true; const ok = await prepare(bar); if (ok && photos) await prefetchPhotos(bar); toast(ok ? '📦 ' + bt('오프라인 준비 완료', 'Offline ready') : bt('준비 못 함', 'Not prepared'), ok ? 'good' : 'bad'); again(); };
-  $('ofGo').onclick = () => run(false); $('ofPh').onclick = () => run(true);
-  if (auto && stale && navigator.onLine !== false) prepare(bar).then(ok => { if (ok) again(); });
+  /* 버튼 · 진행 막대는 이 카드(el) 안에서만 찾음 — 다른 화면으로 넘어간 뒤 준비가 끝나도 오류 없이 조용히 */
+  const q = id => el.querySelector('#' + id);
+  const bar = (t, i, n) => { const b = q('ofBar'); if (!b || !el.isConnected) return; b.style.display = ''; q('ofFill').style.width = Math.round(i / Math.max(1, n) * 100) + '%'; q('ofTxt').textContent = t; };
+  const again = () => { const t = el.isConnected ? el : ($('offCard') || $('netOff')); if (t) homeCard(t, false); };   /* 홈이 다시 그려졌으면 새 칸에, 다른 화면이면 아무것도 안 함 */
+  const run = async photos => { q('ofGo').disabled = q('ofPh').disabled = true; const ok = await prepare(bar); if (ok && photos) await prefetchPhotos(bar); toast(ok ? '📦 ' + bt('오프라인 준비 완료', 'Offline ready') : bt('준비 못 함', 'Not prepared'), ok ? 'good' : 'bad'); again(); };
+  q('ofGo').onclick = () => run(false); q('ofPh').onclick = () => run(true);
+  /* 자동 준비는 홈이 다 그려진 뒤 조용히 (8초 뒤 · 화면이 보일 때만 · 느린 연결 · 데이터 절약이면 건너뜀) — 앱 여는 속도를 늦추지 않게 */
+  const slow = (() => { try { const c = navigator.connection; return !!(c && (c.saveData || /2g|3g/.test(c.effectiveType || ''))); } catch (e) { return false; } })();
+  if (auto && stale && navigator.onLine !== false && !slow) setTimeout(() => { if (document.visibilityState !== 'visible' || navigator.onLine === false) return; prepare(bar).then(ok => { if (ok) again(); }); }, 8000);
 }
