@@ -52,7 +52,7 @@ async function loadAll(force) {
 /** 모든 수금을 한 모양으로 {d, sm, store, acct, amt, src} (대체 체크는 원래 체크가 이미 잡혀 있으니 뺌) */
 function allRows() {
   const out = [];
-  C.ents.forEach(e => { if (e.repl) return; out.push({ d: e.d, ym: e.ym, sm: e.sm, store: e.store, acct: e.acct, amt: e.total, src: 'FIELD', id: e.id, pays: e.pays, method: (e.pays || []).map(p => p.m).join(', '), check: (e.pays || []).filter(p => p.m === 'CHECK').map(p => p.ref).join(',') }); });
+  C.ents.forEach(e => { if (e.repl || e.bounced) return; out.push({ d: e.d, ym: e.ym, sm: e.sm, store: e.store, acct: e.acct, amt: e.total, src: 'FIELD', id: e.id, pays: e.pays, method: (e.pays || []).map(p => p.m).join(', '), check: (e.pays || []).filter(p => p.m === 'CHECK').map(p => p.ref).join(',') }); });
   C.cod.forEach(c => out.push({ d: c.d, ym: c.ym, sm: c.sm, store: c.store, acct: c.acct, amt: c.amt, src: srcOf(c), id: c.id, method: c.method, check: c.ref || '' }));
   return out;
 }
@@ -108,7 +108,7 @@ async function pageNow() {
   const oc = st => live.filter(o => st.includes(o.st)), oAmt = L => money(sum(L, o => o.amt || 0));
   /* 미수금 — 미수금 화면과 같은 계산 (기준일 이후 받은 돈을 빼고, 잔액 있는 가게만) */
   let arTot = 0, ar90 = 0, arN = 0;
-  if (arAll && arAll.stores) { const paid = {}; C.ents.forEach(e => { if (e.d <= arAll.asOf || e.repl) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
+  if (arAll && arAll.stores) { const paid = {}; C.ents.forEach(e => { if (e.d <= arAll.asOf || e.repl || e.bounced) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
     arAll.stores.forEach(st => { let net = 0, n90 = 0; (st.invs || []).forEach(v => { const b = R2(v.bal - (v.app ? 0 : paid[st.acct + '|' + v.inv] || 0)); net += b; if (b > 0 && (v.bk || 0) >= 4) n90 += b; }); if (net > 0.005) { arTot = R2(arTot + net); ar90 = R2(ar90 + n90); arN++; } }); }
   const cmp = (a, b) => b ? ' <b class="' + (a >= b ? 'ok' : 'warn') + '">' + ((a - b) / b * 100 >= 0 ? '+' : '') + Math.round((a - b) / b * 100) + '%</b>' : '';
   let h = '<div id="rqCard"></div>' + '<button class="htile flowtile" style="width:100%;margin:0 0 10px" onclick="location.hash=\'#/flow\'"><span class="hi">🧭</span><b>주문 흐름 감독 <span class="en">Order flow</span></b><small>단계 · 담당자 · 머문 시간 · 지연 — 출고 전 주문 전체</small></button>' +
@@ -144,7 +144,7 @@ async function pageNow() {
 }
 function overview(from, to) {
   const inR = r => r.d >= from && r.d <= to;
-  const live = C.ents.filter(e => !e.settled && !e.repl && (inR(e) || (e.deferred && e.d < from && e.d <= to))), cods = C.cod.filter(c => !c.settled && (inR(c) || (c.deferred && c.d < from && c.d <= to)));
+  const live = C.ents.filter(e => !e.settled && !e.repl && !e.bounced && (inR(e) || (e.deferred && e.d < from && e.d <= to))), cods = C.cod.filter(c => !c.settled && (inR(c) || (c.deferred && c.d < from && c.d <= to)));
   const sms = Object.keys(groupBy(live.concat(cods), x => x.sm)).sort();
   const list = sms.map(sm => { const a = live.filter(e => e.sm === sm), b = cods.filter(c => c.sm === sm); const ready = a.filter(e => e.rc && e.sb); const ok = [].concat(...ready.filter(e => e.v).map(linesOfEntry)).concat(b.filter(c => c.v).map(lineOfOther)); const c = computeComm(ok, ratesOf(S.smByCode[sm]), commSettings(S.settings)); return { sm, total: c.totals.total, pay: isSal(sm) ? 0 : c.pay, sal: isSal(sm), pend: ready.filter(e => !e.v).length + b.filter(x => !x.v).length, wait: a.filter(e => !e.rc).length, bad: c.skipped.length, n: ready.length + b.length, done: ok.length, amt: sum(ready, e => e.total) + sum(b, x => x.amt), c }; });
   return { from, to, list: sortBy(list, x => x.pay, true), tot: { pay: sum(list, x => x.pay), total: sum(list, x => x.total), pend: list.reduce((a, x) => a + x.pend, 0), wait: list.reduce((a, x) => a + x.wait, 0), bad: list.reduce((a, x) => a + x.bad, 0) } };
@@ -202,10 +202,10 @@ function paintCards(o) {
 /* ---- 세일즈맨 한 명 ---- */
 function smRows() {
   const inR = r => r.d >= P.from && r.d <= P.to, carried = r => !!r.deferred && r.d < P.from && r.d <= P.to;   /* 지난 정산에서 ✓ 안 돼 넘어온 줄 */
-  const mine = C.ents.filter(e => e.sm === P.sm && !e.settled && !e.repl && (inR(e) || carried(e))), cods = C.cod.filter(c => c.sm === P.sm && !c.settled && (inR(c) || carried(c)));
+  const mine = C.ents.filter(e => e.sm === P.sm && !e.settled && !e.repl && !e.bounced && (inR(e) || carried(e))), cods = C.cod.filter(c => c.sm === P.sm && !c.settled && (inR(c) || carried(c)));
   const field = mine.filter(e => e.rc && (!P.sbOnly || e.sb)), wait = mine.filter(e => !e.rc && (!P.sbOnly || e.sb));
   const merged = sortBy(field.map(e => ({ k: 'f', x: e })).concat(cods.map(c => ({ k: 'o', x: c }))), r => r.x.d + (r.k === 'f' ? '0' : '1') + (r.x.createdAt || ''));
-  const all = C.ents.filter(e => e.sm === P.sm && !e.repl);
+  const all = C.ents.filter(e => e.sm === P.sm && !e.repl && !e.bounced);
   const why = { early: all.filter(e => e.d < P.from && !e.settled && !carried(e)).length, late: all.filter(e => e.d > P.to && !e.settled).length, closed: all.filter(e => inR(e) && e.settled).length, min: all.length ? all.map(e => e.d).sort()[0] : '', max: all.length ? all.map(e => e.d).sort().pop() : '' };
   return { mine, field, wait, cods, merged, why };
 }
@@ -232,7 +232,7 @@ function rateTag(L, rate) {
 }
 const isSal = sm => !!((S.smByCode[sm] || {}).salaried);
 /* ---- 🧮 정산 대조 (수금 흐름 ⑤) — 담당자가 건넨 기록 vs 시스템 "수금 완료" · 걸리는 것(미도착 · 미발송 · 미확인) 목록 ---- */
-const BLK_LABEL = { miss: ['📭 미도착 신고 체크', '#b91c1c'], transit: ['📦 봉투로 보냈지만 아직 도착 전', '#1e40af'], notsent: ['✉️ 아직 회사로 안 보낸 체크', '#b45309'], codpend: ['💳 확인 안 된 COD · ACH · 카드', '#b45309'], noauth: ['💳 카드 승인번호 없음', '#b91c1c'], repl: ['↩ 바운스 · 대체된 수금', '#6d28d9'] };
+const BLK_LABEL = { miss: ['📭 미도착 신고 체크', '#b91c1c'], transit: ['📦 봉투로 보냈지만 아직 도착 전', '#1e40af'], notsent: ['✉️ 아직 회사로 안 보낸 체크', '#b45309'], codpend: ['💳 확인 안 된 COD · ACH · 카드', '#b45309'], noauth: ['💳 카드 승인번호 없음', '#b91c1c'], repl: ['🔁 대체 체크 수금 (원래 수금이 셈)', '#6d28d9'], bounce: ['↩️ 바운스 — 미해결 (잔액 · 커미션에서 빠짐)', '#b91c1c'] };
 function blockersOf(rows) {
   const B = [], inR = r => r.d >= P.from && r.d <= P.to;
   rows.mine.filter(e => e.envMiss && !e.rc).forEach(e => B.push({ k: 'miss', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
@@ -242,6 +242,7 @@ function blockersOf(rows) {
   notIn.filter(e => !e.env).forEach(e => B.push({ k: 'notsent', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(' '), id: e.id, col: 'entries' }));
   rows.cods.filter(x => !x.v && !x.vbad).forEach(x => B.push({ k: 'codpend', d: x.d, store: x.store, amt: x.amt, ref: x.method + (x.ref ? ' ' + x.ref : ''), id: x.id, col: 'cod' }));
   rows.cods.filter(x => x.method === 'CREDIT CARD' && !x.ref).forEach(x => B.push({ k: 'noauth', d: x.d, store: x.store, amt: x.amt, ref: '', id: x.id, col: 'cod' }));
+  C.ents.filter(e => e.sm === P.sm && e.bounced && inR(e)).forEach(e => B.push({ k: 'bounce', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' ') + (e.settled ? ' · 정산됨' : ''), id: e.id, col: 'entries' }));
   C.ents.filter(e => e.sm === P.sm && e.repl && !e.settled && inR(e)).forEach(e => B.push({ k: 'repl', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
   return B;
 }
@@ -443,7 +444,7 @@ async function loadDed() {
   try { ar = await loadArAll(); } catch (e) {}
   const cand = { six: [], four: [], asOf: ar && ar.asOf || '', note: ar ? '' : 'AR 이 아직 없습니다' };
   if (ar && ar.stores) {
-    const paid = {}; C.ents.forEach(e => { if (e.d <= ar.asOf || e.repl) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
+    const paid = {}; C.ents.forEach(e => { if (e.d <= ar.asOf || e.repl || e.bounced) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
     ar.stores.filter(s => (s.sm || '') === sm).forEach(s => {
       let pool = {}; const invs = sortBy((s.invs || []).map(v => Object.assign({}, v, { age: v.d ? daysBetween(v.d, today()) : (v.pdd || 0) + 30 })), v => v.d || '');
       /* 기준일 뒤 받은 돈은 인보이스별로, 남으면 오래된 것부터 */
@@ -555,7 +556,7 @@ async function pageAR() {
   await loadAll();
   if (!all || !all.stores) { $('page').innerHTML = '<div class="card"><h2>💰 미수금</h2><div class="none">아직 올라온 AR 이 없습니다 — 담당자 화면 📤 AR 올리기에서 올립니다</div></div>' + '<div class="card" id="oldBox"></div>'; paintOld(); return; }
   const asOf = all.asOf, paid = {}, t = today();
-  C.ents.forEach(e => { if (e.d <= asOf || e.repl) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
+  C.ents.forEach(e => { if (e.d <= asOf || e.repl || e.bounced) return; (e.invs || []).forEach(v => { const kk = (v.acct || e.acct) + '|' + v.no; paid[kk] = R2((paid[kk] || 0) + num(v.amt)); }); });
   /* 실제 수금 담당 (최근 1년) */
   const payer = {}; C.ents.forEach(e => { if (!e.acct) return; payer[e.acct] = payer[e.acct] || {}; payer[e.acct][e.sm] = (payer[e.acct][e.sm] || 0) + 1; });
   const realSm = acct => { const m = payer[acct]; if (!m) return ''; return Object.keys(m).sort((a, b) => m[b] - m[a])[0]; };

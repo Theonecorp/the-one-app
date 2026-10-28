@@ -276,6 +276,7 @@ async function staffHome() {
   A.push(tile('stores', '🏬', bi('거래처', 'Customers'), '가게 창 · 미수금'));
   if (can('verify')) A.push(tile('verify', '💵', bi('수금 확인', 'Payments'), '세일즈맨 수금 확인'));
   if (can('invoice') || can('verify')) A.push(tile('credit', '↩', bi('크레딧 확인', 'Credits'), bt('세일즈맨이 준 크레딧 · 확인 · VOID', 'credits given by salesmen'), 'amber'));
+  if (can('verify')) A.push(tile('bounce', '↩️', bi('바운스 체크', 'Bounced checks'), bt('등록 · 세일즈맨 알림 · 해결', 'register · notify · clear'), 'amber'));
   if (can('items')) A.push(tile('items', '🏷', bi('아이템 · 재고 위치', 'Items · Inventory'), '찾기 · 위치 · 등록'));
   A.push(tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 바코드 라벨 · 엑셀'));
   A.push(tile('track', '🚚', bi('배송 조회', 'Tracking'), '가게 · 인보이스 · 트래킹'));
@@ -302,7 +303,7 @@ async function staffHome() {
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
-    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit') return Router.go(k);
+    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit' || k === 'bounce') return Router.go(k);
     if (k === 'inv' || k === 'shipped') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
     if (k === 'inv') { LF.im = 'acct'; LF.iacct = ''; LF.iq = ''; }
     LF.st = k; LF.list = true; pageOrder('');

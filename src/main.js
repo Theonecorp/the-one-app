@@ -17,6 +17,7 @@ import * as Notify from './notify.js';
 import * as Photos from './photos.js';
 import * as Envelope from './envelope.js';
 import * as Credit from './credit.js';
+import * as Bounce from './bounce.js';
 import * as Items from './items.js';
 import * as CatPage from './catpage.js';
 import * as Track from './track.js';
@@ -29,7 +30,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.93';
+export const VER = 'v0.8.94';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -42,9 +43,9 @@ const SALE = ['order', '🛒', '세일', 'Sales'], INVS = ['invs', '📄', '인�
 const HOME_STAFF = ['shome', '🏠', '홈', 'Home'], HOME_TOP = ['now', '🏠', '홈', 'Home'];
 const fixed = (home, rest) => [home, SALE, INVS, STORES].concat(rest);
 const NAV = {
-  salesman: fixed(['home', '🏠', '홈', 'Home'], [['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['cat', '📒', '카탈로그', 'Catalog'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log']]),
-  office:   fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['items', '🏷', '아이템', 'Items']]),
-  acct:     fixed(['verify', '🏠', '홈', 'Home'], [['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH']]),   // 회계: 홈 = 수금 확인
+  salesman: fixed(['home', '🏠', '홈', 'Home'], [['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['cat', '📒', '카탈로그', 'Catalog'], ['mycomm', '🧾', '정산서', 'Commission'], ['mine', '📋', '내 기록', 'My Log'], ['bounce', '↩️', '바운스', 'Bounced']]),
+  office:   fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['bounce', '↩️', '바운스', 'Bounced'], ['items', '🏷', '아이템', 'Items']]),
+  acct:     fixed(['verify', '🏠', '홈', 'Home'], [['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['bounce', '↩️', '바운스', 'Bounced']]),   // 회계: 홈 = 수금 확인
   pickinv:  fixed(HOME_STAFF, [['items', '🏷', '아이템·위치', 'Items']]),
   invoice:  fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments']]),
   whmgr:    fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory'], ['track', '🚚', '배송 조회', 'Tracking']]),   // 창고 매니저: 재고 · 출고 중심
@@ -304,7 +305,7 @@ async function boot() {
   setTimeout(checkUpdate, 4000);
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
-  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }

@@ -56,6 +56,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     // ---------- 📦 체크 봉투 — 세일즈맨이 보낸 체크 묶음, 회계 담당이 도착 맞춤 ----------
+    // ↩️ 바운스 체크 — 회계가 등록 · 해결, 세일즈맨은 자기 것 읽기 · 메모(log) · 새 체크 연결 표시만
+    match /bounces/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create, delete: if isStaff();
+      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log', 'updatedAt', 'st', 'replEid', 'replAt']) && (request.resource.data.st == resource.data.st || request.resource.data.st == 'repl'));
+    }
     match /envelopes/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
       allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by == email() && request.resource.data.st == 'sent');
