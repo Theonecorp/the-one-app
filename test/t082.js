@@ -10,7 +10,7 @@ const path = require('path');
   await pg.goto('http://127.0.0.1:8817/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.waitForSelector('#ofGo', { timeout: 8000 }).catch(() => errs.push('offline card missing on salesman home'));
   const t0 = (await pg.textContent('#offCard')).replace(/\s+/g, ' '); log('card:', t0.slice(0, 120));
-  await pg.waitForTimeout(3500);   /* 아직 안 했으면 자동 준비 */
+  await pg.waitForTimeout(11000);   /* 아직 안 했으면 8초 뒤 자동 준비 */
   const at1 = await pg.evaluate(() => localStorage.getItem('theone.offline.at')); log('auto at:', at1); if (!at1) errs.push('stale → auto prepare should run and stamp the time');
   await pg.waitForFunction(() => /자료/.test((document.getElementById('offCard') || {}).textContent || '') && !/아직 안 함/.test(document.getElementById('offCard').textContent), null, { timeout: 15000 }).catch(() => errs.push('card should show last prepared time'));
   await pg.evaluate(() => localStorage.setItem('theone.offline.at', new Date(Date.now() - 48 * 3600000).toISOString()));

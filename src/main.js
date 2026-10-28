@@ -31,7 +31,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.102';
+export const VER = 'v0.8.103';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -181,7 +181,10 @@ function userMenu() {
 async function diag() {
   const out = $('diagOut'); out.innerHTML = '<div class="load">점검 중…</div>';
   const me = S.me || {};
-  const rows = ['앱 ' + VER + ' · 로그인 <b>' + esc(S.user.email) + '</b>', '사용자 기록: 역할 ' + esc(String(me.role)) + ' · 활성 ' + esc(String(me.active)) + ' · 세일즈맨 코드 ' + esc(String(me.sm || '-')) + ' · 일 ' + esc(String(me.job || '-'))];
+  const sec = k => PERF[k] != null ? (PERF[k] / 1000).toFixed(1) + 's' : '—';
+  const res = (performance.getEntriesByType('resource') || []).find(r => /app\.js/.test(r.name)), con = navigator.connection || {};
+  const rows = ['앱 ' + VER + ' · 로그인 <b>' + esc(S.user.email) + '</b>',
+    '⏱ 로딩: 로그인 확인 ' + sec('auth') + ' → 내 기록 ' + sec('me') + ' → 설정 · 세일즈맨 ' + sec('base') + ' → 거래처 ' + sec('acc') + ' → 첫 화면 <b>' + sec('first') + '</b>' + (res ? ' · app.js ' + (res.transferSize === 0 ? '폰 보관본' : Math.round(res.transferSize / 1024) + 'KB 내려받음') + ' ' + Math.round(res.duration) + 'ms' : '') + (con.effectiveType ? ' · 연결 ' + esc(con.effectiveType) + (con.downlink ? ' ' + con.downlink + 'Mb' : '') + (con.saveData ? ' · 데이터 절약' : '') : '') + ' · 서비스워커 ' + (navigator.serviceWorker && navigator.serviceWorker.controller ? '켜짐' : '꺼짐'), '사용자 기록: 역할 ' + esc(String(me.role)) + ' · 활성 ' + esc(String(me.active)) + ' · 세일즈맨 코드 ' + esc(String(me.sm || '-')) + ' · 일 ' + esc(String(me.job || '-'))];
   const tests = [['사용자 (내 것)', () => S.DB.get('users', S.user.email)], ['설정', () => S.DB.get('settings', 'app')], ['세일즈맨', () => S.DB.list('salesmen', { limit: 1 })],
     ['거래처', () => S.DB.list('accounts', { limit: 1 })], ['아이템', () => S.DB.get('catalog', 'meta')], ['주문', () => S.DB.list('orders', S.role === 'salesman' ? { where: [['sm', '==', me.sm || '-']], limit: 1 } : { limit: 1 })]];
   /* 역할별로 화면이 실제로 읽는 자료 — 하나라도 ❌ 면 그 화면이 비거나 멈춤 (대개 Firestore 규칙 게시가 안 된 것) */
@@ -259,8 +262,11 @@ function paintNav() {
   const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? userMenu : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
 }
 
+/* ⏱ 로딩 시간 기록 — 🔎 연결 · 권한 점검에 보임 (어느 단계가 느린지) */
+const PERF = { t0: performance.now() };
+const mark = k => { PERF[k] = Math.round(performance.now()); };
 async function afterLogin(user) {
-  S.user = user;
+  mark('auth'); S.user = user;
   const email = user.email;
   let me = null;
   try { me = await S.DB.get('users', email); } catch (e) { loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ')'); return; }
@@ -273,7 +279,7 @@ async function afterLogin(user) {
   if (ADMIN_EMAILS.includes(email) && (me.active !== true || me.role !== 'admin')) {
     try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
   }
-  S.me = me; S.role = me.role || 'salesman';
+  mark('me'); S.me = me; S.role = me.role || 'salesman';
   /* 여러 화면을 쓰는 사람 (관리자 · 추가 역할) — 이 폰에서 마지막으로 본 화면으로 */
   try { const v = localStorage.getItem(VIEW_KEY()); if (v && viewsOf(me).includes(v)) S.role = v; } catch (e) {}
   busy(true);
@@ -281,8 +287,8 @@ async function afterLogin(user) {
     const [sms, st] = await Promise.all([S.DB.list('salesmen', { order: ['code', 'asc'] }), S.DB.get('settings', 'app')]);   // 동시에 읽기
     S.sms = sms; S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
     S.settings = st || {};
-    setInvTypeMap(invTypes(S));
-    S.accounts = await loadAccounts(S);
+    mark('base'); setInvTypeMap(invTypes(S));
+    S.accounts = await loadAccounts(S); mark('acc');
   } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
   busy(false);
   paintNav();
@@ -291,6 +297,7 @@ async function afterLogin(user) {
   if (!valid) location.hash = '#/' + navFor(S.role)[0][0];
   Router.stack = [];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
+  setTimeout(() => { const poll = setInterval(() => { const p = $('page'); if (p && p.textContent.length > 120 && !/읽는 중|Loading/.test(p.textContent.slice(0, 60))) { mark('first'); clearInterval(poll); } }, 200); setTimeout(() => clearInterval(poll), 30000); }, 0);
 }
 let ROUTER_ON = false;
 /* 🔒 자동 로그아웃 — 설정 idleMin(분) 동안 아무 조작이 없으면 로그아웃 (폰을 잃어버렸을 때 대비) */
