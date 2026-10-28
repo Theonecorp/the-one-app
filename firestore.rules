@@ -62,6 +62,13 @@ service cloud.firestore {
       allow create, delete: if isStaff();
       allow update: if isStaff() || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log', 'updatedAt', 'st', 'replEid', 'replAt']) && (request.resource.data.st == resource.data.st || request.resource.data.st == 'repl'));
     }
+    // 📅 체크 날짜 변경 요청 · ⏸ 홀드 — 세일즈맨은 자기 것 읽기 · 날짜 변경 요청 만들기 · 메모 · 받아온 날짜
+    match /checkReq/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.kind == 'date' && request.resource.data.st == 'open' && request.resource.data.by == email());
+      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log', 'propDep', 'updatedAt', 'st', 'doneAt', 'doneBy']) && (request.resource.data.st == resource.data.st || (request.resource.data.st == 'no' && resource.data.by == email())));
+      allow delete: if isStaff();
+    }
     match /envelopes/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
       allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by == email() && request.resource.data.st == 'sent');
