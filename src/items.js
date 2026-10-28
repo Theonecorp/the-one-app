@@ -32,7 +32,9 @@ const inPath = (x, path) => { const L = x.lv1 == null ? [x.g, x.l1, x.l2, x.l3] 
 
 async function page(arg) {
   if (!isStaff()) { $('page').innerHTML = '<div class="card"><div class="none">담당자 · 관리자만 쓰는 화면입니다</div></div>'; return; }
-  if (arg === 'noph' || String(arg || '').indexOf('noph:') === 0) { IT.q = ''; IT.mode = 'noph'; IT.path = arg.length > 5 ? decodeURIComponent(arg.substring(5)).split('/').filter(Boolean) : []; }   // 📷 사진 없는 아이템 (분류 경로)
+  if (arg === 'new') { IT.q = ''; IT.path = []; IT.mode = 'all'; setTimeout(() => form(null, ''), 400); }
+  else if (arg === 'nolv' || arg === 'nopr' || arg === 'nobar' || arg === 'hid') { IT.q = ''; IT.path = []; IT.mode = arg; }   // 🎨 할 일: 분류 없음 · 가격 없음 · 바코드 없음 · 숨김
+  else if (arg === 'noph' || String(arg || '').indexOf('noph:') === 0) { IT.q = ''; IT.mode = 'noph'; IT.path = arg.length > 5 ? decodeURIComponent(arg.substring(5)).split('/').filter(Boolean) : []; }   // 📷 사진 없는 아이템 (분류 경로)
   else if (arg) { IT.q = decodeURIComponent(arg); IT.path = []; }
   $('page').innerHTML = '<div class="load">아이템 목록 읽는 중…</div>';
   try { await loadCatalog(S); } catch (e) { if (!catalog()) { $('page').innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; } }
@@ -49,6 +51,7 @@ function current() {
   if (IT.aisle) list = list.filter(x => (aisleOf(locOf(x)) || '—') === IT.aisle).sort((a, b) => COLL.compare(locOf(a), locOf(b)) || COLL.compare(a.c, b.c));
   if (IT.path.length) list = list.filter(x => inPath(x, IT.path));
   if (IT.mode === 'vis') list = list.filter(x => !x.h); else if (IT.mode === 'hid') list = list.filter(x => x.h); else if (IT.mode === 'noph') list = list.filter(x => !x.ph && !x.h);   // 📷 사진 없음 (숨김 제외)
+  else if (IT.mode === 'nolv') list = list.filter(x => !x.l1 && !x.virt && !x.h); else if (IT.mode === 'nopr') list = list.filter(x => !(x.p > 0) && !x.h); else if (IT.mode === 'nobar') list = list.filter(x => !x.b && !x.virt && !x.h);
   return list;
 }
 
@@ -60,13 +63,13 @@ function paint() {
   IT.path = under;
   const depth = under.length;
   const crumbs = '<div class="chips crumbs" style="margin-top:8px">' + (depth ? '<button class="up" data-ip="' + (depth - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (depth ? '' : 'on') + '" data-ip="0">' + bi('전체', 'All') + '</button>' + under.map((p, i) => '<button class="' + (i === depth - 1 ? 'on' : '') + '" data-ip="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
-  const kids = node.kids.filter(k => IT.mode === 'hid' ? k.nh > 0 : IT.mode === 'vis' || IT.mode === 'noph' ? k.n > 0 : true);
+  const kids = node.kids.filter(k => IT.mode === 'hid' ? k.nh > 0 : IT.mode !== 'all' ? k.n > 0 : true);
   const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
   $('page').innerHTML = '<div class="card"><h2>🏷 ' + bi('아이템 관리', 'Items') + ' <span class="muted" style="font-weight:400;font-size:12px">' + nAll.toLocaleString() + '개 · 👁 보임 ' + (nAll - nHid).toLocaleString() + ' · 🙈 숨김 ' + nHid.toLocaleString() + '</span></h2>' +
     '<div class="muted">분류를 눌러 내려가거나 검색해서 전체를 훑어보세요. 체크해서 여러 개를 한 번에 <b>숨기기 · 보이기 · 분류 옮기기 · 삭제</b>. 🙈 숨김 아이템은 목록엔 있지만 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연). 저장하면 모든 폰에 반영됩니다.</div>' +
     (locOnly() ? '' : '<button class="b-ghost" id="itLv" style="margin-top:8px">📥 ' + bi('레벨 · 그룹 일괄 변경 (엑셀)', 'Level · Group bulk update (Excel)') + '</button>') +
     '<div style="display:flex;gap:6px;margin-top:10px"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
-    '<div class="seg" style="margin-top:8px">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()]].map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
+    '<div class="seg" style="margin-top:8px">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()]].concat(['nolv', 'nopr', 'nobar'].includes(IT.mode) ? [[IT.mode, { nolv: '🗂 ' + bt('분류 없음', 'No category'), nopr: '💲 ' + bt('가격 없음', 'No price'), nobar: '🏷 ' + bt('바코드 없음', 'No barcode') }[IT.mode]]] : []).map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
     crumbs + tiles + aisleRow(C) + '</div>' +
     '<div class="card"><div id="itList"></div></div>' + (isAdmin() ? '<div id="itSbm"></div>' : '') +
     '<div class="bulkbar" id="itBulk" style="display:none"></div>';
@@ -92,7 +95,11 @@ function aisleRow(C) {
   return '<div style="margin-top:8px"><button class="b-ghost b-sm" id="itAisT">📍 ' + bi('통로별 보기', 'By aisle') + ' ' + (IT.aisle ? '· <b>' + esc(IT.aisle === '—' ? bt('위치 없음', 'No location') : IT.aisle) + '</b>' : '(' + keys.filter(k => k !== '—').length + ')') + ' ' + (open ? '▴' : '▾') + '</button>' +
     (open ? '<div class="chips">' + keys.map(k => '<button class="' + (IT.aisle === k ? 'on' : '') + '" data-ia="' + esc(k) + '">' + (k === '—' ? bt('위치 없음', 'No location') : esc(k)) + ' <span class="en">' + m[k] + '</span></button>').join('') + '</div>' : '') + '</div>';
 }
+/** 다른 화면(📷 사진 작업대)에서 아이템 하나 열어 고치기 — 저장 뒤 done() */
+let AFTER = null;
+export function openItem(code, done) { const C = catalog(); if (!C || !C.byCode[code]) return; AFTER = done || null; form(C.byCode[code]); }
 function list() {
+  if (!$('itList')) return;
   const C = catalog(), all = current(), res = all.slice(0, IT.page), q = IT.q.trim();
   const showList = q || IT.path.length || IT.mode !== 'all' || IT.aisle;
   const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + (showList ? all.length.toLocaleString() + (IT.aisle ? '개 (위치 순)' : '개 (코드 순)') : '전체 ' + all.length.toLocaleString() + '개 — 분류를 고르거나 검색하면 목록이 나옵니다') + '</span>' +
@@ -142,7 +149,7 @@ async function applyHidden(codes, on) {
 /** 저장 공통 — 카탈로그 다시 발행 → 모든 폰 반영 */
 async function save(fn, msg) {
   busy(true);
-  try { const n = await editCatalog(S, fn); toast((msg ? msg(Number(n) || 0) : '저장') + ' · 모든 폰에 반영됩니다', 'good'); paint(); }
+  try { const n = await editCatalog(S, fn); toast((msg ? msg(Number(n) || 0) : '저장') + ' · 모든 폰에 반영됩니다', 'good'); if ($('itList')) paint(); else if (AFTER) { const f = AFTER; AFTER = null; f(); } }
   catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
   busy(false);
 }

@@ -137,7 +137,7 @@ export const Router = {
       const settle = (gg, p) => { const end = () => { if (gg === this.gen) this.done = gg; else redo(); }; if (p && p.then) p.then(end, e => { busy(false); toast('화면을 열지 못했습니다: ' + (e && (e.code || e.message) || e), 'bad'); end(); }); else end(); };
       let p; try { p = fn(arg ? decodeURIComponent(arg) : ''); } catch (e) { busy(false); toast('화면을 열지 못했습니다: ' + (e.code || e.message), 'bad'); }
       settle(g, p);
-      document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === name));
+      document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === h || (b.dataset.go === name && b.dataset.go.indexOf('/') < 0 && !document.querySelector('nav button[data-go="' + h + '"]'))));
       this.refreshBack();
       window.scrollTo(0, 0);
     };
