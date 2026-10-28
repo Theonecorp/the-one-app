@@ -31,7 +31,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.98';
+export const VER = 'v0.8.99';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -180,11 +180,22 @@ async function diag() {
   const rows = ['앱 ' + VER + ' · 로그인 <b>' + esc(S.user.email) + '</b>', '사용자 기록: 역할 ' + esc(String(me.role)) + ' · 활성 ' + esc(String(me.active)) + ' · 세일즈맨 코드 ' + esc(String(me.sm || '-')) + ' · 일 ' + esc(String(me.job || '-'))];
   const tests = [['사용자 (내 것)', () => S.DB.get('users', S.user.email)], ['설정', () => S.DB.get('settings', 'app')], ['세일즈맨', () => S.DB.list('salesmen', { limit: 1 })],
     ['거래처', () => S.DB.list('accounts', { limit: 1 })], ['아이템', () => S.DB.get('catalog', 'meta')], ['주문', () => S.DB.list('orders', S.role === 'salesman' ? { where: [['sm', '==', me.sm || '-']], limit: 1 } : { limit: 1 })]];
-  for (const [n, f] of tests) { try { await f(); rows.push('✅ ' + n); } catch (e) { rows.push('❌ ' + n + ' — ' + esc(e.code || e.message)); } }
+  /* 역할별로 화면이 실제로 읽는 자료 — 하나라도 ❌ 면 그 화면이 비거나 멈춤 (대개 Firestore 규칙 게시가 안 된 것) */
+  const ym0 = today().substring(0, 7), smq = me.sm || '-';
+  const STAFF = [['수금 entries', () => S.DB.list('entries', { where: [['ym', '==', ym0]], limit: 1 })], ['COD·카드 cod', () => S.DB.list('cod', { where: [['ym', '==', ym0]], limit: 1 })], ['미수금 ar', () => S.DB.list('ar', { limit: 1 })], ['인보이스 invoices', () => S.DB.list('invoices', { limit: 1 })],
+    ['봉투 envelopes', () => S.DB.list('envelopes', { limit: 1 })], ['바운스 bounces', () => S.DB.list('bounces', { limit: 1 })], ['체크 요청 checkReq', () => S.DB.list('checkReq', { limit: 1 })], ['알림 notifyq', () => S.DB.list('notifyq', { limit: 1 })], ['사진 itemPhotos', () => S.DB.list('itemPhotos', { limit: 1 })], ['카운터 counters', () => S.DB.get('counters', 'inv2')], ['조회 요청 invReq', () => S.DB.list('invReq', { limit: 1 })]];
+  const TOP = [['정산 settlements', () => S.DB.list('settlements', { limit: 1 })], ['공제 deductions', () => S.DB.list('deductions', { limit: 1 })], ['공장 factories', () => S.DB.list('factories', { limit: 1 })], ['공장 인보이스 factoryInvoices', () => S.DB.list('factoryInvoices', { limit: 1 })], ['공장 송금 factoryPayments', () => S.DB.list('factoryPayments', { limit: 1 })],
+    ['1099 pay1099', () => S.DB.list('pay1099', { limit: 1 })], ['1099 대상 payees', () => S.DB.list('payees', { limit: 1 })], ['보너스 bonusAcc', () => S.DB.list('bonusAcc', { limit: 1 })], ['보너스 배분 bonusDist', () => S.DB.list('bonusDist', { limit: 1 })], ['매출 sales', () => S.DB.list('sales', { limit: 1 })], ['ACH ach', () => S.DB.list('ach', { limit: 1 })], ['사용자 전체 users', () => S.DB.list('users', { limit: 1 })]];
+  const SALES = [['내 수금 entries', () => S.DB.list('entries', { where: [['sm', '==', smq]], limit: 1 })], ['내 미수금 ar', () => S.DB.get('ar', smq)], ['내 인보이스 invoices', () => S.DB.list('invoices', { where: [['sm', '==', smq]], limit: 1 })], ['내 봉투 envelopes', () => S.DB.list('envelopes', { where: [['sm', '==', smq]], limit: 1 })], ['내 바운스 bounces', () => S.DB.list('bounces', { where: [['sm', '==', smq]], limit: 1 })], ['내 체크 요청 checkReq', () => S.DB.list('checkReq', { where: [['sm', '==', smq]], limit: 1 })], ['사진 itemPhotos', () => S.DB.list('itemPhotos', { limit: 1 })]];
+  const more = S.role === 'salesman' ? SALES : STAFF.concat(S.role === 'admin' || S.role === 'owner' ? TOP : []);
+  let bad = 0;
+  for (const [n, f] of tests.concat(more)) { try { await f(); rows.push('✅ ' + n); } catch (e) { bad++; rows.push('❌ <b>' + n + '</b> — ' + esc(e.code || e.message)); } }
+  if (bad) rows.push('<br><b class="warn">❌ ' + bad + '개 자료를 읽지 못합니다.</b> 대개 Firestore 규칙이 최신으로 게시되지 않은 것입니다 — 관리자가 Firebase 콘솔 → Firestore → 규칙에 최신 firestore.rules 를 게시해 주세요. 역할이 틀렸으면 관리 → 사용자에서 역할을 확인하세요.');
+  else rows.push('<br>✅ 이 역할의 화면이 읽는 자료를 모두 읽을 수 있습니다. 그래도 화면이 비면 새로고침(🔄) 하고, 계속되면 어느 메뉴인지 알려 주세요.');
   out.innerHTML = '<div class="sumbox" style="line-height:1.8">' + rows.join('<br>') + '</div>';
   /* 📊 자료 건수 — 서버에 실제로 뭐가 들어 있나 (관리자 · 담당자) */
   if (S.role === 'salesman') return;
-  const ym0 = today().substring(0, 7), d1 = new Date(); d1.setMonth(d1.getMonth() - 1); const ym1 = d1.getFullYear() + '-' + String(d1.getMonth() + 1).padStart(2, '0');
+  const d1 = new Date(); d1.setMonth(d1.getMonth() - 1); const ym1 = d1.getFullYear() + '-' + String(d1.getMonth() + 1).padStart(2, '0');
   const cnt = async (col, q) => { try { const r = await S.DB.list(col, q || {}); return r.length; } catch (e) { return '❌ ' + (e.code || e.message); } };
   const L = [];
   L.push('거래처 accounts: <b>' + ((S.accounts && S.accounts.length) || 0) + '</b> (버전 ' + esc(String(S.settings.accountsVer || '없음')) + ')');
