@@ -155,7 +155,7 @@ function paintFac() {
   const d = facStat(FAC, YEAR), s = d, y = YEAR, TT = { '인보이스': 't-f', '이월': 't-c', '크레딧': 't-k', '운임만': 't-a' };
   h += '<div class="card"><h2>' + esc(f.name) + ' — 미지급 잔액</h2><div class="hero">' + money(d.balance) + '</div><div class="heroSub">연초 이월 ' + money(d.openBal) + ' + ' + y + ' 구매 ' + money(s.buy) + ' − 송금 ' + money(s.paid) + (s.monthsOwed ? ' · 잔액 ≈ 월평균 구매의 ' + s.monthsOwed.toFixed(1) + '배' : '') + '</div>' +
     '<div class="kpi"><div><b>' + k(s.item) + '</b><span>물품 (인보이스)</span></div><div><b>' + k(s.frt) + '</b><span>운임 (쉬핑)</span></div><div><b>' + pct2(s.frtPct) + '</b><span>운임 ÷ 물품</span></div><div><b>' + s.n + '건</b><span>' + y + ' 인보이스</span></div></div>' +
-    '<div class="btns"><button class="b-blue" id="facInv">＋ 인보이스 (물품+운임)</button><button class="b-green" id="facPay">＋ 송금</button><button class="b-ghost" id="facPrint">🖨 명세</button></div></div>';
+    '<div class="btns"><button class="b-blue" id="facInv">＋ 인보이스 (물품+운임)</button><button class="b-green" id="facPay">＋ 송금</button><button class="b-ghost" id="facPrint">🖨 명세</button><button class="b-ghost" id="facClean">🧹 중복 정리 · 합치기</button></div>' + dupWarn(FAC) + '</div>';
   const max = Math.max(1, ...d.mon.map(m => Math.max(m.buy, m.paid)));
   h += '<div class="card"><h2>' + y + ' 월별 — 구매(파랑) vs 송금(초록)</h2><div class="bars">' + d.mon.map(m => '<div style="flex:1;display:flex;gap:1px;align-items:flex-end;height:80px"><div class="b on" style="height:' + Math.max(2, Math.round(m.buy / max * 78)) + 'px" data-v="' + m.m + '월 구매 ' + k(m.buy) + '"></div><div class="b" style="height:' + Math.max(2, Math.round(m.paid / max * 78)) + 'px;background:#4ade80" data-v="' + m.m + '월 송금 ' + k(m.paid) + '"></div></div>').join('') + '</div><div class="xlab"><span>1월</span><span>6월</span><span>12월</span></div>' +
     '<table style="margin-top:8px;font-size:12.5px"><tr><th>월</th><th class="r">물품</th><th class="r">운임</th><th class="r">운임%</th><th class="r">구매 합</th><th class="r">송금</th></tr>' + d.mon.filter(m => m.buy || m.paid).map(m => '<tr><td>' + m.m + '월 <small class="muted">' + m.n + '건</small></td><td class="r">' + k(m.item) + '</td><td class="r">' + k(m.frt) + '</td><td class="r ' + (m.frtPct > 15 ? 'warn' : '') + '">' + pct2(m.frtPct) + '</td><td class="r"><b>' + k(m.buy) + '</b></td><td class="r" style="color:#15803d">' + k(m.paid) + '</td></tr>').join('') + '<tr style="font-weight:800"><td>합계</td><td class="r">' + k(s.item) + '</td><td class="r">' + k(s.frt) + '</td><td class="r">' + pct2(s.frtPct) + '</td><td class="r">' + k(s.buy) + '</td><td class="r" style="color:#15803d">' + k(s.paid) + '</td></tr></table></div>';
@@ -179,9 +179,50 @@ function paintFac() {
       d.rows.map(x => { const inv = x.k === 'inv'; return '<div class="pr tap" data-fe="' + x.k + '|' + x.id + '"><div class="ct"><b>' + md(x.d) + ' ' + (inv ? '<span class="tag ' + (TT[x.type] || 't-f') + '">' + esc(x.type) + '</span>' : '<span class="tag t-k">송금</span>') + (inv && x.type === '인보이스' ? ' <span style="font-weight:500;color:#64748b;font-size:12px">물품 ' + k(x.item) + ' + 운임 ' + k(x.frt) + (x.item > 0 ? ' (' + pct2(x.frt / x.item * 100) + ')' : '') + '</span>' : '') + (inv && x.amt > 0 ? ' ' + stTag(x) : '') + '</b>' + (x.note ? '<small>' + esc(x.note) + '</small>' : '') + '</div><div class="pa"><b style="color:' + (inv ? (x.amt < 0 ? '#15803d' : '#0f172a') : '#15803d') + '">' + (inv ? signed(x.amt) : '− ' + money(x.amt)) + '</b><small>잔액 ' + money(x.run) + '</small></div></div>'; }).join('')) : '<div class="none">이 해 기록이 없습니다</div>') + '</div>';
   box.innerHTML = h; bindFacHead();
   box.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { LV = b.dataset.lv; paintFac(); });
-  $('facInv').onclick = () => invForm(); $('facPay').onclick = () => payForm();
+  $('facInv').onclick = () => invForm(); $('facPay').onclick = () => payForm(); $('facClean').onclick = () => cleanupModal(FAC);
   $('facPrint').onclick = () => printOpen('<h1>' + esc(f.name) + ' — ' + y + ' Statement</h1><div class="meta">THE ONE CORP · 출력 ' + today() + ' · 연초 이월 ' + money(d.openBal) + ' · 현재 잔액 <b>' + money(d.balance) + '</b></div><table class="box"><tr><td>' + y + ' 구매 (물품 ' + money(d.item) + ' + 운임 ' + money(d.frt) + ')</td><td class="r">' + money(d.buy) + '</td></tr><tr><td>' + y + ' 송금</td><td class="r">' + money(d.paid) + '</td></tr><tr class="fin"><td>잔액 BALANCE</td><td class="r">' + money(d.balance) + '</td></tr></table><table><tr><th>Date</th><th>구분</th><th class="r">Item</th><th class="r">Freight</th><th class="r">Amount</th><th class="r">Paid</th><th class="r">Balance</th><th>Status</th><th>Note</th></tr>' + d.rows.slice().reverse().map(x => { const inv = x.k === 'inv', a = inv ? al.inv[x.id] : null; return '<tr><td>' + x.d + '</td><td>' + (inv ? esc(x.type) : '송금') + '</td><td class="r">' + (inv && x.type === '인보이스' ? money(x.item) : '') + '</td><td class="r">' + (inv && x.frt ? money(x.frt) : '') + '</td><td class="r">' + (inv ? signed(x.amt) : '') + '</td><td class="r">' + (inv ? '' : money(x.amt)) + '</td><td class="r">' + money(x.run) + '</td><td>' + (a ? (a.st === 'ok' ? 'PAID' : a.st === 'part' ? 'PARTIAL (' + money(a.left) + ' due)' : 'OPEN') : '') + '</td><td>' + esc(x.note || '') + '</td></tr>'; }).join('') + '</table>');
   box.querySelectorAll('[data-fe]').forEach(el => el.onclick = () => { const [kk, id] = el.dataset.fe.split('|'); const x = (kk === 'inv' ? D.inv : D.pay).find(r => r.id === id); if (kk === 'inv') invForm(x); else payForm(x); });
+}
+/* ---------- 🧹 중복 정리 — 명세서(src 'stmt') 줄과 옛 자료(seed) · 손입력 줄이 같은 연도에 겹칠 때 명세서만 남김 · 공장 합치기 ----------
+ *   명세서 가져오기(v0.8.90)가 처음엔 옛 자료 줄을 두고 새 줄만 넣어 겹친 것을 바로잡는 도구. 명세서가 그 연도의 기준이므로 겹치는 연도는 명세서만 남기면 됨 */
+const srcOf = x => x.src === 'stmt' ? 'stmt' : (x.seed || x.src) ? 'seed' : 'manual';
+function facYears(code) {
+  const Y = {}; const add = (x, k) => { const y = String(x.d || '').substring(0, 4); if (!y) return; const o = Y[y] = Y[y] || { y, inv: { stmt: [], seed: [], manual: [] }, pay: { stmt: [], seed: [], manual: [] } }; o[k][srcOf(x)].push(x); };
+  D.inv.filter(x => x.f === code && !x.void).forEach(x => add(x, 'inv')); D.pay.filter(x => x.f === code && !x.void).forEach(x => add(x, 'pay'));
+  return Object.values(Y).sort((a, b) => a.y.localeCompare(b.y));
+}
+const dupYears = code => facYears(code).filter(o => (o.inv.stmt.length || o.pay.stmt.length) && (o.inv.seed.length + o.inv.manual.length + o.pay.seed.length + o.pay.manual.length));
+function dupWarn(code) {
+  const D2 = dupYears(code); if (!D2.length) return '';
+  return '<div class="alert a-red" style="margin-top:8px">⚠️ <b>겹치는 줄이 있습니다</b> — ' + D2.map(o => o.y + '년: 명세서 ' + (o.inv.stmt.length + o.pay.stmt.length) + '줄 + 그 전 자료 ' + (o.inv.seed.length + o.inv.manual.length + o.pay.seed.length + o.pay.manual.length) + '줄').join(' · ') + '. 잔액 · 송금이 두 번 잡혀 있으니 <b>🧹 중복 정리</b>로 명세서만 남기세요.</div>';
+}
+function cleanupModal(code) {
+  const f = D.fac.find(x => x.code === code); if (!f) return;
+  const Y = facYears(code), cnt = L => L.length + '줄 ' + k(sum(L, x => x.amt));
+  const rows = Y.map(o => { const other = o.inv.seed.length + o.inv.manual.length + o.pay.seed.length + o.pay.manual.length, hasS = o.inv.stmt.length + o.pay.stmt.length;
+    return '<tr><td><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-cy="' + o.y + '" ' + (hasS && other ? 'checked' : '') + (hasS ? '' : ' disabled') + '><b>' + o.y + '</b></label></td><td class="r" style="font-size:12px">' + (o.inv.stmt.length ? cnt(o.inv.stmt) : '—') + '<br><span style="color:#15803d">' + (o.pay.stmt.length ? cnt(o.pay.stmt) : '—') + '</span></td><td class="r" style="font-size:12px">' + (o.inv.seed.length ? cnt(o.inv.seed) : '—') + '<br><span style="color:#15803d">' + (o.pay.seed.length ? cnt(o.pay.seed) : '—') + '</span></td><td class="r" style="font-size:12px">' + (o.inv.manual.length ? cnt(o.inv.manual) : '—') + '<br><span style="color:#15803d">' + (o.pay.manual.length ? cnt(o.pay.manual) : '—') + '</span></td></tr>'; }).join('');
+  const others = D.fac.filter(x => x.code !== code);
+  openModal('<h2>🧹 ' + esc(f.name) + ' — 중복 정리</h2><div class="muted">같은 연도에 <b>명세서</b> 줄과 <b>그 전 자료</b>(옛 대시보드 · 손입력) 줄이 함께 있으면 두 번 잡힙니다. 체크한 연도는 <b>명세서 줄만 남기고</b> 나머지를 지웁니다. 위 줄은 인보이스, 아래 초록 줄은 송금.</div>' +
+    '<table style="margin-top:8px"><tr><th>연도</th><th class="r">📄 명세서</th><th class="r">옛 자료</th><th class="r">손입력</th></tr>' + (rows || '<tr><td colspan="4" class="muted">기록 없음</td></tr>') + '</table>' +
+    '<label class="muted" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="clMan" checked> 손입력 줄도 지움 (명세서에 이미 들어 있는 줄이면 중복) — 명세서에 없는 손입력이 있으면 끄고 따로 두세요</label>' +
+    '<div class="btns"><button class="b-ghost" id="clX">닫기</button><button class="b-red" id="clGo">명세서만 남기기</button></div>' +
+    (others.length ? '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><h2 style="font-size:15px">🔗 다른 공장을 이 공장으로 합치기</h2><div class="muted">명세서를 넣을 때 새 공장으로 등록돼 같은 공장이 둘이 됐으면, 그 공장의 모든 줄을 <b>' + esc(f.name) + '</b> 으로 옮기고 그 공장은 비활성으로 둡니다.</div><div class="two" style="margin-top:6px">' + sel('mgFrom', [['', '— 합칠 공장 —']].concat(others.map(x => [x.code, x.name + ' (' + x.code + ') · ' + D.inv.filter(i => i.f === x.code).length + '·' + D.pay.filter(i => i.f === x.code).length + '줄'])), '') + '<button class="b-ghost" id="mgGo">합치기</button></div>' : ''));
+  $('clX').onclick = closeModal;
+  $('clGo').onclick = async () => {
+    const ys = Array.from(document.querySelectorAll('[data-cy]:checked')).map(c => c.dataset.cy); if (!ys.length) return toast('연도를 체크하세요', 'bad');
+    const man = $('clMan').checked, ops = [];
+    Y.filter(o => ys.includes(o.y)).forEach(o => { ['inv', 'pay'].forEach(kk => { o[kk].seed.concat(man ? o[kk].manual : []).forEach(x => ops.push({ op: 'del', col: kk === 'inv' ? 'factoryInvoices' : 'factoryPayments', id: x.id })); }); });
+    if (!ops.length) return toast('지울 줄이 없습니다');
+    if (!(await confirmBox(ys.join(', ') + '년의 명세서 아닌 줄 ' + ops.length + '개를 지울까요? 되돌릴 수 없습니다.', ops.length + '줄 지우기'))) return;
+    busy(true); try { await S.DB.batch(ops); toast('🧹 ' + ops.length + '줄 정리', 'good'); await load(true); page(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
+  };
+  if ($('mgGo')) $('mgGo').onclick = async () => {
+    const from = $('mgFrom').value; if (!from) return toast('합칠 공장을 고르세요', 'bad'); const g = D.fac.find(x => x.code === from);
+    const ops = []; D.inv.filter(x => x.f === from).forEach(x => ops.push({ op: 'update', col: 'factoryInvoices', id: x.id, data: { f: code } })); D.pay.filter(x => x.f === from).forEach(x => ops.push({ op: 'update', col: 'factoryPayments', id: x.id, data: { f: code } }));
+    ops.push({ op: 'update', col: 'factories', id: from, data: { active: false, mergedInto: code } });
+    if (!(await confirmBox(g.name + ' 의 ' + (ops.length - 1) + '줄을 ' + f.name + ' 으로 옮기고 ' + g.name + ' 은 비활성으로 둘까요?', '합치기'))) return;
+    busy(true); try { await S.DB.batch(ops); toast('🔗 합쳤습니다 — ' + (ops.length - 1) + '줄', 'good'); closeModal(); await load(true); page(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
+  };
 }
 function bindFacHead() {
   document.querySelectorAll('[data-fc]').forEach(b => b.onclick = () => { FAC = b.dataset.fc; page(); });
