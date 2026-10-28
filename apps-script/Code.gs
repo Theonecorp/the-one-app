@@ -50,6 +50,7 @@ function run() {
   try {
     try { notifyRun_(); } catch (e) { Logger.log('알림 보내기 실패: ' + e.message); }
     try { envelopesLate_(); } catch (e) { Logger.log('봉투 미도착 확인 실패: ' + e.message); }
+    try { photoIndexRun_(); } catch (e) { Logger.log('사진 색인 실패: ' + e.message); }
     let list = [];
     try { list = query_('reports', 'mail', 'wait', 20); }
     catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면 이어서 보냅니다'); return; } throw e; }
@@ -137,6 +138,24 @@ function envelopesLate_() {
 }
 
 /** 이메일 → 구글 사용자 ID (챗 @멘션용). Admin Directory 로 한 번 찾고 스크립트 속성에 기억. 못 찾으면 '' (멘션 없이 올림) */
+/* ---------- 📷 드라이브 사진 색인 — 한 시간마다 item_picture · Gallery 폴더의 파일 이름(코드)을 Firestore catalog/photoIndex 에 써 둠 ----------
+ *   앱은 이 색인으로 코드와 같은 이름의 사진을 자동으로 붙임 (사진 주소를 손으로 적을 필요 없음).
+ *   폴더 이름: item_picture (아이템 사진) · Gallery (세트 · 인서트 사진). 스크립트 속성 PHOTO_FOLDER_ID / GALLERY_FOLDER_ID 를 넣으면 그 폴더를 씀.
+ *   사진은 "링크가 있는 모든 사용자" 로 공유된 폴더에 있어야 폰에서 보입니다. */
+function photoIndexRun_() {
+  const P = PropertiesService.getScriptProperties(), last = Number(P.getProperty('PHOTO_IDX_AT') || 0);
+  if (Date.now() - last < 55 * 60 * 1000) return;
+  P.setProperty('PHOTO_IDX_AT', String(Date.now()));
+  const folder_ = (prop, name) => { const id = P.getProperty(prop); if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} } const it = DriveApp.getFoldersByName(name); return it.hasNext() ? it.next() : null; };
+  const scan_ = (folder, out) => { if (!folder) return 0; let n = 0; const walk = f => { const files = f.getFiles(); while (files.hasNext()) { const x = files.next(); const nm = String(x.getName() || ''); if (!/\.(jpe?g|png|webp|gif|heic)$/i.test(nm)) continue; const code = nm.replace(/\.[^.]+$/, '').trim().toUpperCase(); if (!code || out[code]) continue; out[code] = x.getId(); n++; } const subs = f.getFolders(); while (subs.hasNext()) walk(subs.next()); }; walk(folder); return n; };
+  const pic = {}, gal = {};
+  const n1 = scan_(folder_('PHOTO_FOLDER_ID', 'item_picture'), pic), n2 = scan_(folder_('GALLERY_FOLDER_ID', 'Gallery'), gal);
+  if (!n1 && !n2) { Logger.log('사진 폴더(item_picture · Gallery)를 찾지 못했습니다'); return; }
+  const at = new Date().toISOString();
+  patch_('catalog', 'photoIndex', { pic, gal, n: n1 + n2, at });
+  Logger.log('사진 색인: item_picture ' + n1 + ' · Gallery ' + n2);
+}
+function testPhotoIndex() { PropertiesService.getScriptProperties().deleteProperty('PHOTO_IDX_AT'); photoIndexRun_(); const d = getDoc_('catalog', 'photoIndex'); Logger.log(d ? '색인 ' + d.n + '개 · ' + d.at : '색인 없음'); }
 function chatId_(email) {
   const P = PropertiesService.getScriptProperties(), k = 'CHATID_' + String(email).toLowerCase();
   const c = P.getProperty(k); if (c) return c === '-' ? '' : c;
@@ -207,7 +226,7 @@ function fromVal_(v) {
   if ('booleanValue' in v) return v.booleanValue; if ('nullValue' in v) return null; if ('timestampValue' in v) return v.timestampValue;
   if ('arrayValue' in v) return (v.arrayValue.values || []).map(fromVal_); if ('mapValue' in v) return fromFields_(v.mapValue.fields || {}); return null;
 }
-function toVal_(x) { if (x === null || x === undefined) return { nullValue: null }; if (typeof x === 'number') return { doubleValue: x }; if (typeof x === 'boolean') return { booleanValue: x }; return { stringValue: String(x) }; }
+function toVal_(x) { if (x === null || x === undefined) return { nullValue: null }; if (typeof x === 'number') return { doubleValue: x }; if (typeof x === 'boolean') return { booleanValue: x }; if (Array.isArray(x)) return { arrayValue: { values: x.map(toVal_) } }; if (typeof x === 'object') { const f = {}; Object.keys(x).forEach(k => { f[k] = toVal_(x[k]); }); return { mapValue: { fields: f } }; } return { stringValue: String(x) }; }
 
 /* ---------- 작은 도구 ---------- */
 function dataUrlBlob_(s, name) { const m = String(s || '').match(/^data:([^;]+);base64,(.+)$/); if (!m || m[2].length < 2000) return null; const ext = m[1].indexOf('png') >= 0 ? '.png' : '.jpg'; return Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], name + ext); }

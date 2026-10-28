@@ -141,11 +141,20 @@ if (typeof document !== 'undefined') {
 }   // { pic: {code: driveId}, gal: {code: driveId} }
 export function photoIndex() { return PHX; }
 export const driveUrl = (id, w) => 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + (w || 400);
+const mergePhx = (base, over) => ({ pic: Object.assign({}, (base && base.pic) || {}, (over && over.pic) || {}), gal: Object.assign({}, (base && base.gal) || {}, (over && over.gal) || {}) });
+let PHX_STATIC = false, PHX_FS = '';
 async function loadPhotoIndex() {
-  if (PHX) return;
-  try { const r = await fetch('data/photo-index.json'); if (r.ok) { PHX = await r.json(); await idbSet(IDB_KEY + '.phx', PHX); } } catch (e) {}
-  if (!PHX) { const c = await idbGet(IDB_KEY + '.phx'); if (c && c.pic) PHX = c; }
+  if (PHX_STATIC) return; PHX_STATIC = true;
+  let j = null;
+  try { const r = await fetch('data/photo-index.json'); if (r.ok) j = await r.json(); } catch (e) {}
+  if (!j) { const c = await idbGet(IDB_KEY + '.phx'); if (c && c.pic) j = c; }
+  if (j) { PHX = mergePhx(j, PHX); await idbSet(IDB_KEY + '.phx', PHX); }
   if (PHX && CAT) fixPhotos(CAT);
+}
+/* ☁️ 드라이브 사진 색인 — Apps Script(THE ONE Mail · photoIndexRun_) 가 한 시간마다 item_picture · Gallery 폴더를 훑어 catalog/photoIndex 에 써 둠
+ *   → 코드 이름으로 올린 사진이 사진 주소 없이도 자동으로 붙음. data/photo-index.json(앱에 든 바탕 색인) 위에 덧씀 */
+async function loadPhotoIndexFs(S) {
+  try { const d = await S.DB.get('catalog', 'photoIndex'); if (d && d.pic && (d.at || '') !== PHX_FS) { PHX = mergePhx(PHX, { pic: d.pic, gal: d.gal || {} }); PHX_FS = d.at || 'x'; if (CAT) fixPhotos(CAT); } } catch (e) {}
 }
 const colorOf = d => { d = String(d || '').toUpperCase(); const g = /GOLD/.test(d), s = /SILVER|SLV|RHODIUM/.test(d); return g && !s ? 'G' : s && !g ? 'S' : ''; };
 const codeInUrl = (c, u) => { const U = String(u || '').toUpperCase(), i = U.lastIndexOf('/'); const f = U.substring(i + 1).split('?')[0]; return f.startsWith(c.toUpperCase() + '.') || f.startsWith(c.toUpperCase() + '_') || f.startsWith(c.toUpperCase() + '-'); };
@@ -193,6 +202,7 @@ export async function loadCatalog(S, force) {
   }
   if (!meta || !meta.ver) { CAT = index({ ver: '', rows: [], cats: [] }); return CAT; }
   await loadPhotoOv(S, meta);
+  await loadPhotoIndexFs(S);
   const sv = meta.setsVer || '';
   if (CAT && CAT.ver === meta.ver && CAT.setsVer === sv && !force) return CAT;
   const cached = force ? null : await idbGet(IDB_KEY);
