@@ -56,7 +56,7 @@ async function pageVerify() {
   const accs = VF.q && !/^\d{5,}$/.test(VF.q.trim()) ? searchAccounts(S.accounts, VF.q, 6) : [];
   let h = '<div class="kpi" style="margin:0 0 10px">' + [['todo', '① 접수 확인 대기', todo.length, 'To review'], ['wait', '② 체크 수령 대기', wait.length, 'Awaiting check'], ['bad', '⚠️ 차액', bad.length, 'Mismatch'], ['all', '오늘 수금', money(sum(tdy, r => r.total)), 'Today ' + tdy.length]].map(c => '<div class="tap' + (VF.f === c[0] ? ' on' : '') + '" data-vf="' + c[0] + '" style="' + (VF.f === c[0] ? 'background:var(--blue2);outline:2px solid var(--blue)' : '') + '"><b>' + c[2] + '</b><span>' + c[1] + '<br><i class="en">' + c[3] + '</i></span></div>').join('') + '</div>' +
     '<div class="card"><h2>💵 수금 확인 <span class="en">Payment review</span></h2>' +
-    '<div class="muted">세일즈맨이 넣은 수금을 보고 <b>① 접수 확인</b>(내용이 맞고 앱 인보이스에 입금 반영) → 실물 체크가 오면 <b>② 체크 수령</b> → 루크가 ③ 정산. COD · 카드는 💳 탭. <span class="en">Review → check received → settled by Luke.</span></div>' +
+    '<div class="muted">세일즈맨이 넣은 수금을 보고 <b>① 접수 확인</b>(내용이 맞고 앱 인보이스에 입금 반영) → 실물 체크가 오면 <b>② 체크 수령</b> → 관리자가 ③ 정산. COD · 카드는 💳 탭. <span class="en">Review → check received → settled by the administrator.</span></div>' +
     '<div class="two" style="margin-top:8px">' + sel('vfSm', [['', '전체 세일즈맨 · All salesmen']].concat(smOptions()), VF.sm) + '<input id="vfQ" placeholder="가게 · 계정 · 체크번호 / Store · Acct · Check #" value="' + esc(VF.q) + '" autocomplete="off"></div>' +
     (accs.length ? '<div class="chips">' + accs.map(a => '<button data-vacc="' + esc(a.acct) + '">📚 ' + esc(a.store) + ' ' + esc(a.acct) + ' 전체 기록</button>').join('') + '</div>' : '') +
     '<div class="chips" style="margin-top:4px"><button class="' + (VF.grp === 'sm' ? 'on' : '') + '" data-vg="sm">👤 세일즈맨별 · By salesman</button><button class="' + (VF.grp === 'day' ? 'on' : '') + '" data-vg="day">📅 날짜별 · By day</button><button class="' + (VF.f === 'done' ? 'on' : '') + '" data-vf="done">📁 정산 완료 · Settled</button></div></div>' +
@@ -180,7 +180,7 @@ async function pageCod() {
   const all = rows;   /* 겹침 검사는 걸러보기와 상관없이 최근 2개월 전부 */
   if (CF.m !== 'all') rows = rows.filter(r => r.method === CF.m);
   const by = groupBy(rows, r => r.d), days = Object.keys(by).sort().reverse();
-  let h = '<div class="card"><h2>💳 COD · 카드 입력</h2><div class="muted">우편 체크 · COD · 카드로 들어온 돈. 세일즈맨을 골라 넣으면 루크 정산에 바로 뜹니다.<br><span style="color:#1e40af">🏦 ACH 는 여기서 입력하지 않습니다 — <u data-goach>ACH 메뉴</u>에서 인출 완료하면 자동으로 이 목록에 들어옵니다.</span></div>' +
+  let h = '<div class="card"><h2>💳 COD · 카드 입력</h2><div class="muted">우편 체크 · COD · 카드로 들어온 돈. 세일즈맨을 골라 넣으면 정산 화면에 바로 뜹니다.<br><span style="color:#1e40af">🏦 ACH 는 여기서 입력하지 않습니다 — <u data-goach>ACH 메뉴</u>에서 인출 완료하면 자동으로 이 목록에 들어옵니다.</span></div>' +
     '<div class="chips">' + [['all', '전체'], ['COD', 'COD'], ['CREDIT CARD', '카드'], ['ACH', 'ACH']].map(c => '<button class="' + (CF.m === c[0] ? 'on' : '') + '" data-cm="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' +
     '<button class="b-blue" id="btnCodNew" style="margin-top:8px">＋ 입력</button></div>';
   if (!days.length) h += '<div class="card"><div class="none">최근 2개월 기록 없음</div></div>';
@@ -383,7 +383,7 @@ export async function bumpAccountsVer() {
 /* ============================================================
  *  ⑤ AR 올리기 — 이전 시스템 AR 엑셀을 그대로 올리면 세일즈맨별로 나눠 저장
  *  ar/{SM} = { sm, asOf, total, stores:[{acct, store, total, b[5], invs:[{inv,d,amt,bal,pdd,bk}], lastPaid, dormant, moved}] }
- *  ar/_all = 전체 (루크 미수금 탭)
+ *  ar/_all = 전체 (관리자 미수금 탭)
  * ============================================================ */
 async function pageArUp() {
   const asOf = S.settings.arAsOf || '';

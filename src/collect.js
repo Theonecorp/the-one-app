@@ -41,7 +41,7 @@ resetForm();
  * ============================================================ */
 let TAB = 'new', TODAY_D = today(), HQ = '';
 async function hub(tab, arg) {
-  if (isSales() && !me()) { $('page').innerHTML = '<div class="card"><div class="none">이 계정에 세일즈맨 코드가 연결돼 있지 않습니다.<br>루크가 관리 → 사용자에서 세일즈맨을 지정해야 합니다.</div></div>'; return; }
+  if (isSales() && !me()) { $('page').innerHTML = '<div class="card"><div class="none">이 계정에 세일즈맨 코드가 연결돼 있지 않습니다.<br>관리자가 관리 → 사용자에서 세일즈맨을 지정해야 합니다.</div></div>'; return; }
   TAB = tab;
   if (tab === 'new') {
     if (arg && arg !== 'new') { const e = await S.DB.get('entries', arg); if (e) loadIntoForm(e); }
@@ -452,7 +452,7 @@ async function sendReport(pend) {
     /* 📧 메일용 표 — 구글 Apps Script(apps-script/Code.gs)가 1분마다 mail:'wait' 을 찾아 보낸 사람 + 담당자 알림 이메일로 보냄 */
     const rows = pend.map(r => { const a = (S.accounts.byCode && S.accounts.byCode[r.acct]) || {}; const pays = r.pays || [], ck = pays.filter(p => p.m === 'CHECK'); return { store: r.store || '', acct: r.acct || '', addr: [a.addr || r.addr || '', [a.city, a.state].filter(Boolean).join(', ') + (a.zip ? ' ' + a.zip : '')].filter(Boolean).join(', '), pay: Array.from(new Set(pays.map(p => p.m))).join(', '), ref: pays.map(p => p.ref).filter(Boolean).join(', '), amt: R2(r.total || 0), invs: (r.invs || []).map(v => ({ no: v.no, amt: R2(v.amt || 0) })), memo: r.memo || '', rcv: r.d || TODAY_D, dep: (ck.find(p => p.dep) || {}).dep || '' }; });
     try { await S.DB.set('reports', id, { id, sm: me(), d: TODAY_D, n: pend.length, total: R2(sum(pend, r => r.total)), entries: pend.map(r => r.id), rows, photos, to: REPORT_TO(), sentAt: now, by: S.user.email, mail: 'wait' }); }
-    catch (e) { if (String(e.code).includes('permission')) throw new Error('리포트 저장 권한이 없습니다 — Firestore 규칙에 reports 를 추가해야 합니다 (루크)'); throw e; }
+    catch (e) { if (String(e.code).includes('permission')) throw new Error('리포트 저장 권한이 없습니다 — Firestore 규칙에 reports 를 추가해야 합니다 (관리자)'); throw e; }
     for (const r of pend) await S.DB.update('entries', r.id, { rep: true, repAt: now, repId: id });
     clearEntryCache(); PHOTOS = [];
     /* 메일은 Apps Script 가 1~2분 안에 자동으로 보냄 — 안 갔으면 기록 탭 "📧 보낸 Daily Report" 에서 다시 보내기 */
