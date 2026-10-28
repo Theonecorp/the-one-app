@@ -32,7 +32,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.105';
+export const VER = 'v0.8.106';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -53,8 +53,8 @@ const NAV = {
   whmgr:    fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory'], ['track', '🚚', '배송 조회', 'Tracking']]),   // 창고 매니저: 재고 · 출고 중심
   pick:     fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory']]),
   catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['catmg/tree', '🗂', '분류', 'Categories'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 분류 · 카탈로그만 (주문 · 수금 없음)
-  owner:    [['own', '🏠', '홈', 'Home'], ['mg/sales', '📈', '매출', 'Sales'], ['bossar', '💰', '미수금', 'A/R'], ['now', '💵', '수금', 'Collections'], ['mg/fac', '🏭', '공장', 'Factories']],   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
-  admin:    fixed(HOME_TOP, [['pay', '🧾', '정산', 'Payroll'], ['bossar', '💰', '미수금', 'A/R'], ['mg', '🏭', '경영', 'Business'], ['admin', '⚙️', '관리', 'Admin']])
+  owner:    [['own', '🏠', '홈', 'Home'], ['mg/sales', '📈', '매출', 'Sales'], ['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['now', '💵', '수금', 'Collections']],   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
+  admin:    [['own', '🏠', '홈', 'Home'], ['mg/sales', '📈', '매출', 'Sales'], ['mg', '🏭', '경영', 'Business'], ['pay', '🧾', '정산', 'Payroll'], ['admin', '⚙️', '관리', 'Admin']]   // 관리자: 오너와 같은 대시보드 + 정산 · 관리 · 🔁 모드(오너 · 담당자 · 세일즈) — 미수금 · 수금은 홈 칸에서
 };
 NAV.manager = NAV.office;
 /* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자는 전부 */
@@ -94,7 +94,8 @@ function navFor(r) {
   if (!items.length) items = [['stores', '🏬', '거래처', 'Stores']];
   /* 🔁 모드 탭 — 여러 화면을 쓰는 사람(오너 겸 세일즈 등)은 아래 메뉴에서 바로 바꿈 */
   const vs = viewsOf(S.me || {}), base = (S.me && S.me.role) || r;
-  if (r !== 'salesman' && vs.includes('salesman')) items.push(['view/salesman', '🚗', '세일즈 모드', 'Sales mode']);
+  if (base === 'admin') items.push(['view/menu', '🔁', '모드', 'Mode']);   // 관리자: 오너 · 담당자(일 선택) · 세일즈 모드 고르기 창
+  else if (r !== 'salesman' && vs.includes('salesman')) items.push(['view/salesman', '🚗', '세일즈 모드', 'Sales mode']);
   else if (r === 'salesman' && base !== 'salesman' && vs.includes(base)) items.push(['view/' + base, base === 'owner' ? '🏭' : base === 'admin' ? '⚙️' : '🧑‍💼', base === 'owner' ? '경영 모드' : base === 'admin' ? '관리 모드' : '담당 모드', base === 'owner' ? 'Business' : base === 'admin' ? 'Admin' : 'Staff']);
   return items;
 }
@@ -257,7 +258,7 @@ function paintNav() {
   const items = navFor(S.role);
   Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '<span class="en">' + (x[3] || '') + '</span></button>').join('');
-  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go, [r, a] = g.split('/'); Router.navTap = r; if (location.hash === '#/' + g) { const f = Router.routes[r]; if (f) f(a || ''); } else if (a) Router.go(r, a); else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
+  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go, [r, a] = g.split('/'); if (g === 'view/menu') return userMenu(); Router.navTap = r; if (location.hash === '#/' + g) { const f = Router.routes[r]; if (f) f(a || ''); } else if (a) Router.go(r, a); else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
   navH();
   $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
   const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? userMenu : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
