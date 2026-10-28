@@ -706,6 +706,7 @@ async function factoryStatementFile(file, out) {
       (hit ? '<div class="muted" style="font-size:12px">이름이 맞는 기존 공장 <b>' + esc(hit.name) + '</b> 으로 들어갑니다. 다른 공장이면 위에서 바꾸세요.</div>' : '<div class="muted" style="font-size:12px">맞는 기존 공장이 없어 새 공장으로 등록합니다. 이미 있는 공장이면 위에서 고르세요.</div>') +
       '<table style="margin-top:8px"><tr><th>연도</th><th class="r">인보이스 (물품+운임)</th><th class="r">파일 TOTAL</th><th class="r">송금</th><th class="r">파일 DEPOSIT</th></tr>' + rowsHtml + '</table>' +
       (P.warn.length ? '<div class="alert a-amb" style="margin-top:8px">⚠️ ' + P.warn.length + '줄은 읽지 못해 빠집니다<div style="font-size:12px;max-height:120px;overflow:auto">' + P.warn.slice(0, 30).map(esc).join('<br>') + '</div></div>' : '') +
+      '<label style="display:flex;gap:6px;align-items:flex-start;margin-top:10px;padding:8px 10px;border:1.5px solid #fca5a5;background:#fef2f2;border-radius:10px"><input type="checkbox" id="fsAll" checked style="margin-top:3px"> <span><b>📄 이 공장을 엑셀대로 완전히 맞추기 (권장)</b> — 이 공장의 지금 줄(인보이스 · 송금)을 <b>모두 지우고</b> 이 파일의 줄만 넣습니다. 잘못 지웠거나 겹친 것이 있어도 파일 그대로 돌아옵니다. 끄면 아래 선택대로 연도별로만 바꿉니다.</span></label>' +
       (P.sheets[0] && !P.sheets[0].fwd && !P.sheets[0].fwdSkipped && P.inv.length ? '<label class="muted" style="display:flex;gap:6px;align-items:flex-start;margin-top:8px"><input type="checkbox" id="fsPre" checked style="margin-top:3px"> <span>첫 탭(' + esc(P.sheets[0].year) + ')에 <b>이월(BALANCE FORWARD)이 없습니다</b> → 이 명세서는 첫 줄 날짜(' + esc(firstDate(P)) + ') 전 잔액을 0 으로 봅니다. 이 공장의 <b>그 전 날짜 줄을 모두 지웁니다</b> (옛 파일 · 옛 자료). 끄면 그대로 둡니다.</span></label>' : '') +
       '<label class="muted" style="display:flex;gap:6px;align-items:flex-start;margin-top:8px"><input type="checkbox" id="fsRepl" checked style="margin-top:3px"> <span>이 공장의 ' + esc(years.join(', ')) + '년 <b>기존 줄을 모두 지우고 명세서로 바꿉니다</b> (지난 명세서 · 옛 대시보드 자료 · 손입력). 명세서가 그 연도의 기준이므로 켜 두면 겹치지 않습니다. 끄면 지난 명세서 줄만 바꾸고 나머지는 둡니다.</span></label>' +
       '<div class="hint">파일 TOTAL · DEPOSIT 과 ✓ 가 맞는지 확인하고 넣으세요. 넣은 뒤 경영 → 🏭 공장의 잔액이 파일 BALANCE 와 같아야 합니다.</div>' +
@@ -723,8 +724,8 @@ async function factoryStatementFile(file, out) {
         if (isNew) ops.push({ op: 'set', col: 'factories', id: code, data: { id: code, code, name: P.name || code, note: '명세서 가져오기', active: true, createdAt: now, stmt: stmtHdr } });
         else ops.push({ op: 'update', col: 'factories', id: code, data: { stmt: Object.assign({}, exF.stmt || {}, stmtHdr), updatedAt: now } });
         const [oldI, oldP] = await Promise.all([S.DB.list('factoryInvoices', { where: [['f', '==', code]] }).catch(() => []), S.DB.list('factoryPayments', { where: [['f', '==', code]] }).catch(() => [])]);
-        const repl = $('fsRepl') && $('fsRepl').checked, pre = $('fsPre') && $('fsPre').checked, d0 = firstDate(P);
-        const gone = x => (ys.has(String(x.d || '').substring(0, 4)) && (repl || x.src === 'stmt')) || (pre && d0 && String(x.d || '') < d0);
+        const all = $('fsAll') && $('fsAll').checked, repl = $('fsRepl') && $('fsRepl').checked, pre = $('fsPre') && $('fsPre').checked, d0 = firstDate(P);
+        const gone = x => all || (ys.has(String(x.d || '').substring(0, 4)) && (repl || x.src === 'stmt')) || (pre && d0 && String(x.d || '') < d0);
         let del = 0; oldI.forEach(x => { if (gone(x)) { ops.push({ op: 'del', col: 'factoryInvoices', id: x.id }); del++; } });
         oldP.forEach(x => { if (gone(x)) { ops.push({ op: 'del', col: 'factoryPayments', id: x.id }); del++; } });
         const seen = {}; const idOf = (pre, d, amt) => { const k = pre + '-' + code + '-' + d + '-' + Math.round(amt * 100); seen[k] = (seen[k] || 0) + 1; return k + (seen[k] > 1 ? '-' + seen[k] : ''); };
@@ -732,7 +733,7 @@ async function factoryStatementFile(file, out) {
         P.pay.forEach(x => { const id = idOf('FSP', x.d, x.amt); ops.push({ op: 'set', col: 'factoryPayments', id, data: { id, f: code, d: x.d, amt: x.amt, note: '', src: 'stmt', file: file.name, createdAt: now } }); });
         await S.DB.batch(ops);
         dropMgCache(); dropBossCache();
-        out.innerHTML = '<div class="alert a-grn">넣었습니다 — ' + esc(P.name || code) + ' (' + esc(code) + ') · 인보이스 ' + P.inv.length + '줄 · 송금 ' + P.pay.length + '줄' + (del ? ' · 기존 줄 ' + del + '개 교체' : '') + '. <u data-gomg style="cursor:pointer">🏭 경영 → 공장</u>에서 확인하세요.</div>';
+        out.innerHTML = '<div class="alert a-grn">넣었습니다 — ' + esc(P.name || code) + ' (' + esc(code) + ') · 인보이스 ' + P.inv.length + '줄 · 송금 ' + P.pay.length + '줄' + (del ? ' · 기존 줄 ' + del + '개 ' + (all ? '모두 지우고 파일대로' : '교체') : '') + '. 잔액이 파일 BALANCE ' + (P.sheets[P.sheets.length - 1] && P.sheets[P.sheets.length - 1].hdr.balance != null ? money(P.sheets[P.sheets.length - 1].hdr.balance) : '') + ' 와 같아야 합니다. <u data-gomg style="cursor:pointer">🏭 경영 → 공장</u>에서 확인하세요.</div>';
         out.querySelectorAll('[data-gomg]').forEach(u => u.onclick = () => Router.go('mg', 'fac'));
         toast('🏭 ' + (P.name || code) + ' 명세서 ' + (P.inv.length + P.pay.length) + '줄', 'good');
       } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
