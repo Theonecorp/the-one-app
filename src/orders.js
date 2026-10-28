@@ -101,8 +101,8 @@ async function pageHome() {
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
   $('hMine').onclick = () => Router.go('mine');
   /* 📋 보낸 주문 한 번에 확인 · 🔔 알림 켜기 */
-  $('page').querySelector('.card').insertAdjacentHTML('afterend', '<div id="dayCf"></div>' + (Notify.notifyState() === 'default' ? '<button class="b-ghost" id="hNotif" style="margin:0 0 10px">🔔 ' + bi('폰 알림 켜기 (사무실 확인 요청)', 'Turn on phone notifications') + '</button>' : ''));
-  Notify.dayCard($('dayCf')); if ($('hNotif')) $('hNotif').onclick = async () => { await Notify.askPermission(); $('hNotif').remove(); };
+  $('page').querySelector('.card').insertAdjacentHTML('afterend', '<div id="dayCf"></div><div id="offCard"></div>' + (Notify.notifyState() === 'default' ? '<button class="b-ghost" id="hNotif" style="margin:0 0 10px">🔔 ' + bi('폰 알림 켜기 (사무실 확인 요청)', 'Turn on phone notifications') + '</button>' : ''));
+  Notify.dayCard($('dayCf')); import('./offline.js').then(O => O.homeCard($('offCard'), true)); if ($('hNotif')) $('hNotif').onclick = async () => { await Notify.askPermission(); $('hNotif').remove(); };
   try {
     const rows = await S.DB.list('orders', { where: [['sm', '==', mySm()], ['ym', 'in', recentYms(2)]] });
     const d = rows.filter(o => o.st === 'draft').length + out, sent = rows.filter(o => o.st === 'sent').length;

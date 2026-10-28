@@ -99,7 +99,7 @@ async function makeFirestoreDB() {
       }
     });
   };
-  try { db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) }); }
+  try { db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager(), cacheSizeBytes: fs.CACHE_SIZE_UNLIMITED != null ? fs.CACHE_SIZE_UNLIMITED : -1 })   /* 📦 오프라인: 캐시 크기 제한 없음 */ }); }
   catch (e) { db = fs.getFirestore(app); }
   const auth = au.getAuth(app);
   const strip = d => { const o = {}; Object.keys(d).forEach(k => { if (d[k] !== undefined) o[k] = d[k]; }); return o; };
