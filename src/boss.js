@@ -101,7 +101,7 @@ async function pageNow() {
   const bySrc = groupBy(cur, r => r.src);
   const wait = C.ents.filter(e => !e.settled && e.sb && !e.rc && !e.repl), todo = C.ents.filter(e => !e.settled && !e.sb && !e.repl), pend = C.ents.filter(e => !e.settled && e.rc && e.sb && !e.v && !e.repl), bad = C.ents.filter(e => e.mismatch && !e.settled && !e.v);
   const quiet = S.sms.filter(s => s.active !== false).map(s => { const last = sortBy(C.ents.filter(e => e.sm === s.code), e => e.d, true)[0]; return { sm: s.code, last: last ? last.d : '', days: last ? daysBetween(last.d, t) : 999 }; }).filter(x => x.days >= 3).sort((a, b) => b.days - a.days);
-  const upItems = []; C.ents.forEach(e => (e.pays || []).forEach(p => { if (p.m === 'CHECK' && p.dep && p.dep > t) upItems.push({ d: p.dep, store: e.store, sm: e.sm, check: p.ref, amt: num(p.amt) }); }));
+  const upItems = []; C.ents.forEach(e => (e.pays || []).forEach(p => { if (p.m === 'CHECK' && p.dep && p.dep > t && !e.bounced) upItems.push({ d: p.dep, store: e.store, sm: e.sm, check: (p.hold ? '⏸ ' : '') + p.ref, amt: num(p.amt) }); }));
   const upBy = groupBy(upItems, x => x.d), up = Object.keys(upBy).sort().map(d => ({ d, n: upBy[d].length, amt: sum(upBy[d], x => x.amt), items: upBy[d] }));
   const d90 = addDays(t, -90), bounce = C.ents.filter(e => e.repl && e.d >= d90);
   /* 주문 흐름 · 미수금 */
