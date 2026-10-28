@@ -16,7 +16,7 @@ const path = require('path');
   await pg.evaluate(() => localStorage.setItem('theone.offline.at', new Date(Date.now() - 48 * 3600000).toISOString()));
   await pg.click('#ofGo'); await pg.waitForTimeout(3000);
   const at2 = await pg.evaluate(() => localStorage.getItem('theone.offline.at')); if (!at2 || new Date(at2).getTime() < Date.now() - 60000) errs.push('manual prepare should refresh the stamp');
-  const bar = (await pg.textContent('#ofTxt')).trim(); log('bar:', bar); if (!/완료|Done/.test(bar)) errs.push('progress should end with 완료');
+  await pg.waitForFunction(() => { const c = document.getElementById('offCard'); return c && /자료/.test(c.textContent) && !/48|2일 전|1일 전/.test(c.textContent); }, null, { timeout: 15000 }).catch(() => errs.push('card should refresh after manual prepare'));
   await pg.click('#hNet'); await pg.waitForSelector('#netOff'); await pg.waitForTimeout(300); if (!(await pg.$('#netOff #ofGo'))) errs.push('net pill modal should include the offline card');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
