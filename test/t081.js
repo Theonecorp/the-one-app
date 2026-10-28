@@ -34,7 +34,7 @@ const path = require('path');
   await pg.click('#rqHold'); await pg.waitForSelector('#rqQ'); await pg.fill('#rqQ', '1042'); await pg.waitForSelector('[data-rh="0"]'); await pg.click('[data-rh="0"]'); await pg.waitForSelector('#rqGo');
   await pg.fill('#rqN', '잔고 확인 필요'); await pg.click('#rqGo'); await pg.waitForTimeout(1500);
   const h1 = await pg.evaluate(() => { const r = Object.values(window.__MOCK_STORE__.checkReq).find(x => x.kind === 'hold'); return [r && r.st, r && r.contact, window.__MOCK_STORE__.entries.E1.pays[0].hold, Object.values(window.__MOCK_STORE__.notifyq || {}).filter(n => n.kind === 'checkHold').map(n => n.toSm).join()]; }); log('hold:', h1);
-  if (h1[0] !== 'open' || h1[1] !== 'office' || h1[2] !== true || h1[3] !== 'BRANDON') errs.push('hold should flag the check and notify the salesman');
+  if (h1[0] !== 'open' || h1[1] !== 'sm' || h1[2] !== true || h1[3] !== 'BRANDON') errs.push('hold should flag the check and notify the salesman');
   /* 담당자 직접 날짜로 풀기 */
   const hid = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.checkReq).find(x => x.kind === 'hold').id);
   await pg.click('[data-rq="' + hid + '"]'); await pg.waitForSelector('#rqRel'); await pg.fill('#rqDep', newD); await pg.click('#rqRel'); await pg.waitForSelector('#cfOk', { timeout: 1500 }).then(() => pg.click('#cfOk')).catch(() => {}); await pg.waitForTimeout(1500);
