@@ -138,22 +138,45 @@ function envelopesLate_() {
 }
 
 /** 이메일 → 구글 사용자 ID (챗 @멘션용). Admin Directory 로 한 번 찾고 스크립트 속성에 기억. 못 찾으면 '' (멘션 없이 올림) */
-/* ---------- 📷 드라이브 사진 색인 — 한 시간마다 item_picture · Gallery 폴더의 파일 이름(코드)을 Firestore catalog/photoIndex 에 써 둠 ----------
+/* ---------- 📷 드라이브 사진 색인 — 한 시간마다 공유 드라이브 item_picture(아이템 사진) · Gallery(세트 · 인서트 사진)의 파일 이름(코드)을 Firestore catalog/photoIndex 에 써 둠 ----------
  *   앱은 이 색인으로 코드와 같은 이름의 사진을 자동으로 붙임 (사진 주소를 손으로 적을 필요 없음).
- *   폴더 이름: item_picture (아이템 사진) · Gallery (세트 · 인서트 사진). 스크립트 속성 PHOTO_FOLDER_ID / GALLERY_FOLDER_ID 를 넣으면 그 폴더를 씀.
- *   사진은 "링크가 있는 모든 사용자" 로 공유된 폴더에 있어야 폰에서 보입니다. */
+ *   사진은 공유 드라이브 "item_picture" 바로 아래에 있음 (드라이브 ID 0AMfb0x3MT-Y9Uk9PVA). 다른 폴더를 쓰려면 스크립트 속성 PHOTO_FOLDER_ID / GALLERY_FOLDER_ID 에 폴더(또는 공유 드라이브) ID.
+ *   Drive API(REST) 로 읽음 — 공유 드라이브까지 포함 (supportsAllDrives). 폴더 안의 하위 폴더도 훑음. */
+const PHOTO_DRIVE_DEFAULT = '0AMfb0x3MT-Y9Uk9PVA', GALLERY_DRIVE_DEFAULT = '';
 function photoIndexRun_() {
   const P = PropertiesService.getScriptProperties(), last = Number(P.getProperty('PHOTO_IDX_AT') || 0);
   if (Date.now() - last < 55 * 60 * 1000) return;
   P.setProperty('PHOTO_IDX_AT', String(Date.now()));
-  const folder_ = (prop, name) => { const id = P.getProperty(prop); if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} } const it = DriveApp.getFoldersByName(name); return it.hasNext() ? it.next() : null; };
-  const scan_ = (folder, out) => { if (!folder) return 0; let n = 0; const walk = f => { const files = f.getFiles(); while (files.hasNext()) { const x = files.next(); const nm = String(x.getName() || ''); if (!/\.(jpe?g|png|webp|gif|heic)$/i.test(nm)) continue; const code = nm.replace(/\.[^.]+$/, '').trim().toUpperCase(); if (!code || out[code]) continue; out[code] = x.getId(); n++; } const subs = f.getFolders(); while (subs.hasNext()) walk(subs.next()); }; walk(folder); return n; };
   const pic = {}, gal = {};
-  const n1 = scan_(folder_('PHOTO_FOLDER_ID', 'item_picture'), pic), n2 = scan_(folder_('GALLERY_FOLDER_ID', 'Gallery'), gal);
-  if (!n1 && !n2) { Logger.log('사진 폴더(item_picture · Gallery)를 찾지 못했습니다'); return; }
+  const n1 = driveScan_(P.getProperty('PHOTO_FOLDER_ID') || PHOTO_DRIVE_DEFAULT, pic), n2 = driveScan_(P.getProperty('GALLERY_FOLDER_ID') || GALLERY_DRIVE_DEFAULT, gal);
+  if (!n1 && !n2) { Logger.log('사진 폴더에서 사진을 찾지 못했습니다 — PHOTO_FOLDER_ID 를 확인하세요'); return; }
   const at = new Date().toISOString();
   patch_('catalog', 'photoIndex', { pic, gal, n: n1 + n2, at });
   Logger.log('사진 색인: item_picture ' + n1 + ' · Gallery ' + n2);
+}
+/* 폴더(또는 공유 드라이브 루트) 안의 사진 파일을 하위 폴더까지 — out[코드] = 파일 ID. 같은 코드가 여럿이면 먼저 나온 것 */
+function driveScan_(folderId, out) {
+  if (!folderId) return 0;
+  let n = 0; const todo = [folderId], seen = {};
+  while (todo.length) {
+    const fid = todo.shift(); if (seen[fid]) continue; seen[fid] = 1;
+    let token = '';
+    do {
+      const q = encodeURIComponent("'" + fid + "' in parents and trashed = false");
+      const url = 'https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=nextPageToken,files(id,name,mimeType)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true' + (token ? '&pageToken=' + token : '');
+      const res = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+      if (res.getResponseCode() !== 200) { Logger.log('Drive 읽기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 200)); return n; }
+      const j = JSON.parse(res.getContentText());
+      (j.files || []).forEach(f => {
+        if (f.mimeType === 'application/vnd.google-apps.folder') { todo.push(f.id); return; }
+        if (!/^image\//.test(f.mimeType || '') && !/\.(jpe?g|png|webp|gif|heic)$/i.test(f.name || '')) return;
+        const code = String(f.name || '').replace(/\.[^.]+$/, '').trim().toUpperCase(); if (!code || out[code]) return;
+        out[code] = f.id; n++;
+      });
+      token = j.nextPageToken || '';
+    } while (token);
+  }
+  return n;
 }
 function testPhotoIndex() { PropertiesService.getScriptProperties().deleteProperty('PHOTO_IDX_AT'); photoIndexRun_(); const d = getDoc_('catalog', 'photoIndex'); Logger.log(d ? '색인 ' + d.n + '개 · ' + d.at : '색인 없음'); }
 function chatId_(email) {
