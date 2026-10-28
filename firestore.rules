@@ -51,8 +51,15 @@ service cloud.firestore {
       allow update: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.sb != true && resource.data.settled == ''
                                      && request.resource.data.sm == resource.data.sm
                                      && request.resource.data.sb == resource.data.sb && request.resource.data.rc == resource.data.rc
-                                     && request.resource.data.v == resource.data.v && request.resource.data.settled == resource.data.settled);
+                                     && request.resource.data.v == resource.data.v && request.resource.data.settled == resource.data.settled)
+                    || (registered() && resource.data.sm == mySm() && resource.data.settled == '' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['env', 'envAt', 'updatedAt']));   // 📦 봉투에 묶기 (① 확인된 건도)
       allow delete: if isAdmin();
+    }
+    // ---------- 📦 체크 봉투 — 세일즈맨이 보낸 체크 묶음, 회계 담당이 도착 맞춤 ----------
+    match /envelopes/{id} {
+      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by == email() && request.resource.data.st == 'sent');
+      allow update, delete: if isStaff();
     }
     // ---------- Daily Report (세일즈맨 하루 수금 보고 · 체크 사진) ----------
     match /reports/{id} {

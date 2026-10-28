@@ -20,7 +20,7 @@ import { mergeAppInvoices } from './arapp.js';
 let S = null;
 export function register(state) {
   S = state;
-  Router.on('entry', a => hub('new', a)); Router.on('mine', () => hub('today')); Router.on('ar', () => hub('ar')); Router.on('hist', a => hub('hist', a));
+  Router.on('entry', a => hub('new', a)); Router.on('mine', () => hub('today')); Router.on('ar', () => hub('ar')); Router.on('hist', a => hub('hist', a)); Router.on('send', () => hub('send'));   // 📦 체크 보내기
 }
 const isSales = () => !!S && S.role === 'salesman';
 let ME = '';
@@ -50,11 +50,11 @@ async function hub(tab, arg) {
   if (tab === 'hist' && arg) HQ = decodeURIComponent(arg);
   $('page').innerHTML = tabBar() + '<div id="hubBody"><div class="load">읽는 중…</div></div>';
   bindTabs();
-  if (tab === 'new') paintEntry(); else if (tab === 'today') await paintToday(); else if (tab === 'hist') await paintHist(); else await paintAR();
+  if (tab === 'new') paintEntry(); else if (tab === 'today') await paintToday(); else if (tab === 'hist') await paintHist(); else if (tab === 'send') { const E = await import('./envelope.js'); await E.paintSend($('hubBody'), me(), myEntries); } else await paintAR();
   fillBadges();
 }
 function tabBar() {
-  const t = [['new', '＋ 수금 입력', 'Entry'], ['today', '오늘 내역', 'Today', 'bTd'], ['hist', '기록', 'History'], ['ar', '미수금', 'AR', 'bAr']];
+  const t = [['new', '＋ 수금 입력', 'Entry'], ['today', '오늘 내역', 'Today', 'bTd'], ['send', '📦 체크 보내기', 'Send'], ['hist', '기록', 'History'], ['ar', '미수금', 'AR', 'bAr']];
   return '<div class="ctabs">' + t.map(x => '<button class="' + (TAB === x[0] ? 'on' : '') + '" data-ct="' + x[0] + '">' + x[1] + ' <span class="en">' + x[2] + '</span>' + (x[3] ? '<span class="badge" id="' + x[3] + '" style="display:none">0</span>' : '') + '</button>').join('') + '</div>';
 }
 function bindTabs() { document.querySelectorAll('[data-ct]').forEach(b => b.onclick = () => { const k = b.dataset.ct; Router.go(k === 'new' ? 'entry' : k === 'today' ? 'mine' : k); }); }

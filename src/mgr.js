@@ -60,7 +60,8 @@ async function pageVerify() {
     '<div class="two" style="margin-top:8px">' + sel('vfSm', [['', '전체 세일즈맨 · All salesmen']].concat(smOptions()), VF.sm) + '<input id="vfQ" placeholder="가게 · 계정 · 체크번호 / Store · Acct · Check #" value="' + esc(VF.q) + '" autocomplete="off"></div>' +
     (accs.length ? '<div class="chips">' + accs.map(a => '<button data-vacc="' + esc(a.acct) + '">📚 ' + esc(a.store) + ' ' + esc(a.acct) + ' 전체 기록</button>').join('') + '</div>' : '') +
     '<div class="chips" style="margin-top:4px"><button class="' + (VF.grp === 'sm' ? 'on' : '') + '" data-vg="sm">👤 세일즈맨별 · By salesman</button><button class="' + (VF.grp === 'day' ? 'on' : '') + '" data-vg="day">📅 날짜별 · By day</button><button class="' + (VF.f === 'done' ? 'on' : '') + '" data-vf="done">📁 정산 완료 · Settled</button></div></div>' +
-    /* 📬 체크 맞추기 — 우편으로 온 체크 번호를 치면 그 수금을 찾아 수령 ✓ */
+    /* 📦 봉투 (envelope.js) → 📬 체크 맞추기 — 우편으로 온 체크 번호를 치면 그 수금을 찾아 수령 ✓ */
+    '<div id="envBox"></div>' +
     '<div class="card" style="border:2px solid #bfdbfe"><h2>📬 들어온 체크 맞추기 <span class="en">Match incoming checks</span></h2><div class="muted">봉투에서 꺼낸 체크 번호를 치고 엔터 — 세일즈맨이 입력한 수금을 찾아 바로 <b>② 체크 수령 ✓</b>. 금액이 다르면 알려 줍니다. <span class="en">Type the check number + Enter.</span></div>' +
     '<div class="two" style="margin-top:8px;grid-template-columns:1fr auto"><input id="ckNo" inputmode="numeric" placeholder="체크 번호 · check #" autocomplete="off"><input id="ckAmt" inputmode="decimal" placeholder="금액 (선택)" style="width:120px"></div><div id="ckOut"></div></div>';
   const row = r => '<div class="pr tap ' + (r.v ? 'v' : r.rc ? 'rc' : r.sb ? 'sb' : '') + (r.mismatch && !r.v ? ' bad' : '') + '" data-vid="' + r.id + '">' + (!r.settled && !(r.sb && r.rc) ? '<input type="checkbox" class="vck" data-vck="' + r.id + '"' + (VSEL.has(r.id) ? ' checked' : '') + ' style="width:22px;height:22px;margin-right:8px;flex:0 0 auto">' : '') + '<div class="mk">' + (r.rc ? '✓' : r.sb ? '①' : '·') + '</div><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + (r.repl ? ' <span class="tag t-r">대체</span>' : '') + (r.newStore ? ' <span class="tag t-c">신규</span>' : '') + '</b><small>' + md(r.d) + ' · ' + (r.pays || []).map(p => methodTag(p) + ' ' + money(p.amt)).join(' · ') + (r.invs && r.invs.length ? ' · ' + r.invs.map(v => v.no).join(',') : '') + (r.mismatch ? ' · ⚠️' : '') + (r.settled ? ' · 📁 ' + esc(r.settled) : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + stageText(r) + '</small></div></div>';
@@ -75,6 +76,7 @@ async function pageVerify() {
   }
   h += '<div class="bulkbar" id="vBulk" style="display:none"></div>';
   $('page').innerHTML = h;
+  import('./envelope.js').then(E => E.envCard($('envBox'), pageVerify));
   /* ☑ 선택 → 아래 막대에서 한 번에 ① 접수 확인 · ② 체크 수령 */
   const selRows = () => rows.filter(r => VSEL.has(r.id) && !r.settled);
   const paint = () => {

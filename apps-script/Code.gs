@@ -49,6 +49,7 @@ function run() {
   if (!lock.tryLock(5000)) return;
   try {
     try { notifyRun_(); } catch (e) { Logger.log('알림 보내기 실패: ' + e.message); }
+    try { envelopesLate_(); } catch (e) { Logger.log('봉투 미도착 확인 실패: ' + e.message); }
     let list = [];
     try { list = query_('reports', 'mail', 'wait', 20); }
     catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면 이어서 보냅니다'); return; } throw e; }
@@ -110,6 +111,28 @@ function notifyRun_() {
     } catch (e) {
       patch_('notifyq', n._id, { st: 'error', err: String(e && e.message || e).substring(0, 300), sentAt: new Date().toISOString() });
     }
+  });
+}
+
+/* ---------- 📦 체크 봉투 미도착 — 보낸 지 LATE_DAYS 지나도 도착 확인이 안 된 봉투는 세일즈맨 · 담당자에게 한 번 알림 (봉투에 lateAt 기록) ---------- */
+const LATE_DAYS = 14;
+function envelopesLate_() {
+  if (new Date().getMinutes() >= 10) return;   // 1시간에 한 번만 (5분 트리거 중 첫 번)
+  const list = query_('envelopes', 'st', 'sent', 50), cut = new Date(Date.now() - LATE_DAYS * 86400000).toISOString();
+  const late = list.filter(e => !e.lateAt && String(e.sentAt || '') < cut);
+  if (!late.length) return;
+  const settings = getDoc_('settings', 'app') || {}, staff = String(settings.reportTo || DEFAULT_TO).split(/[,;\s]+/).filter(isEmail_);
+  const props = PropertiesService.getScriptProperties();
+  late.forEach(e => {
+    try {
+      const to = []; query_('users', 'sm', String(e.sm), 5).forEach(u => { const m = u.email || u._id; if (isEmail_(m) && to.indexOf(m) < 0) to.push(m); }); staff.forEach(m => { if (to.indexOf(m) < 0) to.push(m); });
+      const got = Object.keys(e.got || {}).length, days = Math.floor((Date.now() - new Date(e.sentAt).getTime()) / 86400000);
+      const text = '⚠️ 체크 봉투 미도착 — ' + e.sm + ' · ' + e._id + ' · ' + (e.sentAt || '').substring(0, 10) + ' 보냄 (' + days + '일 전) · ' + (e.n || 0) + '장 ' + money_(e.total) + (got ? ' · 도착 ' + got + '/' + (e.n || 0) : ' · 아직 한 장도 도착 확인 안 됨') + (e.trk ? '\n추적: ' + e.trk : '') + '\n세일즈맨: 보낸 날짜 · 추적 번호를 확인해 주세요. 담당자: 우편물을 확인하고 앱 → 수금 확인 → 📦 봉투에서 맞춰 주세요.';
+      if (to.length) MailApp.sendEmail({ to: to.join(','), subject: '[THE ONE] ⚠️ 체크 봉투 미도착 — ' + e.sm + ' ' + e._id, name: 'THE ONE', replyTo: REPLY_TO, htmlBody: '<div style="font-family:Arial,sans-serif;font-size:15px">' + text.split('\n').map(esc_).join('<br>') + '</div>' });
+      const hook = (props.getProperty('CHAT_WEBHOOK_' + String(e.sm).toUpperCase().replace(/[^A-Z0-9]/g, '_'))) || props.getProperty('CHAT_WEBHOOK');
+      if (hook) { const id = to.length ? chatId_(to[0]) : ''; UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: (id ? '<users/' + id + '> ' : '') + text }), muteHttpExceptions: true }); }
+      patch_('envelopes', e._id, { lateAt: new Date().toISOString(), lateTo: to.join(', ') });
+    } catch (x) { Logger.log('봉투 알림 실패 ' + e._id + ': ' + x.message); }
   });
 }
 
