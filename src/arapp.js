@@ -14,7 +14,7 @@ export function mergeAppInvoices(ar, invs, ents) {
   const by = {}, have = new Set();
   out.stores.forEach(s => { by[s.acct] = s; s.invs.forEach(v => have.add(invNo(v.inv))); });
   const unv = {};   // 인보이스 번호 → [[수금 id, 금액]]
-  (ents || []).forEach(e => { if (e.void || e.repl) return; (e.invs || []).forEach(v => { if (v.no) (unv[invNo(v.no)] = unv[invNo(v.no)] || []).push([e.id, num(v.amt)]); }); });
+  (ents || []).forEach(e => { if (e.void || e.repl || e.bounced) return; (e.invs || []).forEach(v => { if (v.no) (unv[invNo(v.no)] = unv[invNo(v.no)] || []).push([e.id, num(v.amt)]); }); });
   let n = 0;
   (invs || []).forEach(x => {
     if (!x || x.src === 'legacy' || x.st !== 'open' || have.has(invNo(x.no))) return;

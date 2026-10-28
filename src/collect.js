@@ -29,6 +29,9 @@ const REPORT_TO = () => (S.settings && S.settings.reportTo) || 'check@theonefl.c
 
 /* ---------- 폼 상태 ---------- */
 const F = {};
+/* ↩️ 바운스 탭에서 "새 체크 받음" — 가게 · 원래 체크 번호 · 금액을 🔁 대체 체크로 미리 채워 수금 입력으로 */
+let PRE_R = null;
+export function prefillRepl(o) { PRE_R = o; Router.go('entry', 'new'); }
 function resetForm() {
   Object.assign(F, { sm: isSales() ? '' : F.sm, acct: '', store: '', newStore: false, addr: '', tel: '', d: today(),
     pays: [{ m: 'CHECK', ref: '', amt: '', dep: today(), mob: false, repl: false, orig: '' }],
@@ -46,6 +49,7 @@ async function hub(tab, arg) {
   if (tab === 'new') {
     if (arg && arg !== 'new') { const e = await S.DB.get('entries', arg); if (e) loadIntoForm(e); }
     else if (arg === 'new' || !F.store) resetForm();
+    if (PRE_R) { resetForm(); Object.assign(F, { acct: PRE_R.acct || '', store: PRE_R.store || '', memo: '바운스 #' + PRE_R.ref + ' 대체 체크' }); F.pays = [{ m: 'CHECK', ref: '', amt: PRE_R.amt || '', dep: today(), mob: false, repl: true, orig: String(PRE_R.ref || '') }]; PRE_R = null; toast('↩️ 바운스 대체 체크 — 새 체크 번호를 넣고 저장하세요', 'good'); }
   }
   if (tab === 'hist' && arg) HQ = decodeURIComponent(arg);
   $('page').innerHTML = tabBar() + '<div id="hubBody"><div class="load">읽는 중…</div></div>';
@@ -337,6 +341,7 @@ async function saveEntry() {
     } else {
       Object.assign(doc, { sb: false, rc: false, v: false, vn: '', settled: '', void: false, rep: false, createdAt: new Date().toISOString() });
       await S.DB.set('entries', id, doc);
+      if (pays.some(p => p.repl && p.orig)) { try { const B = await import('./bounce.js'); await B.linkReplacement(S, doc); } catch (e) {} }   /* 🔁 대체 체크 → 같은 가게 바운스에 연결 표시 */
     }
     clearEntryCache();
     if (S.DB.queued) toast('📱 ' + bt('폰에 저장했습니다 — 인터넷이 되면 자동으로 올라갑니다 (다시 입력하지 마세요)', 'Saved on this phone — uploads automatically when online (don\'t re-enter)') + ' ' + money(total), 'good');
