@@ -113,6 +113,8 @@ service cloud.firestore {
     match /invoices/{id} {
       allow read: if isStaff() || (registered() && (resource.data.sm == mySm() || ownAcct(resource.data.acct) || granted(resource.data.acct)));
       allow write: if isStaff();
+      // ↩ 크레딧 메모 — 세일즈맨이 자기 가게에 바로 확정 (금액 마이너스 · src credit · 자기 세일즈맨 코드)
+      allow create: if registered() && mySm() != '' && request.resource.data.src == 'credit' && request.resource.data.sm == mySm() && request.resource.data.total <= 0 && request.resource.data.createdBy == email() && ownAcct(request.resource.data.acct);
     }
     // 🔐 조회 요청 · 허락 — 세일즈맨이 요청, 관리자만 허락
     match /invReq/{id} {
@@ -125,7 +127,11 @@ service cloud.firestore {
       allow write: if isRealAdmin();
     }
     match /backorders/{id} { allow read, write: if isStaff(); }
-    match /counters/{id} { allow read, write: if isStaff(); }
+    match /counters/{id} {
+      allow read, write: if isStaff();
+      // ↩ 크레딧 번호(CM) 는 세일즈맨도 올림 — inv2 문서의 CM 칸만
+      allow write: if registered() && mySm() != '' && id == 'inv2' && (resource == null || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['CM']));
+    }
     match /shipq/{id} {                                                                                                              // 🚚 UPS 요청 (라벨 · 취소 · 요금 · 주소 · 배송 조회) — UPS.gs 가 처리
       allow read, write: if isStaff();
       allow create: if registered() && request.resource.data.st == 'trk' && request.resource.data.by == email();   // 세일즈맨: 배송 조회만
