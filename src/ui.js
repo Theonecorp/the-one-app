@@ -58,6 +58,14 @@ export function openModal(html, opts) {
   if (opts && opts.onClose) m._onClose = opts.onClose; else m._onClose = null;
 }
 export function closeModal() { const m = $('modal'); m.classList.remove('on'); if (m._onClose) { const f = m._onClose; m._onClose = null; f(); } }
+/* 열려 있는 창 위에 겹쳐 묻기 — 취소해도 아래 입력 창이 그대로 남음 (입력 중 경고용) */
+export function askOver(msg, okLabel) {
+  return new Promise(res => {
+    const o = document.createElement('div'); o.className = 'ovr'; o.innerHTML = '<div class="obox"><h2>' + esc(msg) + '</h2><div class="btns"><button class="b-ghost" id="cfNo">취소</button><button class="b-red" id="cfOk">' + esc(okLabel || '확인') + '</button></div></div>';
+    document.body.appendChild(o);
+    o.querySelector('#cfNo').onclick = () => { o.remove(); res(false); }; o.querySelector('#cfOk').onclick = () => { o.remove(); res(true); };
+  });
+}
 export function confirmBox(msg, okLabel) {
   return new Promise(res => {
     openModal('<h2>' + esc(msg) + '</h2><div class="btns"><button class="b-ghost" id="cfNo">취소</button><button class="b-red" id="cfOk">' + esc(okLabel || '확인') + '</button></div>');

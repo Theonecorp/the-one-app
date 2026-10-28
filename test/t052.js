@@ -37,7 +37,7 @@ const path = require('path'), fs = require('fs');
   /* 정산서 */
   await pg.click('#pPrint'); await pg.waitForSelector('#prt.on'); const st = await txt('#prtbody'); log('stmt:', st.slice(0, 200)); if (!/DEDUCTION/.test(st) || !/NET PAYMENT/.test(st)) errs.push('statement missing deduction'); await shot('b4_stmt'); await pg.click('#prtClose');
   /* 확정 */
-  await pg.click('#pConfirm'); await pg.waitForSelector('#cfGo'); log('confirm:', (await txt('#mbox')).slice(0, 220)); await pg.click('#cfGo'); await pg.waitForTimeout(1200);
+  await pg.click('#pConfirm'); await pg.waitForSelector('#cfGo'); log('confirm:', (await txt('#mbox')).slice(0, 220)); if (await pg.$('#cfAck')) await pg.click('#cfAck'); /* v0.8.86: 걸리는 것이 있으면 확인 체크 후 확정 */ await pg.click('#cfGo'); await pg.waitForTimeout(1200);
   log('toast:', await txt('#toast')); log('after confirm print:', !!(await pg.$('#prt.on'))); await pg.click('#prtClose');
   const db = await pg.evaluate(() => null); 
   /* 정산 완료 */

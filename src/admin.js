@@ -160,8 +160,8 @@ async function smBaseCreate() {
 async function salesmen() {
   const list = await S.DB.list('salesmen', { order: ['code', 'asc'] });
   const miss = SM_BASE.filter(c => !list.some(s => s.code === c));
-  $('adminBody').innerHTML = '<div class="card"><h2>세일즈맨 ' + list.length + '명</h2><div class="muted">코드는 수금 기록·AR·정산의 기준입니다 (대문자). 요율은 정산서 계산에 씁니다.</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="b-blue" id="sNew">＋ 세일즈맨 추가</button>' + (miss.length ? '<button class="b-ghost" id="sBase">👥 기본 명단 ' + miss.length + '명 한 번에</button>' : '') + '</div></div>' +
-    '<div class="card"><table><tr><th>코드</th><th>이름</th><th class="r">A</th><th class="r">W</th><th class="r">P</th><th class="r">DP</th><th class="r">OFF</th></tr>' + list.map(s => { const r = Object.assign({}, RATE_DEFAULT, s.rates || {}); return '<tr class="tap" data-s="' + esc(s.code) + '"><td><b>' + esc(s.code) + '</b>' + (s.active === false ? ' <span class="tag t-g">비활성</span>' : '') + '</td><td>' + esc(s.name || '') + '</td><td class="r">' + pr(r.a) + '</td><td class="r">' + pr(r.w) + '</td><td class="r">' + pr(r.p) + '</td><td class="r">' + pr(r.dp) + '</td><td class="r">' + pr(r.office) + '</td></tr>'; }).join('') + '</table></div>';
+  $('adminBody').innerHTML = '<div class="card"><h2>세일즈맨 ' + list.length + '명</h2><div class="muted">코드는 수금 기록·AR·정산의 기준입니다 (대문자). 요율은 정산서 계산에 씁니다. 💼 급여제로 표시한 사람은 정산에서 커미션을 계산하지 않습니다.</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="b-blue" id="sNew">＋ 세일즈맨 추가</button>' + (miss.length ? '<button class="b-ghost" id="sBase">👥 기본 명단 ' + miss.length + '명 한 번에</button>' : '') + '</div></div>' +
+    '<div class="card"><table><tr><th>코드</th><th>이름</th><th class="r">A</th><th class="r">W</th><th class="r">P</th><th class="r">DP</th><th class="r">OFF</th></tr>' + list.map(s => { const r = Object.assign({}, RATE_DEFAULT, s.rates || {}); return '<tr class="tap" data-s="' + esc(s.code) + '"><td><b>' + esc(s.code) + '</b>' + (s.active === false ? ' <span class="tag t-g">비활성</span>' : '') + (s.salaried ? ' <span class="tag" style="background:#ede9fe;color:#4c1d95">💼 급여제</span>' : '') + '</td><td>' + esc(s.name || '') + '</td><td class="r">' + pr(r.a) + '</td><td class="r">' + pr(r.w) + '</td><td class="r">' + pr(r.p) + '</td><td class="r">' + pr(r.dp) + '</td><td class="r">' + pr(r.office) + '</td></tr>'; }).join('') + '</table></div>';
   $('sNew').onclick = () => smForm(null);
   if ($('sBase')) $('sBase').onclick = smBaseCreate;
   document.querySelectorAll('[data-s]').forEach(el => el.onclick = () => smForm(list.find(s => s.code === el.dataset.s)));
@@ -174,11 +174,12 @@ function smForm(s) {
     '<div class="fg"><label>이메일 (리포트 참조)</label><input id="smEmail" value="' + esc(s.email || '') + '"></div>' +
     '<div class="fg"><label>요율 (%)</label><div class="three">' + RATE_LABELS.map(x => '<div><small class="muted">' + esc(x[1]) + '</small><input class="sm" id="r_' + x[0] + '" value="' + (Number(r[x[0]]) * 100).toFixed(1) + '" inputmode="decimal" style="text-align:right"></div>').join('') + '</div></div>' +
     '<label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="smAct" style="width:18px;height:18px" ' + (s.active !== false ? 'checked' : '') + '> 활성</label>' +
+    '<label class="muted" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="smSal" style="width:18px;height:18px" ' + (s.salaried ? 'checked' : '') + '> 💼 급여제 — 정산에서 커미션을 계산하지 않고 수금 기록만 맞춰 마감</label><div class="hint">커미션 세일즈맨(예: BRANDON · ALEX · SOO)은 체크를 끄세요. 급여제는 정산서에 지급액이 0 으로 나오고 1099 에 올라가지 않습니다.</div>' +
     '<div class="btns"><button class="b-blue" id="smSave">저장</button></div>');
   $('smSave').onclick = async () => {
     const code = $('smCode').value.trim().toUpperCase(); if (!code) return toast('코드를 넣으세요', 'bad');
     const rates = {}; RATE_LABELS.forEach(x => { rates[x[0]] = R2(num($('r_' + x[0]).value) / 100 * 10000) / 10000; });
-    const doc = { code, name: $('smName').value.trim(), email: $('smEmail').value.trim().toLowerCase(), rates, active: $('smAct').checked, updatedAt: new Date().toISOString() };
+    const doc = { code, name: $('smName').value.trim(), email: $('smEmail').value.trim().toLowerCase(), rates, active: $('smAct').checked, salaried: $('smSal').checked, updatedAt: new Date().toISOString() };
     busy(true); try { await S.DB.set('salesmen', code, doc); await reloadSms(); closeModal(); toast('저장'); salesmen(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
   };
 }

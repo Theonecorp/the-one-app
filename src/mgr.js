@@ -2,7 +2,7 @@
  *  담당자(회계) 화면 — 수금 확인(① 접수 확인 · ② 체크 수령) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
  * ============================================================ */
 import { invTypes, getInvoice } from './invoicing.js';
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt, invNo } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt, invNo, askOver } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, dropAccountCache, activeOnly, sortStores } from './accounts.js';
 import { inactiveTool, reactivate, register as regInactive } from './inactive.js';
@@ -177,6 +177,7 @@ async function pageCod() {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
   let rows = (await S.DB.list('cod', { where: [['ym', 'in', recentYms(2)]] })).filter(r => !r.void);
   rows = sortBy(rows, r => r.d + (r.createdAt || ''), true);
+  const all = rows;   /* 겹침 검사는 걸러보기와 상관없이 최근 2개월 전부 */
   if (CF.m !== 'all') rows = rows.filter(r => r.method === CF.m);
   const by = groupBy(rows, r => r.d), days = Object.keys(by).sort().reverse();
   let h = '<div class="card"><h2>💳 COD · 카드 입력</h2><div class="muted">우편 체크 · COD · 카드로 들어온 돈. 세일즈맨을 골라 넣으면 루크 정산에 바로 뜹니다.<br><span style="color:#1e40af">🏦 ACH 는 여기서 입력하지 않습니다 — <u data-goach>ACH 메뉴</u>에서 인출 완료하면 자동으로 이 목록에 들어옵니다.</span></div>' +
@@ -187,43 +188,71 @@ async function pageCod() {
     L.map(r => '<div class="pr tap ' + (r.v ? 'v' : '') + '" data-cid="' + r.id + '"><div class="mk">' + (r.v ? '✓' : '·') + '</div><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + ' <span class="tag ' + (r.method === 'ACH' ? 't-a' : r.method === 'COD' ? 't-c' : 't-k') + '">' + esc(r.method) + '</span></b><small>' + esc(r.ref || '') + (r.invs && r.invs.length ? ' · ' + r.invs.map(v => v.no).join(',') : '') + (r.note ? ' · ' + esc(r.note) : '') + '</small></div><div class="pa"><b>' + money(r.amt) + '</b><small>' + (r.settled ? '정산 완료' : r.v ? '정산 확인' : '입력됨') + '</small></div></div>').join('') + '</div>'; });
   $('page').innerHTML = h;
   document.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { CF.m = b.dataset.cm; pageCod(); });
-  $('btnCodNew').onclick = () => codForm(null);
+  $('btnCodNew').onclick = () => codForm(null, all);
   document.querySelectorAll('[data-goach]').forEach(u => { u.style.cursor = 'pointer'; u.onclick = () => Router.go('ach'); });
-  document.querySelectorAll('[data-cid]').forEach(el => el.onclick = () => codForm(rows.find(x => x.id === el.dataset.cid)));
+  document.querySelectorAll('[data-cid]').forEach(el => el.onclick = () => codForm(rows.find(x => x.id === el.dataset.cid), all));
 }
-function codForm(r) {
-  r = r || {};
+/* ---- 💳 입력 안전장치 (수금 흐름 ④) ----
+ *  · 가게를 고르면 미결 인보이스가 칩으로 뜸 → 탭하면 번호·잔액이 줄에 들어가고 금액이 맞춰짐 (손으로 치다 번호 틀리는 일 방지)
+ *  · 카드는 승인번호 필수 · 금액 ≠ 인보이스 합이면 한 번 더 물음
+ *  · 같은 인보이스가 다른 COD·카드 줄이나 세일즈맨 현장 수금(entries)에 이미 있으면 겹침 경고 · 같은 날 같은 가게 같은 금액도 경고 */
+function codForm(r, rows) {
+  r = r || {}; rows = rows || [];
   const invs = (r.invs || []).concat([{ no: '', amt: '' }]);
-  openModal('<h2>' + (r.id ? '수정' + (r.method === 'ACH' ? ' (ACH · 🏦 ACH 에서 들어옴)' : '') : '＋ COD · 카드') + '</h2>' +
-    '<div class="two"><div class="fg"><label>세일즈맨</label>' + sel('cSm', smOptions(null, true), r.sm || '') + '</div><div class="fg"><label>날짜</label>' + inputDate('cD', r.d) + '</div></div>' +
-    '<div class="fg"><label>가게</label><input id="cStore" value="' + esc(r.store || '') + '" placeholder="가게 이름 · 계정코드" autocomplete="off"><div class="hits" id="cHits" style="display:none"></div><input type="hidden" id="cAcct" value="' + esc(r.acct || '') + '"></div>' +
-    '<div class="seg" id="cM">' + (r.method === 'ACH' ? ['ACH'] : METHODS).map(m => '<button class="' + ((r.method || 'COD') === m ? 'on' : '') + '" data-m="' + m + '">' + (m === 'CREDIT CARD' ? '카드' : m) + '</button>').join('') + '</div>' +
-    '<div class="two"><div class="fg"><label>참조 # (선택)</label><input id="cRef" value="' + esc(r.ref || '') + '"></div><div class="fg"><label>금액 $</label><input id="cAmt" inputmode="decimal" value="' + esc(r.amt || '') + '" style="font-weight:800;text-align:right"></div></div>' +
-    '<div class="fg"><label>인보이스 (번호 · 금액)</label><div id="cInvs">' + invs.map((v, i) => '<div class="invrow"><input data-cno="' + i + '" value="' + esc(v.no) + '" placeholder="A12345" style="text-transform:uppercase"><input data-camt="' + i + '" value="' + esc(v.amt) + '" inputmode="decimal" style="text-align:right"><span></span></div>').join('') + '</div><button class="b-ghost b-sm" id="cMore">＋ 줄</button></div>' +
-    '<div class="two"><div class="fg"><label>디스카운트 %</label><input id="cDisc" inputmode="decimal" value="' + esc(r.disc == null ? '' : r.disc) + '"></div><div class="fg"><label>메모</label><input id="cNote" value="' + esc(r.note || '') + '"></div></div>' +
-    '<div class="btns">' + (r.id ? '<button class="b-ghost" id="cDel">삭제</button>' : '') + '<button class="b-blue" id="cSave">저장</button></div>');
-  let method = r.method || 'COD';
-  document.querySelectorAll('#cM [data-m]').forEach(b => b.onclick = () => { method = b.dataset.m; document.querySelectorAll('#cM button').forEach(x => x.classList.toggle('on', x.dataset.m === method)); });
-  $('cStore').oninput = () => { const hits = searchAccounts(S.accounts, $('cStore').value, 8), box = $('cHits'); $('cAcct').value = ''; box.style.display = hits.length ? '' : 'none';
+  const refLabel = m => m === 'CREDIT CARD' ? bt('승인번호 (필수)', 'Auth # (required)') : m === 'ACH' ? bt('참조 # (선택)', 'Ref # (optional)') : bt('체크 # · 참조 (선택)', 'Check # · ref (optional)');
+  const rowHtml = (v, i) => '<div class="invrow"><input data-cno="' + i + '" value="' + esc(v.no) + '" placeholder="A-000123" style="text-transform:uppercase"><input data-camt="' + i + '" value="' + esc(v.amt) + '" inputmode="decimal" style="text-align:right"><span></span></div>';
+  openModal('<h2>' + (r.id ? bt('수정', 'Edit') + (r.method === 'ACH' ? ' (ACH · 🏦 ' + bt('ACH 에서 들어옴', 'from ACH') + ')' : '') : '＋ COD · ' + bt('카드', 'Card')) + '</h2>' +
+    '<div class="two"><div class="fg"><label>' + bt('세일즈맨', 'Salesman') + '</label>' + sel('cSm', smOptions(null, true), r.sm || '') + '</div><div class="fg"><label>' + bt('날짜', 'Date') + '</label>' + inputDate('cD', r.d) + '</div></div>' +
+    '<div class="fg"><label>' + bt('가게', 'Store') + '</label><input id="cStore" value="' + esc(r.store || '') + '" placeholder="' + esc(bt('가게 이름 · 계정코드', 'Store name · account code')) + '" autocomplete="off"><div class="hits" id="cHits" style="display:none"></div><input type="hidden" id="cAcct" value="' + esc(r.acct || '') + '"></div>' +
+    '<div class="seg" id="cM">' + (r.method === 'ACH' ? ['ACH'] : METHODS).map(m => '<button class="' + ((r.method || 'COD') === m ? 'on' : '') + '" data-m="' + m + '">' + (m === 'CREDIT CARD' ? '💳 ' + bt('카드', 'Card') : m) + '</button>').join('') + '</div>' +
+    '<div class="two"><div class="fg"><label id="cRefL">' + refLabel(r.method || 'COD') + '</label><input id="cRef" value="' + esc(r.ref || '') + '"></div><div class="fg"><label>' + bt('금액', 'Amount') + ' $</label><input id="cAmt" inputmode="decimal" value="' + esc(r.amt || '') + '" style="font-weight:800;text-align:right"></div></div>' +
+    '<div class="fg"><label>' + bt('인보이스 (번호 · 금액)', 'Invoices (no · amount)') + '</label><div id="cOpen" class="muted" style="font-size:12px;margin-bottom:6px"></div><div id="cInvs">' + invs.map(rowHtml).join('') + '</div><div style="display:flex;gap:8px;align-items:center"><button class="b-ghost b-sm" id="cMore">＋ ' + bt('줄', 'Row') + '</button><span class="muted" id="cSum" style="font-size:12px"></span></div></div>' +
+    '<div class="two"><div class="fg"><label>' + bt('디스카운트', 'Discount') + ' %</label><input id="cDisc" inputmode="decimal" value="' + esc(r.disc == null ? '' : r.disc) + '"></div><div class="fg"><label>' + bt('메모', 'Note') + '</label><input id="cNote" value="' + esc(r.note || '') + '"></div></div>' +
+    '<div class="btns">' + (r.id ? '<button class="b-ghost" id="cDel">' + bt('삭제', 'Delete') + '</button>' : '') + '<button class="b-blue" id="cSave">' + bt('저장', 'Save') + '</button></div>');
+  let method = r.method || 'COD', OPEN = [];
+  const rowsOf = () => { const out = []; document.querySelectorAll('[data-cno]').forEach(el => { const i = el.dataset.cno, a = document.querySelector('[data-camt="' + i + '"]'); out.push({ el, a, no: invNo(el.value), amt: R2(num(a.value)) }); }); return out; };
+  const sumLine = () => { const L = rowsOf().filter(x => x.no || x.amt), t = R2(sum(L, x => x.amt)), amt = R2(num($('cAmt').value)); const el = $('cSum'); if (!el) return; el.innerHTML = L.length ? bt('인보이스 합', 'Invoice sum') + ' <b>' + money(t) + '</b>' + (amt && Math.abs(amt - t) > 0.009 ? ' <span class="warn">≠ ' + bt('금액', 'amount') + ' ' + money(amt) + ' (' + (amt > t ? '+' : '−') + money(Math.abs(amt - t)) + ')</span>' : amt ? ' <span class="ok">= ' + bt('금액', 'amount') + ' ✓</span>' : '') : ''; };
+  const paintOpen = () => { const box = $('cOpen'); if (!box) return; const used = new Set(rowsOf().map(x => x.no).filter(Boolean)); const L = OPEN.filter(v => !used.has(invNo(v.no)));
+    box.innerHTML = OPEN.length ? '📄 ' + bt('미결 인보이스', 'Open invoices') + ' — ' + bt('탭하면 줄에 들어갑니다', 'tap to add') + '<div class="chips" style="margin-top:4px">' + L.map(v => '<button data-oi="' + esc(v.no) + '" title="' + esc(v.d || '') + '">' + esc(v.no) + ' <span class="en">' + money(v.bal) + '</span></button>').join('') + (L.length ? '' : '<span class="muted">' + bt('모두 들어갔습니다', 'all added') + '</span>') + '</div>' : '';
+    box.querySelectorAll('[data-oi]').forEach(b => b.onclick = () => { const v = OPEN.find(x => x.no === b.dataset.oi); if (!v) return; let R = rowsOf().find(x => !x.no && !x.amt); if (!R) { $('cMore').click(); R = rowsOf().pop(); } R.el.value = v.no; R.a.value = v.bal; const t = R2(sum(rowsOf(), x => x.amt)); const cur = R2(num($('cAmt').value)); if (!cur || Math.abs(cur - R2(t - v.bal)) < 0.009) $('cAmt').value = t; paintOpen(); sumLine(); }); };
+  const loadOpen = async acct => { OPEN = []; paintOpen(); if (!acct) return; const box = $('cOpen'); if (box) box.textContent = bt('미결 인보이스 읽는 중…', 'Loading open invoices…'); try { const { storeInfo } = await import('./store.js'); const info = await storeInfo(acct); if ($('cAcct') && $('cAcct').value !== acct) return; OPEN = (info.invs || []).filter(v => v.bal > 0.005).map(v => ({ no: v.no, d: v.d, bal: R2(v.bal) })); OPEN.sort((x, y) => x.no < y.no ? -1 : 1); CODF_PAYS = (info.pays || []); } catch (e) {} paintOpen(); };
+  let CODF_PAYS = [];
+  document.querySelectorAll('#cM [data-m]').forEach(b => b.onclick = () => { method = b.dataset.m; document.querySelectorAll('#cM button').forEach(x => x.classList.toggle('on', x.dataset.m === method)); $('cRefL').textContent = refLabel(method); });
+  $('cStore').oninput = () => { const hits = searchAccounts(S.accounts, $('cStore').value, 8), box = $('cHits'); $('cAcct').value = ''; OPEN = []; paintOpen(); box.style.display = hits.length ? '' : 'none';
     box.innerHTML = hits.map(a => '<div data-a="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b> <span class="muted">' + esc(a.acct) + (a.sm ? ' · ' + esc(a.sm) : '') + '</span></div>').join('');
-    box.querySelectorAll('[data-a]').forEach(d => d.onclick = () => { const a = S.accounts.byCode[d.dataset.a]; $('cStore').value = a.store; $('cAcct').value = a.acct; box.style.display = 'none'; if (!$('cSm').value && a.sm) $('cSm').value = a.sm; }); };
-  $('cMore').onclick = () => { const n = document.querySelectorAll('[data-cno]').length; $('cInvs').insertAdjacentHTML('beforeend', '<div class="invrow"><input data-cno="' + n + '" placeholder="A12345" style="text-transform:uppercase"><input data-camt="' + n + '" inputmode="decimal" style="text-align:right"><span></span></div>'); };
+    box.querySelectorAll('[data-a]').forEach(d => d.onclick = () => { const a = S.accounts.byCode[d.dataset.a]; $('cStore').value = a.store; $('cAcct').value = a.acct; box.style.display = 'none'; if (!$('cSm').value && a.sm) $('cSm').value = a.sm; loadOpen(a.acct); }); };
+  $('cMore').onclick = () => { const n = document.querySelectorAll('[data-cno]').length; $('cInvs').insertAdjacentHTML('beforeend', rowHtml({ no: '', amt: '' }, n)); bindRows(); };
+  const bindRows = () => { document.querySelectorAll('[data-cno],[data-camt]').forEach(el => el.oninput = () => { sumLine(); paintOpen(); }); };
+  bindRows(); $('cAmt').oninput = sumLine; sumLine();
+  if (r.acct) loadOpen(r.acct);
   $('cSave').onclick = async () => {
-    const sm = $('cSm').value, store = $('cStore').value.trim(), amt = R2(num($('cAmt').value)), d = $('cD').value;
-    if (!sm) return toast('세일즈맨을 고르세요', 'bad'); if (!store) return toast('가게를 넣으세요', 'bad'); if (!amt) return toast('금액을 넣으세요', 'bad');
-    const invList = []; document.querySelectorAll('[data-cno]').forEach(el => { const i = el.dataset.cno, a = document.querySelector('[data-camt="' + i + '"]'); const no = invNo(el.value); if (no || num(a.value)) invList.push({ no, t: no ? invType(no) : '', amt: R2(num(a.value)) }); });
-    if (invList.some(v => !v.no)) return toast('인보이스 번호가 빈 줄이 있습니다', 'bad');
+    const sm = $('cSm').value, store = $('cStore').value.trim(), amt = R2(num($('cAmt').value)), d = $('cD').value, ref = $('cRef').value.trim(), acct = $('cAcct').value || r.acct || '';
+    if (!sm) return toast(bt('세일즈맨을 고르세요', 'Pick a salesman'), 'bad'); if (!store) return toast(bt('가게를 넣으세요', 'Enter the store'), 'bad'); if (!amt) return toast(bt('금액을 넣으세요', 'Enter the amount'), 'bad');
+    if (method === 'CREDIT CARD' && !ref) { $('cRef').focus(); return toast(bt('카드는 승인번호를 꼭 넣으세요', 'Card payments need the auth #'), 'bad'); }
+    const invList = []; rowsOf().forEach(x => { if (x.no || x.amt) invList.push({ no: x.no, t: x.no ? invType(x.no) : '', amt: x.amt }); });
+    if (invList.some(v => !v.no)) return toast(bt('인보이스 번호가 빈 줄이 있습니다', 'A row has no invoice number'), 'bad');
+    const dup = {}; invList.forEach(v => { dup[v.no] = (dup[v.no] || 0) + 1; }); if (Object.values(dup).some(n => n > 1)) return toast(bt('같은 인보이스가 두 줄에 있습니다', 'Same invoice on two rows'), 'bad');
+    /* 금액 ≠ 인보이스 합 → 한 번 더 */
+    const isum = R2(sum(invList, v => v.amt));
+    if (invList.length && Math.abs(isum - amt) > 0.009 && !(await askOver('⚠️ ' + bt('금액', 'Amount') + ' ' + money(amt) + ' ≠ ' + bt('인보이스 합', 'invoice sum') + ' ' + money(isum) + ' (' + (amt > isum ? '+' : '−') + money(Math.abs(amt - isum)) + ')\n' + bt('받은 돈과 인보이스 배분이 다르면 정산에서 빠집니다. 그래도 저장할까요?', 'If the amount and the invoice split differ the line is held back at settlement. Save anyway?'), bt('그래도 저장', 'Save anyway')))) return;
+    /* 겹침 — 다른 COD·카드 줄 / 세일즈맨 현장 수금에 같은 인보이스 */
+    const nos = new Set(invList.map(v => v.no)), others = rows.filter(x => x.id !== r.id && !x.void), hitC = others.filter(x => (x.invs || []).some(v => nos.has(invNo(v.no)))), hitE = CODF_PAYS.filter(e => !e.void && !e.repl && (e.invs || []).some(v => nos.has(invNo(v.no))));
+    if (hitC.length || hitE.length) { const txt = hitC.map(x => '💳 ' + x.d + ' ' + x.method + ' ' + money(x.amt) + ' (' + (x.invs || []).map(v => v.no).join(',') + ')').concat(hitE.map(e => '🧾 ' + e.d + ' ' + bt('현장 수금', 'field') + ' ' + money(e.total) + ' (' + (e.invs || []).map(v => v.no).join(',') + ')')).join('\n');
+      if (!(await askOver('🔁 ' + bt('이 인보이스는 이미 다른 수금에 들어가 있습니다', 'This invoice is already on another payment') + ':\n' + txt + '\n' + bt('중복 입력이 아닌지 확인하세요. 그래도 저장할까요?', 'Make sure this is not a duplicate. Save anyway?'), bt('그래도 저장', 'Save anyway')))) return; }
+    /* 같은 날 · 같은 가게 · 같은 금액 */
+    const same = others.find(x => x.d === d && (acct ? x.acct === acct : x.store === store) && Math.abs(num(x.amt) - amt) < 0.009);
+    if (same && !(await askOver('🔁 ' + bt('같은 날 같은 가게에 같은 금액이 이미 있습니다', 'Same store, same day, same amount already entered') + ' (' + same.method + (same.ref ? ' ' + same.ref : '') + ').\n' + bt('중복 입력이 아닌지 확인하세요. 그래도 저장할까요?', 'Make sure this is not a duplicate. Save anyway?'), bt('그래도 저장', 'Save anyway')))) return;
     if (method === 'ACH' && !r.id && !r.achId) {
       /* 옛 규칙(ACH_COMM_SOURCE): ACH 커미션은 한쪽에서만. 🏦 ACH 허브에 같은 가게·금액 건이 있으면 겹치니 막습니다 */
-      try { const achs = (await S.DB.list('ach', { where: [['acct', '==', $('cAcct').value || r.acct || '']] })).filter(a => !a.void && Math.abs(num(a.amt) - amt) < 0.01); if (achs.length) { const a = achs[0]; if (a.codId) return toast('이 ACH 는 🏦 ACH 에서 이미 인출 완료 처리되어 COD·ACH 목록에 들어와 있습니다 (' + a.drawOn + '). 중복 입력입니다.', 'bad'); if (!(await confirmBox('🏦 ACH 에 같은 가게 · 같은 금액 건이 있습니다 (인출 예정 ' + a.drawOn + ', ' + (a.setup ? '예약됨' : '셋업 전') + ').\n인출 완료는 ACH 탭에서 처리하면 자동으로 여기 들어옵니다. 그래도 직접 넣을까요?', '그래도 저장'))) return; } } catch (e) {}
+      try { const achs = (await S.DB.list('ach', { where: [['acct', '==', acct]] })).filter(a => !a.void && Math.abs(num(a.amt) - amt) < 0.01); if (achs.length) { const a = achs[0]; if (a.codId) return toast('이 ACH 는 🏦 ACH 에서 이미 인출 완료 처리되어 COD·ACH 목록에 들어와 있습니다 (' + a.drawOn + '). 중복 입력입니다.', 'bad'); if (!(await askOver('🏦 ACH 에 같은 가게 · 같은 금액 건이 있습니다 (인출 예정 ' + a.drawOn + ', ' + (a.setup ? '예약됨' : '셋업 전') + ').\n인출 완료는 ACH 탭에서 처리하면 자동으로 여기 들어옵니다. 그래도 직접 넣을까요?', '그래도 저장'))) return; } } catch (e) {}
     }
     const id = r.id || newId('C');
-    const doc = { id, d, ym: ym(d), sm, acct: $('cAcct').value || r.acct || '', store, method, ref: $('cRef').value.trim(), amt, invs: invList, disc: $('cDisc').value.trim() === '' ? '' : num($('cDisc').value), note: $('cNote').value.trim(), updatedAt: new Date().toISOString() };
+    const doc = { id, d, ym: ym(d), sm, acct, store, method, ref, amt, invs: invList, disc: $('cDisc').value.trim() === '' ? '' : num($('cDisc').value), note: $('cNote').value.trim(), updatedAt: new Date().toISOString() };
     busy(true);
-    try { if (r.id) await S.DB.update('cod', id, doc); else await S.DB.set('cod', id, Object.assign(doc, { v: false, vn: '', settled: '', void: false, createdBy: S.user.email, createdAt: new Date().toISOString() })); if (r.id && r.invs) await applyToInvoices(id, r.invs, false); await applyToInvoices(id, invList, true); closeModal(); toast('저장'); pageCod(); }
-    catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
+    try { if (r.id) await S.DB.update('cod', id, doc); else await S.DB.set('cod', id, Object.assign(doc, { v: false, vn: '', settled: '', void: false, createdBy: S.user.email, createdAt: new Date().toISOString() })); if (r.id && r.invs) await applyToInvoices(id, r.invs, false); await applyToInvoices(id, invList, true); closeModal(); toast(bt('저장', 'Saved')); pageCod(); }
+    catch (e) { toast(bt('실패', 'Failed') + ': ' + e.message, 'bad'); } busy(false);
   };
-  if ($('cDel')) $('cDel').onclick = async () => { if (!(await confirmBox('지울까요?', '삭제'))) return; busy(true); try { await S.DB.update('cod', r.id, { void: true }); await applyToInvoices(r.id, r.invs, false); closeModal(); pageCod(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  if ($('cDel')) $('cDel').onclick = async () => { if (!(await confirmBox(bt('지울까요?', 'Delete?'), bt('삭제', 'Delete')))) return; busy(true); try { await S.DB.update('cod', r.id, { void: true }); await applyToInvoices(r.id, r.invs, false); closeModal(); pageCod(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ③ ACH 는 ach.js (ACH 허브) 가 맡음 */
