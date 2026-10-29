@@ -13,6 +13,7 @@ import { acctAccess, requestAccess, untilTxt } from './access.js';
 let S = null;
 export function register(state) { S = state; Notes.register(state); }
 const CACHE = {};   // acct → { at, ar, orders, pays, hist }
+export function dropStoreCache(acct) { if (acct) delete CACHE[acct]; else Object.keys(CACHE).forEach(k => { delete CACHE[k]; }); }   // 인보이스 · 수금을 새로 넣은 뒤
 const BK = ['기한 전 Current', '1-30', '31-60', '61-90', '90+'];
 const isStaff = () => S.role !== 'salesman';
 const mySm = () => (S.me && S.me.sm ? String(S.me.sm).toUpperCase() : '');
@@ -59,7 +60,10 @@ export async function storeInfo(acct, force) {
       out.invs.sort((x, y) => x.d < y.d ? 1 : -1);
     } catch (e) {}
     /* 인보이스 기록 — 이전 시스템에서 가져온 것 + 앱 발행, 최근 60장 (받은 것 포함) */
-    try { const allInv = await S.DB.list('invoices', { where: whInv }); out.invHist = sortBy(allInv.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 60); out.invHistN = allInv.length; out.invHistAmt = R2(allInv.filter(x => x.st !== 'x' && x.d >= today().substring(0, 4) + '-01-01').reduce((a, x) => a + (x.total || 0), 0)); } catch (e) {}
+    try { let allInv = await S.DB.list('invoices', { where: whInv });
+      /* 계정코드로 하나도 없으면 — 이전 시스템 인보이스가 다른 코드 모양으로 들어왔을 수 있으니 가게 이름으로도 (담당자만: 세일즈맨 규칙은 가게 코드 기준) */
+      if (!allInv.length && isStaff() && a && a.store) { try { const byName = await S.DB.list('invoices', { where: [['store', '==', a.store]] }); if (byName.length) { allInv = byName; out.invByName = true; } } catch (e) {} }
+      out.invHist = sortBy(allInv.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 60); out.invHistN = allInv.length; out.invHistAmt = R2(allInv.filter(x => x.st !== 'x' && x.d >= today().substring(0, 4) + '-01-01').reduce((a, x) => a + (x.total || 0), 0)); } catch (e) {}
     out.orders = sortBy(orders.filter(o => o.st !== 'x'), o => o.d + (o.createdAt || ''), true).slice(0, 30);
     out.pays = sortBy(pays.filter(e => !e.void), e => e.d + (e.createdAt || ''), true).slice(0, 30);
     /* 아이템별 최근 구매 — 최근 주문 8건의 줄을 읽음 (인보이스 확정된 것 우선) */
