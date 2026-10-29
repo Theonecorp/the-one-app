@@ -8,7 +8,7 @@ import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
 import { roleLabel, JOBS, jobLabel, can } from './main.js';
 import { seedImport, dropMgCache } from './mg.js';
 import { parseFactoryStatement, looksLikeStatement, suggestFactoryCode, matchFactory } from './facstmt.js';
-import { looksLikeBank, bankFile } from './bank.js';
+import { looksLikeBank, bankFile, bankPdfFile } from './bank.js';
 import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
 import { acctImportCard, bindAcctImport, acctFile, parseAcctList } from './acctimp.js';
@@ -350,7 +350,7 @@ async function arFileImport(f, out, asOf) {
  * ============================================================ */
 const KINDS = [
   ['main', '① 수금 입력 (거래처 · 세일즈맨 · 수금 · AR 탭)'], ['sales', '② SALES (COD · 카드 · ACH · 확인 표시)'], ['comm', '③ 커미션 (요율 · 정산 기록)'], ['boss', '④ 수금 대시보드 (공장 · 1099 · 보너스)'], ['inv', '⑤ 인보이스 목록 (sales_invoice)'],
-  ['facstmt', '🏭 공장 명세서 (공장별 엑셀 — Date · ITEM · FREIGHT · Amount | PAID DATE · DEPOSIT MONEY)'], ['bank', '🏦 은행 명세서 (CSV · 엑셀 — 날짜 · 내용 · 금액 또는 입금/출금 · 잔액)'], ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
+  ['facstmt', '🏭 공장 명세서 (공장별 엑셀 — Date · ITEM · FREIGHT · Amount | PAID DATE · DEPOSIT MONEY)'], ['bank', '🏦 은행 명세서 (CSV · 엑셀 — 날짜 · 내용 · 금액 또는 입금/출금 · 잔액)'], ['bankpdf', '📄 은행 명세서 PDF (매달 — 입금 · 출금 합계 · 잔액)'], ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
   ['sets', '🧩 세트 구성 (SET_MASTER)'], ['bulk', '📄 아이템 일괄 변경 (LEVEL_1_AND_2 · GROUP_NAME_CHANGE · TreeUpdate …)'], ['loc', '📍 창고 위치 (재고 사이트 통로)'], ['pop', '✨ 자주 나가는 아이템 (Item · Qty)'], ['seed', '🧪 SEED_DATA (.js · .json)']];
 const kindName = k => (KINDS.find(x => x[0] === k) || ['', '❓ 모르는 파일 — 종류를 골라 주세요'])[1];
 function anyImportCard() {
@@ -372,6 +372,7 @@ const csvDelim = first => (first.match(/;/g) || []).length > (first.match(/,/g) 
 export async function sniffFile(file) {
   const lower = String(file.name || '').toLowerCase();
   if (/\.(js|json)$/.test(lower)) return { k: 'seed', why: '.js / .json 파일' };
+  if (/\.pdf$/.test(lower)) return { k: 'bankpdf', why: 'PDF — 은행 명세서' };
   let XLSX = null, wb, sheets = {};
   if (/\.(csv|txt)$/.test(lower)) { const text = (await file.text()).replace(/^﻿/, ''); const t = parseCsv(text, csvDelim(text.split(/\r?\n/)[0] || '')); sheets = { Sheet1: t }; wb = { SheetNames: ['Sheet1'] }; }
   else ({ XLSX, wb } = await readBook(file));
@@ -446,6 +447,7 @@ async function runKind(k, f, out) {
   else if (k === 'boss') await importBoss(f, out);
   else if (k === 'facstmt') await factoryStatementFile(f, out);
   else if (k === 'bank') await bankFile(f, out, readBook, aoa, parseCsv, csvDelim);
+  else if (k === 'bankpdf') await bankPdfFile(f, out);
   else if (k === 'inv') await importInvoices(f, false, out, fromD);
   else if (k === 'ar') await arFileImport(f, out, asOf);
   else if (k === 'acct') await acctFile(S, f, out, readBook, aoa);
