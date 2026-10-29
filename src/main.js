@@ -2,7 +2,7 @@
  *  THE ONE 앱 — 진입점: 로그인 → 역할 → 메뉴
  * ============================================================ */
 import { connect, MOCK, newId } from './db.js';
-import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt } from './ui.js';
+import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt, numPadOn, setNumPad } from './ui.js';
 import { CSS } from './style.js';
 import * as Sales from './sales.js';
 import * as Collect from './collect.js';
@@ -34,7 +34,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.114';
+export const VER = 'v0.8.115';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -112,7 +112,7 @@ function shell() {
     '<div id="toast"></div>' +
     '<div id="modal"><div class="box" id="mbox"></div></div>' +
     '<div id="prt"><div id="prtbar"><button onclick="window.print()">🖨 인쇄 / PDF</button><button id="prtClose">닫기</button></div><div id="prtbody"></div></div>';
-  $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+  /* 창은 ✕ · 닫기 버튼으로만 닫힘 (바깥을 눌러도 안 닫힘 — 실수로 닫히는 것 방지, v0.8.115) */
   /* ⏳ 서버에서 읽는 동안 화면 맨 위에 진행 막대 (0.15초 넘게 걸릴 때만) */
   /* 처리 안 된 오류가 나도 화면이 막힌 채 남지 않게 — 동그라미를 풀고 알림 */
   window.addEventListener('unhandledrejection', e => { const r = e.reason, b = $('busy'); console.error(r); if (b && b.classList.contains('on')) { busy(false); toast('오류: ' + String((r && (r.code || r.message)) || r).slice(0, 120), 'bad'); } });
@@ -170,10 +170,12 @@ function userMenu() {
     (roles.length ? '<div class="fg"><label>화면 바꾸기 <span class="en">Switch view</span></label><div class="seg">' + roles.map(r => '<button class="' + (S.role === r ? 'on' : '') + '" data-r="' + r + '">' + roleLabel(r) + '</button>').join('') + '</div>' +
       (S.role === 'manager' && isAdm ? '<div class="seg">' + JOBS.map(j => '<button class="' + (jobOf() === j[0] ? 'on' : '') + '" data-j="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div>' : '') + '</div>' : '') +
     '<div class="fg"><label>🌐 언어 · Language · Idioma</label><div class="seg">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '" translate="no">' + l[1] + '</button>').join('') + '</div></div>' +
+    '<div class="fg"><label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label><div class="seg"><button class="' + (numPadOn() ? 'on' : '') + '" data-np="1">' + bt('팝업 패드 (키보드가 화면을 안 가림)', 'Popup pad') + '</button><button class="' + (numPadOn() ? '' : 'on') + '" data-np="0">' + bt('폰 키보드', 'Phone keyboard') + '</button></div></div>' +
     '<div class="btns"><button class="b-ghost" id="mOut">로그아웃 <span class="en">Sign out</span></button><button class="b-blue" id="mReload">새로고침 <span class="en">Reload</span></button></div>' +
     (isApp() ? '' : '<button class="b-blue b-sm" id="mInst" style="margin-top:10px">📲 ' + bt('앱으로 설치 (홈 화면)', 'Install as app') + '</button>') +
     '<button class="b-ghost b-sm" id="mDiag" style="margin-top:10px">🔎 연결 · 권한 점검 <span class="en">Check connection</span></button><div id="diagOut"></div>');
   $('mDiag').onclick = diag;
+  document.querySelectorAll('#mbox [data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); userMenu(); });
   if ($('mInst')) $('mInst').onclick = () => { closeModal(); doInstall(); };
   document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
   document.querySelectorAll('#mbox [data-r]').forEach(b => b.onclick = () => { switchRole(b.dataset.r); closeModal(); });
