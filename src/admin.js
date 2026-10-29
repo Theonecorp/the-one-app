@@ -8,6 +8,7 @@ import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
 import { roleLabel, JOBS, jobLabel, can } from './main.js';
 import { seedImport, dropMgCache } from './mg.js';
 import { parseFactoryStatement, looksLikeStatement, suggestFactoryCode, matchFactory } from './facstmt.js';
+import { looksLikeBank, bankFile } from './bank.js';
 import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
 import { acctImportCard, bindAcctImport, acctFile, parseAcctList } from './acctimp.js';
@@ -349,7 +350,7 @@ async function arFileImport(f, out, asOf) {
  * ============================================================ */
 const KINDS = [
   ['main', '① 수금 입력 (거래처 · 세일즈맨 · 수금 · AR 탭)'], ['sales', '② SALES (COD · 카드 · ACH · 확인 표시)'], ['comm', '③ 커미션 (요율 · 정산 기록)'], ['boss', '④ 수금 대시보드 (공장 · 1099 · 보너스)'], ['inv', '⑤ 인보이스 목록 (sales_invoice)'],
-  ['facstmt', '🏭 공장 명세서 (공장별 엑셀 — Date · ITEM · FREIGHT · Amount | PAID DATE · DEPOSIT MONEY)'], ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
+  ['facstmt', '🏭 공장 명세서 (공장별 엑셀 — Date · ITEM · FREIGHT · Amount | PAID DATE · DEPOSIT MONEY)'], ['bank', '🏦 은행 명세서 (CSV · 엑셀 — 날짜 · 내용 · 금액 또는 입금/출금 · 잔액)'], ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
   ['sets', '🧩 세트 구성 (SET_MASTER)'], ['bulk', '📄 아이템 일괄 변경 (LEVEL_1_AND_2 · GROUP_NAME_CHANGE · TreeUpdate …)'], ['loc', '📍 창고 위치 (재고 사이트 통로)'], ['pop', '✨ 자주 나가는 아이템 (Item · Qty)'], ['seed', '🧪 SEED_DATA (.js · .json)']];
 const kindName = k => (KINDS.find(x => x[0] === k) || ['', '❓ 모르는 파일 — 종류를 골라 주세요'])[1];
 function anyImportCard() {
@@ -385,6 +386,7 @@ export async function sniffFile(file) {
   const hasAll = (row, res) => res.every(re => row.some(h => h && re.test(h)));
   const hit = (n, res) => hdrs(n).some(r => hasAll(r, res));
   for (const n of names) {
+    if (looksLikeBank(get(n)) && !looksLikeStatement(get(n))) return { k: 'bank', why: '머리글 날짜 · 내용 · 금액(입금/출금) — 은행 명세서' };
     if (looksLikeStatement(get(n))) return { k: 'facstmt', why: '머리글 Date · PAID DATE · DEPOSIT MONEY — 공장 명세서 (' + (sv((get(n)[0] || [])[0]) || n) + ')' };
     if (/^(items)$/i.test(n.trim()) && hit(n, [/^code$/, /^description$/, /^price$/])) return { k: 'master', why: '탭 Items — Code · Description · Price' };
     if (hit(n, [/^category$/, /^item\s*(3|#|no\.?|code)?$|^code$|^sku$/, /^description$/, /^price$/])) return { k: 'sbitems', why: '머리글 CATEGORY · ITEM 3 · DESCRIPTION · PRICE' };
@@ -443,6 +445,7 @@ async function runKind(k, f, out) {
   else if (k === 'comm') { OUT = out; try { await importComm(f); } finally { OUT = null; } }
   else if (k === 'boss') await importBoss(f, out);
   else if (k === 'facstmt') await factoryStatementFile(f, out);
+  else if (k === 'bank') await bankFile(f, out, readBook, aoa, parseCsv, csvDelim);
   else if (k === 'inv') await importInvoices(f, false, out, fromD);
   else if (k === 'ar') await arFileImport(f, out, asOf);
   else if (k === 'acct') await acctFile(S, f, out, readBook, aoa);

@@ -29,14 +29,14 @@ function years() { const y0 = Number(today().substring(0, 4)), ys = new Set([YEA
 async function page() {
   $('page').innerHTML = '<div class="load">경영 자료 읽는 중…</div>';
   await load();
-  const T = [['home', '요약'], ['fac', '🏭 공장'], ['p99', '🧾 1099'], ['bon', '🎁 보너스'], ['sales', '📈 매출']];
+  const T = [['home', '요약'], ['fac', '🏭 공장'], ['bank', '🏦 은행'], ['p99', '🧾 1099'], ['bon', '🎁 보너스'], ['sales', '📈 매출']];
   let h = '<div class="seg">' + T.map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-mt="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>';
   if (TAB !== 'bon') h += '<div class="chips">' + years().map(y => '<button class="' + (y === YEAR ? 'on' : '') + '" data-my="' + y + '">' + y + '</button>').join('') + '</div>';
   h += '<div id="mgBody"></div>';
   $('page').innerHTML = h;
   document.querySelectorAll('[data-mt]').forEach(b => b.onclick = () => { TAB = b.dataset.mt; page(); });
   document.querySelectorAll('[data-my]').forEach(b => b.onclick = () => { YEAR = Number(b.dataset.my); page(); });
-  if (TAB === 'home') paintHome(); else if (TAB === 'fac') paintFac(); else if (TAB === 'p99') paint99(); else if (TAB === 'bon') paintBon(); else await paintSales();
+  if (TAB === 'home') paintHome(); else if (TAB === 'fac') paintFac(); else if (TAB === 'bank') { const B = await import('./bank.js'); await B.paintBank($('mgBody'), YEAR); } else if (TAB === 'p99') paint99(); else if (TAB === 'bon') paintBon(); else await paintSales();
 }
 const refresh = async () => { await load(true); page(); };
 
