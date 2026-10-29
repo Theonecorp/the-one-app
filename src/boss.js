@@ -338,9 +338,18 @@ async function tapLine(kind, id) {
   if (st === 'pend') patch = { v: true, vbad: false, vn: '', vAt: today() };
   else if (st === 'ok') { const m = await askNote('무엇이 문제인가요?', '예: 체크 없음 / 금액 다름 $780.30→$708.30', x.vn || ''); if (m === null) return; patch = { v: false, vbad: true, vn: m, vAt: today() }; }
   else patch = { v: false, vbad: false, vn: '', vAt: today() };
+  const before = {}; Object.keys(patch).forEach(k => { before[k] = x[k]; });
   Object.assign(x, patch);
-  try { await S.DB.update(col, id, patch); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
-  pagePay();
+  repaintSm();   // ✓ 는 바로 화면에 (다시 읽지 않고 · 스크롤 그대로) — 저장은 뒤에서
+  try { await S.DB.update(col, id, patch); } catch (e) { Object.assign(x, before); repaintSm(); toast('실패: ' + (e.code || e.message), 'bad'); }
+}
+/** 세일즈맨 정산 화면만 다시 그림 — 서버를 다시 읽지 않고, 보고 있던 자리(스크롤)를 유지 */
+function repaintSm() {
+  if (!P.sm || P.hist) return pagePay();
+  const y = window.scrollY, box = $('pOut'); if (!box) return pagePay();
+  const h = box.offsetHeight; box.style.minHeight = h + 'px';   // 다시 그리는 동안 높이가 줄어 스크롤이 튀지 않게
+  paintSm(overview(P.from, P.to));
+  requestAnimationFrame(() => { window.scrollTo(0, y); requestAnimationFrame(() => { box.style.minHeight = ''; window.scrollTo(0, y); }); });
 }
 function askNote(title, ph, v) { return new Promise(res => { openModal('<h2>' + esc(title) + '</h2><div class="fg"><input id="nq" value="' + esc(v) + '" placeholder="' + esc(ph) + '"></div><div class="btns"><button class="b-ghost" id="nqX">취소</button><button class="b-red" id="nqOk">! 문제 표시</button></div>'); $('nqX').onclick = () => { closeModal(); res(null); }; $('nqOk').onclick = () => { const t = $('nq').value.trim(); closeModal(); res(t || '문제 있음'); }; setTimeout(() => $('nq').focus(), 50); }); }
 async function setAll(rows, v) {
@@ -348,7 +357,7 @@ async function setAll(rows, v) {
   rows.field.forEach(e => { if (lineState(e) === 'bad' && v) return; if (!!e.v !== v) { e.v = v; e.vbad = false; ops.push({ op: 'update', col: 'entries', id: e.id, data: { v, vbad: false, vn: v ? '' : e.vn || '', vAt: today() } }); } });
   rows.cods.forEach(c => { if (lineState(c) === 'bad' && v) return; if (!!c.v !== v) { c.v = v; c.vbad = false; ops.push({ op: 'update', col: 'cod', id: c.id, data: { v, vbad: false, vn: '', vAt: today() } }); } });
   try { if (ops.length) await S.DB.batch(ops); toast(v ? '전부 ✓ (' + ops.length + '줄)' : '전부 해제', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
-  busy(false); pagePay();
+  busy(false); repaintSm();
 }
 /* ---- 금액 고치기 (인보이스 배분 ≠ 받은 돈) ---- */
 function fixBox(b, rows) {
