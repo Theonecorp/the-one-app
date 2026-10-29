@@ -79,7 +79,8 @@ window.addEventListener('hashchange', () => { LAST_HASH = location.hash; HIST = 
  *  🔢 숫자 패드 — 폰 · 태블릿에서 수량 · 금액 칸을 누르면 키보드 대신 팝업 패드 (키보드가 화면 아래를 가리지 않게)
  *    type=number · inputmode numeric/decimal 칸에 자동. data-nopad 가 있으면 키보드. 사용자 메뉴에서 끌 수 있음 (theone.numpad = 0)
  * ============================================================ */
-export const numPadOn = () => { try { if (localStorage.getItem('theone.numpad') === '0') return false; } catch (e) {} return window.matchMedia && window.matchMedia('(pointer: coarse)').matches; };
+/* 기본은 폰 키보드 (v0.8.120 — 패드가 화면을 더 가려 불편) · 사용자 메뉴에서 켠 사람만 팝업 패드 */
+export const numPadOn = () => { try { if (localStorage.getItem('theone.numpad') !== '1') return false; } catch (e) { return false; } return window.matchMedia && window.matchMedia('(pointer: coarse)').matches; };
 export function setNumPad(on) { try { localStorage.setItem('theone.numpad', on ? '1' : '0'); } catch (e) {} }
 const padWants = t => t && t.tagName === 'INPUT' && !t.readOnly && !t.disabled && !t.dataset.nopad && (t.type === 'number' || /^(numeric|decimal)$/.test(t.getAttribute('inputmode') || '')) && !t.closest('.npad');
 let PAD = null;

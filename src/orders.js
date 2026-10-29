@@ -756,10 +756,10 @@ function paintResults() {
   /* 목록 보기에서 줄(이름 · 사진)을 누르면 카드처럼 담김 (프리셋 적용) */
   root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = tapAdd(c); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
   root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
-  root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); });
+  root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); sure(c); refreshCard(c); });
   root.querySelectorAll('[data-pe]').forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); qtyPad(b.dataset.pe, true); });
   root.querySelectorAll('[data-gq]').forEach(b => b.onclick = e => { if (!b.textContent) return; e.stopPropagation(); qtyPad(b.dataset.gq); });
-  root.querySelectorAll('[data-gt]').forEach(b => b.onclick = e => { e.stopPropagation(); qtyPad(b.dataset.gt); });   /* ×N 배지를 눌러도 수량 입력 */
+  /* ×N 배지는 보기만 (탭은 카드로) — 수량 입력은 숫자 표시 · 길게 누르기 */
   root.querySelectorAll('[data-gc]').forEach(el => {
     let t = null, long = false;
     el.addEventListener('pointerdown', () => { long = false; t = setTimeout(() => { long = true; qtyPad(el.dataset.gc); }, 550); });
@@ -773,9 +773,9 @@ function refreshCard(c) {
   const n = IDX[c] ? IDX[c].q : 0;
   el.classList.toggle('on', !!n); setTapCls(el, IDX[c]);
   el.querySelector('[data-gq]').textContent = n || '';
-  let x = el.querySelector('.gtap'); if (multi(IDX[c])) { if (!x) { x = document.createElement('span'); x.className = 'gtap'; x.dataset.gt = c; x.onclick = e => { e.stopPropagation(); qtyPad(c); }; el.appendChild(x); } x.textContent = '×' + IDX[c].tap; } else if (x) x.remove();
+  let x = el.querySelector('.gtap'); if (multi(IDX[c])) { if (!x) { x = document.createElement('span'); x.className = 'gtap'; x.dataset.gt = c; el.appendChild(x); } x.textContent = '×' + IDX[c].tap; } else if (x) x.remove();
   let m = el.querySelector('[data-gm]');
-  if (n && !m) { m = document.createElement('button'); m.className = 'gm'; m.dataset.gm = c; m.textContent = '−'; m.onclick = e => { e.stopPropagation(); setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); refreshCard(c); }; el.appendChild(m); }
+  if (n && !m) { m = document.createElement('button'); m.className = 'gm'; m.dataset.gm = c; m.textContent = '−'; m.onclick = e => { e.stopPropagation(); setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); sure(c); refreshCard(c); }; el.appendChild(m); }
   if (!n && m) m.remove();
 }
 /** 수량 직접 입력 */
@@ -837,7 +837,7 @@ function bindQty(root) {
   root.querySelectorAll('[data-dq]').forEach(b => b.onclick = () => {
     const c = b.dataset.dq, inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]');
     const d = Number(b.dataset.d), cur = IDX[c] ? IDX[c].q : 0;
-    const n = setQty(c, d > 0 ? tapQty(c) : cur - 1); sure(c);   // ＋ 는 프리셋(있으면) 만큼, − 는 1개 (일부러 고친 것 — ×2 표시 지움)
+    const n = setQty(c, d > 0 ? cur + 1 : cur - 1); sure(c);   // ＋ · − 는 항상 1개씩 (프리셋은 카드 탭에만) — 일부러 고친 것이라 ×N 표시 지움
     if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {}
     if (inp) inp.value = n || (O.view === 'cart' ? '0' : ''); markRow(root, c, n); setFocus(c);
   });

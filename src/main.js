@@ -34,7 +34,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.119';
+export const VER = 'v0.8.120';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -170,7 +170,7 @@ function userMenu() {
     (roles.length ? '<div class="fg"><label>화면 바꾸기 <span class="en">Switch view</span></label><div class="seg">' + roles.map(r => '<button class="' + (S.role === r ? 'on' : '') + '" data-r="' + r + '">' + roleLabel(r) + '</button>').join('') + '</div>' +
       (S.role === 'manager' && isAdm ? '<div class="seg">' + JOBS.map(j => '<button class="' + (jobOf() === j[0] ? 'on' : '') + '" data-j="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div>' : '') + '</div>' : '') +
     '<div class="fg"><label>🌐 언어 · Language · Idioma</label><div class="seg">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '" translate="no">' + l[1] + '</button>').join('') + '</div></div>' +
-    '<div class="fg"><label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label><div class="seg"><button class="' + (numPadOn() ? 'on' : '') + '" data-np="1">' + bt('팝업 패드 (키보드가 화면을 안 가림)', 'Popup pad') + '</button><button class="' + (numPadOn() ? '' : 'on') + '" data-np="0">' + bt('폰 키보드', 'Phone keyboard') + '</button></div></div>' +
+    '<div class="fg"><label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label><div class="seg"><button class="' + (numPadOn() ? 'on' : '') + '" data-np="1">' + bt('팝업 패드 (작은 숫자판)', 'Popup pad') + '</button><button class="' + (numPadOn() ? '' : 'on') + '" data-np="0">' + bt('폰 키보드', 'Phone keyboard') + '</button></div></div>' +
     '<div class="btns"><button class="b-ghost" id="mOut">로그아웃 <span class="en">Sign out</span></button><button class="b-blue" id="mReload">새로고침 <span class="en">Reload</span></button></div>' +
     (isApp() ? '' : '<button class="b-blue b-sm" id="mInst" style="margin-top:10px">📲 ' + bt('앱으로 설치 (홈 화면)', 'Install as app') + '</button>') +
     '<button class="b-ghost b-sm" id="mDiag" style="margin-top:10px">🔎 연결 · 권한 점검 <span class="en">Check connection</span></button><div id="diagOut"></div>');
