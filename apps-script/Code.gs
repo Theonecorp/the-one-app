@@ -13,7 +13,7 @@
  *   5. testMail 실행 → 내 메일함에 시험 메일이 오면 끝
  *
  * 💳 COD 시트 동기화(codSyncRun_): 구글시트 "THE ONE 수금 (SALES)" 의 COD 입력 탭을 5분마다 읽어 앱(Firestore cod)에 올림 — 사무실이 시트에 계속 적어도 앱 정산에 바로 보임.
- *    스크립트 속성 COD_SHEET_ID(기본: 지금 쓰는 시트) · COD_TAB(기본 COD 입력) · COD_SYNC=off 로 끔. 시트 ID 칸이 비면 ID 를 만들어 시트에 써 둠(중복 없음). testCodSync 로 바로 실행.
+ *    기본은 꺼짐(앱에서 직접 입력이 기준) — 시트를 계속 쓸 때만 스크립트 속성 COD_SYNC=on. COD_SHEET_ID(기본: 지금 쓰는 시트) · COD_TAB(기본 COD 입력). 시트 ID 칸이 비면 ID 를 만들어 시트에 써 둠(중복 없음). testCodSync 로 바로 실행.
  *    (appsscript.json 에 spreadsheets 권한 — setup 을 다시 ▶ 실행해 권한 허용)
  *
  * 🔔 앱 알림(notifyq): 주문 확인 요청 · 주문 문제 · 문의를 이메일로, 스크립트 속성 CHAT_WEBHOOK 이 있으면 구글 챗 스페이스에도 (5분마다 같이)
@@ -273,7 +273,7 @@ function today_() { return Utilities.formatDate(new Date(), 'America/New_York', 
 const COD_SHEET_DEFAULT = '1zX7VqiU-RqH54670RQgB93qpqQn_1zJGgrpFNCvw6kg', COD_TAB_DEFAULT = 'COD 입력';
 function codSyncRun_() {
   const P = PropertiesService.getScriptProperties();
-  if (P.getProperty('COD_SYNC') === 'off') return;
+  if (P.getProperty('COD_SYNC') !== 'on') return;   // 기본은 꺼짐 — 앱에서 직접 입력하는 것이 기준. 시트를 계속 쓸 때만 속성 COD_SYNC=on
   const ss = SpreadsheetApp.openById(P.getProperty('COD_SHEET_ID') || COD_SHEET_DEFAULT);
   const sh = ss.getSheetByName(P.getProperty('COD_TAB') || COD_TAB_DEFAULT);
   if (!sh) { Logger.log('COD 동기화: 탭 "' + (P.getProperty('COD_TAB') || COD_TAB_DEFAULT) + '" 이 없습니다'); return; }
@@ -308,7 +308,7 @@ function codSyncRun_() {
   Logger.log('COD 동기화: 새로 ' + nNew + ' · 바뀜 ' + nUpd + ' · 같음 ' + nSame + ' · 건너뜀 ' + nSkip + (bad.length ? '\n' + bad.slice(0, 20).join('\n') : ''));
 }
 /** 바로 실행해 보기 — 실행 로그에 결과 */
-function testCodSync() { PropertiesService.getScriptProperties().deleteProperty('COD_SYNC'); codSyncRun_(); const s = getDoc_('settings', 'codSync'); Logger.log(s ? '시트 줄 ' + s.n + ' · 새로 ' + s.nNew + ' · 바뀜 ' + s.nUpd + ' · 건너뜀 ' + s.nSkip + ' · ' + s.at : '결과 없음'); }
+function testCodSync() { PropertiesService.getScriptProperties().setProperty('COD_SYNC', 'on'); codSyncRun_(); const s = getDoc_('settings', 'codSync'); Logger.log(s ? '시트 줄 ' + s.n + ' · 새로 ' + s.nNew + ' · 바뀜 ' + s.nUpd + ' · 건너뜀 ' + s.nSkip + ' · ' + s.at : '결과 없음'); }
 /** 있으면 시트 칸만 고치고(앱의 ✓ · 정산 · VOID 는 그대로), 없으면 기본값과 함께 새로 만듦 → 'new' | 'upd' */
 function upsert_(col, id, data, defaults) {
   const mask = Object.keys(data).map(k => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');

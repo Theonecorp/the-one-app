@@ -555,7 +555,9 @@ async function importSales(file) {
         const shifted = !String(r0[H.id] || '').trim() && H.disc >= 0 && /^D\d{6}-/.test(String(r0[H.disc] || '').trim());
         const r = shifted ? Object.assign([], r0, { [H.id]: r0[H.disc], [H.disc]: r0[H.invW], [H.invW]: '' }) : r0; if (shifted) nShift++;
         const d = dstr(r[H.d]); if (!d || !r[H.sm]) continue; const invs = []; ['A', 'P', 'CM', 'W'].forEach(t => { const no = invNo(r[H['inv' + t]]), a = R2(num(r[H['amt' + t]])); if (no) no.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: x, t, amt: j === 0 ? a : 0 })); });
-        const id = String(r[H.id] || '').trim() || newId('C'); const method = String(r[H.method] || 'COD').trim().toUpperCase();
+        const method = String(r[H.method] || 'COD').trim().toUpperCase();
+        /* ID 칸이 비어 있으면 줄 내용으로 같은 ID 를 만듦 — 같은 파일을 다시 올려도 두 번 들어가지 않게 */
+        const id = String(r[H.id] || '').trim() || ('C' + hash36([String(r[H.sm]).trim().toUpperCase(), d, pad4(r[H.acct]), method, String(r[H.ref] || '').trim(), R2(num(r[H.amt])), invs.map(v => v.no).join(',')].join('|')));
         ops.push({ op: 'set', col: 'cod', id, data: { id, d, ym: ym(d), sm: String(r[H.sm]).trim().toUpperCase(), acct: pad4(r[H.acct]), store: String(r[H.store] || '').trim(), method: /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', ref: String(r[H.ref] || '').trim(), amt: R2(num(r[H.amt])), invs, disc: r[H.disc] === '' ? '' : num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1), note: String(r[H.note] || '').trim(), v: r[H.v] === true || /TRUE/i.test(String(r[H.v])), vn: String(r[H.vn] || '').trim(), settled: '', void: false, imported: true } }); nC++; }
     }
     const ents = {}; (await S.DB.list('entries', { where: [['imported', '==', true]] })).forEach(e => { ents[e.id] = e; });
@@ -1394,6 +1396,8 @@ async function readSheetTab(id, tab) {
   if (/<html/i.test(text.substring(0, 200))) throw new Error('시트가 공개돼 있지 않거나 탭 이름이 다릅니다');
   return parseCsv(text);
 }
+/** 짧은 문자열 해시 (36진수 8자리) — 내용이 같으면 같은 ID */
+export function hash36(str) { let h1 = 0x811c9dc5, h2 = 0x01000193; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619) >>> 0; h2 = Math.imul(h2 + c, 2246822519) >>> 0; } return (h1.toString(36) + h2.toString(36)).toUpperCase().slice(0, 8); }
 export function parseCsv(text, dl) {
   dl = dl || ',';
   const rows = []; let row = [], cell = '', q = false;
