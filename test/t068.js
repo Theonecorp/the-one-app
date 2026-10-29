@@ -27,8 +27,11 @@ const path = require('path'), fs = require('fs');
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(600); await pg.waitForSelector('.htile'); await pg.click('[data-hg="sent"]'); await pg.waitForSelector('[data-ck]');
   const ids = () => pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid));
   log('new (unconfirmed):', await ids());
-  /* 0. 세일즈맨 확인 전 주문을 누르면 — 먼저 묻고 → 팝업 */
-  await pg.click('#page [data-oid="O261015-CCCC"] .ct'); await pg.waitForSelector('#cfOk', { timeout: 3000 }).then(() => pg.click('#cfOk')).catch(() => errs.push('unconfirmed order should ask first'));
+  /* 0. v0.8.110: 📥 신규(확인 전) 주문은 누르면 주문이 열림 — 배정은 체크 뒤 👷 작업 배정(확인 없이) 으로, 먼저 묻고 → 팝업 */
+  await pg.click('#page [data-oid="O261015-CCCC"] .ct'); await pg.waitForSelector('#mBack', { timeout: 4000 }).catch(() => errs.push('new order tap should open the order'));
+  if (await pg.$('#pkOk')) errs.push('new-orders tab should not open the assign popup on tap');
+  await pg.goBack(); await pg.waitForSelector('[data-ck]'); await pg.waitForTimeout(300);
+  await pg.click('[data-ckw="O261015-CCCC"]'); await pg.click('#bkAssign'); await pg.waitForSelector('#cfOk', { timeout: 3000 }).then(() => pg.click('#cfOk')).catch(() => errs.push('unconfirmed order should ask first'));
   await pg.waitForSelector('#pkOk'); await pg.click('#pkX'); await pg.waitForTimeout(200);
   if (await pg.$('.qasg')) errs.push('old quick-assign bar should be gone');
   /* 1. 👍 확인 완료 목록 — 주문 한 줄을 누르면 → 할당 팝업 (주문 상세로 가지 않음) */

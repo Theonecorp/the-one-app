@@ -100,7 +100,7 @@ nav button.on{color:var(--blue)}
 .pick{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;margin-bottom:6px;cursor:pointer;font-size:13.5px}
 .pick.on{border-color:var(--blue);background:#eff6ff}.pick .ck{width:20px;height:20px;border-radius:6px;border:2px solid #cbd5e1;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex:0 0 20px}
 .pick.on .ck{background:var(--blue);border-color:var(--blue)}.pick .pm{flex:1}.pick small{color:var(--muted);display:block;font-size:11px}
-.ck-big{width:22px;height:22px}
+.ck-big{width:22px;height:22px}.ckw{flex:0 0 44px;min-height:44px;display:flex;align-items:center;justify-content:center;margin:-8px 0 -8px -10px;cursor:pointer;border-radius:10px}.ckw:active{background:#e0e7ff}.ckw .ck-big{width:24px;height:24px;pointer-events:none}.tybar .tag{font-size:12px}
 .sumbox{background:#f8fafc;border-radius:10px;padding:10px 12px;font-size:13.5px;margin:8px 0}
 .drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;margin-top:8px;padding:22px 12px;border:2px dashed #93c5fd;border-radius:14px;background:#eff6ff;color:#1e3a8a;text-align:center;cursor:pointer;font-size:14.5px}
 .drop small{color:#64748b;font-size:12px}.drop input{display:none}.drop.on{background:#dbeafe;border-color:#2563eb}
