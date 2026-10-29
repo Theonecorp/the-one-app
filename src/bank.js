@@ -100,8 +100,8 @@ export async function paintBank(box, year) {
   const yms = Array.from({ length: 12 }, (_, i) => year + '-' + String(i + 1).padStart(2, '0'));
   const [all, ents, cods, fpay] = await Promise.all([S.DB.list('bank', { where: [['ym', 'in', yms.slice(0, 10)]] }).catch(() => []).then(async a => a.concat(await S.DB.list('bank', { where: [['ym', 'in', yms.slice(10)]] }).catch(() => []))),
     S.DB.list('entries', { where: [['ym', '==', BM]] }).catch(() => []), S.DB.list('cod', { where: [['ym', '==', BM]] }).catch(() => []), S.DB.list('factoryPayments').catch(() => [])]);
-  const MS = await bankMonths(year);
-  const msTable = MS.length ? '<div class="card"><h2>📄 월별 명세서 요약 — ' + year + '</h2><table style="font-size:12.5px"><tr><th>월</th><th class="r">기초</th><th class="r">입금</th><th class="r">출금</th><th class="r">기말</th><th class="r">순</th></tr>' + MS.map(x => '<tr><td><b>' + Number(x.ym.substring(5)) + '월</b>' + (x.rows ? ' <small class="muted">' + x.rows + '줄</small>' : '') + '</td><td class="r">' + (x.begin != null ? money(x.begin) : '—') + '</td><td class="r" style="color:#15803d"><b>' + money(x.in) + '</b></td><td class="r" style="color:#b91c1c"><b>' + money(x.out) + '</b></td><td class="r">' + (x.end != null ? money(x.end) : '—') + '</td><td class="r ' + (x.in - x.out >= 0 ? 'ok' : 'warn') + '">' + money(R2(x.in - x.out)) + '</td></tr>').join('') + '<tr class="tot"><td>합계</td><td></td><td class="r" style="color:#15803d"><b>' + money(sum(MS, x => x.in)) + '</b></td><td class="r" style="color:#b91c1c"><b>' + money(sum(MS, x => x.out)) + '</b></td><td></td><td class="r"><b>' + money(R2(sum(MS, x => x.in - x.out))) + '</b></td></tr></table><div class="hint">매달 PDF 명세서를 관리 → 📥 가져오기에 올리면 이 표에 쌓입니다.</div></div>' : '';
+  const MS = await monthsMerged(year);
+  const msTable = MS.length ? '<div class="card"><h2>📄 월별 명세서 요약 — ' + year + '</h2><table style="font-size:12.5px"><tr><th>월</th><th class="r">기초</th><th class="r">입금</th><th class="r">출금</th><th class="r">기말</th><th class="r">순</th></tr>' + MS.map(x => '<tr><td><b>' + Number(x.ym.substring(5)) + '월</b> <small class="muted">' + (x.src === 'pdf' ? '📄 PDF' : '✏️ 시트') + (x.rows ? ' · ' + x.rows + '줄' : '') + '</small></td><td class="r">' + (x.begin != null ? money(x.begin) : '—') + '</td><td class="r" style="color:#15803d"><b>' + money(x.in) + '</b></td><td class="r" style="color:#b91c1c"><b>' + money(x.out) + '</b></td><td class="r">' + (x.end != null ? money(x.end) : '—') + '</td><td class="r ' + (x.in - x.out >= 0 ? 'ok' : 'warn') + '">' + money(R2(x.in - x.out)) + '</td></tr>').join('') + '<tr class="tot"><td>합계</td><td></td><td class="r" style="color:#15803d"><b>' + money(sum(MS, x => x.in)) + '</b></td><td class="r" style="color:#b91c1c"><b>' + money(sum(MS, x => x.out)) + '</b></td><td></td><td class="r"><b>' + money(R2(sum(MS, x => x.in - x.out))) + '</b></td></tr></table><div class="hint">📄 PDF = 매달 올린 명세서 · ✏️ 시트 = 📈 매출 탭 현금 흐름 표에 손으로 넣은 숫자 (PDF 를 올리면 그 달은 PDF 로 바뀌고 표 칸도 같이 채워짐)</div></div>' : '';
   if (!all.length) { box.innerHTML = msTable + '<div class="card"><h2>🏦 은행</h2><div class="none">' + (MS.length ? year + '년은 월별 요약만 있습니다 (거래 줄 없음) — 분류 · 대조는 거래 줄이 읽힌 명세서에서만' : year + '년 은행 명세서가 없습니다 — 관리 → 📥 가져오기에 매달 PDF(또는 CSV · 엑셀)를 올리세요') + '</div></div>'; return; }
   const byM = groupBy(all, x => x.ym), M = sortBy(all.filter(x => x.ym === BM), x => x.d + x.id, true);
   const inM = R2(sum(M.filter(x => x.amt > 0), x => x.amt)), outM = R2(-sum(M.filter(x => x.amt < 0), x => x.amt)), byCat = groupBy(M, x => x.cat);
@@ -130,10 +130,10 @@ function keyOf(desc) { const w = String(desc || '').toUpperCase().replace(/[#*]/
 export async function bankSummary(from, to) {
   const yms = []; let m = from.substring(0, 7); while (m <= to.substring(0, 7) && yms.length < 10) { yms.push(m); const y = Number(m.substring(0, 4)), mm = Number(m.substring(5, 7)); m = mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0'); }
   const L = (await S.DB.list('bank', { where: [['ym', 'in', yms]] }).catch(() => [])).filter(x => x.d >= from && x.d <= to);
-  if (!L.length) {   /* 거래 줄이 없으면 월별 요약(PDF) 로 — 기간에 든 달만 */
-    const MS = (await S.DB.list('bankM').catch(() => [])).filter(x => yms.includes(x.ym)); if (!MS.length) return null;
-    const last = sortBy(MS, x => x.ym, true)[0];
-    return { n: 0, in: R2(sum(MS, x => x.in)), out: R2(sum(MS, x => x.out)), bal: last.end != null ? last.end : null, balD: last.to || last.ym + '-31', other: 0, factory: 0, months: MS.map(x => x.ym) };
+  if (!L.length) {   /* 거래 줄이 없으면 월별 요약(PDF · 매출 탭 시트) 로 — 기간에 든 달만 */
+    const years = Array.from(new Set(yms.map(m => m.substring(0, 4)))); let MS = []; for (const y of years) MS = MS.concat(await monthsMerged(y)); MS = MS.filter(x => yms.includes(x.ym)); if (!MS.length) return null;
+    const last = sortBy(MS.filter(x => x.end != null), x => x.ym, true)[0];
+    return { n: 0, in: R2(sum(MS, x => x.in)), out: R2(sum(MS, x => x.out)), bal: last ? last.end : null, balD: last ? (last.to || last.ym + '-31') : '', other: 0, factory: 0, months: MS.map(x => x.ym + (x.src === 'pdf' ? '' : '*')) };
   }
   const last = sortBy(L.filter(x => x.bal != null), x => x.d + x.id, true)[0];
   return { n: L.length, in: R2(sum(L.filter(x => x.amt > 0), x => x.amt)), out: R2(-sum(L.filter(x => x.amt < 0), x => x.amt)), bal: last ? last.bal : null, balD: last ? last.d : '', other: L.filter(x => x.cat === 'other').length, factory: R2(sum(L.filter(x => x.cat === 'factory'), x => -x.amt)) };
@@ -235,7 +235,10 @@ function bindManual(out, P, fileName) {
       const ops = [{ op: 'set', col: 'bankM', id: ym, data: doc }];
       if (P.rows.length) { const have = new Set((await S.DB.list('bank', { where: [['ym', '==', ym]] }).catch(() => [])).map(x => x.id)); P.rows.filter(x => !have.has(x.id)).forEach(x => ops.push({ op: 'set', col: 'bank', id: x.id, data: Object.assign({}, x, { by: S.user.email, at: now }) })); }
       await S.DB.batch(ops);
-      out.innerHTML = '<div class="alert a-grn">🏦 ' + ym + ' — 입금 ' + money(doc.in) + ' · 출금 ' + money(doc.out) + (ops.length > 1 ? ' · 거래 줄 ' + (ops.length - 1) + '개' : '') + ' 넣었습니다. <u data-gobank style="cursor:pointer">경영 → 🏦 은행</u></div>';
+      /* 📈 매출 탭 현금 흐름 표에도 같은 달 숫자 — 발행 체크 · 수수료는 요약의 Checks Paid · Fees 에서 */
+      const parts = P.outParts || [], pick = re => R2(sum(parts.filter(x => re.test(x[0]) && !/^Total|Subtractions|Withdrawals\/Debits/.test(x[0])), x => x[1]));
+      try { await upsertCashRows(S.DB, ym, { in: doc.in, out: doc.out, checks: pick(/Checks Paid/i), fee: pick(/Fee/i) }); const M = await import('./mg.js'); if (M.dropSalesCache) M.dropSalesCache(ym.substring(0, 4)); } catch (e) {}
+      out.innerHTML = '<div class="alert a-grn">🏦 ' + ym + ' — 입금 ' + money(doc.in) + ' · 출금 ' + money(doc.out) + (ops.length > 1 ? ' · 거래 줄 ' + (ops.length - 1) + '개' : '') + ' 넣었습니다 (📈 매출 탭 현금 흐름 표의 ' + Number(ym.substring(5)) + '월 칸도 채움). <u data-gobank style="cursor:pointer">경영 → 🏦 은행</u></div>';
       out.querySelectorAll('[data-gobank]').forEach(u => u.onclick = () => { location.hash = '#/mg/bank'; }); toast('🏦 ' + ym, 'good');
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
@@ -243,3 +246,38 @@ function bindManual(out, P, fileName) {
 }
 /** 월별 요약(bankM) — 🏦 탭 위 표 · 홈 현금 흐름 (거래 줄이 없을 때) */
 export async function bankMonths(year) { return sortBy((await S.DB.list('bankM').catch(() => [])).filter(x => String(x.ym || '').startsWith(String(year))), x => x.ym); }
+
+/* ============================================================
+ *  📈 매출 탭의 "🏦 현금 흐름 (은행 · Statement)" 표와 연결 — sales/{year}.rows (grp 'cash')
+ *    Statement Deposit = 입금 합계 · statement expense = −(출금 − 발행 체크 − 수수료) · checks = −발행 체크 · service fee = −수수료 · Monthly profit = 입금 − 출금
+ *    PDF 를 넣으면 그 달 칸이 자동으로 채워지고, 표에 손으로 넣어 둔 달(1~9월)은 대시보드 · 🏦 은행 탭에서 그대로 씀
+ * ============================================================ */
+export const CASH_LABELS = { dep: 'Statement Deposit', exp: 'statement expense', chk: 'checks', fee: 'service fee', net: 'Monthly profit' };
+const lblKey = l => String(l || '').toLowerCase().replace(/[^a-z]/g, '');
+const findRow = (rows, label) => rows.find(r => (r.grp === 'cash' || !r.grp) && lblKey(r.label) === lblKey(label));
+/** sales/{year} 의 현금 흐름 줄에 한 달 숫자 쓰기 — db 는 { get, set } (시험에서는 가짜) */
+export async function upsertCashRows(db, ym, v) {
+  const year = ym.substring(0, 4), i = Number(ym.substring(5, 7)) - 1;
+  const doc = (await db.get('sales', year).catch(() => null)) || { id: year, year: Number(year), rows: [] };
+  const rows = Array.isArray(doc.rows) ? doc.rows.map(r => Object.assign({}, r, { m: Array.isArray(r.m) ? r.m.slice() : Array(12).fill(0) })) : [];
+  const put = (label, val) => { let r = findRow(rows, label); if (!r) { r = { label, grp: 'cash', m: Array(12).fill(0) }; rows.push(r); } r.grp = 'cash'; r.m[i] = R2(val); };
+  const chk = R2(v.checks || 0), fee = R2(v.fee || 0), exp = R2(Math.max(0, (v.out || 0) - chk - fee));
+  put(CASH_LABELS.dep, v.in || 0); put(CASH_LABELS.exp, -exp); put(CASH_LABELS.chk, -chk); put(CASH_LABELS.fee, -fee); put(CASH_LABELS.net, R2((v.in || 0) - (v.out || 0)));
+  await db.set('sales', year, Object.assign({}, doc, { rows, updatedAt: new Date().toISOString() }));
+  return rows;
+}
+/** 시트에 손으로 넣어 둔 달 → 월별 요약 모양 { ym, in, out, src: 'sheet' } */
+export function cashFromSheet(doc) {
+  if (!doc || !Array.isArray(doc.rows)) return [];
+  const year = String(doc.year || doc.id || ''), dep = findRow(doc.rows, CASH_LABELS.dep), exp = findRow(doc.rows, CASH_LABELS.exp), chk = findRow(doc.rows, CASH_LABELS.chk), fee = findRow(doc.rows, CASH_LABELS.fee);
+  if (!dep) return [];
+  const out = [];
+  for (let i = 0; i < 12; i++) { const inn = num((dep.m || [])[i]); const o = R2(Math.abs(num((exp && exp.m || [])[i])) + Math.abs(num((chk && chk.m || [])[i])) + Math.abs(num((fee && fee.m || [])[i]))); if (inn || o) out.push({ ym: year + '-' + String(i + 1).padStart(2, '0'), in: R2(inn), out: o, checks: Math.abs(num((chk && chk.m || [])[i])), fee: Math.abs(num((fee && fee.m || [])[i])), src: 'sheet' }); }
+  return out;
+}
+/** bankM(PDF) + 시트 현금 흐름 → 연도 월별 요약 (PDF 가 있으면 PDF 우선) */
+export async function monthsMerged(year) {
+  const [MS, doc] = await Promise.all([bankMonths(year), S.DB.get('sales', String(year)).catch(() => null)]);
+  const byYm = {}; cashFromSheet(doc).forEach(x => { byYm[x.ym] = x; }); MS.forEach(x => { byYm[x.ym] = Object.assign({ src: 'pdf' }, x); });
+  return Object.values(byYm).sort((a, b) => a.ym.localeCompare(b.ym));
+}
