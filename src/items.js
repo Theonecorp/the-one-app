@@ -231,7 +231,7 @@ function form(it, newCode) {
       '<div style="flex:1;min-width:0"><b>📷 ' + bt('사진', 'Photo') + '</b><div class="muted" style="font-size:12px">' + lab + '</div><div class="btns" style="justify-content:flex-start;margin-top:6px;flex-wrap:wrap"><label class="b-blue b-sm" style="margin:0;cursor:pointer">📷 ' + bt('사진 올리기', 'Upload photo') + '<input type="file" id="fPhFile" accept="image/*" style="display:none"></label>' +
       (cur.ph && src !== 'none' ? '<button type="button" class="b-ghost b-sm" id="fPhNone">🚫 ' + bt('이 사진 안 쓰기', 'Don\'t use this photo') + '</button>' : '') + (ov ? '<button type="button" class="b-ghost b-sm" id="fPhClear">↩ ' + bt('원래 사진으로', 'Back to original') + '</button>' : '') + '</div></div></div>';
     const go = async (o, msg) => { busy(true); try { await setItemPhoto(S, x.c, o); toast('📷 ' + x.c + ' — ' + msg, 'good'); paintPh(); list(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
-    $('fPhFile').onchange = async () => { const f = $('fPhFile').files[0]; if (!f) return; busy(true); let data = ''; try { data = await shrinkImage(f); } catch (e) { busy(false); return toast(e.message, 'bad'); } busy(false); await go({ data }, bt('사진 올림', 'photo uploaded')); };
+    $('fPhFile').onchange = async () => { const f = $('fPhFile').files[0]; if (!f) return; busy(true); let data = ''; try { data = await shrinkImage(f); } catch (e) { busy(false); return toast(e.message, 'bad'); } busy(false); await go({ data, file: f }, bt('사진 올림 · ☁️ 드라이브에도 저장됩니다', 'photo uploaded · also saved to Drive')); };
     if ($('fPhNone')) $('fPhNone').onclick = () => go({ none: true }, bt('사진 안 씀', 'photo off'));
     if ($('fPhClear')) $('fPhClear').onclick = () => go({ clear: true }, bt('원래 사진으로', 'back to original'));
   };
@@ -272,7 +272,7 @@ function form(it, newCode) {
       const i = rows.findIndex(r => r[0] === v.c); if (i >= 0) rows[i] = row; else rows.push(row);
       ensureCats(rows, cats); return 1;
     }, () => (isNew ? '등록 — ' : '저장 — ') + v.c + (vis ? '' : ' (🙈 숨김)'));
-    if (phNew) { busy(true); try { const data = await shrinkImage(phNew); await setItemPhoto(S, v.c, { data }); toast('📷 ' + v.c + ' — ' + bt('사진 저장', 'photo saved'), 'good'); list(); } catch (e) { toast(bt('사진 저장 실패', 'Photo failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); }
+    if (phNew) { busy(true); try { const data = await shrinkImage(phNew); await setItemPhoto(S, v.c, { data, file: phNew }); toast('📷 ' + v.c + ' — ' + bt('사진 저장', 'photo saved'), 'good'); list(); } catch (e) { toast(bt('사진 저장 실패', 'Photo failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); }
   };
   setTimeout(() => $(isNew && !newCode ? 'fC' : 'fD').focus(), 50);
 }
