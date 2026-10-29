@@ -104,6 +104,10 @@ service cloud.firestore {
 
     // ---------- 아이템 목록 · 오더 ----------
     match /catalog/{id} { allow read: if registered(); allow write: if isStaff(); }
+    // 📦 재고 — 지금 수량 · 움직임 기록 · 입고 (창고 · 오피스 담당자가 쓰고, 세일즈맨은 보기만)
+    match /stock/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /stockLog/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /receipts/{id} { allow read: if registered(); allow write: if isStaff(); }
     match /itemPhotos/{id} { allow read: if registered(); allow write: if isStaff(); }   // 📷 앱에서 올린 아이템 사진 (디자인 · 카탈로그 담당 · 담당자)
     function okSt(st) { return st == 'draft' || st == 'sent'; }
     match /orders/{id} {
