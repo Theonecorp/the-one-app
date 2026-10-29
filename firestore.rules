@@ -71,6 +71,7 @@ service cloud.firestore {
     }
     // 🏦 은행 명세서 — 관리자 · 오너만 (민감)
     match /bank/{id} { allow read, write: if isAdmin(); }
+    match /bankM/{id} { allow read, write: if isAdmin(); }   // 월별 요약 (PDF)
     match /envelopes/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
       allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by == email() && request.resource.data.st == 'sent');
