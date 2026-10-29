@@ -10,7 +10,7 @@
 import { storeSheet } from './store.js';
 import { adminRequestsCard } from './access.js';
 import { mergeAppInvoices } from './arapp.js';
-import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords, pickDates } from './ui.js';
+import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords, pickDates, bt } from './ui.js';
 import { newId } from './db.js';
 import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
 import { settlementHtml } from './sales.js';
@@ -142,11 +142,13 @@ async function pageNow() {
   paintEstimate();
   adminRequestsCard($('rqCard'));   // 🔐 세일즈맨 인보이스 조회 요청 — 허락 · 거절
 }
+/** 줄의 세일즈맨 코드 — 적힌 코드(대소문자 무시), 비어 있으면 거래처의 담당 세일즈맨 (COD · 카드 · ACH 에 코드가 빠져도 정산에 올라오게) */
+const smOf = x => String(x.sm || ((S.accounts && S.accounts.byCode && S.accounts.byCode[x.acct]) || {}).sm || '').trim().toUpperCase();
 function overview(from, to) {
   const inR = r => r.d >= from && r.d <= to;
   const live = C.ents.filter(e => !e.settled && !e.repl && !e.bounced && (inR(e) || (e.deferred && e.d < from && e.d <= to))), cods = C.cod.filter(c => !c.settled && (inR(c) || (c.deferred && c.d < from && c.d <= to)));
-  const sms = Object.keys(groupBy(live.concat(cods), x => x.sm)).sort();
-  const list = sms.map(sm => { const a = live.filter(e => e.sm === sm), b = cods.filter(c => c.sm === sm); const ready = a.filter(e => e.rc && e.sb); const ok = [].concat(...ready.filter(e => e.v).map(linesOfEntry)).concat(b.filter(c => c.v).map(lineOfOther)); const c = computeComm(ok, ratesOf(S.smByCode[sm]), commSettings(S.settings)); return { sm, total: c.totals.total, pay: isSal(sm) ? 0 : c.pay, sal: isSal(sm), pend: ready.filter(e => !e.v).length + b.filter(x => !x.v).length, wait: a.filter(e => !e.rc).length, bad: c.skipped.length, n: ready.length + b.length, done: ok.length, amt: sum(ready, e => e.total) + sum(b, x => x.amt), c }; });
+  const sms = Object.keys(groupBy(live.concat(cods), x => smOf(x) || '—')).sort();
+  const list = sms.map(sm => { const a = live.filter(e => (smOf(e) || '—') === sm), b = cods.filter(c => (smOf(c) || '—') === sm); const ready = a.filter(e => e.rc && e.sb); const ok = [].concat(...ready.filter(e => e.v).map(linesOfEntry)).concat(b.filter(c => c.v).map(lineOfOther)); const c = computeComm(ok, ratesOf(S.smByCode[sm]), commSettings(S.settings)); return { sm, total: c.totals.total, pay: isSal(sm) ? 0 : c.pay, sal: isSal(sm), pend: ready.filter(e => !e.v).length + b.filter(x => !x.v).length, wait: a.filter(e => !e.rc).length, bad: c.skipped.length, n: ready.length + b.length, done: ok.length, amt: sum(ready, e => e.total) + sum(b, x => x.amt), c }; });
   return { from, to, list: sortBy(list, x => x.pay, true), tot: { pay: sum(list, x => x.pay), total: sum(list, x => x.total), pend: list.reduce((a, x) => a + x.pend, 0), wait: list.reduce((a, x) => a + x.wait, 0), bad: list.reduce((a, x) => a + x.bad, 0) } };
 }
 /** 🏠 오너 홈 — 이번 정산 기간 커미션 예상 (✓ 확인된 줄 기준) */
@@ -204,12 +206,14 @@ function paintCards(o) {
 /* ---- 세일즈맨 한 명 ---- */
 function smRows() {
   const inR = r => r.d >= P.from && r.d <= P.to, carried = r => !!r.deferred && r.d < P.from && r.d <= P.to;   /* 지난 정산에서 ✓ 안 돼 넘어온 줄 */
-  const mine = C.ents.filter(e => e.sm === P.sm && !e.settled && !e.repl && !e.bounced && (inR(e) || carried(e))), cods = C.cod.filter(c => c.sm === P.sm && !c.settled && (inR(c) || carried(c)));
+  const mine = C.ents.filter(e => smOf(e) === P.sm && !e.settled && !e.repl && !e.bounced && (inR(e) || carried(e))), cods = C.cod.filter(c => smOf(c) === P.sm && !c.settled && (inR(c) || carried(c)));
+  /* 💳 COD · ACH · 카드가 왜 안 보이는지 — 이 세일즈맨 것 전체(13개월) 중 정산 완료 · 다른 기간 · 세일즈맨 코드 없음 */
+  const codAll = C.cod.filter(c => smOf(c) === P.sm), codDiag = { n: cods.length, settled: codAll.filter(c => c.settled && inR(c)).length, other: codAll.filter(c => !c.settled && !inR(c) && !carried(c)).length, noSm: C.cod.filter(c => !String(c.sm || '').trim() && !c.settled && inR(c) && smOf(c) !== P.sm).length };
   const field = mine.filter(e => e.rc && (!P.sbOnly || e.sb)), wait = mine.filter(e => !e.rc && (!P.sbOnly || e.sb));
   const merged = sortBy(field.map(e => ({ k: 'f', x: e })).concat(cods.map(c => ({ k: 'o', x: c }))), r => r.x.d + (r.k === 'f' ? '0' : '1') + (r.x.createdAt || ''));
-  const all = C.ents.filter(e => e.sm === P.sm && !e.repl && !e.bounced);
+  const all = C.ents.filter(e => smOf(e) === P.sm && !e.repl && !e.bounced);
   const why = { early: all.filter(e => e.d < P.from && !e.settled && !carried(e)).length, late: all.filter(e => e.d > P.to && !e.settled).length, closed: all.filter(e => inR(e) && e.settled).length, min: all.length ? all.map(e => e.d).sort()[0] : '', max: all.length ? all.map(e => e.d).sort().pop() : '' };
-  return { mine, field, wait, cods, merged, why };
+  return { mine, field, wait, cods, merged, why, codDiag };
 }
 function calc(rows) {
   const ok = [].concat(...rows.field.filter(e => e.v).map(linesOfEntry)).concat(rows.cods.filter(c => c.v).map(lineOfOther));
@@ -288,9 +292,10 @@ async function paintSm(o) {
   const secOfRow = r => { const Lx = r.k === 'f' ? lineOfEntry(r.x) : lineOfOther(r.x); const cc = computeComm([Lx], rate, cs); const d = cc.lines[0] || Lx; return { L: d, bad: cc.bad[0] }; };
   let html = '', seq = 0;
   Object.entries(groupBy(L, r => r.x.d)).sort().forEach(([d, G]) => {
-    html += '<div class="daygrp"><div class="dayhd"><span>' + dlabel(d) + '</span><span>' + G.length + '건 · ' + money(sum(G, r => r.k === 'f' ? r.x.total : r.x.amt)) + '</span></div>';
+    const dayPend = G.filter(r => lineState(r.x) === 'pend').length;
+    html += '<div class="daygrp"><div class="dayhd"><span>' + dlabel(d) + '</span><span>' + G.length + '건 · ' + money(sum(G, r => r.k === 'f' ? r.x.total : r.x.amt)) + (dayPend ? ' <button type="button" class="b-blue b-sm dayall" data-dayall="' + esc(d) + '">✓ ' + bt('이 날 전부', 'All this day') + ' ' + dayPend + '</button>' : ' <span class="ok">✓</span>') + '</span></div>';
     G.forEach(r => { seq++; const x = r.x, st = lineState(x), info = secOfRow(r), b = info.bad;
-      const badLine = b ? (b.blocked ? '<div class="pw">🔴 인보이스 배분 ' + money(b.alloc) + ' ≠ 받은 돈 ' + money(b.got) + ' — ' + esc(b.why) + ' · <u>이번 정산 제외</u></div>' : '<div class="pw" style="color:#b45309">⚠️ W 금액 오타 (' + money(b.W) + ') → ' + money(b.fixed) + ' 로 계산 — 원본도 고쳐 주세요</div>') : '';
+      const badLine = b ? (b.blocked ? '<div class="pw">🔴 인보이스 배분 ' + money(b.alloc) + ' ≠ 받은 돈 ' + money(b.got) + ' — ' + esc(b.why) + ' · <u>이번 정산 제외</u></div>' : b.tol ? '<div class="pw" style="color:#b45309">⚠️ 받은 돈 ' + money(b.got) + ' · 인보이스 ' + money(b.alloc) + ' (차이 ' + (b.diff > 0 ? '+' : '') + money(b.diff) + ') — 허용 범위, 그대로 계산</div>' : '<div class="pw" style="color:#b45309">⚠️ W 금액 오타 (' + money(b.W) + ') → ' + money(b.fixed) + ' 로 계산 — 원본도 고쳐 주세요</div>') : '';
       if (r.k === 'o') html += '<div class="pr tap pl ' + st + '" data-pl="o|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · <span class="tag ' + SRC_TAG[srcOf(x)][1] + '">' + esc(x.method) + '</span>' + (x.ref ? ' ' + esc(x.ref) : '') + (x.achId ? ' · 🏦 ACH 인출' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.amt) + '</b><small>' + (st === 'ok' ? '확인됨' : '탭해서 ✓') + '</small></div></div>';
       else { const pay = (x.pays || []).map(p => p.m === 'CHECK' ? 'CHECK #' + esc(p.ref || '') : p.m).join(' · '), dep = (x.pays || []).find(p => p.dep && p.dep !== x.d);
         html += '<div class="pr tap pl ' + st + '" data-pl="f|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · ' + pay + (dep ? ' · 입금 ' + esc(dep.dep.substring(5)) : '') + (x.rep ? '' : x.rep === false ? ' · <span class="warn">리포트 미전송</span>' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (x.mismatch && !b ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.total) + '</b>' + (x.sb ? '<small>접수 확인 ✓</small>' : '<small style="color:#b45309">접수 확인 전</small>') + '</div></div>'; }
@@ -298,20 +303,23 @@ async function paintSm(o) {
     html += '</div>';
   });
   /* 금액 안 맞는 줄은 ✓ 여부와 상관없이 고치기 칸을 보여 줌 (옛 앱과 같이) */
-  const allBad = L.map(r => secOfRow(r).bad).filter(Boolean), blocked = allBad.filter(b => b.blocked), warnN = allBad.filter(b => b.derived).length;
+  const allBad = L.map(r => secOfRow(r).bad).filter(Boolean), blocked = allBad.filter(b => b.blocked), warnN = allBad.filter(b => b.derived).length, tolN = allBad.filter(b => b.tol).length, tolSum = R2(sum(allBad.filter(b => b.tol), b => Math.abs(b.diff)));
   const fixes = blocked.length ? '<div class="whybox bad">🔴 <b>인보이스 금액이 받은 돈과 안 맞는 줄 ' + blocked.length + '건</b> (차이 ' + money(sum(blocked, b => Math.abs(b.got - b.alloc))) + ')<br>이 줄들은 <b>이번 정산에서 빠지고</b> 나머지는 확정됩니다. 아래에서 금액을 맞춰 저장하면 바로 들어갑니다.' + blocked.map(b => fixBox(b, rows)).join('') + '</div>' : '';
   const hist = (HIST || []).filter(s => s.sm === P.sm).slice(0, 6);
   box.innerHTML = '<div class="card"><h2>' + esc(P.sm) + ' · ' + P.from + ' ~ ' + P.to + '</h2><div class="hero" style="font-size:28px">' + money(tot) + '</div><div class="heroSub">' + L.length + '건 (현장 ' + rows.field.length + ' · COD/ACH/카드 ' + rows.cods.length + ')' + (rows.why.closed ? ' · <span class="muted">마감 ' + rows.why.closed + '건 제외</span>' : '') + '</div>' +
+    (rows.codDiag && !rows.codDiag.n && (rows.codDiag.settled || rows.codDiag.other || rows.codDiag.noSm) ? '<div class="whybox">💳 COD · ACH · 카드가 이 기간에 없습니다 — ' + [rows.codDiag.settled ? '이미 정산 완료 ' + rows.codDiag.settled + '건' : '', rows.codDiag.other ? '다른 기간(날짜) ' + rows.codDiag.other + '건' : '', rows.codDiag.noSm ? '세일즈맨 코드 없는 줄 ' + rows.codDiag.noSm + '건 (수금 확인 → COD·카드에서 세일즈맨을 넣어 주세요)' : ''].filter(Boolean).join(' · ') + '</div>' : '') +
     '<div class="paybar"><i style="width:' + Math.round(done / L.length * 100) + '%;background:#15803d"></i><i style="width:' + Math.round(bad / L.length * 100) + '%;background:#b91c1c"></i></div><div class="heroSub" style="margin-top:6px">확인 <b class="ok">' + done + '</b> · 문제 <b class="warn">' + bad + '</b> · 남음 <b>' + pend + '</b>' + (c.salaried ? '' : ' · 지급액 <b>' + money(c.pay) + '</b>' + (c.ded.amt ? ' (공제 ' + money(c.ded.amt) + ')' : '')) + '</div>' +
     (c.salaried ? '<div class="whybox vio">💼 <b>급여제</b> — 커미션을 계산하지 않습니다. 수금 기록만 맞춰 보고 마감합니다. (커미션 세일즈맨은 관리 → 세일즈맨에서 급여제를 끈 사람)</div>' : '') +
     (hist.length ? '<div class="histstrip">' + hist.map(s => '<div data-sid="' + s.id + '">' + esc(s.day) + '<b>' + money(s.pay) + '</b></div>').join('') + '</div>' : '') + fixes +
-    (warnN ? '<div class="whybox">⚠️ W 금액 오타 ' + warnN + '건은 A·P·CM 이 적혀 있어 W 를 계산해 넣었습니다. 확정은 됩니다.</div>' : '') + '</div>' +
+    (warnN ? '<div class="whybox">⚠️ W 금액 오타 ' + warnN + '건은 A·P·CM 이 적혀 있어 W 를 계산해 넣었습니다. 확정은 됩니다.</div>' : '') +
+    (tolN ? '<div class="whybox">⚠️ 받은 돈과 인보이스 합이 조금 다른 줄 ' + tolN + '건 (차이 합 ' + money(tolSum) + ', 허용 $' + cs.TOL + ' 이하) — 표시만 하고 그대로 계산합니다. 허용 금액은 관리 → 설정.</div>' : '') + '</div>' +
     '<div class="card">' + html + waitBox(rows) + whyBox(rows) + '</div><div class="card" id="recBox">' + recHtml(rows, c) + '</div><div class="card" id="dedBox"' + (c.salaried ? ' style="display:none"' : '') + '></div>' +
     '<div class="paybtns"><button class="b-ghost" id="pAll">전부 ✓</button><button class="b-ghost" id="pNone">전부 해제</button><button class="b-navy" id="pPrint">정산서 🖨</button><button class="b-ghost" id="pXlsx">📊 엑셀</button></div>' +
     '<div class="card" style="text-align:center"><button class="b-blue" id="pConfirm" style="width:100%;padding:15px;background:' + (done ? '#7c3aed' : '#e2e8f0') + ';color:' + (done ? '#fff' : '#94a3b8') + '" ' + (done ? '' : 'disabled') + '>' + (c.salaried ? '🔒 마감 — 수금 기록 확인하고 보관 (급여제 · 커미션 없음)' : '🔒 확정 — 커미션 마감하고 보관 (' + money(c.finalPay) + ')') + (c.blockers.length ? ' · ⛔ ' + c.blockers.length : '') + '</button>' +
     '<div class="hint" style="text-align:left">' + (!done ? '✓ 한 줄이 없습니다. 정산할 줄을 먼저 ✓ 해 주세요.' : (pend + bad ? '<b style="color:#7c3aed">↩ ✓ 안 한 ' + (pend + bad) + '건은 다음 정산으로 넘어갑니다</b> (다음 정산 목록에 다시 올라옵니다). ' : '') + '확정하면 ✓ 한 줄들에 정산 번호가 찍혀 <b>이 목록에서 빠지고</b>, 정산서가 📁 정산 완료에 보관됩니다. 세일즈맨 앱 🧾 정산서에도 바로 보입니다.' + (blocked.length ? ' <b style="color:#b91c1c">금액 오류 ' + blocked.length + '건은 빠진 채</b> 확정됩니다.' : '')) + '</div></div>';
   bindWait(); bindRec(rows); dedPaint();
   box.querySelectorAll('[data-pl]').forEach(el => el.onclick = () => { const [kind, id] = el.dataset.pl.split('|'); tapLine(kind, id); });
+  box.querySelectorAll('[data-dayall]').forEach(b => b.onclick = e => { e.stopPropagation(); setAll({ field: rows.field.filter(x => x.d === b.dataset.dayall), cods: rows.cods.filter(x => x.d === b.dataset.dayall) }, true); });
   box.querySelectorAll('[data-sid]').forEach(el => el.onclick = async () => { const s = await S.DB.get('settlements', el.dataset.sid); if (s) printOpen(settlementHtml(s)); });
   $('pAll').onclick = () => setAll(rows, true); $('pNone').onclick = () => setAll(rows, false);
   $('pPrint').onclick = () => printOpen(settlementHtml({ sm: P.sm, day: today(), from: P.from, to: P.to, comm: stmtComm(c) }));
@@ -381,7 +389,7 @@ async function fixSave(key, rows) {
 }
 /* ---- 정산서 자료 (보관용 · 직렬화) ---- */
 function stmtComm(c) {
-  return { lines: c.lines.map(L => ({ d: L.d, store: L.store, acct: L.acct, methods: L.methods.join(', '), e: L.e, f: L.f, invs: L.invs.join(','), P: R2(L.P), W: R2(L.W), sec: L.sec, src: L.src, part: L.part || '', disc: L.disc, mismatch: !!L.mismatch, ids: L.ids })),
+  return { tolw: c.bad.filter(b => b.tol).map(b => ({ d: b.d, store: b.store, got: b.got, alloc: b.alloc, diff: b.diff })), lines: c.lines.map(L => ({ d: L.d, store: L.store, acct: L.acct, methods: L.methods.join(', '), e: L.e, f: L.f, invs: L.invs.join(','), P: R2(L.P), W: R2(L.W), sec: L.sec, src: L.src, part: L.part || '', disc: L.disc, mismatch: !!L.mismatch, ids: L.ids })),
     totals: c.totals, buckets: c.buckets, net: c.net, netPay: c.netPay, ded: c.ded, dp: c.dp, office: c.office, pay: c.pay, cashKeep: c.cashKeep, finalPay: c.finalPay, skipped: c.skipped, skippedAmt: c.skippedAmt,
     warn: c.bad.filter(b => b.derived).map(b => ({ d: b.d, store: b.store, W: b.W, fixed: b.fixed })), waitN: c.waitN || 0, waitAmt: c.waitAmt || 0, pending: c.pending || 0, pendBad: c.pendBad || 0, pendOther: c.pendOther || 0, pendOtherAmt: c.pendOtherAmt || 0, arWarn: c.arWarn || null, specialTitle: commSettings(S.settings).SPECIAL_TITLE, salaried: !!c.salaried, rec: c.rec ? { n: c.rec.given.n, amt: c.rec.given.amt, sysN: c.rec.sys.n, sysAmt: c.rec.sys.amt, ok: c.rec.ok, filled: c.rec.filled } : null, blockers: (c.blockers || []).map(b => ({ k: b.k, d: b.d, store: b.store, amt: b.amt, ref: b.ref })) };
 }
@@ -524,16 +532,22 @@ function dedEdit(id) {
  *  📊 엑셀 (정산서 → xlsx, 수식 포함)
  * ============================================================ */
 function loadXlsx() { return new Promise((res, rej) => { if (window.XLSX) return res(); const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
-function stmtRows(c) {
+export function stmtRows(c) {
   const R = [], A = r => { R.push(r); return R.length; }; const SL = { REG: 'A', SPECIAL: 'EX', DISC: 'DISC', NEWDP: 'NEW DP' };
   A([c.sm + ' COMMISSION ' + (c.day || '') + '  (' + (c.from || '') + ' ~ ' + (c.to || '') + ')']);
-  A(['할인 %', '가게 Store', 'CHECK # / 방법', 'CHECK·ACH $', 'CASH $', '인보이스', 'P $', 'W $', '구역', '받은 날']);
+  A(['할인 %', '가게 Store', 'CHECK # / 방법', 'CHECK·ACH $', 'CASH $', '인보이스', 'P $', 'W $', '구역', '받은 날', 'TOTAL $']);
   const first = R.length + 1;
-  const sec = (title, list) => { if (!list.length) return; A(['', title]); list.forEach(L => A([L.disc === '' || L.disc == null ? '' : { pct: Number(L.disc) / 100 }, L.store + (L.part === 'W' ? ' (W 분)' : L.part === 'A' ? ' (A 분)' : ''), L.methods, L.e || 0, L.f || 0, L.invs, L.P || 0, L.W || 0, SL[L.sec] || L.sec, L.d])); };
+  /* 줄마다 TOTAL = CHECK + CASH (수식) — 숫자를 고치면 아래 합계 · 구역별 · 커미션까지 다시 계산됨 */
+  const sec = (title, list) => { if (!list.length) return; A(['', title]); list.forEach(L => { const r = R.length + 1; A([L.disc === '' || L.disc == null ? '' : { pct: Number(L.disc) / 100 }, L.store + (L.part === 'W' ? ' (W 분)' : L.part === 'A' ? ' (A 분)' : ''), L.methods, L.e || 0, L.f || 0, L.invs, L.P || 0, L.W || 0, SL[L.sec] || L.sec, L.d, { f: 'D' + r + '+E' + r, v: R2((L.e || 0) + (L.f || 0)) }]); }); };
   sec('현장 수금 (CHECK · CASH · ZELLE)', c.lines.filter(L => L.src === 'FIELD')); A([]); sec('COD & ACH & CREDIT CARD', c.lines.filter(L => L.src !== 'FIELD'));
   const last = R.length; A([]); const rT = R.length + 1;
-  A(['', '', 'TOTAL', { f: 'SUM(D' + first + ':D' + last + ')', v: c.totals.check }, { f: 'SUM(E' + first + ':E' + last + ')', v: c.totals.cash }, { f: 'D' + rT + '+E' + rT, v: c.totals.total }]); A([]);
-  const bStart = R.length + 1; c.buckets.forEach(b => { const r = R.length + 1; A(['', b.label, '', '', '', b.base, { pct: b.rate }, { f: 'F' + r + '*G' + r, v: b.amt }]); }); const bEnd = R.length; A([]);
+  A(['', '', 'TOTAL', { f: 'SUM(D' + first + ':D' + last + ')', v: c.totals.check }, { f: 'SUM(E' + first + ':E' + last + ')', v: c.totals.cash }, { f: 'D' + rT + '+E' + rT, v: c.totals.total }, { f: 'SUM(G' + first + ':G' + last + ')', v: R2(sum(c.lines, L => L.P || 0)) }, { f: 'SUM(H' + first + ':H' + last + ')', v: R2(sum(c.lines, L => L.W || 0)) }, '', '', { f: 'SUM(K' + first + ':K' + last + ')', v: c.totals.total }]); A([]);
+  /* 구역별 기준 금액도 수식 — P = P$ 합 · EX/DISC/NEW DP = 그 구역 줄의 TOTAL − P$ · A = 전체 − 나머지 (SUMIF 로 구역 글자 기준) */
+  const rng = (col) => col + first + ':' + col + last, sumif = (tag) => 'SUMIF(' + rng('I') + ',"' + tag + '",' + rng('K') + ')-SUMIF(' + rng('I') + ',"' + tag + '",' + rng('G') + ')';
+  const bStart = R.length + 1, bRow = {};
+  c.buckets.forEach(b => { const r = R.length + 1; bRow[b.k] = r; const base = b.k === 'p' ? { f: 'G' + rT, v: b.base } : b.k === 'ex' ? { f: sumif('EX'), v: b.base } : b.k === 'disc' ? { f: sumif('DISC'), v: b.base } : b.k === 'w' ? { f: sumif('NEW DP'), v: b.base } : null; A(['', b.label, '', '', '', base || b.base, { pct: b.rate }, { f: 'F' + r + '*G' + r, v: b.amt }]); });
+  if (bRow.a) { const others = ['p', 'ex', 'disc', 'w'].filter(k => bRow[k]).map(k => 'F' + bRow[k]).join('-'); R[bRow.a - 1][5] = { f: 'F' + rT + (others ? '-' + others : ''), v: (c.buckets.find(b => b.k === 'a') || {}).base || 0 }; }
+  const bEnd = R.length; A([]);
   const rNet = A(['', '', '', '', '', '', 'NET', { f: 'SUM(H' + bStart + ':H' + bEnd + ')', v: c.net }]);
   const dedRows = []; ((c.ded && c.ded.list) || []).filter(d => d.apply > 0).forEach(d => dedRows.push(A(['', 'DEDUCTION · ' + d.store, d.why || '', '', '총 ' + d.total, '남은 ' + R2(d.remaining - d.apply), 'DEDUCTION', -d.apply])));
   const rNp = A(['', '', '', '', '', '', 'NET PAYMENT', { f: 'H' + rNet + (dedRows.length ? '+SUM(H' + dedRows[0] + ':H' + dedRows[dedRows.length - 1] + ')' : ''), v: c.netPay }]);
@@ -542,6 +556,7 @@ function stmtRows(c) {
   const rTot = A(['', '', '', '', '', '', 'TOTAL', { f: 'H' + rNp + '+H' + rDp + '+H' + rOf, v: c.pay }]);
   if (c.cashKeep) { const rC = A(['', '', '', '', '', '', 'CASH (보관)', { f: '-E' + rT, v: -c.cashKeep }]); A(['', '', '', '', '', '', 'FINAL PAY', { f: 'H' + rTot + '+H' + rC, v: c.finalPay }]); }
   if (c.ded && c.ded.list && c.ded.list.length) { A([]); A(['', 'DEDUCTION 내역 — 6개월 넘게 수금 못 한 계정']); A(['계정', '가게', '근거 인보이스', '총 공제', '이전까지', '이번', '남은', '남은 회차', '사유', '시작']); c.ded.list.forEach(d => { const after = R2(d.remaining - d.apply), left = d.per > 0 ? Math.ceil(after / d.per - 1e-9) : 0; A([d.acct || '', d.store, String(d.invs || ''), d.total, d.used, d.apply, after, after > 0.005 ? left + '회' : '완료', d.why || '', d.start || '']); }); }
+  if (c.tolw && c.tolw.length) { A([]); A(['', '받은 돈과 인보이스 합이 조금 다른 줄 (허용 범위 — 그대로 계산)']); A(['', '가게', '', '받은 돈', '', '인보이스 합', '차이', '', '', '받은 날']); c.tolw.forEach(t => A(['', t.store, '', t.got, '', t.alloc, t.diff, '', '', t.d])); }
   if (c.skipped && c.skipped.length) { A([]); A(['', '금액 오류로 이번 정산에서 제외']); c.skipped.forEach(s => A(['', s.store, s.methods, s.got, '', s.invs, '', '', s.why, s.d])); }
   return R;
 }
@@ -550,8 +565,8 @@ async function xlsxSave(c) {
   try {
     const rows = stmtRows(c), ws = {}; let maxC = 0;
     rows.forEach((r, i) => r.forEach((v, j) => { if (v === '' || v == null) return; const ref = XLSX.utils.encode_cell({ r: i, c: j }); let cell; if (typeof v === 'object' && v.pct != null) cell = { t: 'n', v: v.pct, z: '0.0%' }; else if (typeof v === 'object') cell = { t: 'n', f: v.f, v: v.v, z: '#,##0.00' }; else if (typeof v === 'number') cell = { t: 'n', v, z: '#,##0.00' }; else cell = { t: 's', v: String(v) }; ws[ref] = cell; maxC = Math.max(maxC, j); }));
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: Math.max(maxC, 9) } });
-    ws['!cols'] = [{ wch: 8 }, { wch: 34 }, { wch: 22 }, { wch: 13 }, { wch: 11 }, { wch: 28 }, { wch: 11 }, { wch: 13 }, { wch: 9 }, { wch: 11 }];
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: Math.max(maxC, 10) } });
+    ws['!cols'] = [{ wch: 8 }, { wch: 34 }, { wch: 22 }, { wch: 13 }, { wch: 11 }, { wch: 28 }, { wch: 11 }, { wch: 13 }, { wch: 9 }, { wch: 11 }, { wch: 13 }];
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, (c.sm + ' ' + (c.day || '')).substring(0, 31));
     XLSX.writeFile(wb, c.sm + '_COMMISSION_' + String(c.day || '').replace(/-/g, '') + '.xlsx'); toast('엑셀 파일을 내려받았습니다', 'good');
   } catch (e) { toast('엑셀 저장 실패: ' + e.message, 'bad'); }
