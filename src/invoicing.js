@@ -188,7 +188,9 @@ export async function getInvoice(S, no) { for (const k of invNoOld(no)) { const 
 export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, t.start || 1); return fmtNo(t, n); }
 
 /* ---------- 회사 정보 (관리 → 설정) ---------- */
-export const CO_DEFAULT = { name: 'THE ONE CORP', addr1: '4265 CHURCH STREET, UNIT 1009', addr2: 'SANFORD, FL 32771', tel: '(407) 878 - 7274', thanks: 'Thank You For Your Business !' };
+/* 인보이스 꼬리말(footer) — 보통 도매 인보이스에 들어가는 조건들. 관리 → 설정에서 고침. paper: letter(8.5×11) · a4, sig: 수령 서명 줄 */
+export const FOOTER_DEFAULT = 'Please make checks payable to THE ONE CORP and write the invoice number on your check.\nPayment is due by the Due Date above. Past-due balances are subject to a 1.5% monthly finance charge (18% APR).\nReturned checks are subject to a $35 NSF fee.\nPlease check your merchandise upon receipt. Claims for shortages or damages must be reported within 7 days. No returns without prior authorization.\nAll merchandise remains the property of THE ONE CORP until paid in full.';
+export const CO_DEFAULT = { name: 'THE ONE CORP', addr1: '4265 CHURCH STREET, UNIT 1009', addr2: 'SANFORD, FL 32771', tel: '(407) 878 - 7274', thanks: 'Thank You For Your Business !', footer: FOOTER_DEFAULT, paper: 'letter', sig: true };
 export function company(S) { return Object.assign({}, CO_DEFAULT, (S && S.settings && S.settings.co) || {}); }
 /** 조건에서 일수 — N30 → 30 · ACH60 → 60 · COD → 0 · 없으면 30 */
 export function termDays(terms) { const t = String(terms || '').toUpperCase(); if (/COD|CASH/.test(t)) return 0; const m = t.match(/(\d{1,3})/); return m ? Number(m[1]) : 30; }
@@ -237,7 +239,8 @@ export function invoiceHtml(inv, acc, opt) {
   const arBox = ar && ar.asOf ? '<div class="ivar"><div class="ivart">AR balance Aging As Of ' + esc(fmtD(ar.asOf)) + '</div><table><tr><th>0-30</th><th>31-60</th><th>61-90</th><th>Over 90</th><th>Total</th></tr><tr><td>' + n2(ar.bk[0] + ar.bk[1]) + '</td><td>' + n2(ar.bk[2]) + '</td><td>' + n2(ar.bk[3]) + '</td><td>' + n2(ar.bk[4]) + '</td><td><b>' + n2(ar.bal) + '</b></td></tr></table></div>' : '';
   /* 합계는 인쇄된 줄의 합 — 저장된 total 과 1센트라도 다르면(옛 인보이스) 줄 합을 믿음 */
   const net = Math.abs(sumT - inv.total) > 0.005 ? sumT : inv.total, discAmt = R2(inv.sub - net);
-  return '<div class="iv">' + docHead(co, 'INVOICE', [['Date', fmtD(inv.d)], ['Invoice No.', inv.no]]) +
+  const footer = String(co.footer == null ? FOOTER_DEFAULT : co.footer).split(/\n/).map(x => x.trim()).filter(Boolean);
+  return '<div class="iv' + (co.paper === 'a4' ? ' pa4' : '') + '">' + docHead(co, 'INVOICE', [['Date', fmtD(inv.d)], ['Invoice No.', inv.no]]) +
     '<div class="ivparties">' + party('BILL TO') + party('SHIP TO') + '</div>' +
     '<table class="ivinfo"><tr><th>Acct. No.</th><th>Terms</th><th>Rep.</th><th>Ship</th><th>Ship Via</th><th>S.O. No.</th><th>Due Date</th></tr>' +
     '<tr><td>' + esc(inv.acct || '') + '</td><td>' + esc(terms) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS') + '</td><td>' + esc(inv.order || '') + '</td><td>' + esc(fmtD(due)) + '</td></tr></table>' +
@@ -245,5 +248,7 @@ export function invoiceHtml(inv, acc, opt) {
     arBox +
     '<div class="ivfoot"><div class="ivthx">' + esc(co.thanks || '') + (inv.memo ? '<br>' + esc(inv.memo) : '') + '<div class="ivpcs">' + rows.length + ' lines · ' + tq + ' pcs' + (view.kits !== 'closed' && rows.some(l => l.kit && l.kit.length) ? ' · set contents listed under each set (incl.)' : '') + '</div></div>' +
     '<table class="ivtot"><tr><td>Sub Total</td><td class="r">' + n2(inv.sub) + '</td></tr><tr><td>Discount' + (dc ? ' ' + dc + '%' : '') + '</td><td class="r">' + n2(-discAmt) + '</td></tr><tr><td>S &amp; H</td><td class="r">' + n2(inv.ship || 0) + '</td></tr><tr class="ivT"><td>Total</td><td class="r">' + n2(net + (Number(inv.ship) || 0)) + '</td></tr></table></div>' +
+    (footer.length ? '<div class="ivterms">' + footer.map(x => '<div>• ' + esc(x) + '</div>').join('') + '</div>' : '') +
+    (co.sig !== false ? '<div class="ivsig"><div>Received by (print &amp; sign)</div><div>Date</div><div>Checked by</div></div>' : '') +
     '<div class="ivpg">' + esc(inv.no) + ' · printed ' + esc(new Date().toLocaleString('en-US')) + '</div></div>';
 }

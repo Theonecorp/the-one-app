@@ -28,11 +28,13 @@ const acctOf = a => (S.accounts.byCode ? S.accounts.byCode[a] : null);
 export async function printInvoices(invs, acc) {
   let ar = null; try { const i = await storeInfo(invs[0].acct, true); ar = i && i.asOf ? { asOf: i.asOf, bk: i.bk, bal: i.bal } : null; } catch (e) {}
   try { await loadCatalog(S); } catch (e) {}
-  const v = invView(S);
+  const v = invView(S), co0 = company(S); if (!v.paper) v.paper = co0.paper || 'letter';
   const paint = () => {
-    const bar = '<div class="noprint ivopts"><span>' + bi('정렬', 'Sort') + '</span>' + [['group', '분류별 묶음', 'By line'], ['abc', '코드 ABC', 'Code A→Z'], ['order', '주문 순서', 'Order entry']].map(x => '<button class="' + (v.sort === x[0] ? 'on' : '') + '" data-ivs="' + x[0] + '">' + x[1] + ' <span class="en">' + x[2] + '</span></button>').join('') +
+    const bar = '<div class="noprint ivopts"><span>' + bi('용지', 'Paper') + '</span>' + [['letter', 'Letter 8½×11'], ['a4', 'A4']].map(x => '<button class="' + (v.paper === x[0] ? 'on' : '') + '" data-ivpp="' + x[0] + '">' + x[1] + '</button>').join('') + '<span>' + bi('정렬', 'Sort') + '</span>' + [['group', '분류별 묶음', 'By line'], ['abc', '코드 ABC', 'Code A→Z'], ['order', '주문 순서', 'Order entry']].map(x => '<button class="' + (v.sort === x[0] ? 'on' : '') + '" data-ivs="' + x[0] + '">' + x[1] + ' <span class="en">' + x[2] + '</span></button>').join('') +
       '<span>' + bi('세트', 'Sets') + '</span>' + [['open', '구성품 펼침', 'Show contents'], ['closed', '세트 한 줄', 'One line']].map(x => '<button class="' + (v.kits === x[0] ? 'on' : '') + '" data-ivk="' + x[0] + '">' + x[1] + ' <span class="en">' + x[2] + '</span></button>').join('') + '</div>';
-    printOpen(bar + invs.map(x => invoiceHtml(x, acc, { co: company(S), ar, view: v })).join(''));
+    const co = Object.assign({}, co0, { paper: v.paper });
+    printOpen('<style>@page{size:' + (v.paper === 'a4' ? 'A4' : 'letter') + ';margin:.4in}</style>' + bar + invs.map(x => invoiceHtml(x, acc, { co, ar, view: v })).join(''));
+    document.querySelectorAll('[data-ivpp]').forEach(b => b.onclick = () => { v.paper = b.dataset.ivpp; setInvView(v); paint(); });
     document.querySelectorAll('[data-ivs]').forEach(b => b.onclick = () => { v.sort = b.dataset.ivs; setInvView(v); paint(); });
     document.querySelectorAll('[data-ivk]').forEach(b => b.onclick = () => { v.kits = b.dataset.ivk; setInvView(v); paint(); });
   };

@@ -154,7 +154,10 @@ table.pk td{vertical-align:top}table.pk tr.okd td{background:#f0fdf4}.pkc{white-
 #prtbody table{font-size:12px}#prtbody th,#prtbody td{border:1px solid #bbb;padding:5px 6px}#prtbody th{background:#eef2f7;font-size:11px}
 #prtbody .fin td{background:#fef08a;font-weight:800;font-size:15px}
 /* 인보이스 (이전 양식) */
-#prtbody .iv{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:11.5px;page-break-after:always;min-height:9.6in;display:flex;flex-direction:column}
+/* 인보이스 한 장 = 종이 한 장: Letter(8.5×11, 여백 .4in → 7.7×10.2in) · A4(.pa4). 긴 인보이스는 줄 단위로 넘어가고 머리 행은 다음 장에도. 마지막 장 뒤엔 빈 장 없음 */
+#prtbody .iv{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:11.5px;page-break-after:always;break-after:page;width:7.7in;max-width:100%;margin:0 auto;min-height:10.2in;box-sizing:border-box;display:flex;flex-direction:column}#prtbody .iv.pa4{width:7.47in;min-height:10.9in}#prtbody .iv:last-child{page-break-after:auto;break-after:auto}
+#prtbody .ivlines thead{display:table-header-group}#prtbody .ivlines tr,#prtbody .ivfoot,#prtbody .ivterms,#prtbody .ivsig,#prtbody .ivar{page-break-inside:avoid;break-inside:avoid}
+#prtbody .ivterms{margin-top:7px;font-size:9.3px;line-height:1.45;color:#222;border-top:1px solid #333;padding-top:4px}#prtbody .ivterms div{margin:0 0 1px}#prtbody .ivsig{display:flex;gap:28px;margin-top:16px;font-size:10px;color:#333}#prtbody .ivsig div{flex:1;border-top:1px solid #333;padding-top:3px}#prtbody .ivsig div:nth-child(2){flex:0 0 1.3in}
 #prtbody .iv table{font-size:11px}#prtbody .iv th,#prtbody .iv td{border:1px solid #333;padding:3px 5px}#prtbody .iv th{background:#fff;font-weight:700;text-align:center;font-size:10.5px}
 #prtbody .ivh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}#prtbody .ivh .ivlogo{width:62px;height:62px;margin-right:10px;float:left}
 #prtbody .ivco{font-size:20px;font-weight:800;letter-spacing:.3px}#prtbody .ivad{font-size:11px;line-height:1.4;margin-top:2px}
@@ -170,7 +173,7 @@ table.pk td{vertical-align:top}table.pk tr.okd td{background:#f0fdf4}.pkc{white-
 #prtbody .ivthx{flex:1 1 60%;min-width:0;font-size:11.5px;line-height:1.5;white-space:pre-line}#prtbody .ivpcs{color:#555;font-size:10px;margin-top:6px}
 #prtbody .ivtot{flex:0 0 240px;border-left:1px solid #333;padding-left:8px}#prtbody .ivtot td{border:0;padding:1px 6px;font-size:11.5px;white-space:nowrap}#prtbody .ivtot td:first-child{text-align:right;color:#333;width:120px}#prtbody .ivT td{font-weight:800;font-size:13px}
 #prtbody .ivpg{text-align:right;font-size:9.5px;color:#555;margin-top:6px}
-@page{size:letter;margin:.45in}
+@page{size:letter;margin:.4in}
 #prtbody .sig{margin-top:26px;display:flex;gap:40px;font-size:12.5px}#prtbody .sig div{flex:1;border-top:1px solid #333;padding-top:5px}
 .ivopts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#f1f5f9;border-radius:10px;padding:8px 10px;margin-bottom:12px;font-size:12.5px}.ivopts>span{font-weight:800;color:var(--navy);margin-left:6px}.ivopts button{border:1.5px solid var(--line);background:#fff;border-radius:99px;padding:6px 10px;font-size:12.5px;font-weight:700;color:var(--ink)}.ivopts button.on{background:var(--navy);color:#fff;border-color:var(--navy)}.ivopts .en{font-size:10px;opacity:.7}
 #prtbody .ivkitrow td{color:#444;font-size:10px;border-top:0;padding-top:1px;padding-bottom:1px}#prtbody .ivset td{font-weight:700}
