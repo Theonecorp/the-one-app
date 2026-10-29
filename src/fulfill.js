@@ -44,7 +44,7 @@ const typeName = c => { const t = invTypes(S).find(x => x.c === c); return t ? t
  *  주문 처리 화면
  * ============================================================ */
 export function manage(o, lines) {
-  lines = lines.map(l => Object.assign({}, l));
+  lines = lines.map(l => Object.assign({}, l, l.t ? {} : { t: DT() }));   // 종류 없는 옛 줄은 기본 종류(A)로
   const picking = o.st === 'pick' || o.st === 'ok' || o.st === 'picked';   // 픽킹 수량을 만질 수 있는 상태 (픽킹 완료 뒤에도 사무실이 고칠 수 있음)
   if (picking) lines.forEach(l => { if (l.pq == null) l.pq = l.q; });
   const acc = acctOf(o.acct), ad = acctDisc(acc);
@@ -67,7 +67,7 @@ export function manage(o, lines) {
   const dchg = Object.keys(dk).filter(k => Number((o.disc || {})[k] || 0) !== Number(ad[k] || 0));
   if (dchg.length) h += '<div class="alert a-amb">🏷 할인 변경: ' + dchg.map(k => '<b>' + esc(k) + '</b> 주문 ' + ((o.disc || {})[k] || 0) + '% · 가게 기본 ' + (ad[k] || 0) + '%').join(' · ') +
     (o.acct && can('invoice') ? ' <button class="b-ghost b-sm" id="mDiscSave">이 할인을 가게 기본으로 · set as store default</button>' : '') + '</div>';
-  h += '</div>';
+  h += '<div id="mTypes"></div></div>';
   /* 버튼 */
   /* 픽킹·팩킹 담당은 픽킹까지만 — 인보이스 확정 · 주문 취소 · 할인 저장은 인보이스 · 오피스 담당이 */
   const J = jobOf(), canInv = can('invoice');
@@ -106,8 +106,24 @@ export function manage(o, lines) {
   fillPinned('mNotes', o.acct);
   let MF = 'all';
   const sumNow = () => { $('mSum').innerHTML = (picking ? '<div class="muted" style="margin-top:8px">🧾 픽킹한 수량 기준 — 확정하면 종류마다 인보이스가 따로 나옵니다 <span class="en">Based on picked qty; one invoice per type on confirm</span></div>' : '<div class="muted" style="margin-top:8px">🧾 주문 수량 기준 미리보기 — 픽킹 후 확정 <span class="en">Preview by ordered qty; split after picking</span></div>') + typeSummary(splitByType(lines, o.disc, picking ? 'pq' : 'q')) + (picking ? boLine() : ''); };
+  /* 🏷 인보이스 종류 — 사무실 판단: 줄마다 바꾸거나 전체를 한 종류로. 픽킹 중이 아니면 바로 저장 */
+  const typeBar = () => {
+    const box = $('mTypes'); if (!box) return;
+    if (!office) { box.innerHTML = ''; return; }
+    const cnt = {}; lines.forEach(l => { const t = l.t || DT(); cnt[t] = (cnt[t] || 0) + 1; });
+    const w = types.find(t => t.comm === 'W');
+    box.innerHTML = '<div class="alert a-blu tybar">🏷 <b>' + bt('인보이스 종류', 'Invoice type') + '</b> ' + types.map(t => '<span class="tag ' + (cnt[t.c] ? (t.c === (w && w.c) ? 't-a' : 't-k') : 't-g') + '">' + esc(t.c) + ' ' + (cnt[t.c] || 0) + bt('줄', '') + '</span>').join(' ') +
+      '<span class="muted" style="font-size:12px;display:block;margin:4px 0">' + bt('W(디스플레이 · 세트, 커미션 제한)는 자동 분류가 아니라 사무실이 주문을 보고 판단합니다. 줄마다 코드 옆에서 바꾸거나, 아래로 전체를 한 번에.', 'W (display & set, limited commission) is decided by the office, not automatically. Change per line next to the code, or the whole order below.') + '</span>' +
+      '<div class="btns" style="justify-content:flex-start;margin-top:4px;flex-wrap:wrap">' + types.map(t => '<button type="button" class="b-ghost b-sm" data-tall="' + esc(t.c) + '"' + (cnt[t.c] === lines.length ? ' disabled' : '') + '>' + bt('모두 ', 'All ') + esc(t.c) + '</button>').join('') + '</div></div>';
+    box.querySelectorAll('[data-tall]').forEach(b => b.onclick = async () => { const t = b.dataset.tall, n = lines.filter(l => (l.t || DT()) !== t).length; if (!(await confirmBox(bt(n + '줄 전부 인보이스 종류 ' + t + ' 으로 바꿀까요?', 'Set all ' + n + ' lines to invoice type ' + t + '?'), t))) return; lines.forEach(l => { l.t = t; }); typeChanged(true); });
+  };
+  const typeChanged = async (repaint) => {
+    sumNow(); typeBar(); if (repaint) paint();
+    if (picking) { dirty = true; return; }   // 픽킹 중엔 💾 작업 저장으로 같이
+    busy(true); try { await saveLines(); toast('🏷 ' + bt('인보이스 종류 저장', 'Invoice type saved'), 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
+  };
   const boLine = () => { const b = lines.filter(l => (l.pq || 0) < l.q), u = lines.filter(l => !l.ok); return (u.length ? '<div class="alert a-amb">○ 아직 두드리지 않은 줄 <b>' + u.length + '</b> / ' + lines.length + ' <span class="en">not yet checked</span></div>' : '') + (b.length ? '<div class="alert a-red">⏳ 백오더 ' + b.length + '줄 · ' + b.reduce((a, l) => a + l.q - (l.pq || 0), 0) + '개</div>' : u.length ? '' : '<div class="alert a-grn">✓ 모두 픽킹됨</div>'); };
-  const types = invTypes(S), office = picking && o.st === 'picked' && canInv;   // 인보이스 종류는 사무실 확인 단계에서만 바꿈
+  const types = invTypes(S), office = canInv && S.role !== 'salesman' && (o.st === 'sent' || picking);   // 🏷 인보이스 종류(A · P · W)는 사무실이 접수 ~ 발행 전까지 주문을 보고 판단해서 바꿈
   /* 픽킹 입력은 두드려서: 처음 한 번 = ✓ 통과(주문 수량), 다시 = ⏳ 백오더(0), 다시 = ✓ … · ✎ 수량 으로 일부만 담았을 때 숫자 입력 */
   const pkBtn = l => { const pq = l.pq || 0, st = !l.ok ? 'u' : pq >= l.q ? 'ok' : pq === 0 ? 'bo' : 'part'; const ic = st === 'u' ? '○' : st === 'ok' ? '✓' : st === 'bo' ? '⏳' : '◐'; return '<button class="pkb ' + st + '" data-pkt="' + l._i + '">' + ic + ' <b>' + pq + '</b><span>/' + l.q + '</span></button><button class="b-ghost pkq" data-pkq="' + l._i + '">✎ ' + bi('수량', 'Qty') + '</button>'; };
   const paint = () => {
@@ -140,7 +156,7 @@ export function manage(o, lines) {
         setTimeout(() => { $('pqIn').focus(); $('pqIn').select(); }, 50); });
     };
     bindPk($('mLines'));
-    document.querySelectorAll('[data-t]').forEach(s => s.onchange = () => { lines[+s.dataset.t].t = s.value; dirty = true; sumNow(); });
+    document.querySelectorAll('[data-t]').forEach(s => s.onchange = () => { lines[+s.dataset.t].t = s.value; typeChanged(); });
     document.querySelectorAll('[data-brk]').forEach(b => b.onclick = async () => {
       const i = +b.dataset.brk, l = lines[i];
       if (!(await confirmBox(l.c + ' 세트를 구성품 ' + l.kit.length + '종으로 풀까요? (구성품을 따로 픽킹 · 인보이스, 가격은 구성품 목록가)', '풀기'))) return;
@@ -151,7 +167,7 @@ export function manage(o, lines) {
     document.querySelectorAll('[data-note]').forEach(inp => inp.onchange = () => { const v = inp.value.trim(); if (v) lines[+inp.dataset.note].note = v; else delete lines[+inp.dataset.note].note; dirty = true; });
   };
   let dirty = false;
-  sumNow(); paint();
+  sumNow(); paint(); typeBar();
   $('mFind').oninput = debounce(paint, 150);
   $('mFind').onkeydown = e => { if (e.key !== 'Enter' || !picking) return; e.preventDefault(); const v = $('mFind').value.trim().toUpperCase(); const i = lines.findIndex(l => l.c === v || (catalog() && exactItem(v) && exactItem(v).c === l.c)); if (i < 0) return toast('이 주문에 없는 코드입니다', 'bad'); lines[i].pq = (lines[i].ok ? (lines[i].pq || 0) : 0) + 1; lines[i].ok = true; dirty = true; $('mFind').value = ''; sumNow(); paint(); toast(lines[i].c + ' 픽 ' + lines[i].pq + ' / ' + lines[i].q, 'good'); };
   document.querySelectorAll('[data-mf]').forEach(b => b.onclick = () => { MF = b.dataset.mf; document.querySelectorAll('[data-mf]').forEach(x => x.classList.toggle('on', x === b)); paint(); });
@@ -428,11 +444,13 @@ async function confirmInvoice(o, lines) {
   if (!groups.length) return toast('픽킹된 수량이 없습니다 — 주문를 취소하거나 수량을 넣으세요', 'bad');
   const types = invTypes(S);
   openModal('<h2>🧾 인보이스 확정 — ' + esc(o.store) + '</h2><div class="muted">종류별로 인보이스 번호가 하나씩 나옵니다. 확정하면 고칠 수 없습니다 (취소 후 다시).</div>' +
-    '<table style="margin-top:8px"><tr><th>종류</th><th class="r">수량</th><th class="r">금액</th><th class="r">할인</th><th class="r">합계</th></tr>' + groups.map(g => '<tr><td><b>' + esc(g.t) + '</b> ' + esc(typeName(g.t)) + '</td><td class="r">' + g.qty + '</td><td class="r">' + money(g.sub) + '</td><td class="r">' + (g.disc ? g.disc + '%' : '—') + '</td><td class="r"><b>' + money(g.total) + '</b></td></tr>').join('') + '</table>' +
+    '<table style="margin-top:8px"><tr><th>종류</th><th class="r">수량</th><th class="r">금액</th><th class="r">할인</th><th class="r">합계</th></tr>' + groups.map(g => '<tr><td>' + sel('', types.map(t => [t.c, t.c]), g.t, 'class="tsel" data-ivt="' + esc(g.t) + '" title="' + esc(bt('이 묶음 전체를 다른 종류로', 'Move this group to another type')) + '"') + ' ' + esc(typeName(g.t)) + '</td><td class="r">' + g.qty + '</td><td class="r">' + money(g.sub) + '</td><td class="r">' + (g.disc ? g.disc + '%' : '—') + '</td><td class="r"><b>' + money(g.total) + '</b></td></tr>').join('') + '</table>' +
     (bo.length ? '<div class="alert a-amb">⏳ 백오더 ' + bo.length + '줄 · ' + bo.reduce((a, l) => a + l.q, 0) + '개 — 백오더 목록에 남겨 두고 나중에 결정합니다</div>' : '') +
     '<div class="fg" style="margin-top:8px"><label>인보이스 메모 (선택)</label><input id="ivMemo" value="' + esc(o.memo || '') + '"></div>' +
     '<div class="btns"><button class="b-ghost" id="ivX">닫기</button><button class="b-green" id="ivOk">확정 · 인쇄</button></div>');
   $('ivX').onclick = closeModal;
+  /* 🏷 묶음의 종류 바꾸기 (예: W 로 잡힌 줄을 A 로) — 줄의 종류를 바꾸고 창을 다시 그림 · 확정 때 같이 저장 */
+  document.querySelectorAll('[data-ivt]').forEach(x => x.onchange = () => { const from = x.dataset.ivt, to = x.value; if (from === to) return; lines.forEach(l => { if ((l.t || DT()) === from) l.t = to; }); closeModal(); confirmInvoice(o, lines); });
   $('ivOk').onclick = async () => {
     const memo = $('ivMemo').value.trim(); closeModal(); busy(true);
     try {

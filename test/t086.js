@@ -27,7 +27,7 @@ const path = require('path');
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { s.bankM = [{ id: o.ym, ym: o.ym, begin: 41250.1, in: 212900.55, out: 190968.57, end: 63182.08, from: o.ym + '-01', to: o.ym + '-31', rows: 0 }]; }; }, { ym });
   await pg.goto('http://127.0.0.1:8823/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.waitForSelector('[data-og="now"]', { timeout: 10000 }); const dash = (await pg.textContent('[data-og="now"]')).replace(/\s+/g, ' ');
-  if (!/은행 실제/.test(dash) || !/\$212,900\.55/.test(dash) || !/\$190,968\.57/.test(dash) || !/PDF 요약/.test(dash)) errs.push('dashboard should show PDF monthly summary: ' + dash.slice(-200));
+  if (!/은행 실제/.test(dash) || !/\$212,900\.55/.test(dash) || !/\$190,968\.57/.test(dash) || !/월별 요약 10월/.test(dash)) errs.push('dashboard should show PDF monthly summary: ' + dash.slice(-200));
   await pg.evaluate(() => { location.hash = '#/mg/bank'; }); await pg.waitForTimeout(1500); const tab = (await pg.textContent('#mgBody')).replace(/\s+/g, ' ');
   if (!/월별 명세서 요약/.test(tab) || !/\$212,900\.55/.test(tab) || !/\$63,182\.08/.test(tab) || !/월별 요약만/.test(tab)) errs.push('bank tab should show the monthly summary table: ' + tab.slice(0, 200));
   await br.close(); srv.kill();
