@@ -492,8 +492,8 @@ async function runKind(k, f, out) {
   else throw new Error('모르는 종류');
 }
 async function loadXlsx() { if (window.XLSX) return window.XLSX; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); return window.XLSX; }
-async function readBook(file) { const XLSX = await loadXlsx(); const buf = await file.arrayBuffer(); return { XLSX, wb: XLSX.read(buf, { type: 'array', cellDates: true }) }; }
-function aoa(XLSX, wb, name) { const ws = wb.Sheets[name]; if (!ws) return null; return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }); }
+export async function readBook(file) { const XLSX = await loadXlsx(); const buf = await file.arrayBuffer(); return { XLSX, wb: XLSX.read(buf, { type: 'array', cellDates: true }) }; }
+export function aoa(XLSX, wb, name) { const ws = wb.Sheets[name]; if (!ws) return null; return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }); }
 function dstr(v) { if (v instanceof Date) { const d = new Date(v.getTime() - v.getTimezoneOffset() * 60000); return d.toISOString().substring(0, 10); } const s = String(v || '').trim(); if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10); if (typeof v === 'number' && v > 30000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().substring(0, 10); }   /* 엑셀 날짜 숫자 */
   const m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0'); return ''; }
 function hdrIdx(row, names) { const idx = {}; row = row.map(x => String(x || '').trim()); Object.keys(names).forEach(k => { const j = row.findIndex(h => names[k].test(h)); idx[k] = j; }); return idx; }
