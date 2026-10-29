@@ -12,7 +12,8 @@ export function commSettings(settings) {
   return {
     DISC_LIMIT: s.discLimit != null ? Number(s.discLimit) : 0.20,
     keywords: String(s.specialKeywords || 'BEAUTY EXCHANGE, BEAUTY EXCAHNGE').split(',').map(x => x.trim().toUpperCase()).filter(Boolean),
-    SPECIAL_TITLE: s.specialTitle || 'BEAUTY EXCHANGE'
+    SPECIAL_TITLE: s.specialTitle || 'BEAUTY EXCHANGE',
+    TOL: s.commTol != null ? Number(s.commTol) : 2   // 받은 돈 − 인보이스 합 차이가 이 금액($) 이하면 표시만 하고 그대로 계산 (옛 앱: 1~2불은 넘어감)
   };
 }
 export function ratesOf(sm) { const r = Object.assign({}, RATE_DEFAULT, (sm && sm.rates) || {}); Object.keys(r).forEach(k => { r[k] = Number(r[k]) > 1 ? Number(r[k]) / 100 : Number(r[k]) || 0; }); return r; }
@@ -71,9 +72,9 @@ export function lineOfOther(o) {
   (o.invs || []).forEach(i => { const t = i.t || invType(i.no), a = num(i.amt); if (i.no) { L.invs.push(i.no); L.no[t] = true; if (!a) L.blank[t] = true; } if (a) { L[t] += a; L.hasAlloc = true; } });
   return L;
 }
-export function checkLine(L) {
-  const got = R2(L.e + L.f);
-  const out = { got, alloc: 0, wFix: R2(L.W), mismatch: false, derived: false, blocked: false, why: '' };
+export function checkLine(L, cs) {
+  const got = R2(L.e + L.f), TOL = cs && cs.TOL != null ? Number(cs.TOL) : 2;
+  const out = { got, alloc: 0, wFix: R2(L.W), mismatch: false, derived: false, blocked: false, tol: false, diff: 0, why: '' };
   if (!L.hasAlloc) {
     /* 금액이 하나도 안 적힌 줄 — 인보이스 종류로 판단 (옛 대시보드 규칙): W 만 → 전부 W · P 만 → 전부 P · A 하나(또는 번호 없음) → A · 여러 종류 → 나눌 수 없어 제외 */
     const kinds = Object.keys(L.no).filter(k => L.no[k]);
@@ -86,6 +87,9 @@ export function checkLine(L) {
   const alloc = R2(L.A + L.P + L.W + L.CM); out.alloc = alloc;
   if (Math.abs(alloc - got) <= 0.01) { out.wFix = Math.max(0, Math.min(R2(got - (L.A + L.P + L.CM)), got)); return out; }
   out.mismatch = true;
+  /* 1~2불 차이(반올림 · 잔돈 · 수수료) — 막지 않고 표시만. 차이는 A 쪽에 들어가고 W 는 적힌 대로 */
+  const blankAny = !!(L.blank.A || L.blank.P || L.blank.CM || L.blank.W);
+  if (!blankAny && Math.abs(alloc - got) <= TOL + 0.005) { out.tol = true; out.diff = R2(got - alloc); out.wFix = Math.max(0, Math.min(R2(L.W), got)); out.why = '받은 돈과 인보이스 합이 $' + Math.abs(out.diff).toFixed(2) + ' 다름 — 허용 범위라 표시만 하고 그대로 계산'; return out; }
   const blankOther = !!(L.blank.A || L.blank.P || L.blank.CM), rest = R2(got - (L.A + L.P + L.CM));
   if (L.no.W && !blankOther && rest >= -0.005 && rest <= got + 0.005) { out.derived = true; out.wFix = Math.max(0, Math.min(rest, got)); out.why = 'A·P·CM 은 적혀 있어 W 를 계산해 넣었습니다'; }
   else { out.blocked = true; out.wFix = 0; out.why = blankOther ? '인보이스 번호는 있는데 금액이 비어 있어 계산할 수 없습니다' : '받은 돈과 인보이스 합이 달라 어느 숫자가 맞는지 알 수 없습니다'; }
@@ -125,11 +129,12 @@ export function computeComm(linesIn, rate, cs) {
   linesIn.forEach(L0 => {
     const L = Object.assign({}, L0);
     L.sec = secOf(L, cs);
-    const ck = checkLine(L);
+    const ck = checkLine(L, cs);
     const got = ck.got; let wFix = R2(ck.wFix);
     if (ck.mismatch) {
       L.mismatch = true; L.allocWas = ck.alloc; L.wWas = R2(L.W); L.derived = ck.derived; L.blocked = ck.blocked;
-      bad.push({ key: L.key, d: L.d, store: L.store, got, alloc: ck.alloc, A: R2(L.A), P: R2(L.P), W: R2(L.W), CM: R2(L.CM), derived: ck.derived, blocked: ck.blocked, fixed: wFix, why: ck.why, src: L.src });
+      L.tol = ck.tol; L.diff = ck.diff;
+      bad.push({ key: L.key, d: L.d, store: L.store, got, alloc: ck.alloc, A: R2(L.A), P: R2(L.P), W: R2(L.W), CM: R2(L.CM), derived: ck.derived, blocked: ck.blocked, tol: ck.tol, diff: ck.diff, fixed: wFix, why: ck.why, src: L.src });
       if (ck.blocked) { skipped.push({ key: L.key, d: L.d, store: L.store, acct: L.acct, methods: L.methods.join(', '), got, alloc: ck.alloc, invs: L.invs.join(','), why: ck.why, src: L.src }); return; }
     }
     const splitable = L.sec === 'REG' && !L.blocked;
