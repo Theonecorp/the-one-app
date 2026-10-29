@@ -608,6 +608,12 @@ export async function invBrowser(LF, head) {
     else if (isNo) { const x = await getInvoice(S, q); rows = x ? [x] : await S.DB.list('invoices', { where: [['order', '==', q.toUpperCase()]] }); }
     else rows = await invoicesBetween(S, from, to);
   } catch (e) { err = String(e.code || e.message); }
+  /* 📊 전체 몇 장 있는지 (올해 · 작년 · 그 전) — 가져오기가 됐는지 바로 보이게. 기간에 없으면 최근 200장으로 */
+  let cnt = null, latest = false;
+  if (!acc && !isNo) {
+    try { const y = Number(today().substring(0, 4)); const [c0, c1, c2] = await Promise.all([S.DB.count('invoices', { where: [['d', '>=', y + '-01-01']] }), S.DB.count('invoices', { where: [['d', '>=', (y - 1) + '-01-01'], ['d', '<', y + '-01-01']] }), S.DB.count('invoices', { where: [['d', '<', (y - 1) + '-01-01']] })]); cnt = { y, c0, c1, c2, all: c0 + c1 + c2 }; } catch (e) {}
+    if (!rows.length && !q && cnt && cnt.all) { try { rows = await S.DB.list('invoices', { where: [['d', '<=', to]], order: ['d', 'desc'], limit: 200 }); latest = true; } catch (e) {} }
+  }
   if (!$('iList')) return;
   if (LF.sm) rows = rows.filter(r => r.sm === LF.sm);
   if (LF.it) rows = rows.filter(r => r.t === LF.it);
@@ -618,9 +624,11 @@ export async function invBrowser(LF, head) {
   const days = {}, dayKeys = []; rows.forEach(r => { const k = invParts(r.no)[0]; if (!days[k]) { days[k] = []; dayKeys.push(k); } days[k].push(r); });   // 종류(A · P · W · CM)별 묶음
   let h = '';
   if (err) h += '<div class="alert a-red">' + esc(err) + '</div>';
+  if (cnt) h += (cnt.all ? '<div class="muted" style="margin:0 0 8px;font-size:12.5px">📊 ' + bt('전체 인보이스', 'All invoices') + ' <b>' + cnt.all.toLocaleString() + '</b>' + bt('장', '') + ' · ' + cnt.y + ' ' + cnt.c0.toLocaleString() + ' · ' + (cnt.y - 1) + ' ' + cnt.c1.toLocaleString() + ' · ' + bt('그 전', 'earlier') + ' ' + cnt.c2.toLocaleString() + '</div>' : '<div class="alert a-amb">📄 ' + bt('인보이스가 아직 하나도 없습니다 — ⚙️ 관리 → 가져오기에서 이전 시스템 인보이스 목록(sales_invoice)을 올리면 여기 · 가게 창 · 세일즈맨 앱에 모두 보입니다.', 'No invoices yet — import the legacy invoice list (sales_invoice) under Admin → Import; they then show here, in store windows and in the salesman app.') + '</div>');
+  if (latest) h += '<div class="alert a-blu">📅 ' + bt('이 기간(' + md(from) + ' ~ ' + md(to) + ')에는 인보이스가 없어 가장 최근 200장을 보여 줍니다 — 위 기간 버튼으로 바꾸세요.', 'No invoices in this period — showing the latest 200. Change the period above.') + '</div>';
   if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 ' + bi('가게 창', 'Store') + '</button></div></div>';
   h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스 Invoices</span></div><div><b>' + money(tot) + '</b><span>합계 Total</span></div><div><b>' + money(bal) + '</b><span>미수 Balance</span></div><div><b>' + new Set(rows.map(r => r.d)).size + '</b><span>날짜 Days</span></div></div>' +
-    '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + (rows.length > 1 ? ' · <a id="iSort" href="#" onclick="return false">' + (LF.idesc ? bt('번호 큰 것부터 ↓', 'Highest # first ↓') : bt('번호 작은 것부터 ↑', 'Lowest # first ↑')) + '</a>' : '') + '</div>' +
+    '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : latest ? bt('가장 최근 200장', 'Latest 200') : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + (rows.length > 1 ? ' · <a id="iSort" href="#" onclick="return false">' + (LF.idesc ? bt('번호 큰 것부터 ↓', 'Highest # first ↓') : bt('번호 작은 것부터 ↑', 'Lowest # first ↑')) + '</a>' : '') + '</div>' +
     (rows.length ? dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<div class="iday"><b>' + esc(d) + ' ' + esc(((types.find(t => t.c === d) || {}).n) || '') + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>' + L.map(r => invRow(r)).join(''); }).join('') : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
   $('iList').innerHTML = h;
   /* 인보이스를 누르면 인보이스 · AR 잔액 · 수금을 한 화면에 (가게 창 · 미수금과 같은 화면) */

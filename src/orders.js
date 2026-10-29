@@ -519,7 +519,7 @@ function paintEditor() {
   const acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
   /* 위 고정 (SBMGo 처럼) — 가게 한 줄 · 주문 / 주문 확인 / 메모 · (담기 화면이면) 검색 + 분류 경로. 아래 내용만 움직임 */
   let h = '<div class="ehead" id="eHead"><div class="etop"><div class="erow">';
-  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.city, acc.state].filter(Boolean).join(', ') : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="미수금 · 기록">📋</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + bi('바꾸기', 'Change') + '</button></div>';
+  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.city, acc.state].filter(Boolean).join(', ') : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small><small id="eStoreHist"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="' + esc(bt('이 가게 기록 — 인보이스 · 주문 · 수금 · 노트', 'Store history — invoices · orders · payments · notes')) + '">📋 ' + bt('기록', 'History') + '</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + bi('바꾸기', 'Change') + '</button></div>';
   else h += '<div style="flex:1;min-width:0;position:relative"><input id="eStoreQ" placeholder="🏬 가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div></div>';
   h += '</div><div class="etabs"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + (O.memo ? ' •' : '') + '</button></div></div><div id="eTop"></div></div>';
   /* 고정 칸 밖: 수정 중 표시 · 메모 · 고정 노트 · (담당자) 세일즈맨 */
@@ -621,6 +621,14 @@ let INFO = null;
 async function loadInfo(acct) {
   try { const i = await Store.storeInfo(acct); if (!O || O.acct !== acct) return; INFO = i; } catch (e) { return; }
   const el = $('eStoreBal'); if (el) el.innerHTML = (INFO.asOf ? '미수금 <b class="' + (INFO.bal > 0.005 ? 'warn' : 'ok') + '">' + money(INFO.bal) + '</b>' + (INFO.bk[3] + INFO.bk[4] > 0.005 ? ' · 60일+ <b class="warn">' + money(INFO.bk[3] + INFO.bk[4]) + '</b>' : '') : '') + (INFO.orders.length ? ' · 최근 주문 ' + esc(md(INFO.orders[0].d)) + ' ' + money(INFO.orders[0].amt) : '');
+  /* 📋 한 줄 요약 — 최근 인보이스 3장(번호 · 날짜 · 금액) · 마지막 노트. 누르면 가게 창 인보이스 탭 */
+  const eh = $('eStoreHist'); if (eh) {
+    const inv = (INFO.invHist || []).slice(0, 3), n = INFO.invHistN || 0;
+    let notes = []; try { notes = await Notes.loadNotes(acct); } catch (e) {}
+    const last = notes && notes.length ? notes.slice().sort((x, y) => String(y.at || '').localeCompare(String(x.at || '')))[0] : null;
+    eh.innerHTML = (n ? '🧾 ' + n + bt('장', '') + ' · ' + inv.map(v => esc(v.no) + ' ' + esc(md(v.d)) + ' <b>' + money(v.total) + '</b>').join(' · ') : '🧾 ' + bt('인보이스 기록 없음', 'No invoices yet')) + (last ? '<br>📝 ' + esc(String(last.text || last.t || '').slice(0, 60)) : '');
+    eh.className = 'tap'; eh.style.cursor = 'pointer'; eh.onclick = () => Store.storeSheet(acct, null, 'invh');
+  }
   if (O.view === 'add' && VM === 'list') paintResults();
 }
 /* 빠른 수량 — 마지막에 만진 아이템에 1 · 2 · 3 · 6 · 12 · 24 · 36 · 0 */
