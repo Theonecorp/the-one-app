@@ -25,8 +25,8 @@ const path = require('path');
   await pg.click(sel); await pg.waitForTimeout(350); const c4 = await cls(); log('4:', c4); if (!/ m4/.test(c4)) errs.push('4 taps → m4 purple');
   await pg.click(sel); await pg.waitForTimeout(350); const c5 = await cls(); log('5:', c5); if (!/ m5/.test(c5) || !/\|30\|/.test(c5)) errs.push('5 taps → m5 black, qty 30');
   await pg.click(sel); await pg.waitForTimeout(350); const c6 = await cls(); if (!/ m5/.test(c6) || !/×6/.test(c6)) errs.push('6 taps stays m5 but shows ×6');
-  /* ×N 배지 → 수량 입력창 → 전체 수량 바꾸기 */
-  await pg.click(sel + ' .gtap'); await pg.waitForSelector('#qpV', { timeout: 3000 }).catch(() => errs.push('tapping ×N should open the qty pad'));
+  /* 수량 숫자 → 수량 입력창 → 전체 수량 바꾸기 (v0.8.120: ×N 배지는 보기만, 탭은 카드로 통과) */
+  await pg.click(sel + ' .gq'); await pg.waitForSelector('#qpV', { timeout: 3000 }).catch(() => errs.push('tapping ×N should open the qty pad'));
   await pg.fill('#qpV', '12'); await pg.click('#qpOk'); await pg.waitForTimeout(400);
   const c7 = await cls(); log('after pad:', c7); if (!/\|12\|/.test(c7)) errs.push('qty pad should set qty to 12');
   const cartTag = await pg.evaluate(() => { const t = document.querySelector('.tapx'); return t ? t.className : ''; }); log('cart tag:', cartTag);
