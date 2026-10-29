@@ -3,8 +3,10 @@
  *    미수금(AR) · 에이징 · 지난 주문 · 수금 기록, 그리고 아이템별 "이 가게가 최근에 산 기록"
  *  세일즈맨은 자기 가게(자기 sm 의 AR · 수금)만, 담당자는 가게 담당 세일즈맨 기준으로 봅니다
  * ============================================================ */
-import { $, esc, money, R2, num, md, toast, openModal, closeModal, sortBy, daysBetween, today, bi, bt, printOpen, sortInv, invNo } from './ui.js';
-import { company, docHead, termDays, getInvoice } from './invoicing.js';
+import { $, esc, money, R2, num, md, toast, busy, openModal, closeModal, confirmBox, sortBy, daysBetween, today, bi, bt, printOpen, sortInv, invNo, sel } from './ui.js';
+import { company, docHead, termDays, getInvoice, dropInvCache, rebuildSalesM } from './invoicing.js';
+import { searchAccounts } from './accounts.js';
+import { can } from './main.js';
 import { recentYms, stTag } from './orders.js';
 import * as Notes from './notes.js';
 import { shipmentsOf, shipmentsHtml, bindShipments, openStore } from './track.js';
@@ -151,11 +153,45 @@ export async function invDetail(no, acct, back) {
     (pays.length ? '<div class="sumbox"><b>💵 ' + bt('이 인보이스에 넣은 수금', 'Payments applied') + '</b>' + pays.map(e => { const y = (e.invs || []).find(z => z.no === no); return '<div class="muted">' + esc(e.d) + ' · ' + esc((e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(', ')) + ' · ' + esc(e.sm || '') + ' — <b>' + money(y ? y.amt : 0) + '</b></div>'; }).join('') + '</div>' : '') +
     (lines.length ? '<div style="max-height:40vh;overflow:auto"><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('가격', 'Price') + '</th><th class="r">' + bt('금액', 'Amount') + '</th></tr>' + lines.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table></div>'
       : '<div class="muted" style="margin-top:6px">' + (legacy ? bt('이전 시스템(SmartBee) 인보이스 — 품목 줄은 SmartBee 에 있습니다', 'SmartBee invoice — line items are in SmartBee') : !x ? bt('AR 에만 있는 인보이스 — 인보이스 목록을 올리면 자세히 보입니다', 'Only in A/R — upload the invoice list for details') : '') + '</div>') +
-    '<div class="btns"><button class="b-ghost" id="idStore2">🏬 ' + bi('가게 창', 'Store') + '</button>' + (x && lines.length ? '<button class="b-blue" id="idPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' : '') + '</div>';
+    (!a && acct ? '<div class="alert a-amb">⚠️ ' + bt('거래처 목록에 없는 계정코드입니다', 'This account code is not in the customer list') + ' (' + esc(acct) + ') — ' + bt('✏️ 수정에서 가게를 다시 연결하세요', 'relink the store with ✏️ Edit') + '</div>' : !acct && x ? '<div class="alert a-amb">⚠️ ' + bt('이 인보이스에 가게(계정코드)가 없습니다 — ✏️ 수정에서 연결하세요', 'This invoice has no store — link one with ✏️ Edit') + '</div>' : '') +
+    '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="idStore2">🏬 ' + bi('가게 창', 'Store') + '</button>' + (x && lines.length ? '<button class="b-blue" id="idPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' : '') +
+    (x && isStaff() && can('void') ? (legacy || !x.orderId ? '<button class="b-ghost" id="idEdit">✏️ ' + bi('수정', 'Edit') + '</button><button class="b-ghost" id="idDel" style="color:#991b1b">🗑 ' + bi('지우기', 'Delete') + '</button>' : '<button class="b-ghost" id="idOrder">📦 ' + bi('주문 열기 (VOID · 다시 발행)', 'Open order (void · reissue)') + '</button>') : '') + '</div>';
   $('idX').onclick = () => back ? back() : closeModal();
   const toStore = () => storeSheet(acct, null, 'invh');
   $('idStore').onclick = toStore; $('idStore2').onclick = toStore;
   if ($('idPrint')) $('idPrint').onclick = async () => { const { printInvoices } = await import('./fulfill.js'); printInvoices([x], a); };
+  if ($('idOrder')) $('idOrder').onclick = () => { closeModal(); location.hash = '#/order/' + encodeURIComponent(x.orderId); };
+  if ($('idEdit')) $('idEdit').onclick = () => invEditForm(x, () => invDetail(no, '', back));
+  if ($('idDel')) $('idDel').onclick = async () => {
+    if (!(await confirmBox('🗑 ' + no + ' · ' + (x.store || acct) + ' · ' + money(x.total) + '\n' + bt('이 인보이스를 지울까요? (이전 시스템 인보이스 — 월별 매출 요약도 다시 계산합니다)', 'Delete this invoice? Monthly sales summary is recalculated.'), bt('지우기', 'Delete')))) return;
+    busy(true); try { await S.DB.del('invoices', x.id || no); dropInvCache(); dropStoreCache(); try { await rebuildSalesM(S, [x.ym || String(x.d || '').substring(0, 7)]); } catch (e) {} toast('🗑 ' + no, 'good'); closeModal(); if (back) back(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+}
+/** ✏️ 인보이스 수정 (담당자 · 이전 시스템 인보이스) — 날짜 · 가게(계정코드) · 세일즈맨 · 합계 · 잔액 · 메모. 앱에서 발행한 인보이스는 VOID → 다시 발행 */
+export function invEditForm(x, done) {
+  const types = (S.settings && S.settings.invTypes) || [];
+  let acct = x.acct || '';
+  const pick = () => { const a = S.accounts.byCode ? S.accounts.byCode[acct] : null; return a ? a.store + ' <span class="muted">' + a.acct + (a.sm ? ' · ' + a.sm : '') + '</span>' : (acct ? '<span class="warn">' + esc(acct) + ' — ' + bt('거래처 목록에 없음', 'not in customers') + '</span>' : '<span class="muted">' + bt('가게를 고르세요', 'Pick a store') + '</span>'); };
+  openModal('<h2>✏️ ' + esc(x.no) + '</h2>' +
+    '<div class="fg"><label>🏬 ' + bt('가게', 'Store') + '</label><div id="ieStore" style="font-weight:800">' + pick() + '</div><input id="ieQ" placeholder="' + esc(bt('가게 이름 · 계정코드로 찾기', 'Search store · acct #')) + '" autocomplete="off" style="margin-top:4px"><div class="hits" id="ieHits" style="display:none"></div></div>' +
+    '<div class="two"><div class="fg"><label>' + bt('날짜', 'Date') + '</label><input type="date" id="ieD" value="' + esc(x.d || '') + '"></div><div class="fg"><label>' + bt('세일즈맨', 'Salesman') + '</label>' + sel('ieSm', [['', '—']].concat((S.sms || []).map(s => [s.code, s.code])), x.sm || '') + '</div></div>' +
+    '<div class="two"><div class="fg"><label>' + bt('합계', 'Total') + '</label><input type="number" step="0.01" id="ieT" value="' + (x.total != null ? x.total : '') + '"></div><div class="fg"><label>' + bt('잔액 (미수)', 'Balance') + '</label><input type="number" step="0.01" id="ieB" value="' + (x.bal != null ? x.bal : '') + '"></div></div>' +
+    '<div class="fg"><label>' + bt('메모', 'Memo') + '</label><input id="ieM" value="' + esc(x.memo || '') + '"></div>' +
+    '<div class="btns"><button class="b-ghost" id="ieX">' + bt('취소', 'Cancel') + '</button><button class="b-blue" id="ieOk">💾 ' + bt('저장', 'Save') + '</button></div>');
+  $('ieX').onclick = () => { closeModal(); if (done) done(); };
+  const q = $('ieQ'), box = $('ieHits');
+  q.oninput = () => { const v = q.value.trim(); if (!v) { box.style.display = 'none'; return; } const hits = searchAccounts(S.accounts, v, 8); box.innerHTML = hits.map(h => '<div class="hit" data-iea="' + esc(h.acct) + '"><b>' + esc(h.store) + '</b> <span class="muted">' + esc(h.acct) + ' · ' + esc([h.city, h.state].filter(Boolean).join(', ')) + (h.sm ? ' · ' + esc(h.sm) : '') + '</span></div>').join('') || '<div class="hit muted">' + bt('없음', 'No match') + '</div>'; box.style.display = 'block'; box.querySelectorAll('[data-iea]').forEach(el => el.onclick = () => { acct = el.dataset.iea; const a = S.accounts.byCode[acct]; if (a && a.sm && !$('ieSm').value) $('ieSm').value = String(a.sm).toUpperCase(); $('ieStore').innerHTML = pick(); q.value = ''; box.style.display = 'none'; }); };
+  $('ieOk').onclick = async () => {
+    const a = S.accounts.byCode ? S.accounts.byCode[acct] : null, d = $('ieD').value, total = R2($('ieT').value), bal = $('ieB').value === '' ? null : R2($('ieB').value);
+    if (!d) return toast(bt('날짜를 넣어 주세요', 'Enter the date'), 'bad');
+    const patch = { acct, store: a ? a.store : (x.store || ''), sm: $('ieSm').value, d, ym: d.substring(0, 7), total, memo: $('ieM').value.trim(), editAt: new Date().toISOString(), editBy: S.user.email };
+    if (bal != null) { patch.bal = bal; patch.st = bal > 0.005 ? 'open' : 'paid'; }
+    busy(true);
+    try { await S.DB.update('invoices', x.id || x.no, patch); dropInvCache(); dropStoreCache(); try { await rebuildSalesM(S, Array.from(new Set([x.ym, patch.ym].filter(Boolean)))); } catch (e) {} toast('💾 ' + x.no, 'good'); closeModal(); if (done) done(); }
+    catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
 }
 
 /** 가게 창 열기 */

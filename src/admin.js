@@ -322,19 +322,48 @@ async function importer() {
     '<div id="impOut"></div></div>' +
     '<div class="card"><h2>📤 미수금(AR) 파일만 올리기</h2><div class="muted">AR 엑셀만 따로 받았을 때. ① 파일에 AR 탭이 있으면 이건 필요 없습니다.</div><div class="two" style="margin-top:8px"><input type="date" id="arD2" value="' + today() + '"><input type="file" id="arF2" accept=".xlsx,.xls,.csv"></div><div id="arOut2"></div></div>' +
     '<div class="card"><h2>⑤ sales_invoice.xlsx — 이전 시스템 인보이스 목록 (매출 · 가게별 인보이스 기록)</h2><div class="muted">이전 시스템에서 내보낸 Sales Invoice 목록(invoice · trans date · customer# · sales rep · Total · balance …). 번호가 문서 ID 라 다시 올려도 중복 없음. <b>무료 요금제는 하루 쓰기 2만 건 한도</b>가 있어 처음엔 올해만 넣고, 전년은 다음 날 넣거나 Blaze 로 올린 뒤 넣으세요.</div>' +
-    '<div id="invStat" class="sumbox" style="margin-top:8px"><button class="b-ghost b-sm" id="invStatGo">📊 지금 앱에 들어 있는 인보이스 — 월별로 보기</button></div>' +
+    '<div id="invStat" class="sumbox" style="margin-top:8px"><button class="b-ghost b-sm" id="invStatGo">📊 지금 앱에 들어 있는 인보이스 — 월별로 보기</button> <button class="b-ghost b-sm" id="invChkGo">🔎 ' + bt('들어 있는 인보이스 점검 (번호 모양 · 가게 연결)', 'Check stored invoices') + '</button> <button class="b-ghost b-sm" id="invWipe" style="color:#991b1b">🧹 ' + bt('이전 시스템 인보이스 모두 지우기', 'Delete all imported invoices') + '</button><div id="invChkOut"></div></div>' +
     '<div class="two" style="margin-top:8px"><div class="fg"><label>이 날짜부터 <span class="muted">(비우면 파일 전체)</span></label><input type="date" id="f5From" value=""></div><div class="fg"><label>파일</label><input type="file" id="f5" accept=".xlsx,.csv"></div></div><div id="invOut"></div></div>' +
     '<div class="card"><h2>④ THE ONE 수금 대시보드.xlsx — 공장 장부 · 1099 · 오피스 보너스 · 배분표 · 1099 대상 · 커미션 공제 · 정산 옵션</h2><div class="muted">경영 파일을 그대로 올리세요. 탭 이름(🏭 공장 이름 · 1099 2026 · 오피스 보너스 …)으로 찾고, 시트 안의 ID 를 그대로 써서 다시 올려도 두 번 쌓이지 않습니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="f4" accept=".xlsx"></div><div id="bossOut"></div>' +
     '<details style="margin-top:6px"><summary class="muted">변환해 둔 SEED_DATA(.js) 파일로 넣기</summary><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></details></div>';
   bindExport(); bindAcctImport(S, readBook, aoa); bindAnyImport();
   if ($('invStatGo')) $('invStatGo').onclick = invStat;
+  if ($('invChkGo')) $('invChkGo').onclick = () => invCheck(false);
+  if ($('invWipe')) $('invWipe').onclick = () => invCheck(true);
   $('arF2').onchange = () => { const f = $('arF2').files[0]; if (f) arFileImport(f, $('arOut2'), $('arD2').value || today()); };
   $('seedPick').onclick = () => $('seedFile').click();
   $('seedFile').onchange = () => { const f = $('seedFile').files[0]; if (!f) return; const r = new FileReader(); r.onload = () => seedImport(r.result); r.readAsText(f); };
   $('seedPaste').onclick = () => { openModal('<h2>📋 SEED_DATA 붙여넣기</h2><textarea id="seedTxt" style="width:100%;height:200px;font-size:11px"></textarea><div class="btns"><button class="b-ghost" id="sX">취소</button><button class="b-blue" id="sOk">읽기</button></div>'); $('sX').onclick = closeModal; $('sOk').onclick = () => { const t = $('seedTxt').value; seedImport(t); }; };
   if ($('fmtScan')) $('fmtScan').onclick = () => invFmtScan().catch(e => { $('fmtOut').innerHTML = '<span class="warn">' + esc(e.code || e.message) + '</span>'; });
   $('f1').onchange = () => importMain($('f1').files[0]); $('f2').onchange = () => importSales($('f2').files[0]); $('f3').onchange = () => importComm($('f3').files[0]); $('f4').onchange = () => importBoss($('f4').files[0]); $('f5').onchange = () => importInvoices($('f5').files[0]);
+}
+/** 🔎 들어 있는 인보이스 점검 — 전체 · 이전 시스템 · 종류 글자 없는 번호 · 가게 코드 없음/목록에 없음 · 세일즈맨 코드 아님. wipe 면 이전 시스템(src legacy) 인보이스를 모두 지움 (앱 발행은 남김) */
+async function invCheck(wipe) {
+  const out = $('invChkOut'); if (!out) return; out.innerHTML = '<div class="muted">' + bt('인보이스 읽는 중…', 'Reading invoices…') + '</div>';
+  let L = []; try { L = await S.DB.list('invoices'); } catch (e) { out.innerHTML = '<span class="warn">' + esc(e.code || e.message) + '</span>'; return; }
+  const legacy = L.filter(x => x.src === 'legacy'), app = L.filter(x => x.src !== 'legacy');
+  const noLetter = L.filter(x => !/^[A-Z]{1,2}-?\d{3,}$/.test(String(x.no || x.id))), noAcct = L.filter(x => !x.acct), badAcct = L.filter(x => x.acct && !(S.accounts.byCode && S.accounts.byCode[x.acct]));
+  const codes = new Set((S.sms || []).map(s => String(s.code).toUpperCase())), badSm = L.filter(x => x.sm && !codes.has(String(x.sm).toUpperCase()));
+  const ds = L.map(x => x.d).filter(Boolean).sort();
+  const ex = A => A.slice(0, 6).map(x => esc(x.no || x.id) + (x.acct ? '(' + esc(x.acct) + ')' : '')).join(', ');
+  out.innerHTML = '<div style="margin-top:6px"><b>' + bt('전체', 'All') + ' ' + L.length.toLocaleString() + bt('장', '') + '</b> · ' + bt('이전 시스템', 'imported') + ' ' + legacy.length.toLocaleString() + ' · ' + bt('앱 발행', 'app') + ' ' + app.length.toLocaleString() + (ds.length ? ' · ' + esc(ds[0]) + ' ~ ' + esc(ds[ds.length - 1]) : '') + '</div>' +
+    '<div' + (noLetter.length ? ' class="warn"' : '') + '>' + (noLetter.length ? '⚠️ ' : '✅ ') + bt('종류 글자 없는 번호', 'No type letter') + ' ' + noLetter.length.toLocaleString() + (noLetter.length ? ' — ' + ex(noLetter) : '') + '</div>' +
+    '<div' + (noAcct.length + badAcct.length ? ' class="warn"' : '') + '>' + (noAcct.length + badAcct.length ? '⚠️ ' : '✅ ') + bt('가게 연결 안 됨', 'Not linked to a store') + ' ' + (noAcct.length + badAcct.length).toLocaleString() + ' (' + bt('코드 없음', 'no code') + ' ' + noAcct.length + ' · ' + bt('목록에 없는 코드', 'unknown code') + ' ' + badAcct.length + ')' + (badAcct.length ? ' — ' + ex(badAcct) : '') + '</div>' +
+    '<div' + (badSm.length ? ' class="warn"' : '') + '>' + (badSm.length ? '⚠️ ' : '✅ ') + bt('세일즈맨 코드 아님', 'Unknown salesman code') + ' ' + badSm.length.toLocaleString() + (badSm.length ? ' — ' + esc(Array.from(new Set(badSm.map(x => x.sm))).slice(0, 8).join(', ')) : '') + '</div>' +
+    (noLetter.length || noAcct.length + badAcct.length > L.length / 2 ? '<div class="alert a-amb" style="margin-top:6px">' + bt('가져온 파일의 열이 잘못 읽힌 것 같습니다. 🧹 이전 시스템 인보이스를 모두 지우고 customer # 가 있는 Sales Invoice 목록으로 다시 올리세요 (앱에서 발행한 인보이스는 남습니다).', 'The imported file was probably read with the wrong columns. Delete all imported invoices with 🧹 and re-upload a Sales Invoice list that has customer #. App-issued invoices are kept.') + '</div>' : '');
+  if (!wipe) return;
+  if (!legacy.length) return toast(bt('이전 시스템 인보이스가 없습니다', 'No imported invoices'), 'bad');
+  if (!(await confirmBox('🧹 ' + bt('이전 시스템에서 가져온 인보이스 ' + legacy.length.toLocaleString() + '장을 모두 지울까요? 앱에서 발행한 ' + app.length + '장은 남습니다. 지운 뒤 파일을 다시 올리면 됩니다.', 'Delete all ' + legacy.length + ' imported invoices? The ' + app.length + ' app-issued invoices stay. Re-upload the file afterwards.'), bt('모두 지우기', 'Delete all')))) return;
+  if (!(await confirmBox(bt('정말 지웁니다 — 되돌릴 수 없습니다 (백업은 드라이브 💾 백업 폴더).', 'Really delete? This cannot be undone.'), bt('지우기', 'Delete')))) return;
+  busy(true); let done = 0;
+  try {
+    for (let i = 0; i < legacy.length; i += 400) { const part = legacy.slice(i, i + 400); await S.DB.batch(part.map(x => ({ op: 'del', col: 'invoices', id: x.id || x.no }))); done += part.length; out.insertAdjacentHTML('beforeend', ''); $('invChkOut').lastElementChild.textContent = done.toLocaleString() + ' / ' + legacy.length.toLocaleString(); }
+    dropInvCache(); dropBossCache(); try { (await import('./store.js')).dropStoreCache(); } catch (e) {}
+    try { await rebuildSalesM(S, Array.from(new Set(legacy.map(x => x.ym || String(x.d || '').substring(0, 7)).filter(Boolean)))); } catch (e) {}
+    out.insertAdjacentHTML('beforeend', '<div class="alert a-grn">🧹 ' + done.toLocaleString() + bt('장 지웠습니다 — 아래 ⑤ 파일을 다시 올리세요.', ' deleted — re-upload the file below.') + '</div>'); toast('🧹 ' + done.toLocaleString(), 'good');
+  } catch (e) { out.insertAdjacentHTML('beforeend', '<div class="alert a-red">' + done.toLocaleString() + bt('장까지 지우고 멈춤: ', ' deleted, then stopped: ') + esc(e.code || e.message) + '</div>'); }
+  busy(false);
 }
 /** 📤 AR 에이징 파일 하나 — 바로 저장 (세일즈맨별로 나눔) */
 async function arFileImport(f, out, asOf) {
@@ -563,8 +592,16 @@ export function parseInvoiceList(aoa, fromD) {
   let hi = -1, ix = {};
   /* 이전 시스템 내보내기마다 머리글이 조금씩 다름 — sales_invoice(invoice · customer# · customer name) · invoice_list(trans # → "trans 3", cusomer # → "cusomer 3", name, slaes order) */
   const want = { no: /^(invoice|trans)\s*(#|no|3)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /^cus\w*mer\s*(#|3|no)?$|acct|account/i, store: /customer\s*name|store|^name$/i, sm: /sales?\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /s[a-z]*\s*order|^s\.?o\.?$/i };
-  for (let r = 0; r < Math.min(aoa.length, 8) && hi < 0; r++) { const row = aoa[r].map(x => String(x == null ? '' : x).trim()); const m = {}; Object.keys(want).forEach(k => { const c = row.findIndex(h => h && want[k].test(h)); if (c >= 0) m[k] = c; }); if (m.no != null && m.d != null && m.total != null) { hi = r; ix = m; } }
+  for (let r = 0; r < Math.min(aoa.length, 8) && hi < 0; r++) {
+    const row = aoa[r].map(x => String(x == null ? '' : x).trim()); const m = {};
+    Object.keys(want).forEach(k => { const c = row.findIndex(h => h && want[k].test(h)); if (c >= 0) m[k] = c; });
+    /* 번호 열: 'Invoice' 가 있으면 'Trans #' 보다 그것 — 그리고 실제 값에 종류 글자(A43106 · P-008748)가 있는 열을 고름 */
+    const noCands = row.map((h, c) => want.no.test(h) ? c : -1).filter(c => c >= 0);
+    if (noCands.length > 1) { const lettered = c => aoa.slice(r + 1, r + 60).filter(x => x && /^[A-Z]{1,2}-?\d{3,}$/i.test(String(x[c] == null ? '' : x[c]).trim())).length; const inv = noCands.find(c => /invoice/i.test(row[c])); const best = noCands.slice().sort((p, q) => lettered(q) - lettered(p))[0]; m.no = lettered(best) > 0 ? best : (inv != null ? inv : noCands[0]); }
+    if (m.no != null && m.d != null && m.total != null) { hi = r; ix = m; }
+  }
   if (hi < 0) throw new Error('머리글(invoice · trans date · Total)을 못 찾았습니다');
+  if (ix.acct == null) throw new Error('고객 번호(customer # · acct) 열을 못 찾았습니다 — 가게와 연결되지 않아 넣지 않습니다. 이전 시스템에서 customer # 가 있는 Sales Invoice 목록으로 다시 내보내세요');
   const out = [], seen = {}; let skipped = 0, old = 0;
   for (let r = hi + 1; r < aoa.length; r++) {
     const row = aoa[r]; if (!row) continue;
@@ -577,7 +614,9 @@ export function parseInvoiceList(aoa, fromD) {
     out.push({ id: no, no, t: t.length > 2 ? t.charAt(0) : t, d, ym: d.substring(0, 7), acct: ix.acct != null ? pad4(row[ix.acct]) : '', store: String(row[ix.store] || '').trim(), sm: String(row[ix.sm] || '').trim().toUpperCase(), terms: String(row[ix.terms] || '').trim(), shipVia: String(row[ix.via] || '').trim(),
       ship: frt, discAmt, sub: R2(total - frt + discAmt), disc: 0, total: R2(total - frt), bal, st: bal > 0.005 ? 'open' : 'paid', order: ix.so != null ? String(row[ix.so] || '').trim() : '', qty: 0, lines: [], src: 'legacy' });
   }
-  return { rows: out, skipped, old, hasBal: ix.bal != null };
+  const hdr = aoa[hi].map(x => String(x == null ? '' : x).trim()), cols = {}; Object.keys(ix).forEach(k => { cols[k] = hdr[ix[k]]; });
+  const noLetter = out.filter(r => !/^[A-Z]{1,2}-?\d{3,}$/.test(r.no)).length;
+  return { rows: out, skipped, old, hasBal: ix.bal != null, cols, noLetter };
 }
 async function importInvoices(file, auto, outBox, fromD) {
   if (!file) return; const out = outBox || $('invOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
@@ -595,9 +634,16 @@ async function importInvoices(file, auto, outBox, fromD) {
     let smFix = 0; rows.forEach(r => { if (codes.has(r.sm)) return; const a = S.accounts.byCode && S.accounts.byCode[r.acct]; const to = byName[r.sm] || (a && a.sm ? String(a.sm).toUpperCase() : ''); if (to && to !== r.sm) { r.smLegacy = r.sm; r.sm = to; smFix++; } });
     if (!P.hasBal) rows.forEach(r => { if (ex[r.id]) { delete r.bal; delete r.st; } else { r.bal = 0; r.st = 'paid'; } });
     const byY = {}; rows.forEach(r => { const y = r.d.substring(0, 4); byY[y] = byY[y] || { n: 0, amt: 0 }; byY[y].n++; byY[y].amt = R2(byY[y].amt + r.total); });
+    /* 🔎 넣기 전 점검 — 어느 열을 읽었는지 · 번호 모양 · 거래처 코드가 맞는지 (안 맞으면 가게 창 · 세일즈맨 앱에 안 보임) */
+    const bad = rows.filter(r => !(S.accounts.byCode && S.accounts.byCode[r.acct])), okN = rows.length - bad.length, pct = rows.length ? Math.round(okN * 100 / rows.length) : 0;
+    const chk = '<div class="sumbox" style="margin-top:8px"><b>🔎 ' + bt('넣기 전 점검', 'Check before saving') + '</b><div class="muted" style="font-size:12px">' + bt('읽은 열', 'Columns') + ': ' + esc(Object.keys(P.cols).map(k => k + '=' + P.cols[k]).join(' · ')) + '</div>' +
+      '<div' + (P.noLetter ? ' class="warn"' : '') + '>' + bt('인보이스 번호 모양', 'Invoice numbers') + ': ' + (P.noLetter ? '⚠️ ' + P.noLetter.toLocaleString() + bt('장은 종류 글자(A · P · W)가 없습니다 — 다른 열을 읽은 것일 수 있음', ' have no type letter (A · P · W) — wrong column?') : '✅ ' + bt('모두 A43106 · P-008748 모양', 'all like A43106 · P-008748')) + '</div>' +
+      '<div' + (pct < 90 ? ' class="warn"' : '') + '>' + bt('거래처 코드 연결', 'Customer codes') + ': ' + (pct >= 90 ? '✅ ' : '⚠️ ') + okN.toLocaleString() + ' / ' + rows.length.toLocaleString() + ' (' + pct + '%)' + (bad.length ? ' — ' + bt('목록에 없는 코드', 'not in customers') + ': ' + esc(Array.from(new Set(bad.map(r => r.acct || '(빈칸)'))).slice(0, 8).join(', ')) : '') + '</div>' +
+      '<table style="margin-top:6px;font-size:12px"><tr><th>' + bt('번호', 'No') + '</th><th>' + bt('날짜', 'Date') + '</th><th>' + bt('코드', 'Acct') + '</th><th>' + bt('가게', 'Store') + '</th><th>SM</th><th class="r">' + bt('합계', 'Total') + '</th></tr>' + rows.slice(0, 5).map(r => '<tr><td><b>' + esc(r.no) + '</b></td><td>' + esc(r.d) + '</td><td>' + esc(r.acct) + '</td><td>' + esc(r.store) + '</td><td>' + esc(r.sm) + '</td><td class="r">' + money(r.total) + '</td></tr>').join('') + '</table>' +
+      (P.noLetter || pct < 50 ? '<div class="alert a-red" style="margin-top:6px">⛔ ' + bt('이 상태로 넣으면 인보이스는 보이지만 가게와 연결되지 않습니다. 파일의 열(invoice · customer #)을 확인하고, 이미 잘못 넣은 것이 있으면 위 🧹 로 지운 뒤 다시 올리세요.', 'Saving like this gives invoices that are not linked to stores. Check the invoice · customer # columns; delete a bad import with 🧹 above, then re-upload.') + '</div>' : '') + '</div>';
     out.innerHTML = '<div class="alert a-blu">인보이스 <b>' + rows.length.toLocaleString() + '</b>장 (새로 ' + nNew.toLocaleString() + ' · 이미 있음 ' + (rows.length - nNew).toLocaleString() + ') · 매출 ' + money(sum(rows, r => r.total)) + (P.hasBal ? ' · 잔액 ' + money(sum(rows, r => r.bal || 0)) : ' · 잔액 열 없음 (미수금은 AR 파일 기준)') + (appMade.length ? '<br>앱에서 발행한 인보이스 ' + appMade.length + '장은 그대로 둠: ' + esc(appMade.slice(0, 8).map(r => r.no).join(', ')) : '') + (old ? ' · 시작일 전 ' + old.toLocaleString() + '장 제외' : '') + (skipped ? ' · 건너뜀 ' + skipped : '') + (smFix ? ' · 세일즈맨 코드 맞춤 ' + smFix.toLocaleString() + '장 (거래처 담당 기준)' : '') + '<br>' + Object.keys(byY).sort().map(y => y + ': ' + byY[y].n.toLocaleString() + '장 ' + money(byY[y].amt)).join(' · ') + '</div>' +
       (rows.length > 18000 ? '<div class="alert a-amb">1만 8천 장이 넘습니다 — 무료 요금제면 하루 한도에 걸릴 수 있습니다. 시작일을 올리거나 Blaze 로 바꾼 뒤 넣으세요.</div>' : '') +
-      '<button class="b-blue" id="invGo">넣기</button><div id="invProg" class="muted" style="margin-top:6px"></div>';
+      chk + '<button class="' + (P.noLetter || pct < 50 ? 'b-ghost' : 'b-blue') + '" id="invGo">' + (P.noLetter || pct < 50 ? '⚠️ 그래도 넣기' : '넣기') + '</button><div id="invProg" class="muted" style="margin-top:6px"></div>';
     const run = async () => {
       busy(true); const prog = $('invProg'); let done = 0;
       try {

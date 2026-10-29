@@ -33,7 +33,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.111';
+export const VER = 'v0.8.112';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -54,8 +54,8 @@ const NAV = {
   whmgr:    fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory'], ['track', '🚚', '배송 조회', 'Tracking']]),   // 창고 매니저: 재고 · 출고 중심
   pick:     fixed(HOME_STAFF, [['items', '🏷', '재고·위치', 'Inventory']]),
   catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['catmg/tree', '🗂', '분류', 'Categories'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 분류 · 카탈로그만 (주문 · 수금 없음)
-  owner:    [['own', '🏠', '홈', 'Home'], ['mg/sales', '📈', '매출', 'Sales'], ['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['now', '💵', '수금', 'Collections']],   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
-  admin:    [['own', '🏠', '홈', 'Home'], ['mg/sales', '📈', '매출', 'Sales'], ['mg', '🏭', '경영', 'Business'], ['pay', '🧾', '정산', 'Payroll'], ['admin', '⚙️', '관리', 'Admin']]   // 관리자: 오너와 같은 대시보드 + 정산 · 관리 · 🔁 모드(오너 · 담당자 · 세일즈) — 미수금 · 수금은 홈 칸에서
+  owner:    [['own', '🏠', '홈', 'Home'], INVS, STORES, ['mg/sales', '📈', '매출', 'Sales'], ['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['now', '💵', '수금', 'Collections']],   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
+  admin:    [['own', '🏠', '홈', 'Home'], INVS, STORES, ['mg/sales', '📈', '매출', 'Sales'], ['mg', '🏭', '경영', 'Business'], ['pay', '🧾', '정산', 'Payroll'], ['admin', '⚙️', '관리', 'Admin']]   // 관리자: 오너와 같은 대시보드 + 정산 · 관리 · 🔁 모드(오너 · 담당자 · 세일즈) — 미수금 · 수금은 홈 칸에서
 };
 NAV.manager = NAV.office;
 /* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자는 전부 */
