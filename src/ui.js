@@ -51,13 +51,78 @@ export function busy(on) {
   const x = b.querySelector('.bfree'); if (x) x.remove();
   if (on) busyT = setTimeout(() => { if (!b.classList.contains('on') || b.querySelector('.bfree')) return; const k = document.createElement('button'); k.className = 'bfree'; k.textContent = '오래 걸립니다 — ✕ 화면 풀기'; k.onclick = () => busy(false); b.appendChild(k); }, 8000);
 }
+/* 창(모달)은 ✕ 나 닫기 버튼으로만 닫힘 — 바깥을 눌러도 안 닫힘. 코너의 ✕ 는 어느 창에나 자동으로 붙음.
+ *  📱 안드로이드 뒤로가기(브라우저 back)로는 창만 닫히고 화면은 그대로 — 창을 열 때 히스토리에 빈 칸을 하나 넣고, 뒤로가기(popstate)가 그 칸을 빼면 창을 닫음 */
+let HIST = false, LAST_HASH = location.hash;   // 창용 빈 히스토리 칸이 위에 있는지 · 마지막 해시 (해시 이동도 popstate 를 내므로 구분용)
 export function openModal(html, opts) {
   const m = $('modal'), box = $('mbox');
   box.className = 'box' + (opts && opts.wide ? ' wide' : ''); box.innerHTML = html; m.classList.add('on');
   box.scrollTop = 0;
   if (opts && opts.onClose) m._onClose = opts.onClose; else m._onClose = null;
+  if (!m.querySelector('.mclose')) { const x = document.createElement('button'); x.className = 'mclose'; x.type = 'button'; x.setAttribute('aria-label', 'close'); x.innerHTML = '✕'; x.onclick = () => closeModal(); m.appendChild(x); }
+  if (!HIST) { try { history.pushState({ modal: 1 }, ''); HIST = true; } catch (e) {} }
 }
 export function closeModal() { const m = $('modal'); m.classList.remove('on'); if (m._onClose) { const f = m._onClose; m._onClose = null; f(); } }
+export const modalOpen = () => { const m = $('modal'); return !!(m && m.classList.contains('on')); };
+/* 뒤로가기 → 열린 겹침 질문(.ovr) → 창 → 숫자 패드 순으로 닫기만 하고 화면은 그대로. 빈 칸만 남아 있으면(창은 이미 ✕ 로 닫음) 한 번 더 뒤로 */
+window.addEventListener('popstate', () => {
+  if (location.hash !== LAST_HASH) { LAST_HASH = location.hash; HIST = false; return; }   // 해시가 바뀐 이동 — Router 가 처리 (여기선 빈 칸 판단 안 함)
+  const ov = document.querySelector('.ovr'); if (ov) { const no = ov.querySelector('#cfNo'); if (no) no.click(); else ov.remove(); if (modalOpen() || document.querySelector('.ovr')) { try { history.pushState({ modal: 1 }, ''); HIST = true; } catch (e) {} } return; }
+  if (document.querySelector('.npad')) { numPadClose(); if (modalOpen()) { try { history.pushState({ modal: 1 }, ''); HIST = true; } catch (e) {} } return; }
+  if (modalOpen()) { HIST = false; closeModal(); return; }
+  if (HIST) { HIST = false; try { history.back(); } catch (e) {} }
+});
+/* 화면(해시)이 바뀌면 — 열려 있던 창 · 겹침 질문 · 숫자 패드 · 바쁨 표시를 정리해 화면이 굳지 않게 */
+window.addEventListener('hashchange', () => { LAST_HASH = location.hash; HIST = false; if (modalOpen()) closeModal(); document.querySelectorAll('.ovr').forEach(o => o.remove()); numPadClose(); busy(false); });
+
+/* ============================================================
+ *  🔢 숫자 패드 — 폰 · 태블릿에서 수량 · 금액 칸을 누르면 키보드 대신 팝업 패드 (키보드가 화면 아래를 가리지 않게)
+ *    type=number · inputmode numeric/decimal 칸에 자동. data-nopad 가 있으면 키보드. 사용자 메뉴에서 끌 수 있음 (theone.numpad = 0)
+ * ============================================================ */
+export const numPadOn = () => { try { if (localStorage.getItem('theone.numpad') === '0') return false; } catch (e) {} return window.matchMedia && window.matchMedia('(pointer: coarse)').matches; };
+export function setNumPad(on) { try { localStorage.setItem('theone.numpad', on ? '1' : '0'); } catch (e) {} }
+const padWants = t => t && t.tagName === 'INPUT' && !t.readOnly && !t.disabled && !t.dataset.nopad && (t.type === 'number' || /^(numeric|decimal)$/.test(t.getAttribute('inputmode') || '')) && !t.closest('.npad');
+let PAD = null;
+export function numPadClose() { if (PAD) { const p = PAD; PAD = null; if (p.inp && p.im != null) { if (p.im) p.inp.setAttribute('inputmode', p.im); else p.inp.removeAttribute('inputmode'); } p.el.remove(); } }
+export function numPad(inp) {
+  numPadClose();
+  const dec = inp.getAttribute('inputmode') === 'decimal' || /\./.test(String(inp.step || '')) || inp.dataset.dec != null;
+  const neg = inp.min === '' || Number(inp.min) < 0;
+  const quick = !dec && (inp.dataset.quick ? inp.dataset.quick.split(',') : ['1', '2', '3', '6', '12', '24']);
+  let v = String(inp.value || ''), fresh = true;
+  const lab = (inp.closest('.fg') && inp.closest('.fg').querySelector('label')) ? inp.closest('.fg').querySelector('label').textContent.trim() : (inp.placeholder || inp.getAttribute('aria-label') || '');
+  const el = document.createElement('div'); el.className = 'npad';
+  el.innerHTML = '<div class="npbox"><div class="nphd"><span class="muted">' + esc(lab.slice(0, 40)) + '</span><button type="button" class="npx" data-np="x">✕</button></div><div class="npv" id="npV">' + esc(v || '0') + '</div>' +
+    (quick ? '<div class="npq">' + quick.map(q => '<button type="button" data-npq="' + esc(q) + '">' + esc(q) + '</button>').join('') + '</div>' : '') +
+    '<div class="npk">' + ['7', '8', '9', '4', '5', '6', '1', '2', '3'].map(k => '<button type="button" data-np="' + k + '">' + k + '</button>').join('') +
+    '<button type="button" data-np="' + (dec ? '.' : neg ? '-' : '00') + '">' + (dec ? '.' : neg ? '±' : '00') + '</button><button type="button" data-np="0">0</button><button type="button" data-np="bs">⌫</button></div>' +
+    '<div class="npb"><button type="button" class="b-ghost" data-np="kb">⌨ ' + esc(bt('키보드', 'Keyboard')) + '</button><button type="button" class="b-ghost" data-np="c">C</button><button type="button" class="b-green" data-np="ok">OK</button></div></div>';
+  document.body.appendChild(el);
+  PAD = { el, inp, im: inp.getAttribute('inputmode') };
+  const show = () => { const d = el.querySelector('#npV'); if (d) d.textContent = v === '' ? '0' : v; };
+  const commit = () => { const n = v === '' || v === '-' ? '' : String(Number(v)); const changed = n !== String(inp.value); inp.value = n; numPadClose(); if (changed) { inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); } };
+  el.onclick = e => {
+    const b = e.target.closest('button'); if (!b) { return; }
+    if (b.dataset.npq != null) { v = b.dataset.npq; commit(); return; }
+    const k = b.dataset.np;
+    if (k === 'x') { numPadClose(); return; }
+    if (k === 'kb') { numPadClose(); inp.dataset.nopad = '1'; inp.removeAttribute('inputmode'); if (PAD === null) setTimeout(() => { inp.focus(); inp.select && inp.select(); }, 30); return; }
+    if (k === 'ok') { commit(); return; }
+    if (k === 'c') { v = ''; fresh = false; show(); return; }
+    if (k === 'bs') { v = fresh ? '' : v.slice(0, -1); fresh = false; show(); return; }
+    if (k === '-') { v = v.startsWith('-') ? v.slice(1) : '-' + v; fresh = false; show(); return; }
+    if (k === '.') { if (fresh) { v = '0.'; fresh = false; } else if (!v.includes('.')) v = (v || '0') + '.'; show(); return; }
+    if (fresh) { v = ''; fresh = false; }
+    if (k === '00') { if (v && v !== '-') v += '00'; } else v += k;
+    if (v.replace('-', '').length > 9) v = v.slice(0, 10);
+    show();
+  };
+  el.onpointerdown = e => { if (e.target === el) e.preventDefault(); };
+}
+/* 폰에서 숫자 칸을 누르면 키보드 대신 패드 — 누르는 순간 inputmode=none 으로 키보드를 막고, 포커스가 오면 패드를 띄움 */
+document.addEventListener('pointerdown', e => { const t = e.target; if (numPadOn() && padWants(t)) { if (!t.dataset.im0) t.dataset.im0 = t.getAttribute('inputmode') || '-'; t.setAttribute('inputmode', 'none'); } }, true);
+document.addEventListener('focusin', e => { const t = e.target; if (!numPadOn() || !padWants(t)) return; if (t.getAttribute('inputmode') !== 'none') return; numPad(t); const im0 = t.dataset.im0; if (PAD) PAD.im = im0 === '-' ? '' : im0; });
+document.addEventListener('focusout', e => { const t = e.target; if (t && t.dataset && t.dataset.im0 != null && PAD && PAD.inp !== t) { const im0 = t.dataset.im0; if (im0 === '-') t.removeAttribute('inputmode'); else t.setAttribute('inputmode', im0); } });
 /* 열려 있는 창 위에 겹쳐 묻기 — 취소해도 아래 입력 창이 그대로 남음 (입력 중 경고용) */
 export function askOver(msg, okLabel) {
   return new Promise(res => {
