@@ -12,6 +12,10 @@
  *   4. 위 함수 목록에서 setup 고르고 ▶ 실행 → 권한 허용 (Firestore 읽기/쓰기 · 메일 보내기 · 트리거)
  *   5. testMail 실행 → 내 메일함에 시험 메일이 오면 끝
  *
+ * 💳 COD 시트 동기화(codSyncRun_): 구글시트 "THE ONE 수금 (SALES)" 의 COD 입력 탭을 5분마다 읽어 앱(Firestore cod)에 올림 — 사무실이 시트에 계속 적어도 앱 정산에 바로 보임.
+ *    스크립트 속성 COD_SHEET_ID(기본: 지금 쓰는 시트) · COD_TAB(기본 COD 입력) · COD_SYNC=off 로 끔. 시트 ID 칸이 비면 ID 를 만들어 시트에 써 둠(중복 없음). testCodSync 로 바로 실행.
+ *    (appsscript.json 에 spreadsheets 권한 — setup 을 다시 ▶ 실행해 권한 허용)
+ *
  * 🔔 앱 알림(notifyq): 주문 확인 요청 · 주문 문제 · 문의를 이메일로, 스크립트 속성 CHAT_WEBHOOK 이 있으면 구글 챗 스페이스에도 (5분마다 같이)
  *    세일즈맨에게 가는 것은 그 세일즈맨 전용 방(스크립트 속성 CHAT_WEBHOOK_BRANDON 처럼 코드별 웹훅)으로 — 다른 세일즈맨은 못 봄. 전용 방이 없으면 공용 방.
  *    방에서는 그 사람을 @멘션 → 구글 챗이 폰 알림을 보냄. 멘션에 쓰는 사용자 ID 는 Admin Directory 로 찾음
@@ -51,6 +55,7 @@ function run() {
     try { notifyRun_(); } catch (e) { Logger.log('알림 보내기 실패: ' + e.message); }
     try { envelopesLate_(); } catch (e) { Logger.log('봉투 미도착 확인 실패: ' + e.message); }
     try { photoIndexRun_(); } catch (e) { Logger.log('사진 색인 실패: ' + e.message); }
+    try { codSyncRun_(); } catch (e) { Logger.log('COD 시트 동기화 실패: ' + e.message); }
     let list = [];
     try { list = query_('reports', 'mail', 'wait', 20); }
     catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면 이어서 보냅니다'); return; } throw e; }
@@ -257,3 +262,75 @@ function isEmail_(s) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(s || ''))
 function money_(n) { n = Number(n) || 0; return (n < 0 ? '-' : '') + '$' + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 function esc_(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function today_() { return Utilities.formatDate(new Date(), 'America/New_York', 'yyyy-MM-dd'); }
+
+
+/* ============================================================
+ *  💳 COD · ACH · 카드 — 구글시트 COD 입력 탭 → 앱 (5분마다)
+ *    시트 한 줄 = cod 문서 하나. ID 칸(없으면 만들어 시트에 써 둠)이 문서 ID 라 몇 번을 돌려도 중복 없음.
+ *    바뀐 줄만 올림 (settings/codSync 에 줄별 해시 보관). 앱에서 정한 ✓ 확인(v) · 정산 완료(settled) · VOID 는 건드리지 않음.
+ *    날짜는 2026-10-13 · 10/13/2026 · 10.13.2026 · 시트 날짜값 모두 읽고, 못 읽는 줄(예: 2026-10-120)은 건너뛰고 로그에 남김.
+ * ============================================================ */
+const COD_SHEET_DEFAULT = '1zX7VqiU-RqH54670RQgB93qpqQn_1zJGgrpFNCvw6kg', COD_TAB_DEFAULT = 'COD 입력';
+function codSyncRun_() {
+  const P = PropertiesService.getScriptProperties();
+  if (P.getProperty('COD_SYNC') === 'off') return;
+  const ss = SpreadsheetApp.openById(P.getProperty('COD_SHEET_ID') || COD_SHEET_DEFAULT);
+  const sh = ss.getSheetByName(P.getProperty('COD_TAB') || COD_TAB_DEFAULT);
+  if (!sh) { Logger.log('COD 동기화: 탭 "' + (P.getProperty('COD_TAB') || COD_TAB_DEFAULT) + '" 이 없습니다'); return; }
+  const vals = sh.getDataRange().getValues(); if (vals.length < 2) return;
+  const H = hdrIdx_(vals[0], { sm: /세일즈맨/, d: /날짜/, acct: /계정코드/, store: /가게/, method: /결제 방법/, ref: /참조/, amt: /^금액/, invA: /^A 인보이스/, amtA: /^A 금액/, invP: /^P 인보이스/, amtP: /^P 금액/, invCM: /^CM 인보이스/, amtCM: /^CM 금액/, invW: /^W 인보이스/, amtW: /^W 금액/, disc: /디스카운트/, note: /^메모/, id: /^ID$/ });
+  if (H.sm < 0 || H.d < 0 || H.amt < 0) { Logger.log('COD 동기화: 머리글(세일즈맨 · 날짜 · 금액)을 못 찾았습니다'); return; }
+  const state = getDoc_('settings', 'codSync') || {}, seen = state.rows || {}, next = {};
+  let nNew = 0, nUpd = 0, nSkip = 0, nSame = 0; const bad = [];
+  const now = new Date().toISOString();
+  for (let i = 1; i < vals.length; i++) {
+    const r = vals[i], sm = String(r[H.sm] || '').trim().toUpperCase();
+    if (!sm && !r[H.d] && !r[H.amt]) continue;   // 빈 줄
+    const d = dstr_(r[H.d]);
+    if (!sm || !d) { nSkip++; bad.push((i + 1) + '행: ' + (sm ? '날짜 "' + r[H.d] + '"' : '세일즈맨 없음')); continue; }
+    const amt = Math.round(num_(r[H.amt]) * 100) / 100; if (!amt) { nSkip++; bad.push((i + 1) + '행: 금액 없음'); continue; }
+    let id = String(r[H.id] || '').trim();
+    if (!id) {   // ID 만들어 시트에 써 둠 — 그 뒤로는 이 줄이 이 문서
+      id = 'S' + Utilities.formatDate(new Date(), 'America/New_York', 'yyMMdd') + '-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+      if (H.id >= 0) sh.getRange(i + 1, H.id + 1).setValue(id);
+    }
+    const invs = []; ['A', 'P', 'CM', 'W'].forEach(t => { const raw = String(r[H['inv' + t]] == null ? '' : r[H['inv' + t]]).trim(), a = Math.round(num_(r[H['amt' + t]]) * 100) / 100; if (!raw) return; raw.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: invNo_(x), t, amt: j === 0 ? a : 0 })); });
+    const m0 = String(r[H.method] || 'COD').trim().toUpperCase(), method = /CARD|CREDIT/.test(m0) ? 'CREDIT CARD' : /ACH/.test(m0) ? 'ACH' : 'COD';
+    const dsc = r[H.disc] === '' || r[H.disc] == null ? '' : (num_(r[H.disc]) <= 1 ? num_(r[H.disc]) * 100 : num_(r[H.disc]));
+    const data = { id, d, ym: d.substring(0, 7), sm, acct: pad4_(r[H.acct]), store: String(r[H.store] || '').trim(), method, ref: String(r[H.ref] || '').trim(), amt, invs, disc: dsc, note: String(r[H.note] || '').trim(), src: 'sheet', sheetRow: i + 1, syncAt: now };
+    const hash = JSON.stringify([data.d, data.sm, data.acct, data.store, data.method, data.ref, data.amt, data.invs, data.disc, data.note]);
+    next[id] = hash;
+    if (seen[id] === hash) { nSame++; continue; }
+    const made = upsert_('cod', id, data, { v: false, vbad: false, vn: '', settled: '', void: false, createdBy: 'sheet', createdAt: now });
+    if (made === 'new') nNew++; else nUpd++;
+  }
+  patch_('settings', 'codSync', { rows: next, at: now, n: Object.keys(next).length, nNew, nUpd, nSkip, bad: bad.slice(0, 50) });
+  Logger.log('COD 동기화: 새로 ' + nNew + ' · 바뀜 ' + nUpd + ' · 같음 ' + nSame + ' · 건너뜀 ' + nSkip + (bad.length ? '\n' + bad.slice(0, 20).join('\n') : ''));
+}
+/** 바로 실행해 보기 — 실행 로그에 결과 */
+function testCodSync() { PropertiesService.getScriptProperties().deleteProperty('COD_SYNC'); codSyncRun_(); const s = getDoc_('settings', 'codSync'); Logger.log(s ? '시트 줄 ' + s.n + ' · 새로 ' + s.nNew + ' · 바뀜 ' + s.nUpd + ' · 건너뜀 ' + s.nSkip + ' · ' + s.at : '결과 없음'); }
+/** 있으면 시트 칸만 고치고(앱의 ✓ · 정산 · VOID 는 그대로), 없으면 기본값과 함께 새로 만듦 → 'new' | 'upd' */
+function upsert_(col, id, data, defaults) {
+  const mask = Object.keys(data).map(k => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
+  const fields = {}; Object.keys(data).forEach(k => { fields[k] = toVal_(data[k]); });
+  const res = UrlFetchApp.fetch(BASE + '/' + col + '/' + encodeURIComponent(id) + '?' + mask + '&currentDocument.exists=true', { method: 'patch', contentType: 'application/json', payload: JSON.stringify({ fields }), headers: headers_(), muteHttpExceptions: true });
+  if (res.getResponseCode() === 200) return 'upd';
+  if (res.getResponseCode() !== 404) throw new Error('Firestore 쓰기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 200));
+  const all = Object.assign({}, defaults || {}, data), f2 = {}; Object.keys(all).forEach(k => { f2[k] = toVal_(all[k]); });
+  const res2 = UrlFetchApp.fetch(BASE + '/' + col + '/' + encodeURIComponent(id), { method: 'patch', contentType: 'application/json', payload: JSON.stringify({ fields: f2 }), headers: headers_(), muteHttpExceptions: true });
+  if (res2.getResponseCode() !== 200) throw new Error('Firestore 만들기 실패 ' + res2.getResponseCode() + ': ' + res2.getContentText().substring(0, 200));
+  return 'new';
+}
+function hdrIdx_(row, want) { const out = {}; const h = (row || []).map(x => String(x == null ? '' : x).trim()); Object.keys(want).forEach(k => { out[k] = h.findIndex(x => want[k].test(x)); }); return out; }
+function num_(v) { if (typeof v === 'number') return v; const s = String(v == null ? '' : v).replace(/[$,\s]/g, ''); if (!s) return 0; const n = Number(s.replace(/^\((.*)\)$/, '-$1')); return isFinite(n) ? n : 0; }
+function pad4_(v) { const s = String(v == null ? '' : v).trim().replace(/\.0+$/, ''); return /^\d{1,3}$/.test(s) ? s.padStart(4, '0') : s; }
+function invNo_(v) { const s = String(v || '').trim().toUpperCase().replace(/\s+/g, ''); const m = s.match(/^([A-Z]{1,2})-?(\d{1,6})$/); return m ? m[1] + '-' + m[2].padStart(6, '0') : s; }
+/** 날짜 → yyyy-MM-dd (시트 날짜값 · 2026-10-13 · 10/13/2026 · 10.13.2026 · 10-13-26). 못 읽으면 '' */
+function dstr_(v) {
+  if (v instanceof Date && !isNaN(v)) return Utilities.formatDate(v, 'America/New_York', 'yyyy-MM-dd');
+  const s = String(v == null ? '' : v).trim(); if (!s) return '';
+  let m = s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/); if (m) return ok_(m[1], m[2], m[3]);
+  m = s.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{2,4})$/); if (m) return ok_(m[3].length === 2 ? '20' + m[3] : m[3], m[1], m[2]);
+  return '';
+}
+function ok_(y, mo, d) { mo = Number(mo); d = Number(d); if (mo < 1 || mo > 12 || d < 1 || d > 31) return ''; return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
