@@ -93,8 +93,17 @@ async function loadPhotoOv(S, meta) {
 }
 export const photoOv = code => OV[code] || null;
 /** 📷 아이템 사진 바꾸기 — o: { data } 올린 사진 · { none: true } 사진 안 쓰기 · { clear: true } 앱 사진 지우고 원래(드라이브 · 시트)대로 */
+/* ☁️ 구글 드라이브 저장 — 앱에서 찍은(고른) 사진의 큰 버전을 photoUploads/{id} 에 넣어 두면 THE ONE Mail 스크립트가 5분 안에
+ *   공유 드라이브 item_picture 에 "코드.jpg" 로 올리고(이미 있으면 그 파일을 바꿈) 사진 색인에 바로 붙임. 폰은 인터넷 없어도 큐에 남아 뒤에 올라감 */
+export async function queueDrivePhoto(S, code, file) {
+  const data = await shrinkImage(file, 1600, 450000);   // 드라이브용 큰 사진 (앱 썸네일은 480px 따로)
+  const id = code + '_' + Date.now().toString(36);
+  await S.DB.set('photoUploads', id, { id, code, data, mime: 'image/jpeg', by: (S.user && S.user.email) || '', at: new Date().toISOString(), drive: 'wait' });
+  return id;
+}
 export async function setItemPhoto(S, code, o) {
   const now = new Date().toISOString(), by = (S.user && S.user.email) || '';
+  if (o.file && !o.none && !o.clear) { try { await queueDrivePhoto(S, code, o.file); } catch (e) { console.warn('drive queue', e); } }
   if (o.clear) { await S.DB.del('itemPhotos', code); delete OV[code]; }
   else { const d = { code, data: o.none ? '' : (o.data || ''), none: !!o.none, by, at: now }; await S.DB.set('itemPhotos', code, d); OV[code] = { data: d.data, none: d.none }; }
   const meta = (await S.DB.get('catalog', 'meta')) || {}; OV_VER = now;

@@ -12,6 +12,10 @@
  *   4. 위 함수 목록에서 setup 고르고 ▶ 실행 → 권한 허용 (Firestore 읽기/쓰기 · 메일 보내기 · 트리거)
  *   5. testMail 실행 → 내 메일함에 시험 메일이 오면 끝
  *
+ * ☁️ 사진 드라이브 저장(photoExportRun_): 앱에서 찍은 아이템 사진(photoUploads, drive: wait)을 공유 드라이브 item_picture 에 "코드.jpg" 로 올림 —
+ *    같은 이름 파일이 있으면 그 파일 내용을 바꿈(링크 그대로) · 올린 뒤 사진 색인(catalog/photoIndex)에 바로 붙임 · 큐 문서의 사진 데이터는 지움
+ *    스크립트 속성 PHOTO_UPLOAD_FOLDER_ID(기본: item_picture 공유 드라이브 루트). appsscript.json 의 drive 권한(쓰기) — setup 다시 ▶. testPhotoExport 로 바로 실행
+ *
  * 💳 COD 시트 동기화(codSyncRun_): 구글시트 "THE ONE 수금 (SALES)" 의 COD 입력 탭을 5분마다 읽어 앱(Firestore cod)에 올림 — 사무실이 시트에 계속 적어도 앱 정산에 바로 보임.
  *    기본은 꺼짐(앱에서 직접 입력이 기준) — 시트를 계속 쓸 때만 스크립트 속성 COD_SYNC=on. COD_SHEET_ID(기본: 지금 쓰는 시트) · COD_TAB(기본 COD 입력). 시트 ID 칸이 비면 ID 를 만들어 시트에 써 둠(중복 없음). testCodSync 로 바로 실행.
  *    (appsscript.json 에 spreadsheets 권한 — setup 을 다시 ▶ 실행해 권한 허용)
@@ -56,6 +60,7 @@ function run() {
     try { envelopesLate_(); } catch (e) { Logger.log('봉투 미도착 확인 실패: ' + e.message); }
     try { photoIndexRun_(); } catch (e) { Logger.log('사진 색인 실패: ' + e.message); }
     try { codSyncRun_(); } catch (e) { Logger.log('COD 시트 동기화 실패: ' + e.message); }
+    try { photoExportRun_(); } catch (e) { Logger.log('사진 드라이브 저장 실패: ' + e.message); }
     let list = [];
     try { list = query_('reports', 'mail', 'wait', 20); }
     catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면 이어서 보냅니다'); return; } throw e; }
@@ -334,3 +339,59 @@ function dstr_(v) {
   return '';
 }
 function ok_(y, mo, d) { mo = Number(mo); d = Number(d); if (mo < 1 || mo > 12 || d < 1 || d > 31) return ''; return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
+
+
+/* ============================================================
+ *  ☁️ 앱에서 찍은 아이템 사진 → 구글 드라이브 item_picture (5분마다, 한 번에 8장)
+ *    photoUploads/{id} = { code, data(dataURL), mime, by, at, drive: wait|done|error, driveId, err }
+ * ============================================================ */
+const DRIVE_API = 'https://www.googleapis.com/drive/v3', DRIVE_UP = 'https://www.googleapis.com/upload/drive/v3';
+function photoExportRun_() {
+  let list = []; try { list = query_('photoUploads', 'drive', 'wait', 8); } catch (e) { Logger.log('photoUploads 읽기 실패: ' + e.message); return; }
+  if (!list.length) return;
+  const P = PropertiesService.getScriptProperties(), folder = P.getProperty('PHOTO_UPLOAD_FOLDER_ID') || P.getProperty('PHOTO_FOLDER_ID') || PHOTO_DRIVE_DEFAULT;
+  const idx = {}; let nOk = 0;
+  list.forEach(u => {
+    const code = String(u.code || '').trim().toUpperCase(); if (!code) { patch_('photoUploads', u._id, { drive: 'error', err: '코드 없음' }); return; }
+    try {
+      const blob = dataUrlBlob_(u.data, code); if (!blob) throw new Error('사진 데이터가 없거나 너무 작음');
+      const name = code + (blob.getContentType().indexOf('png') >= 0 ? '.png' : '.jpg');
+      const found = driveFind_(name, folder);
+      let fileId;
+      if (found) { driveUpdate_(found, blob); fileId = found; }
+      else fileId = driveCreate_(name, blob, folder);
+      idx[code] = fileId; nOk++;
+      patch_('photoUploads', u._id, { drive: 'done', driveId: fileId, driveAt: new Date().toISOString(), data: '' });
+    } catch (e) { Logger.log('사진 올리기 실패 ' + code + ': ' + e.message); patch_('photoUploads', u._id, { drive: 'error', err: String(e.message).substring(0, 200) }); }
+  });
+  if (nOk) {
+    /* 사진 색인에 바로 붙임 — pic.`코드` 만 갱신 (코드에 - 가 있을 수 있어 백틱) */
+    const fields = {}, masks = []; Object.keys(idx).forEach(c => { fields[c] = idx[c]; masks.push('pic.`' + c.replace(/`/g, '') + '`'); });
+    const body = { fields: { pic: { mapValue: { fields: Object.keys(fields).reduce((o, c) => { o[c] = { stringValue: fields[c] }; return o; }, {}) } }, at: { stringValue: new Date().toISOString() } } };
+    const mask = masks.concat(['at']).map(m => 'updateMask.fieldPaths=' + encodeURIComponent(m)).join('&');
+    UrlFetchApp.fetch(BASE + '/catalog/photoIndex?' + mask, { method: 'patch', contentType: 'application/json', payload: JSON.stringify(body), headers: headers_(), muteHttpExceptions: true });
+    Logger.log('사진 드라이브 저장: ' + nOk + '장 (' + Object.keys(idx).join(', ') + ')');
+  }
+}
+function testPhotoExport() { photoExportRun_(); Logger.log('photoExportRun_ 실행 — 위 로그 확인 (대기 중인 사진이 없으면 아무것도 안 나옵니다)'); }
+/** 폴더(또는 공유 드라이브) 안에서 같은 이름 파일 찾기 → 파일 ID 또는 null */
+function driveFind_(name, folderId) {
+  const q = "name = '" + name.replace(/'/g, "\\'") + "' and trashed = false and '" + folderId + "' in parents";
+  const res = UrlFetchApp.fetch(DRIVE_API + '/files?q=' + encodeURIComponent(q) + '&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=5', { headers: headers_(), muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('드라이브 찾기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 200));
+  const f = (JSON.parse(res.getContentText()).files || [])[0]; return f ? f.id : null;
+}
+function driveCreate_(name, blob, folderId) {
+  const boundary = 'theone' + Date.now();
+  const meta = JSON.stringify({ name, parents: [folderId] });
+  const head = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n--' + boundary + '\r\nContent-Type: ' + blob.getContentType() + '\r\n\r\n';
+  const tail = '\r\n--' + boundary + '--';
+  const payload = Utilities.newBlob(head).getBytes().concat(blob.getBytes()).concat(Utilities.newBlob(tail).getBytes());
+  const res = UrlFetchApp.fetch(DRIVE_UP + '/files?uploadType=multipart&supportsAllDrives=true&fields=id', { method: 'post', contentType: 'multipart/related; boundary=' + boundary, payload, headers: headers_(), muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('드라이브 올리기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 200));
+  return JSON.parse(res.getContentText()).id;
+}
+function driveUpdate_(fileId, blob) {
+  const res = UrlFetchApp.fetch(DRIVE_UP + '/files/' + fileId + '?uploadType=media&supportsAllDrives=true', { method: 'patch', contentType: blob.getContentType(), payload: blob.getBytes(), headers: headers_(), muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('드라이브 바꾸기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 200));
+}
