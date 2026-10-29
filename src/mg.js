@@ -135,6 +135,7 @@ export async function mgNumbers(year) { await load(); return { facs: D.fac.map(f
 export async function seedImport(txt) { await load(); seedPreview(txt); }
 /** 관리 → 가져오기(공장 명세서 등)가 자료를 바꾼 뒤 — 다음에 경영 탭을 열 때 다시 읽게 */
 export function dropMgCache() { D.fac = null; }
+export function dropSalesCache(y) { if (y) delete D.sales[y]; else D.sales = {}; }
 function seedPreview(txt) {
   let o; try { o = seedParse(txt); } catch (e) { return toast('읽을 수 없습니다: ' + e.message, 'bad'); }
   const { ops, cnt } = seedOps(o), has = D.inv.some(x => x.seed) || D.p99.some(x => x.seed);
