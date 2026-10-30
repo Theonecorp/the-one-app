@@ -26,7 +26,7 @@ const path = require('path');
   /* 담당자: 승인 → dep 바뀜 · 세일즈맨 알림 */
   const seedReq = acctJob + ` s.checkReq = [{ id: 'R1', kind: 'date', eid: 'E2', pi: 0, sm: 'BRANDON', acct: '1271', store: 'BEAUTY 4U', ref: '2201', amt: 2400, curDep: s.entries[1].pays[0].dep, newDep: '${newD}', why: '손님 요청', note: '', st: 'open', log: [], by: 'brandon@x.com', at: '2026-10-28T01:00:00Z' }];`;
   pg = await mk('acct@theonefl.com', seedReq);
-  await pg.click('#nav button[data-go="bounce"]'); await pg.waitForSelector('[data-rq="R1"]', { timeout: 8000 });
+  await pg.click('#nav button[data-go="hub/money"]'); await pg.click('[data-hub="bounce"]');   /* v0.8.125: 💵 수금 묶음 → 체크 관리 */ await pg.waitForSelector('[data-rq="R1"]', { timeout: 8000 });
   await pg.click('[data-rq="R1"]'); await pg.waitForSelector('#rqOk'); await pg.click('#rqOk'); await pg.waitForTimeout(1500);
   const a1 = await pg.evaluate(() => [window.__MOCK_STORE__.entries.E2.pays[0].dep, window.__MOCK_STORE__.checkReq.R1.st, Object.values(window.__MOCK_STORE__.notifyq || {}).filter(n => n.kind === 'checkDateOk').map(n => n.toSm).join()]); log('approved:', a1);
   if (a1[0] !== newD || a1[1] !== 'ok' || a1[2] !== 'BRANDON') errs.push('approve should change dep, close request, notify salesman');

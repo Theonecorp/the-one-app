@@ -23,6 +23,7 @@ import * as OwnHome from './ownhome.js';
 import * as Bank from './bank.js';
 import * as Items from './items.js';
 import * as Stock from './stock.js';
+import * as Hub from './hub.js';
 import * as CatPage from './catpage.js';
 import * as Track from './track.js';
 import * as Reports from './reports.js';
@@ -34,7 +35,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.124';
+export const VER = 'v0.8.125';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -45,15 +46,17 @@ const ADMIN_EMAILS = ['luke@theonefl.com'];
 /* 맨 앞 4개는 모든 역할이 같음: 🏠 홈 · 🛒 세일 · 📄 인보이스 · 🏬 거래처 — 그 뒤에 역할 · 일마다 필요한 것 */
 const SALE = ['order', '🛒', '세일', 'Sales'], INVS = ['invs', '📄', '인보이스', 'Invoices'], STORES = ['stores', '🏬', '거래처', 'Customers'];
 const HOME_STAFF = ['shome', '🏠', '홈', 'Home'], HOME_TOP = ['now', '🏠', '홈', 'Home'];
+const HUB_MONEY = ['hub/money', '💵', '수금', 'Payments'], HUB_LOOK = ['hub/look', '📚', '조회', 'Lookup'], HUB_WH = ['hub/wh', '📦', '재고', 'Inventory'];
 const fixed = (home, rest) => [home, SALE, INVS, STORES].concat(rest);
 const NAV = {
   salesman: fixed(['home', '🏠', '홈', 'Home'], [['entry', '✍️', '수금 입력', 'Payment'], ['ar', '💰', '미수금', 'A/R'], ['cat', '📒', '카탈로그', 'Catalog'], ['mine', '📋', '내 기록', 'My Log'], ['bounce', '↩️', '체크 관리', 'Checks']]),
-  office:   fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments'], ['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['bounce', '↩️', '체크 관리', 'Checks'], ['items', '🏷', '아이템', 'Items'], ['stock', '📦', '재고', 'Inventory']]),
-  acct:     fixed(['verify', '🏠', '홈', 'Home'], [['cod', '💳', 'COD·카드', 'COD · Card'], ['ach', '🏦', 'ACH', 'ACH'], ['bounce', '↩️', '체크 관리', 'Checks']]),   // 회계: 홈 = 수금 확인
-  pickinv:  fixed(HOME_STAFF, [['items', '🏷', '아이템·위치', 'Items'], ['stock', '📦', '재고', 'Inventory']]),
-  invoice:  fixed(HOME_STAFF, [['verify', '💵', '수금 확인', 'Payments']]),
-  whmgr:    fixed(HOME_STAFF, [['stock', '📦', '재고', 'Inventory'], ['items', '🏷', '아이템·위치', 'Items'], ['track', '🚚', '배송 조회', 'Tracking']]),   // 창고 매니저: 재고 · 출고 중심
-  pick:     fixed(HOME_STAFF, [['stock', '📦', '재고', 'Inventory'], ['items', '🏷', '아이템·위치', 'Items']]),
+  /* 담당자 — 큰 묶음만 (🗂 hub.js): 💵 수금 · 📚 조회 · 📦 재고 — 누르면 그 안의 세부 화면 (v0.8.125) */
+  office:   [HOME_STAFF, SALE, HUB_MONEY, HUB_LOOK, HUB_WH],
+  acct:     [['verify', '🏠', '홈', 'Home'], HUB_MONEY, HUB_LOOK],   // 회계: 홈 = 수금 확인
+  pickinv:  [HOME_STAFF, SALE, HUB_LOOK, HUB_WH],
+  invoice:  [HOME_STAFF, SALE, HUB_MONEY, HUB_LOOK],
+  whmgr:    [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],   // 창고 매니저: 재고 · 출고 중심
+  pick:     [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],
   catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['catmg/tree', '🗂', '분류', 'Categories'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 분류 · 카탈로그만 (주문 · 수금 없음)
   owner:    [['own', '🏠', '홈', 'Home'], INVS, STORES, ['mg/sales', '📈', '매출', 'Sales'], ['mg', '🏭', '경영', 'Business'], ['bossar', '💰', '미수금', 'A/R'], ['now', '💵', '수금', 'Collections']],   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
   admin:    [['own', '🏠', '홈', 'Home'], INVS, STORES, ['mg/sales', '📈', '매출', 'Sales'], ['mg', '🏭', '경영', 'Business'], ['pay', '🧾', '정산', 'Payroll'], ['stock', '📦', '재고', 'Inventory'], ['admin', '⚙️', '관리', 'Admin']]   // 관리자: 오너와 같은 대시보드 + 정산 · 관리 · 🔁 모드(오너 · 담당자 · 세일즈) — 미수금 · 수금은 홈 칸에서
@@ -263,6 +266,8 @@ function paintNav() {
   Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '<span class="en">' + (x[3] || '') + '</span></button>').join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go, [r, a] = g.split('/'); if (g === 'view/menu') return userMenu(); Router.navTap = r; if (location.hash === '#/' + g) { const f = Router.routes[r]; if (f) f(a || ''); } else if (a) Router.go(r, a); else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
+  /* 🗂 묶음 안의 화면 — ‹ 뒤로 · 폰 뒤로가기는 그 묶음으로, 아래 메뉴도 그 묶음이 켜짐 */
+  Router.parent = {}; items.filter(x => /^hub\//.test(x[0])).forEach(x => Hub.hubItems(x[0].split('/')[1]).forEach(c => { if (!items.some(y => y[0] === c[0])) Router.parent[c[0]] = x[0]; }));
   navH();
   $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
   const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? userMenu : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
@@ -358,7 +363,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }

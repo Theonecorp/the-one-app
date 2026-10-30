@@ -393,6 +393,7 @@ async function upsPage(LF, head) {
 }
 function bindListHead(LF, head) {
   document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') LF.list = false; else LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+  document.querySelectorAll('[data-lg]').forEach(b => b.onclick = () => window.dispatchEvent(new CustomEvent('theone:stage', { detail: b.dataset.lg })));
   if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageLists(LF, head); };
   fillStrip();
 }

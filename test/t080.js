@@ -11,8 +11,8 @@ const path = require('path');
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8815/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
   /* 회계: 등록 */
   let pg = await mk('acct@theonefl.com', seedInv + " s.users.forEach(u => { if (u.email === 'acct@theonefl.com') u.job = 'acct'; });");
-  if (!(await pg.$('#nav button[data-go="bounce"]'))) errs.push('acct nav should have bounce tab');
-  await pg.click('#nav button[data-go="bounce"]'); await pg.waitForSelector('#bnNew', { timeout: 8000 });
+  if (!(await pg.$('#nav button[data-go="hub/money"]'))) errs.push('acct nav should have the payments group');   // v0.8.125: 💵 수금 묶음 → 체크 관리
+  await pg.click('#nav button[data-go="hub/money"]'); await pg.click('[data-hub="bounce"]'); await pg.waitForSelector('#bnNew', { timeout: 8000 });
   await pg.click('#bnNew'); await pg.waitForSelector('#bnRef'); await pg.fill('#bnRef', '1042'); await pg.waitForSelector('[data-be="E1"]', { timeout: 5000 }).catch(() => errs.push('check 1042 (E1) should be found'));
   await pg.click('[data-be="E1"]'); await pg.waitForSelector('#bnGo'); await pg.fill('#bnNote', 'NSF'); await pg.click('#bnGo'); await pg.waitForTimeout(1800);
   const st = await pg.evaluate(() => { const B = Object.values(window.__MOCK_STORE__.bounces || {})[0]; const e = window.__MOCK_STORE__.entries.E1; const inv = window.__MOCK_STORE__.invoices.A10021; return { b: B && [B.ref, B.amt, B.sm, B.st, B.invs.length, B.log.length], e: [e.bounced, e.bounceId === (B && B.id)], inv: [inv.bal, inv.paid, inv.hold === (B && B.id)], nq: Object.values(window.__MOCK_STORE__.notifyq || {}).filter(n => n.kind === 'bounce').map(n => n.toSm) }; }); log('after register:', JSON.stringify(st));

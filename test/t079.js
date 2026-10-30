@@ -42,7 +42,7 @@ const path = require('path');
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'A' }; window.__AFTER_SEED__ = s => { s.invoices = (s.invoices || []).concat([{ id: 'CM-000001', no: 'CM-000001', t: 'CM', kind: 'credit', src: 'credit', d: '2026-10-28', ym: '2026-10', acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', why: '대미지', note: '', lines: [{ c: 'AHG100', d: 'x', q: -3, p: 2, lp: 2.5, dc: 10, src: 'manual' }], qty: -3, sub: -6, list: -7.5, disc: 0, total: -6, bal: -6, flags: ['가격을 직접 바꿈 1줄'], st: 'open', reviewed: false, createdBy: 'brandon@x.com' }]); }; });
   await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.click('#nav button[data-go="shome"]'); await pg.waitForTimeout(1000);
-  if (!(await pg.$('[data-hg="credit"]'))) errs.push('staff home should have a credits tile'); else { await pg.click('[data-hg="credit"]'); await pg.waitForTimeout(1200); }
+  if (!(await pg.$('[data-hg="credit"]'))) errs.push('staff home should have a credits tile'); else { if (!(await pg.$('.hgrp[data-grp="money"].open'))) await pg.click('[data-ghd="money"]'); await pg.waitForTimeout(200); await pg.click('[data-hg="credit"]'); await pg.waitForTimeout(1200); }   // v0.8.125: 홈 묶음(수금) 안
   const sl = await txt(pg, '#page'); log('staff list:', sl.slice(0, 160)); if (!/확인 대기 1/.test(sl) || !/⚠️ 1/.test(sl)) errs.push('staff list should show 1 waiting with a flag');
   await pg.click('[data-cr="CM-000001"]'); await pg.waitForSelector('#crOk', { timeout: 5000 }).catch(() => errs.push('staff confirm button missing'));
   await pg.click('#crOk'); await pg.waitForTimeout(800);
