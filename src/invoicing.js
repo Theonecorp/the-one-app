@@ -5,7 +5,7 @@
  *  accounts/{acct}.disc = { A: 20, W: 10 }  ← 거래처 기본 할인 % (종류별)
  *  invoices/{no} = { no, t, order, acct, store, sm, d, ym, lines:[{c,d,q,p,lp}], sub, disc, total, bal, terms, st:'open'|'x', memo, createdBy, createdAt }
  * ============================================================ */
-import { esc, money, R2, addDays, invNoOld } from './ui.js';
+import { esc, money, R2, addDays, invNo, invNoOld } from './ui.js';
 import { catalog } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
@@ -184,6 +184,12 @@ export async function rebuildSalesM(S, months) {
   return uniq.length;
 }
 /** 인보이스 한 장 읽기 — 새 형식(A-043350)으로 먼저, 없으면 형식 통일 전 모양(A43350 …)으로 */
+/** 🔢 숫자만 쳤을 때 (43350) — A · P · W · CM 중 그 번호로 있는 인보이스를 모두 찾음 [{ no, inv }] */
+export async function invByDigits(S, digits) {
+  const d = String(digits || '').replace(/\D/g, ''); if (!/^\d{3,6}$/.test(d)) return [];
+  const out = []; await Promise.all(['A', 'P', 'W', 'CM'].map(async t => { try { const x = await getInvoice(S, t + '-' + d); if (x) out.push({ no: x.no || invNo(t + d), inv: x }); } catch (e) {} }));
+  return out.sort((a, b) => String(a.no).localeCompare(String(b.no)));
+}
 export async function getInvoice(S, no) { for (const k of invNoOld(no)) { const x = await S.DB.get('invoices', k); if (x) return x; } return null; }
 export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, t.start || 1); return fmtNo(t, n); }
 

@@ -31,17 +31,31 @@ export const sortStores = L => L.slice().sort(byStore);
 export function searchAccounts(rows, q, limit) {
   q = String(q || '').trim(); if (!q) return [];
   const words = q.split(/\s+/).map(nz).filter(Boolean), qn = nz(q);
-  const first = [], rest = [], zz = [];   // first = 계정코드가 정확히 맞는 곳 · rest = 가게 이름 ABC · zz = 💤 비활성 (맨 뒤, ABC)
+  const first = [], hit = [], loose = [];   // first = 계정코드가 정확히 맞는 곳 · hit = 단어가 모두 맞음 · loose = 일부만 맞음 (모두 맞는 곳이 없을 때만)
   if (/^\d{1,4}$/.test(q)) { const a = rows.byCode[pad4(q)]; if (a) first.push(a); }
   for (const a of rows) {
     if (first.includes(a)) continue;
-    if (!a._all) a._all = nz([a.store, a.city, a.state, a.addr, a.acct, a.tel, a.sm].filter(Boolean).join(' '));
-    if (!words.every(w => a._all.includes(w))) continue;
-    (a.inactive ? zz : rest).push(a);
+    if (!a._all) { a._n = nz(a.store); a._c = nz(a.city); a._all = nz([a.store, a.city, a.state, a.addr, a.acct, a.tel, a.sm].filter(Boolean).join(' ')); }
+    const n = words.filter(w => a._all.includes(w)).length;
+    if (!n) continue;
+    if (n === words.length) hit.push(a); else if (words.length > 1 && n * 2 >= words.length) loose.push(a);
   }
-  rest.sort(byStore); zz.sort(byStore);
-  const all = first.concat(rest, zz), out = all.slice(0, limit || 200);
-  out.total = all.length;
+  /* 가까운 순 — 이름이 그대로 > 이름이 그렇게 시작 > 이름 안에 > 이름에 단어 전부(순서 다름) > 이름에 일부 + 나머지는 도시·주소 > 도시 > 그 밖(주소 · 전화 · 세일즈맨). 💤 비활성은 맨 뒤. 같은 급은 ABC
+   *   'orlando' → ORLANDO BEAUTY 가 먼저, 그다음 ORLANDO 에 있는 가게들 */
+  const score = a => {
+    const nm = a._n != null ? a._n : nz(a.store), c = a._c != null ? a._c : nz(a.city);
+    let s = 9;
+    if (nm === qn) s = 0; else if (nm.indexOf(qn) === 0) s = 1; else if (nm.includes(qn)) s = 2;
+    else if (words.every(w => nm.includes(w))) s = 3;
+    else if (words.some(w => nm.includes(w))) s = 4;
+    else if (c === qn || c.indexOf(qn) === 0) s = 5; else if (words.every(w => c.includes(w))) s = 6;
+    else if (String(a.acct || '').includes(q)) s = 7;
+    return s + (a.inactive ? 20 : 0);
+  };
+  const rank = (x, y) => score(x) - score(y) || byStore(x, y);
+  hit.sort(rank); loose.sort(rank);
+  const all = first.concat(hit, hit.length ? [] : loose), out = all.slice(0, limit || 200);
+  out.total = all.length; out.loose = !hit.length && loose.length > 0;   // loose: 일부 단어만 맞는 결과 (화면에서 "비슷한 가게" 라고 알림)
   return out;
 }
 export function accountLabel(a) { return a ? a.store + (a.state ? ' (' + a.state + ')' : '') + (a.inactive ? ' 💤' : '') : ''; }

@@ -7,6 +7,7 @@
 import { $, esc, money, md, Router, debounce, bi, bt, sortInv, invParts, invNo } from './ui.js';
 import { searchAccounts, sortStores } from './accounts.js';
 import { storeSheet, invDetail } from './store.js';
+import { invByDigits } from './invoicing.js';
 import { loadGrants, requestAccess, myRequests, reqStatus, untilTxt, mySm } from './access.js';
 
 let S = null, Q = '', IVM = 'date', IDESC = false;   // IVM: 📅 최근 인보이스 · 🏬 가게별
@@ -38,6 +39,9 @@ async function show() {
   const row = a => '<div class="pr tap" data-ia="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + badge(a) + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + '</small></div><div class="pa"><small>' + bt('인보이스', 'Invoices') + ' ›</small></div></div>';
   let h = '';
   if (q && looksInv(q)) h += '<div class="card"><button class="b-blue" id="ivNo">📄 ' + bt('인보이스', 'Invoice') + ' ' + esc(normInv(q)) + ' ' + bt('열기', 'open') + '</button></div>';
+  /* 🔢 숫자만 쳤을 때 (43350 · 7803) — 그 번호의 인보이스가 A · P · W · CM 어디에 있든 찾아 줌 (4자리면 계정코드와 같이 나옴) */
+  let digitInv = []; if (q && /^\d{3,6}$/.test(q)) { try { digitInv = await invByDigits(S, q); } catch (e) {} }
+  if (digitInv.length) h += '<div class="card"><div class="muted" style="margin-bottom:4px">📄 ' + bt('인보이스 번호로 찾음', 'Invoices with this number') + '</div>' + digitInv.map(c => '<div class="pr tap" data-ivd="' + esc(c.no) + '"><div class="ct"><b>' + esc(c.no) + '</b><small>' + esc(c.inv.store || c.inv.acct || '') + ' · ' + esc(md(c.inv.d)) + (c.inv.st === 'x' ? ' · VOID' : '') + '</small></div><div class="pa"><b>' + money(c.inv.total || 0) + '</b></div></div>').join('') + '</div>';
   if (q) {
     const hits = searchAccounts(S.accounts, q, 150);
     h += '<div class="card">' + (hits.length ? '<div class="muted" style="margin-bottom:4px">' + hits.total + bt('곳', ' stores') + '</div>' + hits.map(row).join('') : looksInv(q) ? '' : '<div class="none">' + bt('맞는 가게가 없습니다', 'No match') + '</div>') + '</div>';
@@ -61,6 +65,7 @@ async function show() {
   if ($('ivSort')) $('ivSort').onclick = e => { e.preventDefault(); IDESC = !IDESC; show(); };
   out.querySelectorAll('[data-in]').forEach(el => el.onclick = () => invDetail(el.dataset.in, el.dataset.inacct));
   if ($('ivNo')) $('ivNo').onclick = () => invDetail(normInv(q));
+  out.querySelectorAll('[data-ivd]').forEach(el => el.onclick = () => invDetail(el.dataset.ivd));
   out.querySelectorAll('[data-ia]').forEach(el => el.onclick = () => {
     const a = S.accounts.byCode[el.dataset.ia]; if (!a) return;
     if (own(a) || g[a.acct]) storeSheet(a.acct, null, 'invh');

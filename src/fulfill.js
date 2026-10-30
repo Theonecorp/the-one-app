@@ -10,7 +10,7 @@ import { timelineHtml } from './flow.js';
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM, invoicesBetween, getInvoice } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
@@ -588,7 +588,9 @@ export function periodRange(p, from, to) {
 export async function invBrowser(LF, head) {
   LF.ip = LF.ip || 'month'; LF.iq = LF.iq || ''; LF.it = LF.it || ''; LF.im = LF.im || 'acct';
   const types = invTypes(S);
-  const q = LF.iq.trim();
+  let q = LF.iq.trim();
+  /* 🔢 숫자만 쳤을 때 (43350) — A · P · W · CM 중 그 번호로 있는 인보이스: 하나면 바로, 여럿이면 골라서 */
+  let digitInv = []; if (/^\d{5,6}$/.test(q)) { try { digitInv = await invByDigits(S, q); } catch (e) {} if (digitInv.length === 1) q = digitInv[0].no; }
   /* 인보이스 번호 · 주문 번호 모양이면 번호로 바로 찾기 */
   const isNo = /^[A-Z]{1,2}-?\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);   // A42497 · P-007803 · O261022-…
   /* 🏬 거래처별(기본): 전체 거래처 목록 → 검색으로 거르기 → 가게를 누르면 그 가게 인보이스 전부 · 📅 기간별: 예전처럼 */
@@ -602,6 +604,7 @@ export async function invBrowser(LF, head) {
   const top = '<div class="card" style="padding-bottom:8px">' + modeSeg + (byAcct && acc ? '<button class="b-ghost b-sm" id="iqBackA" style="margin-bottom:6px">‹ ' + bi('거래처 목록', 'All customers') + '</button>' : '') +
     (byAcct && acc ? '' : '<div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 주문 # / Store · Acct · Invoice · Order" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>') +
     (accs.length > 1 && !acc ? '<div class="chips">' + accs.map(a => '<button data-iqa="' + esc(a.acct) + '">' + esc(a.acct) + ' ' + esc(a.store) + '</button>').join('') + '</div>' : '') +
+    (digitInv.length > 1 ? '<div class="chips"><span class="muted" style="align-self:center">📄 ' + bt('이 번호의 인보이스', 'Invoices with this number') + ':</span>' + digitInv.map(c => '<button data-iqa="' + esc(c.no) + '">' + esc(c.no) + ' · ' + esc(c.inv.store || '') + '</button>').join('') + '</div>' : '') +
     (acc || byAcct ? '' : '<div class="chips">' + PERIODS.filter(c => c[0] !== 'custom').map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (LF.ip === 'custom' ? 'on' : '') + '" id="iCal">📅 ' + esc(md(from) + (from !== to ? ' ~ ' + md(to) : '')) + '</button></div>') +
     '<div class="chips" style="margin-top:4px"><button class="' + (LF.it ? '' : 'on') + '" data-it="">' + bi('종류 전체', 'All types') + '</button>' + types.map(t => '<button class="' + (LF.it === t.c ? 'on' : '') + '" data-it="' + esc(t.c) + '">' + esc(t.c) + ' ' + esc(t.n) + '</button>').join('') + '<button class="' + (LF.ivoid ? 'on' : '') + '" data-ivoid="1">VOID ' + bi('포함', 'incl.') + '</button></div></div>';
   $('page').innerHTML = head + top + '<div id="iList"><div class="load">읽는 중…</div></div>';
