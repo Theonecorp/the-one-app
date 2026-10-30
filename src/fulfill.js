@@ -156,7 +156,7 @@ export function manage(o, lines) {
         openModal('<h2>✎ ' + esc(l.c) + '</h2><div class="muted">' + esc(l.d) + ' · 주문 <b>' + l.q + '</b></div><div class="fg" style="margin-top:8px"><label>' + bi('실제 담은 수량', 'Picked qty') + '</label><input id="pqIn" type="number" inputmode="numeric" min="0" value="' + (l.pq == null ? l.q : l.pq) + '" style="font-size:26px;font-weight:800;text-align:center"></div><div class="chips">' + [0, Math.floor(l.q / 2), l.q].filter((v, k, a) => a.indexOf(v) === k).map(v => '<button data-pqv="' + v + '">' + v + (v === l.q ? ' ✓' : v === 0 ? ' ⏳' : '') + '</button>').join('') + '</div><div class="btns"><button class="b-ghost" id="pqX">취소</button><button class="b-blue" id="pqOk">확인</button></div>');
         const done = v => { l.pq = Math.max(0, Math.floor(Number(v) || 0)); l.ok = true; dirty = true; closeModal(); sumNow(); redraw(i); };
         document.querySelectorAll('[data-pqv]').forEach(x => x.onclick = () => done(x.dataset.pqv)); $('pqX').onclick = closeModal; $('pqOk').onclick = () => done($('pqIn').value); $('pqIn').onkeydown = e => { if (e.key === 'Enter') done($('pqIn').value); };
-        setTimeout(() => { $('pqIn').focus(); $('pqIn').select(); }, 50); });
+        setTimeout(() => { const e = $('pqIn'); if (e) { e.focus(); e.select(); } }, 50); });
     };
     bindPk($('mLines'));
     document.querySelectorAll('[data-t]').forEach(s => s.onchange = () => { lines[+s.dataset.t].t = s.value; typeChanged(); });
@@ -185,7 +185,7 @@ export function manage(o, lines) {
   if ($('mAdd')) $('mAdd').onclick = async () => {
     try { await loadCatalog(S); } catch (e) {}
     openModal('<h2>＋ 아이템 추가</h2><div class="fg"><label>코드 · 바코드</label><input id="aCode" autocomplete="off" style="text-transform:uppercase"></div><div class="two"><div class="fg"><label>수량</label><input id="aQ" type="number" inputmode="numeric" value="1"></div><div class="fg"><label>가격 (비우면 목록가)</label><input id="aP" type="number" step="0.01" inputmode="decimal"></div></div><div class="btns"><button class="b-ghost" id="aX">닫기</button><button class="b-blue" id="aOk">추가</button></div>');
-    $('aX').onclick = closeModal; setTimeout(() => $('aCode').focus(), 50);
+    $('aX').onclick = closeModal; setTimeout(() => { const e = $('aCode'); if (e) e.focus(); }, 50);
     $('aOk').onclick = () => {
       const it = exactItem($('aCode').value); if (!it) return toast('목록에 없는 코드입니다', 'bad');
       const q = Math.max(1, Math.floor(Number($('aQ').value) || 1)), p = $('aP').value ? R2($('aP').value) : it.p;

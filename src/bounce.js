@@ -57,7 +57,7 @@ async function registerForm() {
     $('bnHits').innerHTML = hits.length ? hits.map(e => { const p = (e.pays || []).find(x => x.m === 'CHECK' && String(x.ref || '').replace(/^0+/, '') === q.replace(/^0+/, '')); return '<div class="pr tap" data-be="' + esc(e.id) + '"><div class="ct"><b>' + esc(e.store) + ' · ' + esc(e.sm) + (e.bounced ? ' <span class="tag t-r">' + bt('이미 바운스', 'already bounced') + '</span>' : '') + '</b><small>' + esc(e.d) + ' · #' + esc(p.ref) + ' ' + money(p.amt) + (e.invs && e.invs.length ? ' → ' + e.invs.map(v => v.no).join(', ') : '') + (e.settled ? ' · <b class="warn">' + bt('정산 완료됨', 'already settled') + '</b>' : '') + '</small></div><div class="pa"><b>' + money(e.total) + '</b></div></div>'; }).join('') : '<div class="none">' + bt('그 번호의 체크 수금이 없습니다', 'No check with that number') + '</div>';
     $('bnHits').querySelectorAll('[data-be]').forEach(el => el.onclick = () => registerGo(hits.find(e => e.id === el.dataset.be), q)); };
   $('bnRef').oninput = find; $('bnRef').onkeydown = e => { if (e.key === 'Enter') find(); };
-  setTimeout(() => $('bnRef').focus(), 50);
+  setTimeout(() => { const e = $('bnRef'); if (e) e.focus(); }, 50);   // 그사이 다른 화면으로 갔으면 없음
 }
 function registerGo(e, q) {
   if (e.bounced) return toast(bt('이미 바운스로 등록된 수금입니다', 'Already registered'), 'bad');
@@ -188,7 +188,7 @@ async function pickCheck(kind) {
     $('rqHits').innerHTML = hits.length ? hits.map((x, k) => '<div class="pr tap" data-rh="' + k + '"><div class="ct"><b>' + esc(x.e.store) + ' · #' + esc(x.p.ref) + (x.p.hold ? ' <span class="tag" style="background:#ede9fe;color:#4c1d95">⏸ ' + bt('홀드 중', 'on hold') + '</span>' : '') + '</b><small>' + esc(x.e.sm) + ' · ' + bt('받은 날', 'received') + ' ' + esc(x.e.d) + ' · ' + bt('입금 예정', 'deposit') + ' <b>' + esc(x.p.dep || x.e.d) + '</b>' + (x.e.settled ? ' · 📁' : '') + '</small></div><div class="pa"><b>' + money(x.p.amt) + '</b></div></div>').join('') : '<div class="none">' + bt('맞는 체크가 없습니다', 'No matching check') + '</div>';
     $('rqHits').querySelectorAll('[data-rh]').forEach(el => el.onclick = () => reqForm(kind, hits[+el.dataset.rh])); };
   $('rqQ').oninput = find; $('rqQ').onkeydown = e => { if (e.key === 'Enter') find(); };
-  setTimeout(() => $('rqQ').focus(), 50);
+  setTimeout(() => { const e = $('rqQ'); if (e) e.focus(); }, 50);
 }
 function reqForm(kind, x) {
   const { e, p, i } = x, cur = p.dep || e.d;

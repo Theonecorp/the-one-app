@@ -33,8 +33,8 @@ const path = require('path');
   /* 세일즈맨: 내 바운스 · 새 체크 받음 → 수금 입력 미리 채움 · 저장하면 바운스에 연결 */
   const seedB = seedInv + ` s.bounces = [{ id: 'B1', eid: 'E1', sm: 'BRANDON', acct: '1111', store: 'ALI B/S # 1', ref: '1042', amt: 1200, d: '2026-10-20', ym: '2026-10', invs: [{ no: 'A10021', amt: 1500 }], st: 'open', how: '', log: [], by: 'acct@theonefl.com', at: '2026-10-20T10:00:00Z' }]; s.entries.forEach(e => { if (e.id === 'E1') { e.bounced = true; e.bounceId = 'B1'; } });`;
   pg = await mk('brandon@x.com', seedB);
-  if (!(await pg.$('#nav button[data-go="bounce"]'))) errs.push('salesman nav should have bounce tab');
-  await pg.click('#nav button[data-go="bounce"]'); await pg.waitForSelector('[data-bn="B1"]', { timeout: 8000 });
+  if (!(await pg.$('#nav button[data-go="hub/smoney"]'))) errs.push('salesman nav should have the collections group');   // v0.8.135: 💵 수금 묶음 → 체크 관리
+  await pg.click('#nav button[data-go="hub/smoney"]'); await pg.click('[data-hub="bounce"]'); await pg.waitForSelector('[data-bn="B1"]', { timeout: 8000 });
   if (await pg.$('#bnNew')) errs.push('salesman must not register bounces');
   await pg.click('[data-bn="B1"]'); await pg.waitForSelector('#bnNewChk'); if (await pg.$('#bnRedep')) errs.push('salesman must not clear');
   await pg.fill('#bnMsg', '금요일에 새 체크 받기로 함'); await pg.click('#bnSend'); await pg.waitForTimeout(800);

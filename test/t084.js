@@ -9,16 +9,16 @@ const path = require('path');
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'own@x.com', name: 'Owner' }; try { localStorage.removeItem('theone.view.own@x.com'); } catch (e) {} window.__AFTER_SEED__ = s => { s.users.push({ id: 'own@x.com', email: 'own@x.com', name: 'Owner', role: 'owner', sm: 'SOO', active: true }); }; });
   await pg.goto('http://127.0.0.1:8821/test/demo.html'); await pg.waitForSelector('#nav button');
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('owner nav:', nav);
-  if (nav[0] !== 'own' || !nav.includes('mg/sales') || !nav.includes('mg') || !nav.includes('bossar') || !nav.includes('now') || nav.includes('order') || !nav.includes('invs') || !nav.includes('stores') || !nav.includes('view/salesman')) errs.push('owner nav should be dashboard · invoices · customers · sales · business · A/R · collections · sales-mode, without the sale (order) tab');   // v0.8.112: 📄 인보이스 · 🏬 거래처 추가
+  if (nav[0] !== 'own' || !nav.includes('hub/look') || !nav.includes('hub/biz') || nav.includes('order') || nav.includes('mg/sales') || !nav.includes('view/salesman')) errs.push('v0.8.135: owner nav should be 홈 · 조회 · 경영 · 세일즈 모드');   // v0.8.112: 📄 인보이스 · 🏬 거래처 추가
   await pg.waitForSelector('[data-og="mg/sales"]', { timeout: 10000 }).catch(() => errs.push('dashboard did not render')); const cards = await pg.$$eval('#page .card h2', h => h.map(x => x.textContent.trim().slice(0, 14))); log('home cards:', cards);
   if (!/매출/.test(cards[1] || '') || !/현금/.test(cards[2] || '') || !/미수금/.test(cards[3] || '') || !/공장/.test(cards[4] || '') || !/비용/.test(cards[5] || '') || !/운영/.test(cards[6] || '')) errs.push('dashboard should show 매출 · 현금 · 미수금 · 공장 · 비용 · 운영 in order');
   const dash = (await pg.textContent('#page')).replace(/\s+/g, ' '); if (!/지난 기간/.test(dash) || !/작년 같은 기간/.test(dash) || !/입금 예정 체크/.test(dash) || !/60일 넘음/.test(dash) || !/커미션 예상/.test(dash) || !/하루 넘은 주문/.test(dash)) errs.push('dashboard key numbers missing');
   await pg.click('[data-op="year"]'); await pg.waitForTimeout(1500); if (!/올해/.test((await pg.textContent('#page')).slice(0, 300))) errs.push('period chip should switch to year');
-  await pg.click('#nav button[data-go="mg/sales"]'); await pg.waitForTimeout(1200); if (!/매출/.test((await pg.textContent('#page')).slice(0, 400))) errs.push('sales tab should open the sales screen');
+  await pg.click('#nav button[data-go="hub/biz"]'); await pg.waitForSelector('[data-hub="mg/sales"]', { timeout: 5000 }); if (await pg.$('[data-hub="pay"]')) errs.push('owner must not see 정산 in the business hub'); await pg.click('[data-hub="mg/sales"]'); await pg.waitForTimeout(1200); if (!/매출/.test((await pg.textContent('#page')).slice(0, 400))) errs.push('sales tab should open the sales screen');
   /* 🚗 세일즈 모드 */
   await pg.click('#nav button[data-go="view/salesman"]'); await pg.waitForTimeout(1500);
   const nav2 = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('sales-mode nav:', nav2);
-  if (nav2[0] !== 'home' || !nav2.includes('entry') || !nav2.includes('view/owner')) errs.push('sales mode should show the salesman nav with a back-to-business tab');
+  if (nav2[0] !== 'home' || !nav2.includes('hub/smoney') || !nav2.includes('view/owner')) errs.push('sales mode should show the salesman nav with a back-to-business tab');
   const home = (await pg.textContent('#page')).replace(/\s+/g, ' '); if (!/SOO/.test(home)) errs.push('salesman home should show the owner\'s SM code');
   await pg.click('#nav button[data-go="view/owner"]'); await pg.waitForTimeout(1500);
   const nav3 = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); if (nav3[0] !== 'own') errs.push('business mode should return to the owner nav');
@@ -30,7 +30,7 @@ const path = require('path');
   const pg3 = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg3.on('pageerror', e => errs.push(e.message));
   await pg3.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; try { localStorage.removeItem('theone.view.luke@theonefl.com'); } catch (e) {} });
   await pg3.goto('http://127.0.0.1:8821/test/demo.html'); await pg3.waitForSelector('#nav button'); const nav5 = await pg3.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('admin nav:', nav5);
-  if (nav5.join() !== 'own,invs,stores,mg/sales,mg,pay,stock,admin,view/menu') errs.push('admin nav should be own · invoices · customers · sales · business · payroll · inventory · admin · mode, got ' + nav5.join());   // v0.8.112 · v0.8.114
+  if (nav5.join() !== 'own,hub/look,hub/biz,hub/wh,admin,view/menu') errs.push('v0.8.135: admin nav should be 홈 · 조회 · 경영 · 재고 · 관리 · 모드' + nav5.join());   // v0.8.112 · v0.8.114
   await pg3.waitForSelector('[data-og="mg/sales"]', { timeout: 10000 }).catch(() => errs.push('admin dashboard did not render'));
   await pg3.click('#nav button[data-go="view/menu"]'); await pg3.waitForSelector('#mbox [data-r]', { timeout: 4000 }).catch(() => errs.push('mode tab should open the view chooser'));
   const rs = await pg3.$$eval('#mbox [data-r]', b => b.map(x => x.dataset.r)); log('admin modes:', rs); if (!rs.includes('owner') || !rs.includes('manager') || !rs.includes('salesman')) errs.push('admin should be able to pick owner · manager · salesman');
