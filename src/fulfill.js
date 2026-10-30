@@ -754,10 +754,11 @@ const CANCEL_WHY = [['가게가 주문 취소', 'Store cancelled'], ['중복 주
 export function cancelledBox(o) {
   return '<div class="alert a-red">✕ <b>' + bi('취소된 주문', 'Cancelled order') + '</b>' + (o.cancelWhy ? ' — ' + bi('사유', 'Reason') + ': <b>' + esc(o.cancelWhy) + '</b>' : '') + '<div class="muted" style="font-size:12px;margin-top:2px">' + esc(String(o.cancelBy || '').split('@')[0]) + (o.cancelAt ? ' · ' + esc(String(o.cancelAt).substring(0, 16).replace('T', ' ')) : '') + '</div></div>';
 }
-async function cancelAsk(o) {
+/** ✕ 주문 취소 — 담당자: 세일즈맨에게 알림 · 세일즈맨(self): 작업 시작 전 자기 주문, 사무실에 알림 */
+export async function cancelAsk(o, self) {
   openModal('<h2 style="color:#991b1b">✕ ' + bi('주문 취소', 'Cancel order') + '</h2>' +
     '<div class="sumbox"><b>' + esc(o.no || o.id) + '</b> · ' + esc(o.store) + '<br><span class="muted">' + esc(o.sm || '') + ' · ' + esc(o.d || '') + ' · ' + (o.qty || 0) + bi('개', ' pcs') + ' · ' + money(o.amt || 0) + '</span></div>' +
-    '<div class="alert a-amb">' + bi('취소하면 이 주문은 작업 목록에서 빠지고 되돌릴 수 없습니다. 세일즈맨에게 사유와 함께 알림이 갑니다.', 'Cancelling removes this order from the work list and cannot be undone. The salesman is notified with the reason.') + '</div>' +
+    '<div class="alert a-amb">' + (self ? bi('취소하면 사무실 작업 목록에서 빠지고 되돌릴 수 없습니다. 사무실에 사유와 함께 알림이 갑니다. 다시 필요하면 새 주문으로 넣으세요.', 'Cancelling removes the order from the office work list and cannot be undone. The office is notified. Enter a new order if needed again.') : bi('취소하면 이 주문은 작업 목록에서 빠지고 되돌릴 수 없습니다. 세일즈맨에게 사유와 함께 알림이 갑니다.', 'Cancelling removes this order from the work list and cannot be undone. The salesman is notified with the reason.')) + '</div>' +
     '<div class="fg"><label>' + bi('취소 사유 (필수)', 'Reason (required)') + '</label><div class="chips" style="margin:0 0 6px">' + CANCEL_WHY.map(w => '<button data-cxw="' + esc(w[0]) + '">' + bi(w[0], w[1]) + '</button>').join('') + '</div><input id="cxWhy" placeholder="' + esc(bi('사유를 적으세요', 'Type the reason')) + '" autocomplete="off"></div>' +
     '<div class="btns"><button class="b-ghost" id="cxX">' + bi('돌아가기', 'Back') + '</button><button class="b-red" id="cxGo" disabled>✕ ' + bi('이 주문을 취소합니다', 'Cancel this order') + '</button></div>');
   const chk = () => { $('cxGo').disabled = !$('cxWhy').value.trim(); };
@@ -769,8 +770,8 @@ async function cancelAsk(o) {
     busy(true);
     try {
       const now = new Date().toISOString();
-      await S.DB.update('orders', o.id, { st: 'x', updatedAt: now, cancelBy: S.user.email, cancelWhy: why, cancelAt: now });
-      try { const N = await import('./notify.js'); await N.queue({ kind: 'cancel', toSm: o.sm, chat: true, orderId: o.id, subject: '[THE ONE] ✕ 주문 취소 — ' + o.store, text: '✕ 주문 취소 → ' + o.sm + ' · ' + o.store + ' (' + (o.no || o.id) + ', ' + money(o.amt || 0) + ')\n사유: ' + why, url: N.appUrl('order/' + o.id) }); } catch (e) {}
+      await S.DB.update('orders', o.id, Object.assign({ st: 'x', updatedAt: now, cancelBy: S.user.email, cancelWhy: why, cancelAt: now }, self ? { cancelSelf: true } : {}));
+      if (o.st !== 'draft') try { const N = await import('./notify.js'); await N.queue(Object.assign({ kind: 'cancel', chat: true, orderId: o.id, subject: '[THE ONE] ✕ 주문 취소 — ' + o.store + (self ? ' (' + o.sm + ')' : ''), text: '✕ 주문 취소 ' + (self ? '(세일즈맨) ' + o.sm : '→ ' + o.sm) + ' · ' + o.store + ' (' + (o.no || o.id) + ', ' + money(o.amt || 0) + ')\n사유: ' + why, url: N.appUrl('order/' + o.id) }, self ? { toStaff: true } : { toSm: o.sm })); } catch (e) {}
       closeModal(); toast(bt('취소했습니다', 'Cancelled') + ' — ' + why); goOrder(o.id);
     } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     busy(false);

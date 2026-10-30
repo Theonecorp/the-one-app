@@ -445,6 +445,12 @@ function viewOrder(o, lines, local) {
   if (local && readOut()[o.id] && readOut()[o.id].err) B.push('<button class="b-ghost" id="oDropLocal" style="color:#991b1b">🗑 이 기록 지우기</button>');
   else if (o.st === 'draft' && o.sm === mySm()) B.push('<button class="b-blue" id="oSend">📤 회사로 보내기</button>');
   if (!local && o.cfReq && !o.cfOk && o.sm === mySm() && o.st !== 'x') B.push('<button class="b-green" id="oCfOk">✅ ' + bi('맞습니다 · 확인', 'Confirm') + '</button>');
+  /* ✕ 세일즈맨 취소 — 폰에만 있는 주문은 지우기 · 임시/접수(작업 전)는 바로 취소 · 작업 시작 뒤에는 사무실에 취소 요청 */
+  const mine = o.sm === mySm() || local;
+  if (mine && local && !(readOut()[o.id] && readOut()[o.id].err)) B.push('<button class="b-ghost" id="oCxLocal" style="color:#991b1b">✕ ' + bi('주문 취소', 'Cancel order') + '</button>');
+  else if (!local && mine && (o.st === 'draft' || o.st === 'sent')) B.push('<button class="b-ghost" id="oCx" style="color:#991b1b">✕ ' + bi('주문 취소', 'Cancel order') + '</button>');
+  else if (mine && ['pick', 'ok', 'picked'].includes(o.st) && !o.cfIssueOpen) B.push('<button class="b-ghost" id="oCxReq" style="color:#991b1b">✕ ' + bi('취소 요청 (작업 중)', 'Ask to cancel') + '</button>');
+  else if (mine && ['pick', 'ok', 'picked'].includes(o.st) && o.cfIssueOpen) B.push('<span class="muted" style="align-self:center">⏳ ' + bi('사무실에 보낸 요청 처리 중', 'Request sent to the office') + '</span>');
   if (B.length) h += '<div class="card"><div class="btns" style="margin-top:0">' + B.join('') + '</div></div>';
   h += '<div class="card"><h2>아이템 ' + lines.length + '줄</h2><input id="oFind" placeholder="이 주문 안에서 찾기" autocomplete="off" style="margin-bottom:6px"><div id="oLines"></div></div>';
   $('page').innerHTML = h;
@@ -460,9 +466,27 @@ function viewOrder(o, lines, local) {
   if ($('oStoreChg')) $('oStoreChg').onclick = () => Fulfill.changeStore(o, () => goOrder(o.id));
   if ($('oCfOk')) $('oCfOk').onclick = async () => { busy(true); try { await S.DB.update('orders', o.id, { cfOk: true, cfAt: new Date().toISOString(), cfBy: S.user.email }); toast('✅ 확인했습니다 — 사무실에 표시됩니다', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('oStoreI')) $('oStoreI').onclick = () => Store.storeSheet(o.acct);
+  if ($('oCx')) $('oCx').onclick = () => Fulfill.cancelAsk(o, true);
+  if ($('oCxLocal')) $('oCxLocal').onclick = async () => { if (!(await confirmBox(bt('아직 회사로 안 간 주문입니다. 폰에서 지울까요?', 'This order has not reached the office yet. Delete it from this phone?') + '\n' + (o.store || '') + ' · ' + money(o.amt || 0), '✕ ' + bt('지우기', 'Delete')))) return; const b = readOut(); delete b[o.id]; writeOut(b); toast(bt('지웠습니다', 'Deleted'), 'good'); Router.go('order'); };
+  if ($('oCxReq')) $('oCxReq').onclick = () => cancelReq(o);
   if ($('oDropLocal')) $('oDropLocal').onclick = async () => { if (!(await confirmBox('회사로 못 간 이 주문를 폰에서 지울까요? (' + readOut()[o.id].err + ')', '지우기'))) return; const b = readOut(); delete b[o.id]; writeOut(b); Router.go('order'); };
   if ($('oSyncOne')) $('oSyncOne').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast('인터넷이 안 됩니다 — 폰에 그대로 있습니다', 'bad'); else goOrder(o.id); };
   if ($('oSend')) $('oSend').onclick = async () => { const ol = Object.assign({}, o, { st: 'sent', sentAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); putOut(ol, lines); await syncOutbox(false); goOrder(o.id); };
+}
+/** ✕ 작업이 시작된 주문 — 세일즈맨은 바로 못 지우고 사무실에 취소 요청 (⚠️ 문제 알림과 같은 칸 → 담당자 화면 빨간 띠 · 알림) */
+function cancelReq(o) {
+  openModal('<h2 style="color:#991b1b">✕ ' + bi('취소 요청', 'Ask to cancel') + '</h2><div class="sumbox"><b>' + esc(o.no || o.id) + '</b> · ' + esc(o.store) + ' · ' + money(o.amt || 0) + '</div>' +
+    '<div class="alert a-amb">' + bi('창고에서 이미 작업 중이라 바로 취소할 수 없습니다. 사무실에 요청하면 담당자가 확인해 취소합니다.', 'The warehouse already started this order, so it cannot be cancelled directly. The office will review and cancel it.') + '</div>' +
+    '<div class="fg"><label>' + bi('사유 (필수)', 'Reason (required)') + '</label><input id="crWhy" placeholder="' + esc(bt('예: 가게가 주문 취소 · 중복 주문 · 잘못 넣음', 'e.g. store cancelled · duplicate · entered by mistake')) + '" autocomplete="off"></div>' +
+    '<div class="btns"><button class="b-ghost" id="crX">' + bt('돌아가기', 'Back') + '</button><button class="b-red" id="crGo">✕ ' + bt('사무실에 취소 요청', 'Ask the office') + '</button></div>');
+  $('crX').onclick = closeModal;
+  $('crGo').onclick = async () => {
+    const why = $('crWhy').value.trim(); if (!why) return toast(bt('사유를 적어 주세요', 'Give a reason'), 'bad');
+    busy(true);
+    try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { cfIssue: '✕ 취소 요청: ' + why, cfIssueAt: now, cfIssueOpen: true }); await Notify.queue({ kind: 'cancelReq', toStaff: true, chat: true, orderId: o.id, subject: '[THE ONE] ✕ 취소 요청 — ' + o.store + ' (' + o.sm + ')', text: '✕ 취소 요청 ' + o.sm + ' · ' + o.store + ' (' + (o.no || o.id) + ', ' + money(o.amt || 0) + ')\n사유: ' + why, url: Notify.appUrl('order/' + o.id) }); closeModal(); toast('✕ ' + bt('사무실에 취소 요청을 보냈습니다', 'Cancel request sent'), 'good'); goOrder(o.id); }
+    catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
 }
 /** 종류별 합계 · 할인 표 */
 export function typeSummary(by) {

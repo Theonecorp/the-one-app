@@ -9,8 +9,8 @@ service cloud.firestore {
     function registered() { return isAdminEmail() || (signedIn() && exists(/databases/$(database)/documents/users/$(email())) && userDoc().get('active', true) != false); }
     function role() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('role', '') : ''; }
     function isRealAdmin() { return isAdminEmail() || role() == 'admin'; }                 // 관리자 — 사용자 등록 · ACH 은행은 관리자만
-    function isAdmin() { return isRealAdmin() || role() == 'owner'; }                      // 관리자급 (오너 포함) — 자료는 관리자와 같음
-    function isStaff() { return isAdmin() || role() == 'manager'; }       // 담당자(회계) + 관리자
+    function isAdmin() { let r = role(); return isAdminEmail() || r == 'admin' || r == 'owner'; }                       // 관리자급 (오너 포함) — 자료는 관리자와 같음 (역할은 한 번만 읽음: 규칙 계산 한도 1000)
+    function isStaff() { let r = role(); return isAdminEmail() || r == 'admin' || r == 'owner' || r == 'manager'; }    // 담당자(회계) + 관리자
     function mySm() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('sm', '') : ''; }
     function achOk() { return isRealAdmin() || (registered() && userDoc().get('achAccess', false) == true); }
 
@@ -111,12 +111,22 @@ service cloud.firestore {
     match /itemPhotos/{id} { allow read: if registered(); allow write: if isStaff(); }
     match /photoUploads/{id} { allow read, write: if isStaff(); }   // ☁️ 드라이브로 올릴 큰 사진 큐 (스크립트가 올리고 비움)   // 📷 앱에서 올린 아이템 사진 (디자인 · 카탈로그 담당 · 담당자)
     function okSt(st) { return st == 'draft' || st == 'sent'; }
+    /* 세일즈맨이 자기 주문을 바꾸는 경우 (세일즈맨 코드는 한 번만 읽음)
+     *  ① 임시 · 접수 상태에서 내용 수정 (상태는 임시 · 접수로만)  ② "맞습니다" 확인 · ⚠️ 문제 · 취소 요청 칸만
+     *  ③ ✕ 작업 시작 전(임시 · 접수) 자기 주문 취소 — st 'x' · 취소 기록 칸만 · cancelBy 는 본인 */
+    function smOrderUpdate() {
+      let me = mySm();
+      let keys = request.resource.data.diff(resource.data).affectedKeys();
+      return me != '' && resource.data.sm == me && (
+        (okSt(resource.data.st) && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st))
+        || keys.hasOnly(['cfOk', 'cfAt', 'cfBy', 'cfHow', 'cfIssue', 'cfIssueAt', 'cfIssueOpen'])
+        || (okSt(resource.data.st) && request.resource.data.st == 'x' && request.resource.data.cancelBy == email()
+            && keys.hasOnly(['st', 'updatedAt', 'cancelBy', 'cancelWhy', 'cancelAt', 'cancelSelf'])));
+    }
     match /orders/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
       allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email() && okSt(request.resource.data.st));
-      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && okSt(resource.data.st)
-                                     && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st))
-                    || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cfOk', 'cfAt', 'cfBy', 'cfHow', 'cfIssue', 'cfIssueAt', 'cfIssueOpen']));   // 세일즈맨 "맞습니다" 확인 (한 건 · 그날 일괄) · ⚠️ 문제 알리기
+      allow update: if isStaff() || smOrderUpdate();
       allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.st == 'draft');
     }
     match /orderLines/{id} {
