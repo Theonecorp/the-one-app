@@ -105,6 +105,7 @@ nav button.on{color:var(--blue)}
 .pick.on{border-color:var(--blue);background:#eff6ff}.pick .ck{width:20px;height:20px;border-radius:6px;border:2px solid #cbd5e1;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex:0 0 20px}
 .pick.on .ck{background:var(--blue);border-color:var(--blue)}.pick .pm{flex:1}.pick small{color:var(--muted);display:block;font-size:11px}
 .ck-big{width:22px;height:22px}.dayhd .dayall{padding:4px 9px;font-size:12px;margin-left:6px;min-height:28px}.dayhd .ok{color:#15803d;font-weight:800;margin-left:6px}
+.snapbar{font-size:12px;color:#1e40af;background:#eff6ff;border-radius:8px;padding:5px 10px;margin:0 0 8px;animation:snp 1.4s ease-in-out infinite}@keyframes snp{50%{opacity:.55}}
 .irow.zero{opacity:.55;background:#f8fafc}.irow.zero .ct b::after{content:' · 0';color:#b91c1c;font-weight:800}.irow .rmx{flex:0 0 auto;margin-left:4px;padding:4px 8px;min-height:32px}
 .ckw{flex:0 0 44px;min-height:44px;display:flex;align-items:center;justify-content:center;margin:-8px 0 -8px -10px;cursor:pointer;border-radius:10px}.ckw:active{background:#e0e7ff}.ckw .ck-big{width:24px;height:24px;pointer-events:none}.tybar .tag{font-size:12px}
 .sumbox{background:#f8fafc;border-radius:10px;padding:10px 12px;font-size:13.5px;margin:8px 0}

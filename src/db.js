@@ -44,8 +44,9 @@ function makeMemoryDB(seed) {
   const clone = d => d == null ? null : JSON.parse(JSON.stringify(d));
   return {
     kind: 'memory',
-    async get(c, id) { return clone(col(c)[id] || null); },
+    async get(c, id) { if (window.__MOCK_DELAY__) await new Promise(r => setTimeout(r, window.__MOCK_DELAY__)); return clone(col(c)[id] || null); },   // 시험: __MOCK_DELAY__ 로 느린 인터넷 흉내
     async list(c, q) {
+      if (window.__MOCK_DELAY__) await new Promise(r => setTimeout(r, window.__MOCK_DELAY__));
       q = q || {};
       let rows = Object.values(col(c));
       (q.where || []).forEach(w => { rows = rows.filter(d => matchWhere(d, w)); });

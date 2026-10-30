@@ -1,7 +1,7 @@
 /* THE ONE — 인터넷이 없어도 앱이 열리게 화면 파일만 폰에 보관 (데이터는 Firestore 가 따로 보관)
  *  · index.html / app.js : 먼저 인터넷에서 새로 받고, 안 되면 보관본
  *  · Firebase SDK (gstatic, 버전 고정) · 아이콘 : 보관본 먼저 */
-const CACHE = 'theone-shell-v129';
+const CACHE = 'theone-shell-v130';
 const IMG = 'theone-img-v1', IMG_MAX = 6000; let IMG_N = 0;   /* 정리는 100장마다 한 번만 (매번 전체 목록을 세면 느려짐) */   /* 📷 아이템 사진 썸네일 (드라이브 · Shopify) — 본 것부터 보관, 오프라인에서도 보임 */
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './logo.png', './logo-96.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
@@ -32,8 +32,9 @@ self.addEventListener('fetch', e => {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => { if (res.ok) { const cp = res.clone(); caches.open(CACHE).then(c => c.put(req, cp)); } return res; })));
     return;
   }
-  /* index.html 등 — 인터넷 먼저, 3초 넘게 걸리면 폰에 있는 것으로 (새 버전은 다음에 열 때) */
+  /* index.html 등 — ⚡ 폰에 있는 것으로 바로 열고(인터넷을 기다리지 않음), 뒤에서 새로 받아 보관 → 다음에 열 때 새 버전.
+   *   새 버전은 앱이 위에 🔄 띠로도 알림 (checkUpdate). 처음(보관본 없음)이면 인터넷으로 */
   const net = fetch(req).then(res => { if (res.ok) { const cp = res.clone(); caches.open(CACHE).then(c => c.put(req, cp)); } return res; });
   const cached = () => caches.match(req).then(hit => hit || caches.match(url.pathname.endsWith('/') ? './index.html' : req, { ignoreSearch: true }));
-  e.respondWith(Promise.race([net, new Promise(r => setTimeout(r, 3000)).then(() => cached().then(h => h || net))]).catch(() => cached()));
+  e.respondWith(cached().then(hit => { if (hit) { e.waitUntil(net.catch(() => {})); return hit; } return net; }).catch(() => net));
 });

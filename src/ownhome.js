@@ -4,7 +4,7 @@
  *    ③ 미수금 (총액 · 60일+ · 90일+ · 세일즈맨 · 가게 상위) · ④ 공장 · 지급 · ⑤ 비용 (커미션 예상 · 1099 · 보너스 · 크레딧) · ⑥ 운영 신호
  *    칸을 누르면 그 화면으로. 기간 칩은 담당자 홈과 같음.
  * ============================================================ */
-import { $, esc, money, k, R2, num, today, ym, md, Router, sortBy, groupBy, sum, daysBetween, addDays, bi, bt, pickDates, pct } from './ui.js';
+import { $, esc, money, k, R2, num, today, ym, md, Router, sortBy, groupBy, sum, daysBetween, addDays, bi, bt, pickDates, pct, snapGet, snapPut } from './ui.js';
 import { invoicesBetween, invTypes } from './invoicing.js';
 import { PERIODS, periodRange } from './fulfill.js';
 import { stageAge } from './flow.js';
@@ -20,7 +20,10 @@ const months = (from, to) => { const L = []; let m = from.substring(0, 7); while
 
 async function page(arg) {
   if (arg && PERIODS.some(p => p[0] === arg)) OP.p = arg;
-  $('page').innerHTML = '<div class="load">' + bt('경영 자료 읽는 중…', 'Loading…') + '</div>';
+  /* ⚡ 지난번 대시보드를 바로 보여 주고(📸), 새 숫자가 오면 바꿈 — 같은 기간 · 하루 안 */
+  const SK = 'own.' + OP.p + (OP.p === 'custom' ? '.' + OP.from + '.' + OP.to : ''), snap = snapGet(SK, 24 * 3600 * 1000), gen = ++GEN;
+  if (snap) { $('page').innerHTML = '<div class="snapbar">↻ ' + bt('최신 숫자를 받는 중 — 지난번 화면', 'Refreshing — showing last view') + ' ' + esc(new Date(snap.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })) + '</div>' + snap.html; bind(); }
+  else $('page').innerHTML = '<div class="load">' + bt('경영 자료 읽는 중…', 'Loading…') + '</div>';
   const t = today(), [from, to] = periodRange(OP.p, OP.from, OP.to), days = daysBetween(from, to) + 1, pf = addDays(from, -days), pt = addDays(from, -1), yf = shiftYear(from), yt = shiftYear(to);
   const plabel = PERIODS.find(p => p[0] === OP.p), ptxt = OP.p === 'custom' || !plabel ? md(from) + ' ~ ' + md(to) : plabel[1] + (days > 1 ? ' (' + md(from) + ' ~ ' + md(to) + ')' : ' ' + md(from));
   const q = (c, w) => S.DB.list(c, w).catch(() => []);
@@ -76,13 +79,19 @@ async function page(arg) {
   /* 그리기 */
   const chips = '<div class="chips" style="margin:0 0 6px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (OP.p === c[0] ? 'on' : '') + '" data-op="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (MAIN.includes(OP.p) ? '' : 'on') + '" id="opCal">📅 ' + bi('날짜 선택', 'Pick dates') + '</button></div>';
   const cmp = (a, b, c) => bt('지난 기간', 'prev') + ' ' + money(b) + ' ' + delta(a, b) + ' · ' + bt('작년 같은 기간', 'last year') + ' ' + money(c) + ' ' + delta(a, c);
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">🏭 ' + bi('경영 대시보드', 'Business dashboard') + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
+  if (gen !== GEN || Router.cur !== 'own') return;   // 그사이 다른 화면으로 갔거나 기간을 바꿈
+  const html = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">🏭 ' + bi('경영 대시보드', 'Business dashboard') + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
     tile('mg/sales', '📈 ' + bi('매출', 'Sales') + (sNow.src === 'manual' ? ' <span class="tag t-g">' + bt('월별 입력', 'manual') + '</span>' : ''), money(sNow.v), cmp(sNow.v, sPrev.v, sYear.v), salesBody) +
     tile('now', '💵 ' + bi('현금 흐름 — 들어온 돈', 'Cash in'), money(cNow.total), cmp(cNow.total, cPrev.total, cYear.total), cashBody) +
     tile('bossar', '💰 ' + bi('미수금', 'Receivables'), money(arTot), stores.length + bt('곳', ' stores') + ' · ' + bt('60일 넘음', 'over 60d') + ' ' + pct(arTot ? over60 / arTot * 100 : 0), arBody) +
     tile('mg/fac', '🏭 ' + bi('공장 · 지급', 'Factories'), money(fBal), bt('미지급 잔액', 'unpaid') + ' · ' + t.substring(0, 4) + ' ' + bt('구매', 'buy') + ' ' + k(fBuy) + ' · ' + bt('송금', 'paid') + ' ' + k(fPaid), facBody) +
     tile('pay', '🧾 ' + bi('비용 · 지급', 'Costs'), '', '', costBody) +
     tile('flow', '🚦 ' + bi('운영 신호', 'Operations'), '', '', opsBody);
+  $('page').innerHTML = html; snapPut(SK, html); bind();
+}
+let GEN = 0;
+function bind() {
+  const [from, to] = periodRange(OP.p, OP.from, OP.to);
   document.querySelectorAll('[data-op]').forEach(b => b.onclick = () => { OP.p = b.dataset.op; page(); });
   $('opCal').onclick = async () => { const r = await pickDates({ from, to }); if (r) { OP.p = 'custom'; OP.from = r[0]; OP.to = r[1]; page(); } };
   document.querySelectorAll('[data-og]').forEach(el => el.onclick = () => { const [r, a] = el.dataset.og.split('/'); if (a) Router.go(r, a); else Router.go(r); });
