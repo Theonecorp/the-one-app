@@ -559,7 +559,7 @@ function paintEditor() {
   /* 🛒 아이템 담는 동안은 가게 칸을 한 줄로 접음(이름 · 코드 · 미수금 · 📋 · 바꾸기) — 위 고정 칸이 낮아져 목록이 더 보임. 주문 확인 · 메모에서는 펼침 */
   const slim = O.view === 'add' && !!O.store;
   let h = '<div class="ehead' + (slim ? ' slim' : '') + '" id="eHead"><div class="etop"><div class="erow">';
-  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + (slim ? '' : ' · ' + [acc.city, acc.state].filter(Boolean).join(', ')) : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small><small id="eStoreHist"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="' + esc(bt('이 가게 기록 — 인보이스 · 주문 · 수금 · 노트', 'Store history — invoices · orders · payments · notes')) + '">📋' + (slim ? '' : ' ' + bt('기록', 'History')) + '</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + (slim ? '🔁' : bi('바꾸기', 'Change')) + '</button></div>';
+  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + (slim ? '' : ' · ' + [acc.city, acc.state].filter(Boolean).join(', ')) : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small><small id="eStoreHist"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="' + esc(bt('이 가게 기록 — 인보이스 · 주문 · 수금 · 노트', 'Store history — invoices · orders · payments · notes')) + '">📋 ' + bt('기록', 'History') + '</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + (slim ? '🔁' : bi('바꾸기', 'Change')) + '</button></div>';
   else h += '<div style="flex:1;min-width:0;position:relative"><input id="eStoreQ" placeholder="🏬 가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div></div>';
   h += '</div><div class="etabs"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + (O.memo ? ' •' : '') + '</button></div></div><div id="eTop"></div></div>';
   /* 고정 칸 밖: 수정 중 표시 · 메모 · 고정 노트 · (담당자) 세일즈맨 */
@@ -579,7 +579,7 @@ function paintEditor() {
   $('page').innerHTML = h;
   eHeadH();
   if ($('eStoreX')) $('eStoreX').onclick = async () => { if (O.lines.length && !(await confirmBox('가게를 바꿀까요? 담은 아이템 ' + O.lines.length + '줄은 그대로 두고 가게만 바뀝니다 (할인은 새 가게 기본으로). / Change store?', '바꾸기'))) return; O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
-  if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct);
+  if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct, null, 'invh');   // 📋 기록 — 인보이스 기록 탭부터 (담는 동안은 기록 줄이 숨어 이 버튼이 그 역할)
   if (O.acct) { loadInfo(O.acct); Notes.fillPinned('eStoreNotes', O.acct); }
   if ($('eStoreQ')) {
     const q = $('eStoreQ'), box = $('eStoreHits');

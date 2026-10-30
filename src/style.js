@@ -182,24 +182,36 @@ table.pk td{vertical-align:top}table.pk tr.okd td{background:#f0fdf4}.pkc{white-
 #prtbody .fin td{background:#fef08a;font-weight:800;font-size:15px}
 /* 인보이스 (이전 양식) */
 /* 인보이스 한 장 = 종이 한 장: Letter(8.5×11, 여백 .4in → 7.7×10.2in) · A4(.pa4). 긴 인보이스는 줄 단위로 넘어가고 머리 행은 다음 장에도. 마지막 장 뒤엔 빈 장 없음 */
-#prtbody .iv{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:11.5px;page-break-after:always;break-after:page;width:7.7in;max-width:100%;margin:0 auto;min-height:10.2in;box-sizing:border-box;display:flex;flex-direction:column}#prtbody .iv.pa4{width:7.47in;min-height:10.9in}#prtbody .iv:last-child{page-break-after:auto;break-after:auto}
+#prtbody .iv{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11.5px;page-break-after:always;break-after:page;width:7.7in;max-width:100%;margin:0 auto;min-height:10.2in;box-sizing:border-box;display:flex;flex-direction:column}#prtbody .iv.pa4{width:7.47in;min-height:10.9in}#prtbody .iv:last-child{page-break-after:auto;break-after:auto}
 #prtbody .ivlines thead{display:table-header-group}#prtbody .ivlines tr,#prtbody .ivfoot,#prtbody .ivterms,#prtbody .ivsig,#prtbody .ivar{page-break-inside:avoid;break-inside:avoid}
-#prtbody .ivterms{margin-top:7px;font-size:9.3px;line-height:1.45;color:#222;border-top:1px solid #333;padding-top:4px}#prtbody .ivterms div{margin:0 0 1px}#prtbody .ivsig{display:flex;gap:28px;margin-top:16px;font-size:10px;color:#333}#prtbody .ivsig div{flex:1;border-top:1px solid #333;padding-top:3px}#prtbody .ivsig div:nth-child(2){flex:0 0 1.3in}
-#prtbody .iv table{font-size:11px}#prtbody .iv th,#prtbody .iv td{border:1px solid #333;padding:3px 5px}#prtbody .iv th{background:#fff;font-weight:700;text-align:center;font-size:10.5px}
-#prtbody .ivh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}#prtbody .ivh .ivlogo{width:62px;height:62px;margin-right:10px;float:left}
-#prtbody .ivco{font-size:20px;font-weight:800;letter-spacing:.3px}#prtbody .ivad{font-size:11px;line-height:1.4;margin-top:2px}
-#prtbody .ivt{font-size:20px;font-weight:800;margin-bottom:6px}#prtbody .ivbox{margin-left:auto;min-width:170px}#prtbody .ivbox td{text-align:center;font-weight:700}
-#prtbody .ivparties{display:flex;gap:30px;margin:6px 0 10px}#prtbody .ivp{flex:1;font-size:11.5px;line-height:1.45}#prtbody .ivp b{display:block;font-size:10.5px;margin-bottom:2px}
-#prtbody .ivinfo{width:100%;margin-bottom:8px}#prtbody .ivinfo td{text-align:center;font-weight:700}
-#prtbody .ivlines{width:100%}#prtbody .ivlines td{vertical-align:top}#prtbody .ivlines th:nth-child(1),#prtbody .ivlines td:nth-child(1){width:84px}#prtbody .ivlines th:nth-child(2),#prtbody .ivlines td:nth-child(2){width:36px}
+#prtbody .iv table{font-size:11px;border-collapse:collapse}#prtbody .iv th,#prtbody .iv td{border:0;padding:4px 6px}#prtbody .iv td.r,#prtbody .iv th.r{text-align:right}
+/* 머리: 로고 · 회사 왼쪽 / 큰 제목 + 회색 상자 오른쪽 */
+#prtbody .ivh{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:10px}#prtbody .ivhl{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto}#prtbody .ivlogo{width:58px;height:58px;flex:0 0 auto}#prtbody .ivcob{min-width:0}
+#prtbody .ivco{font-size:21px;font-weight:800;letter-spacing:.5px;white-space:nowrap;line-height:1.1}#prtbody .ivad{font-size:10.5px;line-height:1.45;margin-top:3px;color:#222}
+#prtbody .ivhr{text-align:right;flex:0 0 auto}#prtbody .ivt{font-size:30px;font-weight:300;letter-spacing:1px;line-height:1;margin:0 0 6px;color:#111}#prtbody .ivtsub{font-size:10px;font-weight:700;letter-spacing:.5px;color:#444;margin:-2px 0 6px}
+#prtbody .ivbox{margin-left:auto;border:1px solid #999}#prtbody .ivbox th{background:#d9d9d9;font-weight:700;font-size:10.5px;padding:3px 12px;text-align:center;white-space:nowrap}#prtbody .ivbox td{text-align:center;font-weight:700;padding:4px 12px;border-top:1px solid #999;white-space:nowrap}#prtbody .ivbox th+th,#prtbody .ivbox td+td{border-left:1px solid #999}
+#prtbody .ivso{font-size:11px;margin:0 0 4px}
+/* Bill To · Ship To — 회색 제목 띠 + 내용 */
+#prtbody .ivparties{display:flex;gap:18px;margin:4px 0 10px}#prtbody .ivp{flex:1;min-width:0;font-size:11.5px;line-height:1.45}#prtbody .ivlbl{background:#d9d9d9;font-weight:700;font-size:11px;padding:2px 8px;letter-spacing:.2px}#prtbody .ivpb{padding:4px 8px 0}#prtbody .ivpn{font-weight:800;font-size:12px}
+#prtbody .ivsum div{display:flex;justify-content:space-between;gap:8px}#prtbody .ivsum span{color:#444}#prtbody .ivnote{display:block!important;font-size:9.5px;color:#555;margin-top:3px;border-top:1px dotted #bbb;padding-top:2px}
+/* 조건 띠 */
+#prtbody .ivinfo{width:100%;margin-bottom:6px;border:1px solid #999}#prtbody .ivinfo th{background:#d9d9d9;font-weight:700;font-size:10.5px;text-align:left;padding:3px 8px}#prtbody .ivinfo td{font-weight:700;padding:4px 8px;border-top:1px solid #999}#prtbody .ivinfo th+th,#prtbody .ivinfo td+td{border-left:1px solid #999}
+/* 품목 표 — 회색 머리, 가로줄만 */
+#prtbody .ivlines{width:100%}#prtbody .ivlines th{background:#d9d9d9;font-weight:700;font-size:10.5px;text-align:left;padding:4px 6px;white-space:nowrap}#prtbody .ivlines td{vertical-align:top;border-bottom:1px solid #ddd;padding:4px 6px}#prtbody .ivlines tbody tr:last-child td{border-bottom:1px solid #333}
+#prtbody .ivlines td.ivno,#prtbody .ivstl td:nth-child(2){white-space:nowrap;font-weight:700}#prtbody .ivlines td.ivempty{text-align:center;padding:14px;color:#444}
 #prtbody .ivgh td{background:#f1f1f1;font-weight:800;font-size:11px;letter-spacing:.3px;text-transform:uppercase;border-top:1.5px solid #333;padding-top:4px}#prtbody .pkaisle td{background:#111;color:#fff;font-weight:800;font-size:12px;padding:4px 6px}
-#prtbody .ivsub td{background:#d9d9d9;font-weight:700;font-size:10.5px;border-top:1px solid #333}
-#prtbody .ivkit{font-size:9.5px;color:#444}
-#prtbody .ivar{margin:14px auto 0;text-align:center;width:70%}#prtbody .ivart{font-weight:800;font-size:11.5px;margin-bottom:3px}#prtbody .ivar table{width:100%}#prtbody .ivar td{text-align:right;font-weight:700}
-#prtbody .ivfoot{margin-top:auto;display:flex;gap:12px;border:1px solid #333;padding:8px;align-items:flex-start}
-#prtbody .ivthx{flex:1 1 60%;min-width:0;font-size:11.5px;line-height:1.5;white-space:pre-line}#prtbody .ivpcs{color:#555;font-size:10px;margin-top:6px}
-#prtbody .ivtot{flex:0 0 240px;border-left:1px solid #333;padding-left:8px}#prtbody .ivtot td{border:0;padding:1px 6px;font-size:11.5px;white-space:nowrap}#prtbody .ivtot td:first-child{text-align:right;color:#333;width:120px}#prtbody .ivT td{font-weight:800;font-size:13px}
-#prtbody .ivpg{text-align:right;font-size:9.5px;color:#555;margin-top:6px}
+#prtbody .ivsub td{background:#efefef;font-weight:700;font-size:10.5px;border-top:1px solid #999}
+#prtbody .ivkit{font-size:9.5px;color:#444}#prtbody .ivcr td{color:#15803d}#prtbody .ivlate td{font-weight:700}#prtbody .ivbad td{color:#b91c1c}
+#prtbody .ivsec{margin-top:12px}#prtbody .ivsec .ivlbl{margin-bottom:0}
+/* 아래: 왼쪽 에이징 띠 + 인사 / 오른쪽 합계 상자 */
+#prtbody .ivfoot{margin-top:auto;display:flex;gap:14px;padding-top:12px;align-items:flex-end}#prtbody .ivfl{flex:1 1 auto;min-width:0}
+#prtbody .ivar{margin:0 0 8px}#prtbody .ivar.ivarw{margin:10px 0 0}#prtbody .ivar table{width:100%;border:1px solid #999}#prtbody .ivar th{background:#d9d9d9;font-weight:700;font-size:10px;padding:3px 6px;text-align:right;white-space:nowrap}#prtbody .ivar td{text-align:right;font-weight:700;padding:4px 6px;border-top:1px solid #999}#prtbody .ivar th+th,#prtbody .ivar td+td{border-left:1px solid #bbb}#prtbody .ivart{font-size:9.5px;color:#555;margin-top:3px}
+#prtbody .ivthx{font-size:11.5px;line-height:1.5;white-space:pre-line;margin-top:6px}#prtbody .ivpcs{color:#555;font-size:10px;margin-top:4px}
+#prtbody .ivtot{flex:0 0 250px;border:1px solid #999}#prtbody .ivtot td{border:0;padding:3px 10px;font-size:11.5px;white-space:nowrap}#prtbody .ivtot td:first-child{text-align:left;color:#222}#prtbody .ivtot td.r{font-variant-numeric:tabular-nums}#prtbody .ivT td{font-weight:800;border-top:1px solid #999}#prtbody .ivDue td{font-weight:800;font-size:13.5px;background:#f1f1f1;border-top:1px solid #333;padding:5px 10px}
+/* 꼬리말 · 서명 · 쪽 번호 */
+#prtbody .ivterms{margin-top:8px;font-size:9.3px;line-height:1.45;color:#222;border-top:1px solid #333;padding-top:5px}#prtbody .ivterms div{margin:0 0 2px}
+#prtbody .ivsig{display:flex;gap:28px;margin-top:14px;font-size:10px;color:#333}#prtbody .ivsig div{flex:1;border-top:1px solid #333;padding-top:3px}#prtbody .ivsig div:nth-child(2){flex:0 0 1.3in}
+#prtbody .ivpg{display:flex;justify-content:space-between;gap:10px;font-size:9.5px;color:#555;margin-top:8px}#prtbody .ivbc{font-family:'Courier New',monospace;font-weight:700;letter-spacing:1px;color:#111}
 @page{size:letter;margin:.4in}
 #prtbody .sig{margin-top:26px;display:flex;gap:40px;font-size:12.5px}#prtbody .sig div{flex:1;border-top:1px solid #333;padding-top:5px}
 .ivopts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#f1f5f9;border-radius:10px;padding:8px 10px;margin-bottom:12px;font-size:12.5px}.ivopts>span{font-weight:800;color:var(--navy);margin-left:6px}.ivopts button{border:1.5px solid var(--line);background:#fff;border-radius:99px;padding:6px 10px;font-size:12.5px;font-weight:700;color:var(--ink)}.ivopts button.on{background:var(--navy);color:#fff;border-color:var(--navy)}.ivopts .en{font-size:10px;opacity:.7}

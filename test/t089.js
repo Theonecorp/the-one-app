@@ -36,7 +36,7 @@ const path = require('path');
   if (await pg.$('#cfOk')) { await pg.click('#cfOk'); await pg.waitForTimeout(300); } if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(300); }
   const hb = await txt(pg, '#eStoreI'), hist = await txt(pg, '#eStoreHist'); log('button:', hb, '| hist:', hist);
   if (!/기록/.test(hb)) errs.push('store history button should be labeled'); if (!/🧾 2장/.test(hist) || !/A43001/.test(hist) || !/\$180\.00/.test(hist)) errs.push('store strip should show invoice count and recent invoices'); if (!/월요일 휴무/.test(hist)) errs.push('store strip should show the last note');
-  await pg.click('#eStoreHist'); await pg.waitForSelector('#ssX', { timeout: 5000 }).catch(() => errs.push('tapping the strip should open the store window'));
+  await pg.click('#eStoreI'); await pg.waitForSelector('#ssX', { timeout: 5000 }).catch(() => errs.push('tapping 📋 should open the store window'));   // v0.8.132: 담는 동안 가게 칸이 한 줄이라 기록 줄은 숨고 📋 버튼으로
   t = await txt(pg, '#mbox'); log('sheet:', t.slice(0, 160)); if (!/A42900/.test(t)) errs.push('store window invoice tab should list the legacy invoice');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
