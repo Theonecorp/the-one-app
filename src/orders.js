@@ -667,7 +667,7 @@ async function loadInfo(acct) {
     eh.innerHTML = (n ? '🧾 ' + n + bt('장', '') + ' · ' + inv.map(v => esc(v.no) + ' ' + esc(md(v.d)) + ' <b>' + money(v.total) + '</b>').join(' · ') : '🧾 ' + bt('인보이스 기록 없음', 'No invoices yet')) + (last ? '<br>📝 ' + esc(String(last.text || last.t || '').slice(0, 60)) : '');
     eh.className = 'tap'; eh.style.cursor = 'pointer'; eh.onclick = () => Store.storeSheet(acct, null, 'invh');
   }
-  if (O.view === 'add' && VM === 'list') paintResults();
+  if (O.view === 'add') paintResults();   // 🕘 기록이 늦게 와도 목록 · 카드에 바로 (스크롤 그대로)
 }
 /* 빠른 수량 — 마지막에 만진 아이템에 1 · 2 · 3 · 6 · 12 · 24 · 36 · 0 */
 let FOCUS = '';
@@ -758,9 +758,9 @@ function kitLine(it) { return it.k.slice(0, 3).map(x => x[0] + '×' + x[1]).join
 function itemCard(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const name = it.k ? (it.kn || it.d) : it.d;
-  const ln = IDX[it.c];
+  const ln = IDX[it.c], hl = Store.histLast(INFO, it.c);   // 🕘 이 가게에 마지막으로 나간 날·수량
   return '<div class="gcard' + (cur ? ' on' : '') + tapCls(ln) + (it.k ? ' kit' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
-    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'">' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + '</div>' +
+    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'">' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + (hl ? '<span class="ghist" title="' + esc(Store.histText(INFO, it.c, 8)) + '">🕘 ' + esc(hl) + '</span>' : '') + '</div>' +
     (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') +
     '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (multi(ln) ? '<span class="gtap" data-gt="' + esc(it.c) + '">×' + ln.tap + '</span>' : '') + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
     '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</span></div></div>';
@@ -911,7 +911,8 @@ function paintCart() {
     $('eCart').innerHTML = rows.length ? rows.map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001;
       return '<div class="pr irow ' + (l.q ? 'v' : 'zero') + tapCls(l) + '" data-row="' + esc(l.c) + '"><div class="ct"><b>' + esc(l.c) + ' <span class="tag t-g">' + esc(l.t || DT()) + '</span>' + tapTag(l) + (l.kit ? ' <span class="tag t-a" data-kitl="' + esc(l.c) + '">🧩 ' + l.kit.length + '종</span>' : '') + '</b><small>' + esc(l.d) + '</small>' +
-        '<small>$ <input class="sm pin' + (chg ? ' chg' : '') + '" type="number" step="0.01" inputmode="decimal" data-pi="' + esc(l.c) + '" value="' + l.p + '">' + (chg ? ' <span class="tag t-c">목록 ' + money(l.lp) + '</span>' : '') + ' · <b class="lamt">' + money(l.q * l.p) + '</b></small></div>' +
+        '<small>$ <input class="sm pin' + (chg ? ' chg' : '') + '" type="number" step="0.01" inputmode="decimal" data-pi="' + esc(l.c) + '" value="' + l.p + '">' + (chg ? ' <span class="tag t-c">목록 ' + money(l.lp) + '</span>' : '') + ' · <b class="lamt">' + money(l.q * l.p) + '</b></small>' +
+        (Store.histText(INFO, l.c) ? '<small class="hist">🕘 ' + esc(Store.histText(INFO, l.c)) + '</small>' : '') + '</div>' +
         qtyBox(l.c, l.q) + '<button type="button" class="b-ghost b-sm rmx" data-rm="' + esc(l.c) + '" title="' + esc(bt('이 줄 빼기', 'Remove line')) + '">✕</button></div>';
     }).join('') : '<div class="none">아직 담은 아이템이 없습니다 — 🔍 아이템 담기</div>';
     bindQty($('eCart'));
