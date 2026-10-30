@@ -38,7 +38,13 @@ const path = require('path');
   await pg.tap('#eVM'); await pg.waitForTimeout(300); await pg.$eval('[data-qi="AHG100"]', e => e.scrollIntoView({ block: 'center' })); await pg.waitForTimeout(200); await pg.tap('[data-qi="AHG100"]'); await pg.waitForTimeout(500);
   const kb = await pg.evaluate(() => ({ kb: document.body.classList.contains('kb'), nav: getComputedStyle(document.getElementById('nav')).display, sticky: (document.querySelector('.sticky') ? getComputedStyle(document.querySelector('.sticky')).display : 'none') })); log('typing:', JSON.stringify(kb));
   if (!kb.kb || kb.nav !== 'none' || kb.sticky !== 'none') errs.push('bottom nav and sticky bar should hide while typing');
+  /* v0.8.128: 키보드 모드로 메뉴가 숨은 동안 resize 가 와도 --navh 는 0 으로 바뀌지 않아야 (키보드가 내려간 뒤 고정 바가 메뉴를 덮는 원인) */
+  const nh0 = await pg.evaluate(() => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navh')) || 0);
+  await pg.evaluate(() => window.dispatchEvent(new Event('resize'))); await pg.waitForTimeout(200);
+  const nh1 = await pg.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--navh').trim()); log('--navh while typing:', nh0, '→', nh1); if (nh1 === '0px' || parseInt(nh1) < 40) errs.push('--navh must keep its value while the nav is hidden for typing, got ' + nh1);
   await pg.evaluate(() => document.activeElement.blur()); await pg.waitForTimeout(400); const kb2 = await pg.evaluate(() => ({ kb: document.body.classList.contains('kb'), nav: getComputedStyle(document.getElementById('nav')).display })); log('after typing:', JSON.stringify(kb2)); if (kb2.kb || kb2.nav === 'none') errs.push('nav should come back after typing');
+  await pg.waitForTimeout(500); const nh2 = await pg.evaluate(() => ({ navh: parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navh')) || 0, nav: document.getElementById('nav').offsetHeight, over: window.scrollY > Math.max(0, document.documentElement.scrollHeight - window.innerHeight) + 1 })); log('after keyboard:', JSON.stringify(nh2));
+  if (nh2.navh < 40 || nh2.navh > 140 || Math.abs(nh2.navh - nh2.nav) > 2) errs.push('--navh should equal the real nav height after the keyboard closes'); if (nh2.over) errs.push('page must not stay over-scrolled after the keyboard closes');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();

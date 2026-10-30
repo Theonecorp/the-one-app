@@ -100,8 +100,23 @@ try { new MutationObserver(() => { clearTimeout(WRAP_T); WRAP_T = setTimeout(wra
 const typing = t => t && ((t.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file|date|color|range)$/.test(t.type)) || t.tagName === 'TEXTAREA' || t.isContentEditable);
 let KB_T = null;
 if (BROWSER) document.addEventListener('focusin', e => { if (!typing(e.target) || !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) return; clearTimeout(KB_T); document.body.classList.add('kb'); const t = e.target; if (t.closest('header, nav, .ehead, .npad, .sticky')) return; setTimeout(() => { try { if (document.activeElement !== t) return; const r = t.getBoundingClientRect(), vh = window.visualViewport ? window.visualViewport.height : innerHeight, top = (document.querySelector('.ehead') || document.querySelector('header') || { getBoundingClientRect: () => ({ bottom: 0 }) }).getBoundingClientRect().bottom; if (r.bottom > vh - 8 || r.top < top) t.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {} }, 320); });   // 가려진 칸만 가운데로 (위에 고정된 검색 칸 · 창 안은 그대로)
-if (BROWSER) document.addEventListener('focusout', e => { if (!typing(e.target)) return; clearTimeout(KB_T); KB_T = setTimeout(() => { if (!typing(document.activeElement)) document.body.classList.remove('kb'); }, 120); });
-if (BROWSER && window.visualViewport) window.visualViewport.addEventListener('resize', () => { const vv = window.visualViewport; document.documentElement.style.setProperty('--vvh', Math.round(vv.height) + 'px'); });
+if (BROWSER) document.addEventListener('focusout', e => { if (!typing(e.target)) return; clearTimeout(KB_T); KB_T = setTimeout(() => { if (!typing(document.activeElement)) { document.body.classList.remove('kb'); setTimeout(unstick, 350); } }, 120); });
+/* 📱 키보드가 내려간 뒤 — 아이폰은 화면이 위로 밀린 채(아래가 비고, 아래 고정 바가 공중에 뜸) 다음 터치까지 그대로 남는 때가 있음
+ *   → 스크롤을 범위 안으로 되돌리고, 아래 메뉴 높이(--navh)를 다시 재게 resize 를 한 번 울림 */
+let KB_OPEN = false;
+export function unstick() {
+  try {
+    const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight), y = window.scrollY;
+    window.scrollTo(0, y > max ? max : y);
+    window.dispatchEvent(new Event('resize'));
+  } catch (e) {}
+}
+if (BROWSER && window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+  const vv = window.visualViewport; document.documentElement.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+  const open = vv.height < window.innerHeight * 0.8;   // 키보드(또는 큰 겹침)가 올라와 보이는 높이가 줄었음
+  if (KB_OPEN && !open) setTimeout(unstick, 60);
+  KB_OPEN = open;
+});
 
 /* ============================================================
  *  🔢 숫자 패드 — 폰 · 태블릿에서 수량 · 금액 칸을 누르면 키보드 대신 팝업 패드 (키보드가 화면 아래를 가리지 않게)
