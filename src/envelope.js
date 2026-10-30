@@ -23,18 +23,40 @@ const ago = e => { const n = daysBetween((e.sentAt || '').substring(0, 10), toda
 /* ---------- 세일즈맨: 📦 체크 보내기 ---------- */
 export async function paintSend(el, sm, myEntries) {
   if (!el) return;
-  const rows = (await myEntries(true)).filter(r => !r.void && !r.env && ck(r).length);
-  let envs = []; try { envs = (await S.DB.list('envelopes', { where: [['sm', '==', sm]] })).sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt))).slice(0, 12); } catch (e) {}
+  const all = (await myEntries(true)).filter(r => !r.void), rows = all.filter(r => !r.env && ck(r).length);
+  let envAll = []; try { envAll = (await S.DB.list('envelopes', { where: [['sm', '==', sm]] })).sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt))); } catch (e) {}
+  const envs = envAll.slice(0, 12);
+  /* 오래된 체크가 위 — 먼저 받은 것부터 보냄 */
   const checks = []; rows.forEach(r => ck(r).forEach(p => checks.push({ eid: r.id, ref: refOf(p), amt: R2(num(p.amt)), store: r.store, acct: r.acct || '', d: r.d })));
+  checks.sort((x, y) => String(x.d).localeCompare(String(y.d)) || String(x.store).localeCompare(String(y.store)));
   const tot = R2(sum(checks, c => c.amt));
+  /* 🔎 빠진 것 확인 — ① 7일 넘게 안 보낸 체크 ② 사무실이 "미도착" 표시한 체크(봉투에 없었음 → 다시 보내기 목록으로) ③ 📮 가는 중인데 오래된 봉투 ④ Daily Report 안 보낸 수금 */
+  const OLD = 7, old = checks.filter(c => daysBetween(c.d, today()) >= OLD);
+  const miss = []; envAll.forEach(e => Object.keys(e.miss || {}).forEach(k => { if ((e.got || {})[k]) return; const c = (e.checks || []).find(x => x.eid + '|' + x.ref === k); const r = c && all.find(x => x.id === c.eid); if (c && r && r.env === e.id) miss.push(Object.assign({ env: e.id }, c)); }));
+  const lateEnv = envAll.filter(e => e.st === 'sent' && isLate(e));
+  const noRep = all.filter(r => r.rep === false && !r.sb);
+  const probs = (old.length ? 1 : 0) + (miss.length ? 1 : 0) + (lateEnv.length ? 1 : 0) + (noRep.length ? 1 : 0);
+  const checkCard = '<div class="card" id="evChk" style="border:2px solid ' + (probs ? '#fcd34d' : '#bbf7d0') + '"><h2 style="font-size:15px">🔎 ' + bi('빠진 것 확인', 'Anything missing?') + ' ' + (probs ? '<span class="tag t-r">' + probs + '</span>' : '<span class="tag t-k">✅</span>') + '</h2>' +
+    (probs ? '' : '<div class="muted">' + bt('안 보낸 오래된 체크 · 미도착 체크 · 늦은 봉투 · 안 보낸 Daily Report 가 없습니다', 'No old unsent checks, missing checks, late envelopes or unsent daily reports') + '</div>') +
+    (old.length ? '<div class="pr"><div class="ct"><b>⚠️ ' + bt(OLD + '일 넘게 안 보낸 체크', 'Checks unsent for ' + OLD + '+ days') + ' ' + old.length + bt('장', '') + '</b><small>' + money(sum(old, c => c.amt)) + ' · ' + bt('아래 목록에서 빨간 날짜', 'red dates in the list below') + '</small></div></div>' : '') +
+    (miss.length ? miss.map(c => '<div class="pr"><div class="ct"><b>⚠️ ' + bt('미도착', 'Not received') + ' · ' + esc(c.store) + ' #' + esc(c.ref) + '</b><small>' + esc(md(c.d)) + ' · ' + money(c.amt) + ' · ' + bt('봉투', 'envelope') + ' ' + esc(c.env) + ' — ' + bt('사무실이 봉투에서 못 찾았습니다', 'the office did not find it in the envelope') + '</small></div><div class="pa"><button class="b-ghost b-sm" data-remiss="' + esc(c.eid) + '">↩ ' + bt('다시 보내기 목록에', 'Send again') + '</button></div></div>').join('') : '') +
+    (lateEnv.length ? lateEnv.map(e => '<div class="pr"><div class="ct"><b>📮 ' + esc(e.id) + ' ' + bt('아직 도착 안 함', 'not arrived yet') + '</b><small>' + esc(String(e.sentAt || '').substring(0, 10)) + ' · ' + (e.n || 0) + bt('장', '') + ' · ' + money(e.total) + ' · ' + ago(e) + (e.trk ? ' · ' + esc(e.trk) : '') + ' — ' + bt('우편을 확인해 주세요', 'please check the mail') + '</small></div></div>').join('') : '') +
+    (noRep.length ? '<div class="pr tap" id="evNoRep"><div class="ct"><b>📧 ' + bt('Daily Report 안 보낸 수금', 'Payments not in a daily report') + ' ' + noRep.length + bt('건', '') + '</b><small>' + money(sum(noRep, r => r.total)) + ' · ' + bt('오늘 내역에서 전송', 'send from Today') + ' ›</small></div></div>' : '') + '</div>';
   el.innerHTML = '<div class="card" style="border:2px solid #bfdbfe"><h2>📦 ' + bi('체크 보내기', 'Send checks') + ' <span class="muted" style="font-weight:400;font-size:12px">' + bt('모아 둔 체크를 회사로 보낼 때', 'when you mail your checks') + '</span></h2>' +
     '<div class="muted">' + bt('아직 안 보낸 체크입니다. 봉투에 넣을 것을 체크하고 <b>보내기</b>를 누르면 봉투 번호가 생기고 <b>발송 목록</b>이 나옵니다 — 인쇄해서 체크와 같이 넣으세요. 회계 담당이 그 목록대로 도착을 맞춥니다.', 'Checks not yet mailed. Tick the ones going in the envelope and tap <b>Send</b> — you get an envelope number and a <b>packing list</b> to print and enclose. Accounting matches arrivals against it.') + '</div>' +
     (checks.length ? '<div class="muted" style="margin:8px 0 4px;display:flex;justify-content:space-between"><span><label class="tap"><input type="checkbox" id="evAll" checked> ' + bt('모두', 'All') + '</label></span><span id="evSum"></span></div>' +
-      checks.map((c, i) => '<label class="pr" style="cursor:pointer"><input type="checkbox" class="evck" data-i="' + i + '" checked style="width:20px;height:20px;margin-right:8px"><div class="ct"><b>' + esc(c.store) + '</b><small>' + esc(md(c.d)) + ' · ' + bt('체크', 'Check') + ' #' + esc(c.ref) + '</small></div><div class="pa"><b>' + money(c.amt) + '</b></div></label>').join('') +
+      checks.map((c, i) => { const age = daysBetween(c.d, today()); return '<label class="pr" style="cursor:pointer"><input type="checkbox" class="evck" data-i="' + i + '" checked style="width:20px;height:20px;margin-right:8px"><div class="ct"><b>' + esc(c.store) + '</b><small>' + (age >= OLD ? '<span class="warn" style="font-weight:800">' + esc(md(c.d)) + ' · ' + age + bt('일', 'd') + '</span>' : esc(md(c.d))) + ' · ' + bt('체크', 'Check') + ' #' + esc(c.ref) + '</small></div><div class="pa"><b>' + money(c.amt) + '</b></div></label>'; }).join('') +
       '<div class="fg" style="margin-top:8px"><label>' + bi('추적 번호 · 메모 (선택)', 'Tracking # · note (optional)') + '</label><input id="evTrk" placeholder="USPS 9400… · FedEx"></div>' +
       '<button class="b-blue" id="evGo" style="margin-top:8px;padding:14px">📦 ' + bt('보내기', 'Send') + '</button>'
       : '<div class="none">' + bt('보낼 체크가 없습니다 — 수금 입력의 체크는 모두 봉투로 묶였습니다', 'No checks waiting — every entered check is already in an envelope') + '</div>') + '</div>' +
+    checkCard +
     '<div class="card"><h2 style="font-size:15px">📬 ' + bi('보낸 봉투', 'Sent envelopes') + '</h2>' + (envs.length ? envs.map(e => envRow(e, true)).join('') : '<div class="none">' + bt('아직 없음', 'None yet') + '</div>') + '</div>';
+  if ($('evNoRep')) $('evNoRep').onclick = () => { location.hash = '#/mine'; };
+  el.querySelectorAll('[data-remiss]').forEach(b => b.onclick = async () => {
+    const r = all.find(x => x.id === b.dataset.remiss); if (!r) return;
+    if (!(await confirmBox(bt(r.store + ' 의 체크를 다시 보내기 목록에 올릴까요? (봉투 ' + r.env + ' 기록은 남고, 다음 봉투에 넣을 수 있습니다)', 'Put this check back on the send list?'), '↩ ' + bt('다시 보내기', 'Send again')))) return;
+    busy(true); try { await S.DB.update('entries', r.id, { env: '', envRe: r.env, envMiss: false, updatedAt: new Date().toISOString() }); toast('↩ ' + bt('다시 보내기 목록에 올렸습니다', 'Back on the send list'), 'good'); paintSend(el, sm, myEntries); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false);
+  });
   const picked = () => Array.from(el.querySelectorAll('.evck:checked')).map(x => checks[Number(x.dataset.i)]);
   const sumUp = () => { const P = picked(); const s = $('evSum'); if (s) s.innerHTML = '<b>' + P.length + bt('장', '') + ' · ' + money(sum(P, c => c.amt)) + '</b>'; const g = $('evGo'); if (g) g.textContent = '📦 ' + bt('보내기', 'Send') + ' — ' + P.length + bt('장', '') + ' · ' + money(sum(P, c => c.amt)); };
   el.querySelectorAll('.evck').forEach(c => c.onchange = sumUp); if ($('evAll')) $('evAll').onchange = () => { el.querySelectorAll('.evck').forEach(c => { c.checked = $('evAll').checked; }); sumUp(); }; sumUp();

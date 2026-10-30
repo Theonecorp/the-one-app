@@ -52,7 +52,7 @@ const path = require('path'), fs = require('fs');
   await pg.click('#rpBox summary'); await pg.waitForSelector('[data-rsend]'); log('reports:', (await pg.textContent('#rpList')).replace(/\s+/g, ' ').slice(0, 140)); await shot('c4b_reports');
   await pg.click('[data-rsend]'); await pg.waitForTimeout(700);
   const mails = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.reports).map(r => r.mail)); log('mail after resend:', mails); if (!mails.includes('wait')) errs.push('resend did not set wait');
-  await pg.click('#pPrev'); await pg.waitForTimeout(500); log('period report:', !!(await pg.$('#prt')), ((await pg.textContent('#prtbody')) || '').replace(/\s+/g, ' ').slice(0, 100)); if (await pg.$('#prtX')) await pg.click('#prtX'); else await pg.evaluate(() => { const p = document.getElementById('prt'); if (p) p.remove(); });
+  if (await pg.$('#pPrev')) errs.push('v0.8.131: period report card should be gone from 기록 (📦 체크 보내기 covers it)');   // 기간 리포트는 화면에서 뺌
   /* 4. 미수금 */
   await pg.click('[data-ct="ar"]'); await pg.waitForSelector('.arbk'); await shot('c5_ar');
   log('AR hero:', (await pg.textContent('.hero')).trim(), '|', (await pg.textContent('.heroSub')).replace(/\s+/g, ' ').trim(), '| stores', await pg.$$eval('[data-ars]', e => e.length));

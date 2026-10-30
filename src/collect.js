@@ -491,11 +491,10 @@ async function paintHist() {
     '<div class="hint">예) <b>4001</b> (계정코드) · <b>ali fl</b> (가게 이름) · <b>10432</b> (체크번호). 가게 이름은 <b>일부만 쳐도</b> 됩니다. 그 가게의 수금 · COD · ACH · 카드 기록이 모두 나오고, 합계 · 마지막 수금일이 위에 표시됩니다.<br><span class="en">e.g. account #, store name words, or check #</span></div>' +
     '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600"><input type="checkbox" id="hOther" style="width:20px;height:20px" checked> COD · ACH · 카드도 같이 <span class="en">incl. COD / ACH / card</span></label></div>' +
     '<div id="hSum"></div><div id="hList"></div>' +
-    '<div class="card"><details id="rpBox"><summary><label style="display:inline">📧 보낸 Daily Report <span class="en">Sent daily reports</span></label> <span class="muted">— 최근 10일 · 메일이 안 갔으면 다시 보내기</span></summary><div id="rpList" style="margin-top:8px"></div></details></div>' +
-    '<div class="card"><label>🧾 기간 리포트 <span class="en">Period report</span> <span style="font-weight:400">(회사에 체크 · 캐쉬 보낼 때)</span></label><div class="two"><div class="fg"><label>시작 From</label><input id="pFrom" type="date" value="' + from + '"></div><div class="fg"><label>끝 To</label><input id="pTo" type="date" value="' + today() + '"></div></div>' +
-    '<button type="button" class="b-ghost" id="pPrev">🖨 미리보기 · Preview / Print</button><button type="button" class="b-ghost" id="pMail" style="margin-top:8px">📧 이메일로 보내기 · Email</button><div class="hint" style="margin-top:8px">받은 날짜 기준입니다. 날짜별 소계와 CHECK · CASH · ZELLE 합계, 서명란이 들어갑니다.<br><span class="en">By received date — daily subtotals, totals by type, and signature lines.</span></div></div>';
+    '<div class="card"><details id="rpBox"><summary><label style="display:inline">📧 보낸 Daily Report <span class="en">Sent daily reports</span></label> <span class="muted">— 최근 10일 · 메일이 안 갔으면 다시 보내기</span></summary><div id="rpList" style="margin-top:8px"></div></details></div>';
+  /* 🧾 기간 리포트(회사에 체크 보낼 때 인쇄)는 📦 체크 보내기의 발송 목록과 같은 일이라 화면에서 뺌 — periodReport() 는 코드로만 (v0.8.131) */
+  void from;
   $('hGo').onclick = histSearch; $('hQ').onkeydown = e => { if (e.key === 'Enter') histSearch(); }; $('hOther').onchange = () => { if ($('hQ').value.trim()) histSearch(); };
-  $('pPrev').onclick = () => periodReport(false); $('pMail').onclick = () => periodReport(true);
   $('rpBox').ontoggle = () => { if ($('rpBox').open) sentReports(); };
   if (HQ) histSearch();
 }
@@ -563,7 +562,8 @@ async function histSearch() {
     '<div class="meta"><span class="kv2"><b>받은 날 Rcvd</b> ' + esc(x.d) + '</span>' + (x.src === 'FIELD' ? (x.pays || []).map(p => '<span class="kv2"><b>' + esc(p.m) + '</b>' + (p.ref ? ' #' + esc(p.ref) : '') + ' ' + money(p.amt) + (p.mob ? ' 📱' : '') + (p.repl ? ' 🔁' : '') + '</span>').join('') : '<span class="kv2"><b>' + esc(x.method || '') + '</b>' + (x.ref ? ' ' + esc(x.ref) : '') + '</span>') +
     ((x.invs || []).length ? '<br>📄 ' + x.invs.map(v => esc(v.no) + ' ' + money(v.amt)).join(' · ') : '') + '<br><span class="kv2">👤 ' + esc(x.sm) + '</span><span class="kv2">' + (x.src === 'FIELD' ? (x.rep ? '리포트 전송됨 Sent' : '전송 대기 Pending') + ' · ' + esc(stageText(x)) : (x.v ? '확인됨' : '입력됨')) + '</span></div></div>'; }).join('');
 }
-async function periodReport(mail) {
+/* (화면에서 뺌 — 필요하면 periodReport(false) 로 인쇄 · periodReport(true) 로 메일) */
+export async function periodReport(mail) {
   const f = $('pFrom').value, t = $('pTo').value; if (!f || !t) return toast('기간을 선택하세요. · Choose a date range.', 'bad');
   const rows = sortBy((await allMine()).filter(e => !e.void && e.d >= f && e.d <= t), e => e.d + (e.createdAt || ''));
   if (!rows.length) return toast('그 기간에 기록이 없습니다. · No records in that range.', 'bad');
