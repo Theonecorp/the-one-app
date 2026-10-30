@@ -27,6 +27,12 @@ export function notesHtml(L, opt) {
     return '<div class="note' + (n.pin ? ' npin' : '') + (n.kind === 'warn' ? ' nwarn' : '') + '"><div class="nt">' + (n.pin ? '📌 ' : '') + k[1] + ' <b>' + esc(n.text).replace(/\n/g, '<br>') + '</b></div><div class="nm">' + esc(k[2]) + ' · ' + esc(n.byName || String(n.by || '').split('@')[0]) + (n.sm ? ' (' + esc(n.sm) + ')' : '') + ' · ' + esc(String(n.at || '').substring(0, 10)) + (n.editAt ? ' ✎' : '') +
       (opt.edit && (mine(n) || isStaff()) ? ' <a href="#" data-ne="' + esc(n.id) + '">' + bt('고치기', 'Edit') + '</a>' : '') + '</div></div>'; }).join('');
 }
+/** 노트 바로 남기기 (창 없이) — ✏️ 정보 수정 요청 같은 기록 */
+export async function addNote(acct, text, kind) {
+  const a = S.accounts.byCode ? S.accounts.byCode[acct] : null, id = 'N' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  await S.DB.set('acctNotes', id, { acct, store: a ? a.store : '', text, kind: kind || 'etc', pin: false, by: S.user.email.toLowerCase(), byName: S.user.name || S.user.email.split('@')[0], sm: (S.me && S.me.sm) || '', at: new Date().toISOString() });
+  delete CACHE[acct];
+}
 /** 노트 남기기 · 고치기 창 — done(list) 는 저장 뒤 새 목록으로 */
 export function noteForm(acct, n, done) {
   const a = S.accounts.byCode ? S.accounts.byCode[acct] : null;

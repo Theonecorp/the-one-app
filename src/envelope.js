@@ -82,7 +82,25 @@ export async function envCard(el, onChange) {
 }
 async function envModal(e, after) {
   if (!e) return;
-  openModal('<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>', { wide: true });
+  /* ✓ 를 눌러도 저장 · 다시 읽기를 하지 않음 — 이 창 안에서만 표시해 두고, 💾 완료(또는 창 닫기) 때 한 번에 저장 → 수금 확인 화면을 한 번만 다시 그림 */
+  let dirty = new Set(), envDirty = false, saving = false, changed = false;
+  const commit = async (patch) => {
+    if (saving) return false; saving = true; busy(true);
+    try {
+      const now = new Date().toISOString();
+      for (const eid of dirty) {
+        const r = byE[eid]; if (!r) continue;
+        const allIn = (e.checks || []).filter(c => c.eid === eid).every(c => got[c.eid + '|' + c.ref]), ms = (e.checks || []).some(c => c.eid === eid && miss[c.eid + '|' + c.ref]);
+        const p = { rc: allIn, rcAt: allIn ? (r.rcAt || today()) : '', rcEnv: e.id, updatedAt: now }; if (ms) p.envMiss = true;
+        if (allIn && !r.sb) { p.sb = true; p.sbAt = today(); const { applyToInvoices } = await import('./mgr.js'); try { await applyToInvoices(r.id, r.invs, true); } catch (x) {} r.sb = true; }
+        await S.DB.update('entries', r.id, p); r.rc = allIn;
+      }
+      await S.DB.update('envelopes', e.id, Object.assign({ got, miss }, patch || {}));
+      const n = dirty.size; dirty = new Set(); envDirty = false; changed = true; busy(false); saving = false; return n || true;
+    } catch (x) { busy(false); saving = false; toast(bt('실패', 'Failed') + ': ' + (x.code || x.message), 'bad'); return false; }
+  };
+  const leave = async () => { if (dirty.size || envDirty) { const n = await commit(); if (n === false) return; toast('💾 ' + bt('저장했습니다', 'Saved') + (typeof n === 'number' && n ? ' · ' + n + bt('건', '') : ''), 'good'); } if (changed) after(); };   // 바뀐 게 없으면 다시 읽지 않음
+  openModal('<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>', { wide: true, onClose: () => { leave(); } });
   const fresh = (await S.DB.get('envelopes', e.id)) || e; e = fresh;
   let ents = []; try { ents = await S.DB.list('entries', { where: [['env', '==', e.id]] }); } catch (x) {}
   const byE = {}; ents.forEach(r => { byE[r.id] = r; });
@@ -90,7 +108,8 @@ async function envModal(e, after) {
   let reps = []; try { reps = (await S.DB.list('reports', { where: [['sm', '==', e.sm]] })).filter(r => (r.entries || []).some(id => (e.entries || []).includes(id)) && (r.photos || []).length); } catch (x) {}
   const photosOf = eid => reps.filter(r => (r.entries || []).includes(eid)).flatMap(r => r.photos || []);
   const got = e.got || {}, miss = e.miss || {};
-  const paint = () => {
+  const paint = (focus) => {
+    const box = $('mbox'), y = box.scrollTop;
     const n = (e.checks || []).length, k = Object.keys(got).length, tot = R2(sum((e.checks || []).filter(c => got[c.eid + '|' + c.ref]), c => c.amt));
     $('mbox').innerHTML = '<h2>📦 ' + esc(e.id) + ' <span class="muted" style="font-weight:600">🧑‍💼 ' + esc(e.sm) + ' · ' + esc(String(e.sentAt || '').substring(0, 10)) + '</span></h2>' +
       '<div class="kpi" style="margin:6px 0"><div><b>' + k + ' / ' + n + '</b><span>' + bt('도착한 체크', 'Checks arrived') + '</span></div><div><b>' + money(tot) + '</b><span>/ ' + money(e.total) + '</span></div></div>' +
@@ -99,20 +118,16 @@ async function envModal(e, after) {
         return '<div class="pr' + (ok ? ' v' : ms ? ' bad' : '') + '"><div class="mk">' + (ok ? '✓' : ms ? '⚠️' : '·') + '</div><div class="ct"><b>#' + esc(c.ref) + ' · ' + money(c.amt) + '</b><small>' + esc(c.store) + ' · ' + esc(md(c.d)) + (ok ? ' · ' + bt('도착', 'arrived') + ' ' + esc(String(got[key]).substring(5, 10)) : ms ? ' · <span class="warn">' + bt('미도착 표시', 'marked missing') + '</span>' : '') + '</small>' +
           (ph.length ? '<div class="phs">' + ph.slice(0, 4).map((p, i) => '<img src="' + esc(p) + '" data-big="' + c.eid + ':' + i + '" alt="">').join('') + '</div>' : '') + '</div>' +
           '<div class="pa" style="display:flex;gap:4px">' + (ok ? '<button class="b-ghost b-sm" data-un="' + esc(key) + '">↩</button>' : '<button class="b-green b-sm" data-ok="' + esc(key) + '">✓</button><button class="b-ghost b-sm" data-ms="' + esc(key) + '" title="' + esc(bt('미도착', 'missing')) + '">⚠️</button>') + '</div></div>'; }).join('') +
-      '<div class="btns" style="margin-top:8px"><button class="b-ghost" id="evPrint">🖨</button>' + (k === n ? '<button class="b-green" id="evDone">✅ ' + bt('봉투 완료', 'Envelope done') + '</button>' : (k ? '<button class="b-ghost" id="evDone">' + bt('빠진 것 미도착으로 두고 완료', 'Done — rest missing') + '</button>' : '')) + '<button class="b-ghost" id="evX">' + bt('닫기', 'Close') + '</button></div>';
-    $('evX').onclick = () => { closeModal(); after(); }; $('evPrint').onclick = () => printList(e);
-    const save = async (patch) => { await S.DB.update('envelopes', e.id, Object.assign({ got, miss }, patch || {})); };
-    const mark = async (key, on) => {
-      const [eid] = key.split('|'), r = byE[eid]; const now = new Date().toISOString();
-      busy(true);
-      try {
-        if (on) { got[key] = now; delete miss[key]; } else delete got[key];
-        /* 이 수금의 체크가 모두 도착했으면 ② 체크 수령 (기존 rc), 하나라도 빠지면 되돌림 */
-        const allIn = (e.checks || []).filter(c => c.eid === eid).every(c => got[c.eid + '|' + c.ref]);
-        if (r) { const patch = { rc: allIn, rcAt: allIn ? today() : '', rcEnv: e.id, updatedAt: now }; if (allIn && !r.sb) { patch.sb = true; patch.sbAt = today(); const { applyToInvoices } = await import('./mgr.js'); try { await applyToInvoices(r.id, r.invs, true); } catch (x) {} r.sb = true; } await S.DB.update('entries', r.id, patch); r.rc = allIn; }
-        await save();
-      } catch (x) { toast(bt('실패', 'Failed') + ': ' + (x.code || x.message), 'bad'); }
-      busy(false); paint();
+      '<div class="btns" style="margin-top:8px"><button class="b-ghost" id="evPrint">🖨</button>' + (k === n ? '<button class="b-green" id="evDone">✅ ' + bt('봉투 완료', 'Envelope done') + '</button>' : (k ? '<button class="b-ghost" id="evDone">' + bt('빠진 것 미도착으로 두고 완료', 'Done — rest missing') + '</button>' : '')) + '<button class="b-ghost" id="evX">' + bt('닫기', 'Close') + '</button></div>' +
+      (dirty.size || envDirty ? '<div class="savebar" id="evBar"><span>✓ ' + bt('표시만 해 둔 것', 'Marked, not saved') + ' <b>' + dirty.size + '</b>' + bt('건', '') + '</span><button class="b-green" id="evSave">💾 ' + bt('완료 · 저장', 'Done · Save') + '</button></div>' : '');
+    box.scrollTop = y;   // 다시 그려도 보던 자리 그대로
+    $('evX').onclick = () => closeModal(); $('evPrint').onclick = () => printList(e);
+    if ($('evSave')) $('evSave').onclick = async () => { const r = await commit(); if (r === false) return; toast('💾 ' + bt('저장했습니다', 'Saved') + (typeof r === 'number' && r ? ' · ' + r + bt('건', '') : ''), 'good'); paint(); };
+    /* 체크 ✓ · ↩ · ⚠️ — 화면에만 표시 (저장은 💾 완료 때) */
+    const mark = (key, on) => {
+      const [eid] = key.split('|');
+      if (on) { got[key] = new Date().toISOString(); delete miss[key]; } else delete got[key];
+      dirty.add(eid); envDirty = true; paint(false);
     };
     const find = () => {
       const no = $('evNo').value.trim().replace(/^#/, ''); if (!no) return;
@@ -120,21 +135,20 @@ async function envModal(e, after) {
       if (!hits.length) { $('evMsg').innerHTML = '<span class="warn">⚠️ #' + esc(no) + ' ' + bt('— 이 봉투의 목록에 없는 체크입니다. 발송 목록을 확인하거나 💳 COD·카드에 우편 체크로 넣으세요.', '— not on this envelope\'s list. Check the packing list or enter it under COD · Card.') + '</span>'; try { navigator.vibrate && navigator.vibrate([80, 60, 80]); } catch (x) {} return; }
       const open = hits.filter(c => !got[c.eid + '|' + c.ref]);
       if (!open.length) { $('evMsg').textContent = '#' + no + ' ' + bt('은 이미 도착 처리됐습니다', 'already marked arrived'); return; }
-      mark(open[0].eid + '|' + open[0].ref, true);
+      mark(open[0].eid + '|' + open[0].ref, true); $('evMsg').textContent = '✓ #' + no; setTimeout(() => $('evNo') && $('evNo').focus({ preventScroll: true }), 30);
     };
     $('evNo').onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); find(); } }; $('evFind').onclick = find;
-    setTimeout(() => $('evNo') && $('evNo').focus(), 50);
+    if (focus !== false) setTimeout(() => $('evNo') && $('evNo').focus({ preventScroll: true }), 50);
     $('mbox').querySelectorAll('[data-ok]').forEach(b => b.onclick = () => mark(b.dataset.ok, true));
     $('mbox').querySelectorAll('[data-un]').forEach(b => b.onclick = () => mark(b.dataset.un, false));
-    $('mbox').querySelectorAll('[data-ms]').forEach(b => b.onclick = async () => { miss[b.dataset.ms] = true; const [eid] = b.dataset.ms.split('|'); try { await save(); await S.DB.update('entries', eid, { envMiss: true, updatedAt: new Date().toISOString() }); } catch (x) {} paint(); });
+    $('mbox').querySelectorAll('[data-ms]').forEach(b => b.onclick = () => { miss[b.dataset.ms] = true; dirty.add(b.dataset.ms.split('|')[0]); envDirty = true; paint(false); });
     $('mbox').querySelectorAll('[data-big]').forEach(im => im.onclick = () => { const w = window.open('', '_blank'); if (w) { w.document.write('<img src="' + im.src + '" style="max-width:100%">'); w.document.close(); } });
     if ($('evDone')) $('evDone').onclick = async () => {
       const left = (e.checks || []).filter(c => !got[c.eid + '|' + c.ref]);
       if (left.length && !(await confirmBox(bt(left.length + '장이 아직 안 왔습니다. 미도착으로 표시하고 봉투를 닫을까요? (나중에 오면 수금 확인에서 체크 번호로 맞출 수 있습니다)', left.length + ' checks have not arrived. Mark them missing and close the envelope?'), bt('완료', 'Done')))) return;
-      busy(true);
-      try { for (const c of left) { miss[c.eid + '|' + c.ref] = true; try { await S.DB.update('entries', c.eid, { envMiss: true, updatedAt: new Date().toISOString() }); } catch (x) {} } await save({ st: 'done', doneAt: new Date().toISOString(), doneBy: S.user.email }); toast('✅ ' + bt('봉투 완료', 'Envelope done') + (left.length ? ' · ⚠️ ' + left.length + bt('장 미도착', ' missing') : ''), 'good'); closeModal(); after(); }
-      catch (x) { toast(bt('실패', 'Failed') + ': ' + (x.code || x.message), 'bad'); }
-      busy(false);
+      left.forEach(c => { miss[c.eid + '|' + c.ref] = true; dirty.add(c.eid); });
+      const r = await commit({ st: 'done', doneAt: new Date().toISOString(), doneBy: S.user.email }); if (r === false) return;
+      toast('✅ ' + bt('봉투 완료', 'Envelope done') + (left.length ? ' · ⚠️ ' + left.length + bt('장 미도착', ' missing') : ''), 'good'); closeModal();
     };
   };
   paint();
