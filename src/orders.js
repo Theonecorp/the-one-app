@@ -556,8 +556,10 @@ function paintEditor() {
   const t = totals();
   const acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
   /* 위 고정 (SBMGo 처럼) — 가게 한 줄 · 주문 / 주문 확인 / 메모 · (담기 화면이면) 검색 + 분류 경로. 아래 내용만 움직임 */
-  let h = '<div class="ehead" id="eHead"><div class="etop"><div class="erow">';
-  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.city, acc.state].filter(Boolean).join(', ') : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small><small id="eStoreHist"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="' + esc(bt('이 가게 기록 — 인보이스 · 주문 · 수금 · 노트', 'Store history — invoices · orders · payments · notes')) + '">📋 ' + bt('기록', 'History') + '</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + bi('바꾸기', 'Change') + '</button></div>';
+  /* 🛒 아이템 담는 동안은 가게 칸을 한 줄로 접음(이름 · 코드 · 미수금 · 📋 · 바꾸기) — 위 고정 칸이 낮아져 목록이 더 보임. 주문 확인 · 메모에서는 펼침 */
+  const slim = O.view === 'add' && !!O.store;
+  let h = '<div class="ehead' + (slim ? ' slim' : '') + '" id="eHead"><div class="etop"><div class="erow">';
+  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + (slim ? '' : ' · ' + [acc.city, acc.state].filter(Boolean).join(', ')) : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small><small id="eStoreHist"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="' + esc(bt('이 가게 기록 — 인보이스 · 주문 · 수금 · 노트', 'Store history — invoices · orders · payments · notes')) + '">📋' + (slim ? '' : ' ' + bt('기록', 'History')) + '</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + (slim ? '🔁' : bi('바꾸기', 'Change')) + '</button></div>';
   else h += '<div style="flex:1;min-width:0;position:relative"><input id="eStoreQ" placeholder="🏬 가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div></div>';
   h += '</div><div class="etabs"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + (O.memo ? ' •' : '') + '</button></div></div><div id="eTop"></div></div>';
   /* 고정 칸 밖: 수정 중 표시 · 메모 · 고정 노트 · (담당자) 세일즈맨 */
@@ -719,6 +721,8 @@ function paintAdd() {
   const sb = $('eQuick'); if (sb) { sb.innerHTML = quickBar(); bindQuick(sb); }
   const q = $('eQ1');
   const run = () => { if (!O || !$('eQ1')) return; O.q = q.value; PAGE = 60; paintResults(); };
+  const cats = $('eBody').querySelector('.cats'); const showCats = () => { if (cats) cats.style.display = q.value.trim() ? 'none' : ''; };   // 검색어가 있으면 분류 타일은 숨김 — 결과가 바로 위에
+  showCats(); q.addEventListener('input', showCats);
   q.oninput = debounce(run, 160);
   q.onkeydown = e => {
     if (e.key !== 'Enter') return;

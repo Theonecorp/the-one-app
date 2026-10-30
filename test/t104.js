@@ -23,7 +23,13 @@ const path = require('path');
   if (await pg.$('#modal.on')) { await pg.tap('#modal .mclose'); await pg.waitForTimeout(300); }
   const md = n => { const x = new Date(); x.setDate(x.getDate() - n); return String(x.getMonth() + 1).padStart(2, '0') + '/' + String(x.getDate()).padStart(2, '0'); };
   const want = md(2) + '(12) · ' + md(10) + '(6) · ' + md(44) + '(3)';
+  /* v0.8.132: 담는 동안 가게 칸은 한 줄 · 검색어가 있으면 분류 타일 숨김 */
+  const h0 = await pg.evaluate(() => ({ slim: document.getElementById('eHead').classList.contains('slim'), store: Math.round(document.querySelector('.estore').getBoundingClientRect().height), cats: getComputedStyle(document.querySelector('.ecard .cats')).display }));
+  log('head before search:', JSON.stringify(h0)); if (!h0.slim || h0.store > 48) errs.push('store card should be one slim line while adding items (' + h0.store + 'px)'); if (h0.cats === 'none') errs.push('category tiles should show when not searching');
   /* 카드 보기 — 배지 */
+  await pg.fill('#eQ1', 'AHG10'); await pg.waitForTimeout(600);
+  const h1 = await pg.evaluate(() => getComputedStyle(document.querySelector('.ecard .cats')).display); log('cats while searching:', h1); if (h1 !== 'none') errs.push('category tiles should hide while a search term is typed');
+  await pg.fill('#eQ1', ''); await pg.waitForTimeout(400); if ((await pg.evaluate(() => getComputedStyle(document.querySelector('.ecard .cats')).display)) === 'none') errs.push('tiles should come back when the search is cleared');
   await pg.fill('#eQ1', 'AHG10'); await pg.waitForTimeout(600);
   const badge = await pg.$eval('[data-gc="AHG100"] .ghist', e => [e.textContent, e.title]).catch(() => null); log('card badge:', badge, 'want', md(2) + '·12 +2');
   if (!badge || badge[0] !== '🕘 ' + md(2) + '·12 +2') errs.push('card badge should be last date·qty +2');
