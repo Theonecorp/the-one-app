@@ -6,7 +6,7 @@
  *    📈 회사 매출(월별 숫자 입력: TOTAL SALES · 품목 · 세일즈맨 · 주 · 현금 흐름)
  *  자료: factories · factoryInvoices · factoryPayments · pay1099 · payees · bonusAcc · bonusDist · bonusSplit/main · sales/{year}
  * ============================================================ */
-import { $, esc, money, k, num, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, pct } from './ui.js';
+import { $, esc, money, k, num, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, pct, itabs } from './ui.js';
 import { newId } from './db.js';
 import { salesMonth, rebuildSalesM, invTypes } from './invoicing.js';
 
@@ -30,7 +30,7 @@ async function page() {
   $('page').innerHTML = '<div class="load">경영 자료 읽는 중…</div>';
   await load();
   const T = [['home', '요약'], ['fac', '🏭 공장'], ['bank', '🏦 은행'], ['p99', '🧾 1099'], ['bon', '🎁 보너스'], ['sales', '📈 매출']];
-  let h = '<div class="seg">' + T.map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-mt="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>';
+  let h = itabs(T.map(t => t[0] === 'home' ? ['home', '📋', '요약', 'Summary'] : [t[0], t[1], t[2] || '']), TAB, 'mt', 'stick');   // 🗂 아이콘 타일 (v0.8.136)
   if (TAB !== 'bon') h += '<div class="chips">' + years().map(y => '<button class="' + (y === YEAR ? 'on' : '') + '" data-my="' + y + '">' + y + '</button>').join('') + '</div>';
   h += '<div id="mgBody"></div>';
   $('page').innerHTML = h;

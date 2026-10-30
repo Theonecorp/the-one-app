@@ -1,7 +1,7 @@
 /* ============================================================
  *  관리 — 사용자 · 세일즈맨(요율) · 설정 · 옛 시트에서 가져오기
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt, invNo, bi } from './ui.js';
+import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt, invNo, bi, itabs } from './ui.js';
 import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
@@ -57,7 +57,7 @@ function bkLine() {
 }
 async function pageAdmin(arg) {
   if (arg) TAB = arg;
-  let h = '<div class="seg">' + [['users', '👤 사용자'], ['sms', '🧑‍💼 세일즈맨'], ['set', '⚙️ 설정'], ['cat', '📦 아이템'], ['tree', '🗂 분류'], ['imp', '📥 가져오기']].map(t => '<button class="' + (TAB === t[0] ? 'on' : '') + '" data-at="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div class="btns" style="justify-content:flex-start;margin:0 0 4px;flex-wrap:wrap"><button class="b-ghost b-sm" onclick="location.hash=\'#/stores\'">🏬 거래처 전체 보기 (세일즈맨 · 주 · 도시별)</button><button class="b-ghost b-sm" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 숨기기</button></div><div id="adminBody"><div class="load">읽는 중…</div></div>';
+  let h = itabs([['users', '👤', '사용자', 'Users'], ['sms', '🧑‍💼', '세일즈맨', 'Salesmen'], ['set', '⚙️', '설정', 'Settings'], ['cat', '📦', '아이템', 'Items'], ['tree', '🗂', '분류', 'Categories'], ['imp', '📥', '가져오기', 'Import']], TAB, 'at', 'stick') + '<div class="btns" style="justify-content:flex-start;margin:0 0 4px;flex-wrap:wrap"><button class="b-ghost b-sm" onclick="location.hash=\'#/stores\'">🏬 거래처 전체 보기 (세일즈맨 · 주 · 도시별)</button><button class="b-ghost b-sm" onclick="location.hash=\'#/items\'">🏷 아이템 전체 보기 · 숨기기</button></div><div id="adminBody"><div class="load">읽는 중…</div></div>';
   h = h.replace('<div class="btns"', bkLine() + '<div class="btns"');
   $('page').innerHTML = h;
   document.querySelectorAll('[data-at]').forEach(b => b.onclick = () => { TAB = b.dataset.at; pageAdmin(); });

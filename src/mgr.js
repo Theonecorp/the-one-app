@@ -2,7 +2,7 @@
  *  담당자(회계) 화면 — 수금 확인(① 접수 확인 · ② 체크 수령) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
  * ============================================================ */
 import { invTypes, getInvoice } from './invoicing.js';
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt, invNo, askOver } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt, invNo, askOver, itabs } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, dropAccountCache, activeOnly, sortStores } from './accounts.js';
 import { inactiveTool, reactivate, register as regInactive } from './inactive.js';
@@ -321,8 +321,10 @@ async function pageStores() {
       body = list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.state) + (STM.city ? ' · ' + esc(STM.city) : '') + ' · ' + list.length + '곳</div>' + list.slice(0, 400).map(row).join('') + (list.length > 400 ? '<div class="hint">400곳까지 표시 — 도시를 고르세요</div>' : '') : '<div class="none">없음</div>';
     } else body = '<div class="none">주(State)를 고르세요</div>';
   }
-  $('page').innerHTML = '<div class="card"><h2>🏬 ' + bi('거래처', 'Customers') + ' <span class="muted" style="font-size:12px;font-weight:400">' + A.length + '곳</span></h2>' +
-    '<div class="seg" style="flex-wrap:wrap">' + [['q', '🔎 ' + bi('검색', 'Search')], ['sm', '👤 ' + bi('세일즈맨별', 'By salesman')], ['geo', '🏙 ' + bi('주 · 도시별', 'By state · city')], ['map', '🗺 ' + bi('지도', 'Map')], ['z', '💤 ' + bi('비활성', 'Inactive') + ' ' + Z.length]].map(t => '<button class="' + (STM.mode === t[0] ? 'on' : '') + '" data-stm="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' + sub +
+  /* 🗂 보기 방식은 아이콘 타일로 · 화면 위에 고정 (v0.8.136) */
+  $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">🏬 ' + bi('거래처', 'Customers') + ' <span class="muted" style="font-size:12px;font-weight:400">' + A.length + '곳</span></h2></div>' +
+    itabs([['q', '🔎', '검색', 'Search'], ['sm', '👤', '세일즈맨별', 'By salesman'], ['geo', '🏙', '주 · 도시별', 'State · city'], ['map', '🗺', '지도', 'Map'], ['z', '💤', '비활성 ' + Z.length, 'Inactive']], STM.mode, 'stm', 'stick') +
+    '<div class="card">' + sub +
     (!isSales ? '<div class="btns" style="justify-content:flex-start;flex-wrap:wrap"><button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button>' + (canZ ? '<button class="b-ghost b-sm" id="stZ">💤 ' + bi('비활성 정리 (3년 거래 없음)', 'Clean up inactive (3 yrs)') + '</button>' : '') + '</div>' : '') + '</div>' +
     '<div class="card">' + body + '</div>';
   Router.refreshBack();

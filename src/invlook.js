@@ -4,7 +4,7 @@
  *    인보이스 번호 → 인보이스 한 장 (인보이스 · AR 잔액 · 수금)
  *    내 담당 가게는 바로, 다른 세일즈맨 가게는 🔐 관리자 허락을 받은 동안만 (access.js)
  * ============================================================ */
-import { $, esc, money, md, Router, debounce, bi, bt, sortInv, invParts, invNo } from './ui.js';
+import { $, esc, money, md, Router, debounce, bi, bt, sortInv, invParts, invNo, itabs } from './ui.js';
 import { searchAccounts, sortStores } from './accounts.js';
 import { storeSheet, invDetail } from './store.js';
 import { invByDigits } from './invoicing.js';
@@ -60,7 +60,7 @@ async function show() {
     h += (gr.length ? '<div class="card"><h2 style="font-size:15px">✅ ' + bi('허락받은 가게', 'Approved stores') + '</h2>' + gr.map(row).join('') + '</div>' : '') +
       '<div class="card"><h2 style="font-size:15px">🏬 ' + bi('내 가게', 'My stores') + ' <span class="muted" style="font-weight:400">' + mine.length + '</span></h2>' + (mine.length ? mine.slice(0, 400).map(row).join('') : '<div class="none">' + bt('담당 가게가 없습니다 — 세일즈맨 코드를 확인하세요', 'No stores — check your salesman code') + '</div>') + '</div>';
   }
-  out.innerHTML = (!q && !isStaff() ? '<div class="seg" style="margin:0 0 8px"><button class="' + (IVM === 'date' ? 'on' : '') + '" data-ivm="date">📅 ' + bi('최근 인보이스', 'Recent invoices') + '</button><button class="' + (IVM === 'store' ? 'on' : '') + '" data-ivm="store">🏬 ' + bi('가게별', 'By store') + '</button></div>' : '') + h;
+  out.innerHTML = (!q && !isStaff() ? itabs([['date', '📅', '최근 인보이스', 'Recent'], ['store', '🏬', '가게별', 'By store']], IVM, 'ivm') : '') + h;
   out.querySelectorAll('[data-ivm]').forEach(b => b.onclick = () => { IVM = b.dataset.ivm; show(); });
   if ($('ivSort')) $('ivSort').onclick = e => { e.preventDefault(); IDESC = !IDESC; show(); };
   out.querySelectorAll('[data-in]').forEach(el => el.onclick = () => invDetail(el.dataset.in, el.dataset.inacct));

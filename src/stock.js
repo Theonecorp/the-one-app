@@ -8,7 +8,7 @@
  *  stockLog/{id}   = { code, d, delta, after, kind: recv|adj|count|inv|void, ref, note, by, at }
  *  receipts/{id}   = { id, d, from, file, n, qty, lines:[{c, q, d}], note, by, at }   ← 입고 한 건
  * ============================================================ */
-import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy } from './ui.js';
+import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy, itabs } from './ui.js';
 import { loadCatalog, catalog, searchItems, exactItem, locOf } from './catalog.js';
 import { can } from './main.js';
 import { newId } from './db.js';
@@ -100,7 +100,7 @@ async function page(arg) {
   if (arg) ST.tab = arg;
   try { await loadCatalog(S); } catch (e) {}
   const T = [['find', '🔍', '조회', 'Find'], ['recv', '📥', '입고', 'Receive'], ['log', '📋', '기록', 'History'], ['low', '⚠️', '부족', 'Low']];
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📦 ' + bi('재고', 'Inventory') + '</h2><div class="seg" style="margin-top:8px">' + T.map(t => '<button class="' + (ST.tab === t[0] ? 'on' : '') + '" data-sk="' + t[0] + '">' + t[1] + ' ' + bi(t[2], t[3]) + '</button>').join('') + '</div></div><div id="skBody"></div>';
+  $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📦 ' + bi('재고', 'Inventory') + '</h2>' + itabs(T, ST.tab, 'sk') + '</div><div id="skBody"></div>';
   document.querySelectorAll('[data-sk]').forEach(b => b.onclick = () => { ST.tab = b.dataset.sk; page(); });
   if (ST.tab === 'recv') return paintRecv();
   if (ST.tab === 'log') return paintLog();

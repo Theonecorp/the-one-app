@@ -9,7 +9,7 @@
  *    미수금: 내 담당 AR (오래된 순 · 구간 · 💤 · ✅) → 가게 → 바로 수금 입력
  *  자료는 Firestore entries (기존 모양 그대로) + reports (Daily Report · 체크 사진)
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, debounce, invNo } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, debounce, invNo, itabs } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts } from './accounts.js';
 import { invType } from './comm.js';
@@ -58,8 +58,8 @@ async function hub(tab, arg) {
   fillBadges();
 }
 function tabBar() {
-  const t = [['new', '＋ 수금 입력', 'Entry'], ['today', '오늘 내역', 'Today', 'bTd'], ['send', '📦 체크 보내기', 'Send'], ['hist', '기록', 'History'], ['ar', '미수금', 'AR', 'bAr']];
-  return '<div class="ctabs">' + t.map(x => '<button class="' + (TAB === x[0] ? 'on' : '') + '" data-ct="' + x[0] + '">' + x[1] + ' <span class="en">' + x[2] + '</span>' + (x[3] ? '<span class="badge" id="' + x[3] + '" style="display:none">0</span>' : '') + '</button>').join('') + '</div>';
+  const t = [['new', '✍️', '수금 입력', 'Entry'], ['today', '📋', '오늘 내역', 'Today', 'bTd'], ['send', '📦', '체크 보내기', 'Send'], ['hist', '🗂', '수금 기록', 'History'], ['ar', '💰', '미수금', 'A/R', 'bAr']];
+  return itabs(t, TAB, 'ct', 'stick');   // 🗂 아이콘 타일 · 위에 고정 (v0.8.136)
 }
 function bindTabs() { document.querySelectorAll('[data-ct]').forEach(b => b.onclick = () => { const k = b.dataset.ct; Router.go(k === 'new' ? 'entry' : k === 'today' ? 'mine' : k); }); }
 async function fillBadges() {

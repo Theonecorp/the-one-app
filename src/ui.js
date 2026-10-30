@@ -46,6 +46,13 @@ export function toast(m, kind) {
 /* 잠깐 막기(돌아가는 동그라미) — 8초 넘게 안 풀리면 "화면 풀기" 버튼이 나와 화면이 영영 멈추지 않게 */
 let busyT = 0;
 /* 📸 화면 스냅숏 — 무거운 첫 화면(경영 대시보드 등)을 지난번 모습으로 바로 보여 주고, 새 자료가 오면 바꿈 */
+/** 🗂 아이콘 탭 — 묶음 메뉴 타일처럼 아이콘 위 · 이름 아래 (v0.8.136). items: [key, icon, 한글, 영어, badgeId?] 또는 [key, '🔎 검색', 'Search'] 처럼 아이콘이 이름 앞에 붙은 것도 됨
+ *   attr: data-속성 이름 (기존 화면의 data-stm · data-ct 그대로) · cls: 'stick' 이면 화면 위에 고정 */
+export function itabs(items, cur, attr, cls) {
+  const one = it => { let [k, ic, ko, en, badge] = it; if (ko == null || /^[^A-Za-z0-9가-힣]+$/.test(String(ic).trim()) === false) { const s = String(ic || '').trim(), i = s.indexOf(' '); if (i > 0 && /^[^A-Za-z0-9가-힣]+$/.test(s.substring(0, i))) { badge = en; en = ko; ko = s.substring(i + 1); ic = s.substring(0, i); } else { badge = en; en = ko; ko = s; ic = '•'; } }
+    return '<button class="' + (k === cur ? 'on' : '') + '" data-' + attr + '="' + esc(k) + '" title="' + esc(ko + (en ? ' · ' + en : '')) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + (en ? ' <span class="en">' + en + '</span>' : '') + '</span>' + (badge ? '<span class="badge" id="' + esc(badge) + '" style="display:none">0</span>' : '') + '</button>'; };
+  return '<div class="itabs' + (cls ? ' ' + cls : '') + '">' + items.map(one).join('') + '</div>';
+}
 export function snapGet(key, maxAgeMs) { try { const j = JSON.parse(localStorage.getItem('theone.snap.' + key) || 'null'); if (j && j.html && (!maxAgeMs || Date.now() - j.at < maxAgeMs)) return j; } catch (e) {} return null; }
 export function snapPut(key, html) { try { localStorage.setItem('theone.snap.' + key, JSON.stringify({ html, at: Date.now() })); } catch (e) {} }
 export function busy(on) {

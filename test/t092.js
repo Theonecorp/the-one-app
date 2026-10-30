@@ -28,7 +28,7 @@ const path = require('path');
   await pg.close();
   /* ② 관리자 — 📦 재고 수기 입고 · 실사 · 인보이스 차감 */
   pg = await mk('luke@theonefl.com', "s.orders[0].st = 'picked'; s.orders[0].cfOk = true; s.orderLines[0].lines.forEach(l => { l.pq = l.q; l.ok = true; l.t = 'A'; });");
-  nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); if (!nav.includes('stock')) errs.push('admin nav should have stock');
+  nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); if (!nav.includes('hub/wh')) errs.push('admin nav should have the inventory group');   // v0.8.135: 📦 재고 묶음
   await pg.evaluate(() => { location.hash = '#/stock/recv'; }); await pg.waitForSelector('#rvC', { timeout: 8000 }).catch(() => errs.push('receive tab missing'));
   await pg.fill('#rvFrom', 'SHENGXING CNTR'); await pg.fill('#rvC', 'AHG100'); await pg.fill('#rvQ', '50'); await pg.click('#rvAdd'); await pg.waitForTimeout(200); await pg.fill('#rvC', 'AHG101'); await pg.fill('#rvQ', '10'); await pg.press('#rvQ', 'Enter'); await pg.waitForTimeout(200); await pg.fill('#rvC', 'ZZZ999'); await pg.fill('#rvQ', '3'); await pg.click('#rvAdd'); await pg.waitForTimeout(300);
   const rv = await txt(pg, '#skBody'); log('recv:', rv.slice(0, 160)); if (!/3줄/.test(rv) || !/63/.test(rv) || !/목록에 없는 코드/.test(rv)) errs.push('receive list should show 3 lines · 63 pcs · unknown warning');
