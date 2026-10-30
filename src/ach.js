@@ -330,7 +330,7 @@ async function paintAccts() {
   document.querySelectorAll('[data-ah]').forEach(el => el.onclick = () => acctHist(el.dataset.ah, (acctInfo(el.dataset.ah) || {}).store));
   $('nRt').oninput = () => { const v = $('nRt').value.replace(/[^0-9]/g, ''); $('nRt').value = v; const m = $('rtMsg'); if (v.length < 9) { m.textContent = v ? (9 - v.length) + '자리 남음' : ''; m.style.color = ''; return; } const ok = rtValid(v); m.textContent = ok ? '✓ 라우팅 번호 맞습니다' : '❌ 번호가 맞지 않습니다 — Application 을 다시 확인하세요'; m.style.color = ok ? '#15803d' : '#b91c1c'; };
   $('nSave').onclick = saveAcct;
-  if (pre) setTimeout(() => $('nBank').focus(), 0);
+  if (pre) setTimeout(() => { const e = $('nBank'); if (e) e.focus(); }, 0);
 }
 function rtValid(v) { if (!/^\d{9}$/.test(v) || /^0{9}$/.test(v)) return false; const p = Number(v.substring(0, 2)); if (!((p >= 0 && p <= 12) || (p >= 21 && p <= 32) || (p >= 61 && p <= 72) || p === 80)) return false; const d = v.split('').map(Number); return (3 * (d[0] + d[3] + d[6]) + 7 * (d[1] + d[4] + d[7]) + (d[2] + d[5] + d[8])) % 10 === 0; }
 async function saveAcct() {

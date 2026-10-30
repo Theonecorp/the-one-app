@@ -11,7 +11,7 @@ const path = require('path');
   const acctJob = "s.users.forEach(u => { if (u.email === 'acct@theonefl.com') u.job = 'acct'; });";
   /* 세일즈맨: 날짜 변경 요청 (E2 체크 #2201, dep 5일 전 → 10일 뒤) */
   let pg = await mk('brandon@x.com');
-  await pg.click('#nav button[data-go="bounce"]'); await pg.waitForSelector('#rqNew', { timeout: 8000 });
+  await pg.click('#nav button[data-go="hub/smoney"]'); await pg.click('[data-hub="bounce"]'); await pg.waitForSelector('#rqNew', { timeout: 8000 });
   if (await pg.$('#rqHold')) errs.push('salesman must not hold checks');
   await pg.click('#rqNew'); await pg.waitForSelector('#rqQ'); await pg.fill('#rqQ', '2201'); await pg.waitForSelector('[data-rh="0"]', { timeout: 5000 }).catch(() => errs.push('check 2201 should be found'));
   await pg.click('[data-rh="0"]'); await pg.waitForSelector('#rqGo');
@@ -43,7 +43,7 @@ const path = require('path');
   await pg.close();
   /* 세일즈맨: 홀드 체크에 손님 날짜 알리기 */
   pg = await mk('brandon@x.com', `s.checkReq = [{ id: 'H2', kind: 'hold', eid: 'E1', pi: 0, sm: 'BRANDON', acct: '1111', store: 'ALI B/S # 1', ref: '1042', amt: 1200, curDep: '2026-10-28', newDep: '', propDep: '', note: '잔고', contact: 'sm', st: 'open', log: [], by: 'acct@theonefl.com', at: '2026-10-28T02:00:00Z' }]; s.entries[0].pays[0].hold = true;`);
-  await pg.click('#nav button[data-go="bounce"]'); await pg.waitForSelector('[data-rq="H2"]', { timeout: 8000 }); await pg.click('[data-rq="H2"]'); await pg.waitForSelector('#rqProp');
+  await pg.click('#nav button[data-go="hub/smoney"]'); await pg.click('[data-hub="bounce"]'); await pg.waitForSelector('[data-rq="H2"]', { timeout: 8000 }); await pg.click('[data-rq="H2"]'); await pg.waitForSelector('#rqProp');
   if (await pg.$('#rqRel')) errs.push('salesman must not release holds');
   await pg.fill('#rqDep', newD); await pg.click('#rqProp'); await pg.waitForTimeout(1200);
   const p1 = await pg.evaluate(() => [window.__MOCK_STORE__.checkReq.H2.propDep, window.__MOCK_STORE__.entries.E1.pays[0].hold, Object.values(window.__MOCK_STORE__.notifyq || {}).filter(n => n.kind === 'checkProp' && n.toStaff).length]); log('proposed:', p1);

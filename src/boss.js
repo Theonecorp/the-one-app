@@ -644,7 +644,7 @@ async function pageFind(q) {
   await loadAll();
   $('page').innerHTML = '<div class="card"><h2>🔎 가게 찾기</h2><div class="two"><input id="fq" placeholder="가게 이름 또는 계정코드" value="' + esc(q || '') + '" autocomplete="off"><button class="b-blue" id="fgo">찾기</button></div><div id="fHits"></div></div><div id="fOut"></div>';
   $('fgo').onclick = () => Router.go('find', encodeURIComponent($('fq').value.trim())); $('fq').onkeydown = e => { if (e.key === 'Enter') $('fgo').click(); };
-  if (!q) { setTimeout(() => $('fq').focus(), 0); return; }
+  if (!q) { setTimeout(() => { const e = $('fq'); if (e) e.focus(); }, 0); return; }
   const rows = allRows(); let acct = '', store = '';
   const a = S.accounts.byCode[q] || (searchAccounts(S.accounts, q, 1)[0]);
   const hits = searchAccounts(S.accounts, q, 8);
