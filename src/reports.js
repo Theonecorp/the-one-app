@@ -3,7 +3,7 @@
  *    아이템별 · 손님별 · 세일즈맨별로 묶어 보여 주고, CSV 로 내려받거나 인쇄
  *  자료: invoices (st != 'x', lines 포함) · entries · cod (수금, void 아닌 것)
  * ============================================================ */
-import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, Router, sel, sum, sortBy, groupBy, printOpen, debounce, bi, hasWords, addDays, daysBetween, localDay, pickDates } from './ui.js';
+import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, Router, sel, sum, sortBy, groupBy, printOpen, debounce, bi, hasWords, addDays, daysBetween, localDay, pickDates, itabs } from './ui.js';
 import { PERIODS, periodRange, addMonths, monthEnd, quickRanges } from './fulfill.js';
 import { invTypes, lineTotal, company, docHead, invoicesBetween } from './invoicing.js';
 import { catalog, loadCatalog, cleanName } from './catalog.js';
@@ -20,7 +20,7 @@ async function page() {
   $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">📊 ' + bi('리포트', 'Reports') + ' — ' + esc(ptxt) + '</h2>' +
     '<div class="chips" style="margin:0 0 8px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (R.p === c[0] ? 'on' : '') + '" data-rp="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (MAIN.includes(R.p) ? '' : 'on') + '" id="rCal">📅 ' + bi('날짜 선택', 'Pick dates') + '</button></div>' +
     '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="rPrev">◀</button><div style="text-align:center;font-weight:800">' + esc(ptxt) + '</div><button class="b-ghost b-sm" id="rNext">▶</button></div></div>' +
-    '<div class="card"><div class="seg">' + [['item', '🏷 아이템별', 'By item'], ['cust', '🏬 손님별', 'By customer'], ['sm', '👤 세일즈맨별', 'By salesman']].map(t => '<button class="' + (R.tab === t[0] ? 'on' : '') + '" data-rt="' + t[0] + '">' + t[1] + ' <span class="en">' + t[2] + '</span></button>').join('') + '</div>' +
+    '<div class="card">' + itabs([['item', '🏷', '아이템별', 'By item'], ['cust', '🏬', '손님별', 'By customer'], ['sm', '👤', '세일즈맨별', 'By salesman']], R.tab, 'rt') +
     '<div class="two">' + sel('rSm', [['', '세일즈맨 전체 · All']].concat(S.sms.map(s => [s.code, s.code])), R.sm) + '<input id="rQ" placeholder="찾기 · search" value="' + esc(R.q) + '" autocomplete="off"></div>' +
     '<div id="rBody"><div class="load">읽는 중…</div></div></div>';
   document.querySelectorAll('[data-rp]').forEach(b => b.onclick = () => { R.p = b.dataset.rp; D = null; page(); });

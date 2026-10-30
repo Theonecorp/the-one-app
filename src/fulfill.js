@@ -7,7 +7,7 @@
  *  backorders/{orderId} = { id, order, acct, store, sm, d, lines:[{c,d,q,p,lp,t}], qty, amt, st:'open'|'used'|'closed', newOrders:[], createdAt }
  * ============================================================ */
 import { timelineHtml } from './flow.js';
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts, itabs } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
@@ -599,7 +599,7 @@ export async function invBrowser(LF, head) {
   if (byAcct) acc = LF.iacct ? (S.accounts.byCode || {})[LF.iacct] || null : null;
   else { accs = q && !isNo ? searchAccounts(S.accounts, q, 6) : []; acc = accs.length === 1 || (accs.length && accs[0].acct === q) ? accs[0] : null; }
   const [from, to] = periodRange(LF.ip, LF.ifrom, LF.ito);
-  const modeSeg = '<div class="seg" style="margin-bottom:8px"><button class="' + (byAcct ? 'on' : '') + '" data-im="acct">🏬 ' + bi('거래처별', 'By customer') + '</button><button class="' + (byAcct ? '' : 'on') + '" data-im="date">📅 ' + bi('기간별', 'By date') + '</button></div>';
+  const modeSeg = itabs([['acct', '🏬', '거래처별', 'By customer'], ['date', '📅', '기간별', 'By date']], byAcct ? 'acct' : 'date', 'im');
   if (byAcct && !acc && !isNo) return acctList(LF, head, modeSeg);
   const top = '<div class="card" style="padding-bottom:8px">' + modeSeg + (byAcct && acc ? '<button class="b-ghost b-sm" id="iqBackA" style="margin-bottom:6px">‹ ' + bi('거래처 목록', 'All customers') + '</button>' : '') +
     (byAcct && acc ? '' : '<div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 주문 # / Store · Acct · Invoice · Order" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>') +

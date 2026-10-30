@@ -18,7 +18,7 @@ const path = require('path');
   let pg = await mk('luke@theonefl.com', seed);
   /* 메뉴 */
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('nav:', nav.join(' '));
-  if (!nav.includes('invs') || !nav.includes('stores')) errs.push('admin nav should have invs and stores');
+  if (!nav.includes('hub/look')) errs.push('admin nav should have the lookup group');   // v0.8.135: 📚 조회 묶음 (인보이스 · 거래처)
   /* 📄 인보이스 탭 — 날짜별 묶음 */
   await pg.evaluate(() => { location.hash = '#/invs'; }); await pg.waitForSelector('#iList .kpi', { timeout: 8000 }).catch(() => errs.push('invoice tab missing')); await pg.waitForTimeout(500);
   let t = await txt(pg, '#iList'); log('tab:', t.slice(0, 220));
