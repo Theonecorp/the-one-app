@@ -42,10 +42,21 @@ export async function applyToInvoices(key, invs, on) {
   }
   return n;
 }
-async function pageVerify() {
-  $('page').innerHTML = '<div class="load">읽는 중…</div>';
-  let rows = await S.DB.list('entries', { where: [['ym', 'in', recentYms(3)]] });
-  rows = rows.filter(r => !r.void);
+/* 💵 수금 확인 — 서버에서 읽는 것은 화면에 들어올 때 · 봉투 저장 뒤만. ☑ · ① · ② · 저장은 읽어 둔 줄(VROWS)을 고치고 그 자리에서 다시 그림 (맨 위로 안 올라감) */
+let VROWS = [];
+const VFOLD = new Set();   // 접어 둔 세일즈맨 묶음 — 다시 그려도 그대로
+async function pageVerify(keep) {
+  const y = keep === true ? window.scrollY : 0;
+  if (keep !== true) $('page').innerHTML = '<div class="load">읽는 중…</div>';
+  VROWS = (await S.DB.list('entries', { where: [['ym', 'in', recentYms(3)]] })).filter(r => !r.void);
+  if (keep === true && !$('vBulk')) return;   // 봉투 저장 뒤 — 그사이 다른 화면으로 갔으면 그리지 않음
+  drawVerify(y);
+}
+/** 다시 읽지 않고 그리기 — 보던 자리(스크롤) 그대로 */
+const reVerify = () => drawVerify(window.scrollY);
+function drawVerify(y, focusQ) {
+  const rows = VROWS.filter(r => !r.void);
+  const envOld = $('envBox') ? $('envBox').innerHTML : '';   // 봉투 칸 높이를 미리 채워 둠 → 다시 그려도 스크롤이 안 튐
   const open = rows.filter(r => !r.settled);
   const todo = open.filter(r => !r.sb), wait = open.filter(r => r.sb && !r.rc), bad = open.filter(r => r.mismatch && !r.v), done = rows.filter(r => r.settled);
   let list = VF.f === 'todo' ? todo : VF.f === 'wait' ? wait : VF.f === 'bad' ? bad : VF.f === 'done' ? done : open;
@@ -61,32 +72,34 @@ async function pageVerify() {
     (accs.length ? '<div class="chips">' + accs.map(a => '<button data-vacc="' + esc(a.acct) + '">📚 ' + esc(a.store) + ' ' + esc(a.acct) + ' 전체 기록</button>').join('') + '</div>' : '') +
     '<div class="chips" style="margin-top:4px"><button class="' + (VF.grp === 'sm' ? 'on' : '') + '" data-vg="sm">👤 세일즈맨별 · By salesman</button><button class="' + (VF.grp === 'day' ? 'on' : '') + '" data-vg="day">📅 날짜별 · By day</button><button class="' + (VF.f === 'done' ? 'on' : '') + '" data-vf="done">📁 정산 완료 · Settled</button></div></div>' +
     /* 📦 봉투 (envelope.js) → 📬 체크 맞추기 — 우편으로 온 체크 번호를 치면 그 수금을 찾아 수령 ✓ */
-    '<div id="envBox"></div>' +
+    '<div id="envBox">' + envOld + '</div>' +
     '<div class="card" style="border:2px solid #bfdbfe"><h2>📬 들어온 체크 맞추기 <span class="en">Match incoming checks</span></h2><div class="muted">봉투에서 꺼낸 체크 번호를 치고 엔터 — 세일즈맨이 입력한 수금을 찾아 바로 <b>② 체크 수령 ✓</b>. 금액이 다르면 알려 줍니다. <span class="en">Type the check number + Enter.</span></div>' +
     '<div class="two" style="margin-top:8px;grid-template-columns:1fr auto"><input id="ckNo" inputmode="numeric" placeholder="체크 번호 · check #" autocomplete="off"><input id="ckAmt" inputmode="decimal" placeholder="금액 (선택)" style="width:120px"></div><div id="ckOut"></div></div>';
-  const row = r => '<div class="pr tap ' + (r.v ? 'v' : r.rc ? 'rc' : r.sb ? 'sb' : '') + (r.mismatch && !r.v ? ' bad' : '') + '" data-vid="' + r.id + '">' + (!r.settled && !(r.sb && r.rc) ? '<input type="checkbox" class="vck" data-vck="' + r.id + '"' + (VSEL.has(r.id) ? ' checked' : '') + ' style="width:22px;height:22px;margin-right:8px;flex:0 0 auto">' : '') + '<div class="mk">' + (r.rc ? '✓' : r.sb ? '①' : '·') + '</div><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + (r.repl ? ' <span class="tag t-r">🔁 대체</span>' : '') + (r.bounced ? ' <span class="tag t-r">↩️ 바운스</span>' : '') + ((r.pays || []).some(p => p.hold) ? ' <span class="tag" style="background:#ede9fe;color:#4c1d95">⏸ 홀드</span>' : '') + (r.newStore ? ' <span class="tag t-c">신규</span>' : '') + '</b><small>' + md(r.d) + ' · ' + (r.pays || []).map(p => methodTag(p) + ' ' + money(p.amt)).join(' · ') + (r.invs && r.invs.length ? ' · ' + r.invs.map(v => v.no).join(',') : '') + (r.mismatch ? ' · ⚠️' : '') + (r.settled ? ' · 📁 ' + esc(r.settled) : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + stageText(r) + '</small></div></div>';
+  const row = r => '<div class="pr tap ' + (r.v ? 'v' : r.rc ? 'rc' : r.sb ? 'sb' : '') + (r.mismatch && !r.v ? ' bad' : '') + (VSEL.has(r.id) ? ' pend' : '') + '" data-vid="' + r.id + '">' + (!r.settled && !(r.sb && r.rc) ? '<span class="ckw" data-vckw style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:-8px 2px -8px -6px"><input type="checkbox" class="vck" data-vck="' + r.id + '"' + (VSEL.has(r.id) ? ' checked' : '') + ' style="width:24px;height:24px;margin:0"></span>' : '') + '<div class="mk">' + (r.rc ? '✓' : r.sb ? '①' : '·') + '</div><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + (r.repl ? ' <span class="tag t-r">🔁 대체</span>' : '') + (r.bounced ? ' <span class="tag t-r">↩️ 바운스</span>' : '') + ((r.pays || []).some(p => p.hold) ? ' <span class="tag" style="background:#ede9fe;color:#4c1d95">⏸ 홀드</span>' : '') + (r.newStore ? ' <span class="tag t-c">신규</span>' : '') + '</b><small>' + md(r.d) + ' · ' + (r.pays || []).map(p => methodTag(p) + ' ' + money(p.amt)).join(' · ') + (r.invs && r.invs.length ? ' · ' + r.invs.map(v => v.no).join(',') : '') + (r.mismatch ? ' · ⚠️' : '') + (r.settled ? ' · 📁 ' + esc(r.settled) : '') + '</small></div><div class="pa"><b>' + money(r.total) + '</b><small>' + stageText(r) + '</small></div></div>';
   if (!list.length) h += '<div class="card"><div class="none">없음 · none</div></div>';
   else if (VF.grp === 'sm' && VF.f !== 'done') {
     const by = groupBy(list, r => r.sm || '—');
     Object.keys(by).sort().forEach(sm => { const L = by[sm], t = L.filter(r => !r.sb).length, w = L.filter(r => r.sb && !r.rc).length;
-      h += '<div class="card smgrp"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff;margin-top:0"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(sum(L, r => r.total)) + (t ? ' · <span class="warn">접수 확인 ' + t + '</span>' : '') + (w ? ' · 체크 대기 ' + w : '') + ' ▾</span></div><div class="smbody">' + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button class="b-ghost b-sm" data-vckall="' + esc(sm) + '">☑ ' + esc(sm) + ' 전체 선택 · Select all</button>' + (t ? '<button class="b-ghost b-sm" data-sball="' + esc(sm) + '">✓ 접수 확인 대기 ' + t + '건 모두 확인 · Review all</button>' : '') + '</div>' + L.map(row).join('') + '</div></div>'; });
+      h += '<div class="card smgrp' + (VFOLD.has(sm) ? ' fold' : '') + '"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff;margin-top:0"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(sum(L, r => r.total)) + (t ? ' · <span class="warn">접수 확인 ' + t + '</span>' : '') + (w ? ' · 체크 대기 ' + w : '') + ' ▾</span></div><div class="smbody">' + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button class="b-ghost b-sm" data-vckall="' + esc(sm) + '">☑ ' + esc(sm) + ' 전체 선택 · Select all</button>' + (t ? '<button class="b-ghost b-sm" data-sball="' + esc(sm) + '">✓ 접수 확인 대기 ' + t + '건 모두 확인 · Review all</button>' : '') + '</div>' + L.map(row).join('') + '</div></div>'; });
   } else {
     const by = groupBy(list, r => r.d), days = Object.keys(by).sort().reverse();
     days.forEach(d => { const L = by[d]; h += '<div class="card"><div class="dayhd"><span>' + dlabel(d) + ' <button class="b-ghost b-sm" data-vckday="' + d + '" style="margin-left:6px;padding:3px 8px">☑ 전체</button></span><span>' + money(sum(L, r => r.total)) + ' · ' + L.length + '건</span></div>' + L.map(row).join('') + '</div>'; });
   }
   h += '<div class="bulkbar" id="vBulk" style="display:none"></div>';
-  $('page').innerHTML = h;
-  import('./envelope.js').then(E => E.envCard($('envBox'), pageVerify));
+  const pg = $('page'), hh = pg.offsetHeight; if (y) pg.style.minHeight = hh + 'px';   // 다시 그리는 동안 높이가 줄어 스크롤이 튀지 않게
+  pg.innerHTML = h;
+  if (y) requestAnimationFrame(() => { window.scrollTo(0, y); requestAnimationFrame(() => { pg.style.minHeight = ''; window.scrollTo(0, y); }); });
+  import('./envelope.js').then(E => E.envCard($('envBox'), () => pageVerify(true)));
   /* ☑ 선택 → 아래 막대에서 한 번에 ① 접수 확인 · ② 체크 수령 */
   const selRows = () => rows.filter(r => VSEL.has(r.id) && !r.settled);
   const paint = () => {
     const S2 = selRows(), bar = $('vBulk'); Array.from(VSEL).forEach(id => { if (!rows.some(r => r.id === id && !r.settled)) VSEL.delete(id); });
     if (!S2.length) { bar.style.display = 'none'; return; }
     const nT = S2.filter(r => !r.sb).length, nW = S2.filter(r => !r.rc).length;
-    bar.style.display = ''; bar.innerHTML = '<b>' + S2.length + '건 · ' + money(sum(S2, r => r.total)) + '</b>' + (nT ? '<button class="b-ghost b-sm" id="vbSb">① 접수 확인 ' + nT + '</button>' : '') + (nW ? '<button class="b-ghost b-sm" id="vbRc">② 체크 수령 ' + nW + '</button>' : '') + '<button class="b-ghost b-sm" id="vbClr">✕ 선택 해제</button>';
+    bar.style.display = ''; bar.innerHTML = '<b>☑ ' + S2.length + '건 · ' + money(sum(S2, r => r.total)) + '</b>' + (nT ? '<button class="b-ghost b-sm" id="vbSb">💾 ① 접수 확인 ' + nT + '건 완료</button>' : '') + (nW ? '<button class="b-ghost b-sm" id="vbRc">💾 ② 체크 수령 ' + nW + '건 완료</button>' : '') + '<button class="b-ghost b-sm" id="vbClr">✕ 선택 해제</button>';
     if ($('vbSb')) $('vbSb').onclick = () => bulkApply(S2.filter(r => !r.sb), false);
     if ($('vbRc')) $('vbRc').onclick = () => bulkApply(S2.filter(r => !r.rc), true);
-    $('vbClr').onclick = () => { VSEL.clear(); document.querySelectorAll('[data-vck]').forEach(c => { c.checked = false; }); paint(); };
+    $('vbClr').onclick = () => { VSEL.clear(); syncCk(); paint(); };
   };
   const bulkApply = async (L, rc) => {
     const bad = L.filter(r => r.mismatch), noInv = L.filter(r => !(r.invs || []).length), tot = sum(L, r => r.total);
@@ -95,27 +108,32 @@ async function pageVerify() {
     try { for (const r of L) { const patch = { updatedAt: new Date().toISOString() };
         if (!r.sb) { patch.sb = true; patch.sbAt = today(); if (!rc && !(r.pays || []).some(p => p.m === 'CHECK' || p.m === 'CASH' || p.m === 'ZELLE')) patch.rc = true; }
         if (rc) { patch.rc = true; patch.rcAt = today(); }
-        await S.DB.update('entries', r.id, patch); if (!r.sb) await applyToInvoices(r.id, r.invs, true); n++; VSEL.delete(r.id); }
-      toast((rc ? '② 수령 ' : '① 확인 ') + n + '건 처리', 'good'); }
+        await S.DB.update('entries', r.id, patch); if (!r.sb) await applyToInvoices(r.id, r.invs, true); Object.assign(r, patch); n++; VSEL.delete(r.id); }
+      toast((rc ? '② 수령 ' : '① 확인 ') + n + '건 저장', 'good'); }
     catch (e) { toast('실패 (' + n + '건까지 처리됨): ' + e.message, 'bad'); }
-    busy(false); pageVerify();
+    busy(false); reVerify();
   };
-  document.querySelectorAll('[data-vck]').forEach(c => { c.onclick = e => e.stopPropagation(); c.onchange = () => { if (c.checked) VSEL.add(c.dataset.vck); else VSEL.delete(c.dataset.vck); paint(); }; });
-  const tick = L => { const ids = L.filter(r => !r.settled && !(r.sb && r.rc)).map(r => r.id), all = ids.every(id => VSEL.has(id)); ids.forEach(id => { if (all) VSEL.delete(id); else VSEL.add(id); }); document.querySelectorAll('[data-vck]').forEach(c => { c.checked = VSEL.has(c.dataset.vck); }); paint(); };
+  /* ☑ 표시는 화면에만 — 줄 색 · 체크칸을 그 자리에서 바꿈 */
+  const syncCk = () => document.querySelectorAll('[data-vck]').forEach(c => { c.checked = VSEL.has(c.dataset.vck); const pr = c.closest('.pr'); if (pr) pr.classList.toggle('pend', c.checked); });
+  document.querySelectorAll('[data-vck]').forEach(c => { c.onclick = e => e.stopPropagation(); c.onchange = () => { if (c.checked) VSEL.add(c.dataset.vck); else VSEL.delete(c.dataset.vck); syncCk(); paint(); }; });
+  /* 체크칸 둘레(44px)를 눌러도 체크 — 줄 상세가 열리지 않게 */
+  document.querySelectorAll('[data-vckw]').forEach(w => w.onclick = e => { e.stopPropagation(); if (e.target.tagName === 'INPUT') return; const c = w.querySelector('input'); c.checked = !c.checked; c.onchange(); });
+  const tick = L => { const ids = L.filter(r => !r.settled && !(r.sb && r.rc)).map(r => r.id), all = ids.every(id => VSEL.has(id)); ids.forEach(id => { if (all) VSEL.delete(id); else VSEL.add(id); }); syncCk(); paint(); };
   document.querySelectorAll('[data-vckall]').forEach(b => b.onclick = e => { e.stopPropagation(); tick(list.filter(r => (r.sm || '—') === b.dataset.vckall)); });
   document.querySelectorAll('[data-vckday]').forEach(b => b.onclick = e => { e.stopPropagation(); tick(list.filter(r => r.d === b.dataset.vckday)); });
   paint();
-  document.querySelectorAll('[data-vf]').forEach(b => b.onclick = () => { VF.f = b.dataset.vf; pageVerify(); });
-  document.querySelectorAll('[data-vg]').forEach(b => b.onclick = () => { VF.grp = b.dataset.vg; pageVerify(); });
-  document.querySelectorAll('[data-smhd]').forEach(el => el.onclick = () => el.parentElement.classList.toggle('fold'));
+  document.querySelectorAll('[data-vf]').forEach(b => b.onclick = () => { VF.f = b.dataset.vf; drawVerify(0); });
+  document.querySelectorAll('[data-vg]').forEach(b => b.onclick = () => { VF.grp = b.dataset.vg; drawVerify(0); });
+  document.querySelectorAll('[data-smhd]').forEach(el => el.onclick = () => { const f = el.parentElement.classList.toggle('fold'); if (f) VFOLD.add(el.dataset.smhd); else VFOLD.delete(el.dataset.smhd); });
   document.querySelectorAll('[data-vacc]').forEach(b => b.onclick = () => storeHistory(b.dataset.vacc));
-  $('vfSm').onchange = () => { VF.sm = $('vfSm').value; pageVerify(); };
-  $('vfQ').oninput = debounce(() => { VF.q = $('vfQ').value.trim(); pageVerify(); }, 400);
+  $('vfSm').onchange = () => { VF.sm = $('vfSm').value; drawVerify(0); };
+  $('vfQ').oninput = debounce(() => { VF.q = $('vfQ').value.trim(); drawVerify(window.scrollY, true); }, 400);
+  if (focusQ) { const q = $('vfQ'); q.focus({ preventScroll: true }); try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) {} }
   document.querySelectorAll('[data-vid]').forEach(el => el.onclick = () => verifyDetail(rows.find(x => x.id === el.dataset.vid)));
   document.querySelectorAll('[data-sball]').forEach(b => b.onclick = async () => {
     const sm = b.dataset.sball, L = todo.filter(r => r.sm === sm && (!VF.sm || r.sm === VF.sm));
     if (!(await confirmBox(sm + ' 의 접수 확인 대기 ' + L.length + '건을 모두 ① 확인 처리할까요? 인보이스 번호가 있는 건은 앱 인보이스에 입금이 반영됩니다.', '모두 확인'))) return;
-    busy(true); try { for (const r of L) { await S.DB.update('entries', r.id, { sb: true, sbAt: today(), rc: (r.pays || []).some(p => p.m === 'CHECK' || p.m === 'CASH' || p.m === 'ZELLE') ? !!r.rc : true, updatedAt: new Date().toISOString() }); await applyToInvoices(r.id, r.invs, true); } toast(L.length + '건 확인', 'good'); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); pageVerify();
+    busy(true); try { for (const r of L) { const p = { sb: true, sbAt: today(), rc: (r.pays || []).some(p => p.m === 'CHECK' || p.m === 'CASH' || p.m === 'ZELLE') ? !!r.rc : true, updatedAt: new Date().toISOString() }; await S.DB.update('entries', r.id, p); await applyToInvoices(r.id, r.invs, true); Object.assign(r, p); } toast(L.length + '건 확인', 'good'); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); reVerify();
   });
   /* 체크 맞추기 */
   const ck = $('ckNo'), out = $('ckOut');
@@ -126,8 +144,11 @@ async function pageVerify() {
     if (!hits.length) { out.innerHTML = '<div class="alert a-amb" style="margin-top:8px">체크 #' + esc(no) + ' 으로 입력된 수금이 없습니다 — 세일즈맨이 아직 안 넣었거나 번호가 다릅니다. 우편 체크면 💳 COD·카드에 넣으세요.</div>'; return; }
     const amt = num($('ckAmt').value);
     out.innerHTML = hits.map(r => { const p = (r.pays || []).find(p => String(p.ref || '').replace(/^#/, '') === no), diff = amt && p ? Math.abs(num(p.amt) - amt) > 0.005 : false;
-      return '<div class="pr" style="margin-top:6px"><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + '</b><small>' + md(r.d) + ' · 체크 #' + esc(no) + ' ' + money(p ? p.amt : 0) + (diff ? ' <span class="warn">⚠️ 들어온 금액 ' + money(amt) + ' 과 다름</span>' : '') + ' · ' + stageText(r) + '</small></div><div class="pa">' + (r.rc ? '<span class="tag t-k">수령됨</span>' : '<button class="b-blue b-sm" data-ckrc="' + r.id + '">② 수령 ✓</button>') + '</div></div>'; }).join('');
-    out.querySelectorAll('[data-ckrc]').forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.ckrc) || hits.find(x => x.id === b.dataset.ckrc); busy(true); try { const patch = { rc: true, rcAt: today(), updatedAt: new Date().toISOString() }; if (!r.sb) { patch.sb = true; patch.sbAt = today(); await applyToInvoices(r.id, r.invs, true); } await S.DB.update('entries', r.id, patch); toast('✓ 체크 #' + no + ' 수령', 'good'); ck.value = ''; $('ckAmt').value = ''; out.innerHTML = ''; ck.focus(); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); });
+      return '<div class="pr" style="margin-top:6px"><div class="ct"><b>' + esc(r.sm) + ' · ' + esc(r.store) + '</b><small>' + md(r.d) + ' · 체크 #' + esc(no) + ' ' + money(p ? p.amt : 0) + (diff ? ' <span class="warn">⚠️ 들어온 금액 ' + money(amt) + ' 과 다름</span>' : '') + ' · ' + stageText(r) + '</small></div><div class="pa">' + (r.rc ? '<span class="tag t-k">수령됨</span>' : VSEL.has(r.id) ? '<span class="vtag">☑ 표시됨</span>' : '<button class="b-blue b-sm" data-ckrc="' + r.id + '">② 수령 ✓</button>') + '</div></div>'; }).join('');
+    /* ② 수령 ✓ — 바로 저장하지 않고 ☑ 표시만 (아래 막대의 💾 ② 체크 수령 완료로 한 번에). 3달보다 오래된 수금(목록에 없음)만 바로 저장 */
+    out.querySelectorAll('[data-ckrc]').forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.ckrc), r2 = r || hits.find(x => x.id === b.dataset.ckrc);
+      if (r && !r.settled) { VSEL.add(r.id); syncCk(); paint(); toast('☑ 체크 #' + no + ' 표시 — 다 맞춘 뒤 아래 💾 ② 체크 수령 완료', 'good'); ck.value = ''; $('ckAmt').value = ''; out.innerHTML = ''; ck.focus({ preventScroll: true }); return; }
+      busy(true); try { const patch = { rc: true, rcAt: today(), updatedAt: new Date().toISOString() }; if (!r2.sb) { patch.sb = true; patch.sbAt = today(); await applyToInvoices(r2.id, r2.invs, true); } await S.DB.update('entries', r2.id, patch); Object.assign(r2, patch); toast('✓ 체크 #' + no + ' 수령', 'good'); ck.value = ''; $('ckAmt').value = ''; out.innerHTML = ''; ck.focus({ preventScroll: true }); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); });
     if (hits.length === 1 && !hits[0].rc) { const btn = out.querySelector('[data-ckrc]'); if (btn && !amt) btn.focus(); }
   };
   ck.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); find(); } }; $('ckAmt').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); find(); } };
@@ -161,11 +182,11 @@ function verifyDetail(r) {
   $('vSave').onclick = async () => {
     const patch = { sb, rc: hasPhysical ? rc : sb, vn: $('vNote').value.trim(), disc: $('vDisc').value.trim() === '' ? '' : num($('vDisc').value), updatedAt: new Date().toISOString() };
     if (sb && !r.sbAt) patch.sbAt = today(); if (patch.rc && !r.rcAt) patch.rcAt = today();
-    busy(true); try { await S.DB.update('entries', r.id, patch); if (sb !== !!r.sb) await applyToInvoices(r.id, r.invs, sb); closeModal(); toast('저장'); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
+    busy(true); try { await S.DB.update('entries', r.id, patch); if (sb !== !!r.sb) await applyToInvoices(r.id, r.invs, sb); Object.assign(r, patch); closeModal(); toast('저장'); reVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
   };
   $('vEdit').onclick = () => { closeModal(); Router.go('entry', r.id); };
   if ($('vRep')) $('vRep').onclick = async () => { const b = $('vRepBox'); b.innerHTML = '<div class="load">읽는 중…</div>'; try { const rp = await S.DB.get('reports', r.repId); const ph = (rp && rp.photos) || []; b.innerHTML = ph.length ? '<div class="phgrid">' + ph.map(d => '<a class="ph" href="' + d + '" target="_blank"><img src="' + d + '"></a>').join('') + '</div><div class="muted">' + (rp.n || '') + '건 · ' + money(rp.total || 0) + ' · ' + esc(rp.sentAt || '') + '</div>' : '<div class="muted">이 리포트에는 사진이 없습니다</div>'; } catch (e) { b.innerHTML = '<div class="muted">리포트를 읽지 못했습니다: ' + esc(e.code || e.message) + '</div>'; } };
-  $('vVoid').onclick = async () => { if (!(await confirmBox('이 수금을 취소(VOID)할까요?', '취소하기'))) return; busy(true); try { await S.DB.update('entries', r.id, { void: true, updatedAt: new Date().toISOString() }); if (r.sb) await applyToInvoices(r.id, r.invs, false); closeModal(); toast('취소했습니다'); pageVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  $('vVoid').onclick = async () => { if (!(await confirmBox('이 수금을 취소(VOID)할까요?', '취소하기'))) return; busy(true); try { await S.DB.update('entries', r.id, { void: true, updatedAt: new Date().toISOString() }); if (r.sb) await applyToInvoices(r.id, r.invs, false); r.void = true; VSEL.delete(r.id); closeModal(); toast('취소했습니다'); reVerify(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ============================================================
@@ -347,8 +368,8 @@ async function pageStores() {
   document.querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeSheet(el.dataset.st));
   document.querySelectorAll('[data-ste]').forEach(el => el.onclick = e => { e.stopPropagation(); storeForm(S.accounts.byCode[el.dataset.ste]); });
 }
-export function storeForm(a) {
-  a = a || {};
+export function storeForm(a, done) {
+  a = a || {}; const after = done || (() => pageStores());   // done: 가게 창 · 인보이스에서 열었으면 그리로 돌아감
   openModal('<h2>' + (a.acct ? esc(a.store) : '＋ 새 거래처') + '</h2>' +
     '<div class="two"><div class="fg"><label>계정코드</label><input id="sAcct" value="' + esc(a.acct || '') + '" ' + (a.acct ? 'readonly' : '') + '></div><div class="fg"><label>담당 세일즈맨</label>' + sel('sSm', smOptions(null, true), a.sm || '') + '</div></div>' +
     '<div class="fg"><label>가게 이름</label><input id="sStore" value="' + esc(a.store || '') + '" style="text-transform:uppercase"></div>' +
@@ -359,7 +380,7 @@ export function storeForm(a) {
     '<div class="fg"><label>기본 할인 % (인보이스 종류별 — 주문에 자동으로 들어감)</label><div class="three">' + invTypes(S).map(t => '<div><small class="muted">' + esc(t.c) + ' ' + esc(t.n) + '</small><input type="number" inputmode="decimal" min="0" max="100" data-sd="' + esc(t.c) + '" value="' + esc((a.disc || {})[t.c] || '') + '" placeholder="0"></div>').join('') + '</div></div>' +
     (a.acct ? '<label class="pick ' + (a.inactive ? 'on' : '') + '" id="sInact" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>💤 ' + bi('비활성 (목록 · 지도에서 뺌)', 'Inactive (hide from lists)') + '</b><small>' + (a.lastTx ? bt('마지막 거래', 'last activity') + ' ' + esc(a.lastTx) : '') + '</small></span></label>' : '') +
     '<div class="btns">' + (a.acct && a.pending ? '<span class="tag t-b" style="align-self:center">🆕 ' + bt('임시 번호 — 코드 부여 기다리는 중', 'Temporary number — waiting for a code') + '</span>' : '') + (a.acct && S.role !== 'salesman' ? '<button class="b-ghost" id="sRen">' + (a.pending ? '🆕 ' + bt('코드 부여', 'Assign code') : '🔁 ' + bt('코드 바꾸기', 'Change code')) + '</button>' : '') + '<button class="b-blue" id="sSave">저장</button></div>');
-  if ($('sRen')) $('sRen').onclick = async () => { const NA = await import('./newacct.js'); if (!NA.canAssign()) return toast(bt('주문 배정 매니저 · 관리자만 바꿀 수 있습니다', 'Only assigning managers / admins'), 'bad'); closeModal(); if (a.pending) NA.pendingModal(() => pageStores()); else NA.renameForm(a.acct, () => pageStores()); };
+  if ($('sRen')) $('sRen').onclick = async () => { const NA = await import('./newacct.js'); if (!NA.canAssign()) return toast(bt('주문 배정 매니저 · 관리자만 바꿀 수 있습니다', 'Only assigning managers / admins'), 'bad'); closeModal(); if (a.pending) NA.pendingModal(after); else NA.renameForm(a.acct, after); };
   if ($('sInact')) $('sInact').onclick = e => { e.preventDefault(); $('sInact').classList.toggle('on'); };
   $('sSave').onclick = async () => {
     const acct = pad4($('sAcct').value.trim()), store = $('sStore').value.trim().toUpperCase();
@@ -370,7 +391,7 @@ export function storeForm(a) {
     if (!a.acct) doc.createdAt = new Date().toISOString();   // 새 거래처 — 3년 안에 만든 곳은 비활성 정리에서 빠짐
     if ($('sInact')) { const z = $('sInact').classList.contains('on'); if (z !== !!a.inactive) { doc.inactive = z; if (z) { doc.inactiveAt = new Date().toISOString(); doc.inactiveBy = S.user.email; doc.keepActive = false; } else doc.keepActive = true; } }
     busy(true);
-    try { await S.DB.set('accounts', acct, doc); await bumpAccountsVer(); closeModal(); toast('저장'); pageStores(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
+    try { await S.DB.set('accounts', acct, doc); await bumpAccountsVer(); closeModal(); toast('저장'); after(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false);
   };
 }
 export async function bumpAccountsVer() {

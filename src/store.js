@@ -254,6 +254,31 @@ export function invEditForm(x, done) {
 }
 
 /** 가게 창 열기 */
+/** ✏️ 세일즈맨 — 가게 정보가 틀렸을 때 사무실에 고쳐 달라고 (이메일 · 챗 알림 + 가게 노트에 남김) */
+function fixRequest(a, back) {
+  openModal('<h2>✏️ ' + bi('정보 수정 요청', 'Request an edit') + ' — ' + esc(a.store) + '</h2><div class="muted">' + bt('바뀐 것만 적어 주세요. 사무실(담당자)이 확인하고 고칩니다.', 'Write only what changed. The office will update it.') + '</div>' +
+    '<div class="fg"><label>' + bi('가게 이름', 'Store name') + '</label><input id="frStore" value="' + esc(a.store || '') + '" style="text-transform:uppercase"></div>' +
+    '<div class="fg"><label>' + bi('주소', 'Address') + '</label><input id="frAddr" value="' + esc([a.addr, a.city, a.state, a.zip].filter(Boolean).join(', ')) + '"></div>' +
+    '<div class="fg"><label>' + bi('전화', 'Phone') + '</label><input id="frTel" value="' + esc(a.tel || '') + '"></div>' +
+    '<div class="fg"><label>' + bi('메모 (그 밖에 바뀐 것)', 'Note (anything else)') + '</label><input id="frNote" placeholder="' + esc(bt('예: 주인 바뀜, 새 이메일 …', 'e.g. new owner, new email …')) + '"></div>' +
+    '<div class="btns"><button class="b-ghost" id="frX">' + bt('취소', 'Cancel') + '</button><button class="b-blue" id="frOk">' + bt('요청 보내기', 'Send request') + '</button></div>');
+  $('frX').onclick = () => back();
+  $('frOk').onclick = async () => {
+    const was = { store: a.store || '', addr: [a.addr, a.city, a.state, a.zip].filter(Boolean).join(', '), tel: a.tel || '' };
+    const now = { store: $('frStore').value.trim().toUpperCase(), addr: $('frAddr').value.trim(), tel: $('frTel').value.trim() }, note = $('frNote').value.trim();
+    const chg = Object.keys(now).filter(k => now[k] !== was[k]).map(k => ({ store: '가게 이름', addr: '주소', tel: '전화' })[k] + ': ' + (was[k] || '—') + ' → ' + (now[k] || '—'));
+    if (note) chg.push('메모: ' + note);
+    if (!chg.length) return toast(bt('바뀐 것이 없습니다', 'Nothing changed'), 'bad');
+    busy(true);
+    try {
+      const N = await import('./notify.js');
+      await N.queue({ kind: 'acctFix', chat: true, toStaff: true, acct: a.acct, subject: '[THE ONE] ✏️ 거래처 정보 수정 요청 — ' + a.store + ' (' + a.acct + ')', text: '✏️ ' + ((S.me && S.me.sm) || '') + ' — ' + a.store + ' (' + a.acct + ')\n' + chg.join('\n'), url: N.appUrl('stores') });
+      try { await Notes.addNote(a.acct, '✏️ ' + bt('정보 수정 요청', 'Edit requested') + ' — ' + chg.join(' / ')); } catch (e) {}
+      toast('📨 ' + bt('사무실에 보냈습니다', 'Sent to the office'), 'good'); back();
+    } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+}
 export async function storeSheet(acct, onPick, opt0) {
   const a = S.accounts.byCode ? S.accounts.byCode[acct] : null;
   openModal('<h2>' + esc(a ? a.store : acct) + '</h2><div class="load">읽는 중…</div>');
@@ -272,7 +297,7 @@ export async function storeSheet(acct, onPick, opt0) {
     else if (tab === 'note') body = '<button class="b-blue b-sm" id="ssNoteAdd" style="margin:4px 0 8px">📝 ' + bi('노트 남기기', 'Add note') + '</button>' + Notes.notesHtml(notes, { edit: true });
     else body = info.pays.length ? info.pays.map(e => '<div class="pr"><div class="ct"><b>' + esc((e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(', ') || '수금') + '</b><small>' + esc(e.d) + ' · ' + esc(e.sm) + (e.invs && e.invs.length ? ' · ' + esc(e.invs.map(v => v.no).filter(Boolean).join(', ')) : '') + '</small></div><div class="pa"><b>' + money(e.total) + '</b><small>' + (e.settled ? '정산됨' : e.v ? '확인' : e.sb ? '입력' : '') + '</small></div></div>').join('') : '<div class="none">최근 6개월 수금 기록 없음 · No payments in 6 months</div>';
     $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><div><h2 style="margin:0">' + esc(a ? a.store : acct) + '</h2><div class="muted">' + esc(acct) + (a ? ' · ' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.tel ? ' · ' + esc(a.tel) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + (a.sm ? ' · ' + esc(a.sm) : '') : '') + '</div>' + (a && a.note ? '<div class="alert a-blu" style="margin-top:6px">📝 ' + esc(a.note) + '</div>' : '') +
-'</div><button class="b-ghost b-sm" id="ssX">✕</button></div>' +
+'</div><div style="display:flex;gap:6px;flex:0 0 auto">' + (a ? '<button class="b-ghost b-sm" id="ssEdit">✏️ ' + (isStaff() ? bi('정보 수정', 'Edit') : bi('수정 요청', 'Request edit')) + '</button>' : '') + '<button class="b-ghost b-sm" id="ssX">✕</button></div></div>' +
       (a ? '<div class="btns" style="margin-top:6px;justify-content:flex-start;flex-wrap:wrap"><a class="b-ghost b-sm lnk" href="' + esc(Notes.gmapUrl(a)) + '" target="_blank" rel="noopener">🗺 ' + bi('구글 지도', 'Google Maps') + '</a><a class="b-ghost b-sm lnk" href="' + esc(Notes.gmapUrl(a, true)) + '" target="_blank" rel="noopener">🧭 ' + bi('길찾기', 'Directions') + '</a>' + (a.tel ? '<a class="b-ghost b-sm lnk" href="tel:' + esc(String(a.tel).replace(/[^0-9+]/g, '')) + '">📞 ' + bi('전화', 'Call') + '</a>' : '') + '</div>' : '') +
       (tab !== 'note' && notes.some(n => n.pin) ? '<div style="margin-top:6px">' + Notes.notesHtml(notes.filter(n => n.pin), { limit: 3 }) + '</div>' : '') + '' +
       '<div class="kpi" style="grid-template-columns:repeat(5,1fr);margin-top:10px">' + info.bk.map((v, i) => '<div' + (i >= 3 && v > 0.005 ? ' style="background:#fef2f2"' : '') + '><b style="font-size:12px">' + money(v) + '</b><span>' + BK[i] + '</span></div>').join('') + '</div>' +
@@ -284,6 +309,12 @@ export async function storeSheet(acct, onPick, opt0) {
       '<div style="max-height:45vh;overflow:auto">' + body + '</div>' +
       '<div class="btns"><button class="b-ghost" id="ssStmt">🖨 ' + bi('손님용 스테이트먼트', 'Customer statement') + '</button>' + (onPick ? '<button class="b-blue" id="ssPick">' + bi('이 가게로 주문', 'Order for this store') + '</button>' : '') + '</div>';
     $('ssX').onclick = closeModal;
+    /* ✏️ 가게 이름 · 주소 · 전화 · 담당 … — 담당자 · 관리자는 바로 고침, 세일즈맨은 사무실에 고쳐 달라고 요청 */
+    if ($('ssEdit')) $('ssEdit').onclick = async () => {
+      const again = () => storeSheet(acct, onPick, tab);
+      if (isStaff()) { const M = await import('./mgr.js'); M.storeForm(S.accounts.byCode[acct] || a, () => { dropStoreCache(acct); again(); }); }
+      else fixRequest(a, again);
+    };
     $('ssStmt').onclick = () => statementDialog(acct, info, () => { openModal(''); paint(); });
     document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { tab = b.dataset.ss; paint(); });
     document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); goHash('#/order/' + encodeURIComponent(el.dataset.so)); });
