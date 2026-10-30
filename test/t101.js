@@ -45,6 +45,12 @@ const path = require('path');
   await pg.evaluate(() => document.activeElement.blur()); await pg.waitForTimeout(400); const kb2 = await pg.evaluate(() => ({ kb: document.body.classList.contains('kb'), nav: getComputedStyle(document.getElementById('nav')).display })); log('after typing:', JSON.stringify(kb2)); if (kb2.kb || kb2.nav === 'none') errs.push('nav should come back after typing');
   await pg.waitForTimeout(500); const nh2 = await pg.evaluate(() => ({ navh: parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navh')) || 0, nav: document.getElementById('nav').offsetHeight, over: window.scrollY > Math.max(0, document.documentElement.scrollHeight - window.innerHeight) + 1 })); log('after keyboard:', JSON.stringify(nh2));
   if (nh2.navh < 40 || nh2.navh > 140 || Math.abs(nh2.navh - nh2.nav) > 2) errs.push('--navh should equal the real nav height after the keyboard closes'); if (nh2.over) errs.push('page must not stay over-scrolled after the keyboard closes');
+  /* v0.8.129: body 가 스크롤 상자가 아니어야 — 아니면 아래 고정 바가 화면 대신 body 상자에 붙어 내용이 짧을 때 화면 가운데 떠서 카테고리 타일을 덮음 */
+  if (await pg.$('[data-ev="add"]')) await pg.tap('[data-ev="add"]'); await pg.waitForSelector('.ecard', { timeout: 8000 }); await pg.waitForTimeout(600);
+  const geo = await pg.evaluate(() => { const cs = getComputedStyle(document.body), st = document.querySelector('.sticky'), card = document.querySelector('.ecard'); return { bodyOv: cs.overflowX + '/' + cs.overflowY, stTop: st ? Math.round(st.getBoundingClientRect().top) : -1, stBot: st ? Math.round(st.getBoundingClientRect().bottom) : -1, cardBot: card ? Math.round(card.getBoundingClientRect().bottom) : -1, line: innerHeight - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navh')) || 0) }; });
+  log('order screen:', JSON.stringify(geo)); if (/auto|scroll|hidden/.test(geo.bodyOv)) errs.push('body must not be a scroll container (overflow ' + geo.bodyOv + ')');
+  /* 바는 내용 바로 뒤(자연 위치)거나, 내용이 길면 화면 맨 아래(메뉴 위)에 붙어야 — 그 사이 공중에 떠서 내용을 덮으면 안 됨 */
+  if (geo.stTop >= 0 && geo.stTop < geo.cardBot - 1 && geo.stBot < geo.line - 8) errs.push('sticky bar floats mid-screen over the item card (' + JSON.stringify(geo) + ')');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();
