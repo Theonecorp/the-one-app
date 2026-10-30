@@ -208,7 +208,7 @@ export function printClose() { $('prt').classList.remove('on'); }
 
 /* 간단 라우터 — 해시 기반 (#/page/sub) */
 export const Router = {
-  routes: {}, cur: '', stack: [], home: '', gen: 0, done: 0,
+  routes: {}, cur: '', stack: [], home: '', gen: 0, done: 0, parent: {},
   on(name, fn) { this.routes[name] = fn; },
   go(name, arg) { goHash('#/' + name + (arg ? '/' + encodeURIComponent(arg) : '')); },
   /** 화면마다 "한 단계 위" 가 따로 있으면 — up[name](arg) 가 처리하고 true, upHas[name]() 는 위가 있는지 */
@@ -221,7 +221,8 @@ export const Router = {
     const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
     if (this.backTo && arg && this.backTo.name === name) { const b = this.backTo.hash; this.backTo = null; goHash(b); return; }   // 다른 화면(🧭 흐름 감독)에서 열었으면 그리로
     const up = this.up[name]; if (up && up(arg ? decodeURIComponent(arg) : '')) { this.refreshBack(); return; }
-    if (arg) this.go(name); else if (this.home && name !== this.home) this.go(this.home);
+    if (name === 'hub') { if (this.home && name !== this.home) this.go(this.home); return; }   // 🗂 묶음 → 홈
+    if (arg) this.go(name); else if (this.parent && this.parent[name] && location.hash !== '#/' + this.parent[name]) { const [r, a2] = this.parent[name].split('/'); this.go(r, a2); } else if (this.home && name !== this.home) this.go(this.home);
   },
   hasUp() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); return !!arg || !!(this.home && name !== this.home) || !!(this.upHas[name] && this.upHas[name]()); },
   refreshBack() { const bk = $('hBack'); if (bk) bk.classList.toggle('show', this.hasUp()); },
@@ -239,7 +240,8 @@ export const Router = {
       const settle = (gg, p) => { const end = () => { if (gg === this.gen) this.done = gg; else redo(); }; if (p && p.then) p.then(end, e => { busy(false); toast('화면을 열지 못했습니다: ' + (e && (e.code || e.message) || e), 'bad'); end(); }); else end(); };
       let p; try { p = fn(arg ? decodeURIComponent(arg) : ''); } catch (e) { busy(false); toast('화면을 열지 못했습니다: ' + (e.code || e.message), 'bad'); }
       settle(g, p);
-      document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === h || (b.dataset.go === name && b.dataset.go.indexOf('/') < 0 && !document.querySelector('nav button[data-go="' + h + '"]'))));
+      const par = this.parent && this.parent[name];   // 🗂 묶음 안의 화면이면 그 묶음 탭이 켜짐
+      document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.go === h || (b.dataset.go === name && b.dataset.go.indexOf('/') < 0 && !document.querySelector('nav button[data-go="' + h + '"]')) || (!!par && b.dataset.go === par)));
       this.refreshBack();
       window.scrollTo(0, 0);
     };

@@ -38,6 +38,7 @@ export function register(state) {
   /* 위 메뉴 작게 · 크게 (어느 목록 화면이든) */
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-ocmp]'); if (!b) return; const on = document.body.classList.toggle('oscr'); try { localStorage.setItem('theone.ocompact', on ? '1' : '0'); } catch (x) {} b.querySelector('.ci').textContent = on ? '🔽' : '🔼'; b.querySelector('.cl').textContent = on ? bt('크게', 'Full') : bt('작게', 'Compact'); });
   window.addEventListener('theone:list', e => { LF.st = e.detail; LF.list = true; pageOrder(''); });
+  window.addEventListener('theone:stage', e => { goStage(e.detail); pageOrder(''); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncOutbox(true); });
 }
 
@@ -244,6 +245,9 @@ async function pageOrder(arg) {
 const CHIPS = [['mine', '👷 내 배정 작업', 'My Assignments'], ['sent', '📥 신규 주문', 'New Orders'], ['cfw', '❓ 확인 대기', 'Awaiting Salesman'], ['cfok', '👍 확인 완료 · 배정 대기', 'Confirmed · To Assign'], ['pick', '📦 출고 작업', 'In Fulfillment'], ['picked', '✅ 검수 대기', 'Ready for Review'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'], ['ups', '🚚 UPS 출고', 'UPS Shipping'], ['packed', '📮 UPS 픽업', 'UPS Pickup'], ['shipped', '📬 출고 완료', 'Shipped'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoice Lookup'], ['draft', '💾 임시 저장', 'Drafts'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체 주문', 'All Orders']];
 const JOB_CHIPS = { pick: ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo'], whmgr: ['ups', 'packed', 'done', 'shipped', 'bo', 'picked', 'pick', 'mine', 'cfok', 'sent', 'cfw', 'all'], pickinv: ['sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'inv', 'bo', 'all'], invoice: ['sent', 'cfw', 'cfok', 'picked', 'pick', 'done', 'packed', 'shipped', 'inv', 'bo', 'draft', 'all'], acct: ['inv', 'done', 'packed', 'shipped', 'bo', 'all'] };
 const LIVE_ST = ['sent', 'pick', 'ok', 'picked', 'done', 'packed'];
+const STG = [['recv', '📥', '접수', 'Intake', ['sent', 'cfw', 'cfok', 'draft']], ['ship', '📦', '출고', 'Fulfill', ['mine', 'pick', 'picked', 'done', 'ups', 'packed']], ['fin', '✅', '완료 · 조회', 'Done', ['shipped', 'inv', 'all']], ['etc', '⏳', '기타', 'Other', ['bo', 'x']]];   // 주문 처리 단계 묶음
+export const stageOfChip = st => (STG.find(g => g[4].includes(st)) || [])[0];
+export function goStage(g) { const av = chipsFor(), G = STG.find(x => x[0] === g); const first = G && av.find(c => G[4].includes(c[0])); if (first) { LF.st = first[0]; LF.list = true; } }
 const OPEN_CH = ['mine', 'pick', 'picked', 'done', 'packed'];   // 목록 칩 중 아직 안 끝난 일 (오래된 것이 위)   // 아직 끝나지 않은 주문 (출고 전)
 export function chipsFor() { const j = jobOf(); const keys = JOB_CHIPS[j]; return (keys ? keys.map(k => CHIPS.find(c => c[0] === k)) : CHIPS).filter(c => c[0] !== 'ups' || can('ship')); }
 export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div><div><b>…</b><span>🧾 포장 대기 · Packing</span></div><div><b>…</b><span>📮 픽업 대기 · Pickup</span></div></div>'; }
@@ -292,14 +296,14 @@ async function staffHome() {
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
   /* 담당자 홈 = 주문 처리 먼저 (접수 · 픽킹 · 인보이스 · 포장), 바로가기, 매출은 맨 아래 */
   /* 🏭 창고 매니저 — 주문 처리보다 재고 · UPS 출고 · 픽업 · 백오더가 먼저 (주문 처리 타일은 아래 작은 칸) */
-  let grids = '<div class="hgrid">' + T.join('') + '</div><div class="hgrid">' + A.join('') + '</div>';
-  if (j === 'whmgr') {
-    const all = T.concat(A), pick = ks => ks.map(k => all.find(h => h.indexOf('data-hg="' + k + '"') >= 0)).filter(Boolean);
-    const WH = ['items', 'ups', 'packed', 'done', 'bo', 'shipped', 'track', 'cat'], OR = ['flow', 'mine', 'sent', 'cfok', 'cfw', 'pick', 'picked', 'all', 'stores'];
-    grids = '<h2 class="hsec">🏭 ' + bi('창고 · 재고 · 출고', 'Warehouse · Inventory · Shipping') + '</h2><div class="hgrid">' + pick(WH).join('') + '</div>' +
-      '<h2 class="hsec">📦 ' + bi('주문 처리', 'Order processing') + '</h2><div class="hgrid hsmall">' + pick(OR).join('') + '</div>' +
-      all.filter(h => !WH.concat(OR).some(k => h.indexOf('data-hg="' + k + '"') >= 0)).join('');
-  }
+  /* 🗂 큰 묶음 4개로 접어 둠 — 머리를 누르면 펼쳐져 세부 타일 (펼친 상태는 이 폰에 기억). 머리에는 핵심 숫자 */
+  const GRP = [['recv', '📥', '주문 접수', 'Intake', ['flow', 'sent', 'cfw', 'cfok', 'new', 'all']], ['ship', '📦', '출고 · 포장', 'Fulfillment', ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo']],
+    ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'track', 'cat', 'items']]];
+  const allT = T.concat(A), keyOf = h => (h.match(/data-hg="([^"]+)"/) || [])[1];
+  const OKEY = 'theone.hgrp.' + j; let openG = null; try { openG = JSON.parse(localStorage.getItem(OKEY) || 'null'); } catch (e) {}
+  if (!Array.isArray(openG)) openG = [j === 'pick' || j === 'whmgr' ? 'ship' : j === 'acct' ? 'money' : 'recv'];
+  let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + g[1] + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">▾</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
+    allT.filter(h => !GRP.some(g => g[4].includes(keyOf(h)))).join('');
   $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">' + (j === 'whmgr' ? '🏭 ' + bi('창고', 'Warehouse') : '📦 ' + bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
     '<div id="naBanH"></div><div id="hOld"></div>' + grids +
     '<div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div>';
@@ -309,6 +313,7 @@ async function staffHome() {
   $('hPrev').onclick = () => shift(-1); $('hNext').onclick = () => shift(1);
   $('hCalT').onclick = () => $('hCal').onclick();
   $('hCal').onclick = async () => { const r = await pickDates({ from, to, quick: Fulfill.quickRanges() }); if (!r) return; LF.hp = 'custom'; LF.hfrom = r[0]; LF.hto = r[1]; staffHome(); };
+  document.querySelectorAll('[data-ghd]').forEach(b => b.onclick = () => { const g = b.closest('.hgrp'); g.classList.toggle('open'); const L = Array.from(document.querySelectorAll('.hgrp.open')).map(x => x.dataset.grp); try { localStorage.setItem(OKEY, JSON.stringify(L)); } catch (e) {} });
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
@@ -348,6 +353,10 @@ async function staffHome() {
     put('shipped', nm(shipIn));
     put('ups', topack.length ? '<b>' + topack.length + '건 라벨 대기 · to ship</b>' : '대기 없음 · none waiting');
     put('bo', bo.length ? bo.length + '건 · ' + money(bo.reduce((a, r) => a + (r.amt || 0), 0)) : '없음 · none');
+    /* 🗂 묶음 머리 숫자 — 접어 둬도 할 일이 보이게 */
+    const gs = (id, parts) => { const el = $('hg-' + id); if (el) el.innerHTML = parts.filter(p => p[1]).map(p => p[0] + ' <b' + (p[2] ? ' style="color:#b91c1c"' : '') + '>' + p[1] + '</b>').join(' · ') || bt('대기 없음', 'nothing waiting'); };
+    gs('recv', [[bt('신규', 'New'), nw.length, true], [bt('확인 대기', 'Awaiting'), cw.length], [bt('배정 대기', 'To assign'), ck2.length, true]]);
+    gs('ship', [[bt('작업 중', 'Picking'), pk.length], [bt('검수', 'Review'), pkd.length, true], [bt('포장', 'Pack'), topack.length, true], [bt('픽업', 'Pickup'), pkd2.length], [bt('백오더', 'BO'), bo.length]]);
     /* 매출 */
     const iv = inv.filter(x => x.st !== 'x'), tot = sum(iv, x => x.total || 0), pcs = iv.reduce((a, x) => a + (x.qty || 0), 0);
     const pv = pinv ? sum(pinv.filter(x => x.st !== 'x'), x => x.total || 0) : null;
@@ -378,7 +387,10 @@ function listHead() {
   /* 위쪽 메뉴(상태 아이콘 · 기간)는 화면 위에 고정 — 아이콘은 옆으로 밀리지 않고 한눈에 다 보이는 격자 */
   const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '" title="' + esc(ko + ' · ' + en) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + ' <span class="en">' + en + '</span></span></button>';
   const cmp = document.body.classList.contains('oscr');
-  return statusStrip() + '<div class="ohead"><div class="ochips">' + chip('home', '🏠', '홈', 'Home', false) + chipsFor().map(c => { const i = c[1].indexOf(' '); return chip(c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2], LF.st === c[0]); }).join('') + '<button data-ocmp="1" title="' + esc(bt('메뉴 작게 · 크게', 'Compact / full menu')) + '"><span class="ci">' + (cmp ? '🔽' : '🔼') + '</span><span class="cl">' + (cmp ? bt('크게', 'Full') : bt('작게', 'Compact')) + '</span></button></div>' + per + '</div>' +
+  /* 🗂 단계(접수 · 출고 · 완료 · 기타)를 먼저 고르고, 그 단계의 세부 칸만 — 칩 15개를 한 번에 보이지 않게 */
+  const av = chipsFor(), gs = STG.filter(g => av.some(c => g[4].includes(c[0]))), cur = gs.find(g => g[4].includes(LF.st)) || gs[0];
+  const sub = av.filter(c => cur && cur[4].includes(c[0]));
+  return statusStrip() + '<div class="ohead"><div class="ochips ogrp">' + chip('home', '🏠', '홈', 'Home', false) + gs.map(g => '<button class="' + (g === cur ? 'on' : '') + '" data-lg="' + g[0] + '" title="' + esc(g[2] + ' · ' + g[3]) + '"><span class="ci">' + g[1] + '</span><span class="cl">' + g[2] + ' <span class="en">' + g[3] + '</span></span></button>').join('') + '</div><div class="ochips osub">' + sub.map(c => { const i = c[1].indexOf(' '); return chip(c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2], LF.st === c[0]); }).join('') + '<button data-ocmp="1" title="' + esc(bt('메뉴 작게 · 크게', 'Compact / full menu')) + '"><span class="ci">' + (cmp ? '🔽' : '🔼') + '</span><span class="cl">' + (cmp ? bt('크게', 'Full') : bt('작게', 'Compact')) + '</span></button></div>' + per + '</div>' +
     (j === 'pick' ? '' : '<div style="margin-bottom:10px">' + sel('lfSm', [['', '세일즈맨 전체 · All salesmen']].concat(S.sms.map(s => [s.code, s.code])), LF.sm) + '</div>');
 }
 function bindHead() {
@@ -386,6 +398,7 @@ function bindHead() {
   if ($('hCal2')) $('hCal2').onclick = async () => { const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto), r = await pickDates({ from: pr[0], to: pr[1], quick: Fulfill.quickRanges() }); if (!r) return; LF.hp = 'custom'; LF.hfrom = r[0]; LF.hto = r[1]; pageOrder(''); };
   if ($('oNew')) $('oNew').onclick = () => { if (readWip() && !confirm('작성 중인 주문가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); Router.go('order', 'new'); };
   document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') { LF.list = false; return pageOrder(''); } LF.st = b.dataset.lf; pageOrder(''); });
+  document.querySelectorAll('[data-lg]').forEach(b => b.onclick = () => { goStage(b.dataset.lg); pageOrder(''); });
   if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageOrder(''); };
 }
 /** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */

@@ -63,7 +63,7 @@ const path = require('path'), fs = require('fs');
   const left = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.orders).filter(o => o.st === 'sent').map(o => o.id)); log('sent left:', left); if (left.join() !== 'O261015-CCCC') errs.push('all checked orders should be assigned, left ' + left.join());
   const p1 = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.orders).filter(o => o.picker === 'pick1@x.com' && o.st === 'pick').length); log('Pick 1 now has', p1); if (p1 !== 4) errs.push('multi assign should default to Pick 1');
   /* 4. 출고 작업 목록에서는 줄을 누르면 상세 (할당 모드 아님) */
-  await pg.click('[data-lf="pick"]'); await pg.waitForSelector('#page [data-oid]'); await pg.click('#page [data-oid="O261015-BBBB"] .ct'); await pg.waitForSelector('#mPickDone', { timeout: 4000 }).catch(() => errs.push('in-fulfillment row tap should open the order'));
+  await pg.click('[data-lg="ship"]'); await pg.waitForTimeout(500); await pg.click('[data-lf="pick"]'); await pg.waitForSelector('#page [data-oid]');   // v0.8.125: 단계(출고) → 세부 칸 await pg.click('#page [data-oid="O261015-BBBB"] .ct'); await pg.waitForSelector('#mPickDone', { timeout: 4000 }).catch(() => errs.push('in-fulfillment row tap should open the order'));
   log(errs.length ? '❌ ' + errs.join('\n❌ ') : '✅ all good');
   await br.close(); srv.kill(); process.exit(errs.length ? 1 : 0);
 })();
