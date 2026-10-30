@@ -68,10 +68,16 @@ export async function storeInfo(acct, force) {
       out.invHist = sortBy(allInv.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 60); out.invHistN = allInv.length; out.invHistAmt = R2(allInv.filter(x => x.st !== 'x' && x.d >= today().substring(0, 4) + '-01-01').reduce((a, x) => a + (x.total || 0), 0)); } catch (e) {}
     out.orders = sortBy(orders.filter(o => o.st !== 'x'), o => o.d + (o.createdAt || ''), true).slice(0, 30);
     out.pays = sortBy(pays.filter(e => !e.void), e => e.d + (e.createdAt || ''), true).slice(0, 30);
-    /* 아이템별 최근 구매 — 최근 주문 8건의 줄을 읽음 (인보이스 확정된 것 우선) */
-    const recent = out.orders.filter(o => o.st === 'done' || o.st === 'pick' || o.st === 'ok' || o.st === 'sent').slice(0, 8);
+    /* 🕘 아이템별 이 가게 구매 기록 — 주문 화면에 "9/16(3) · 7/20(6)" 로 보임
+     *   ① 앱에서 발행한 인보이스 줄 (실제 나간 수량 · 가격) 전부   ② 아직 인보이스가 안 난 주문(접수 · 작업 중 · 확인)의 줄 — 최근 12건
+     *   이전 시스템 인보이스는 줄이 없어 안 잡힘 (아이템별 판매 내역을 가져오면 들어옴) */
+    const invL = (out.invHist || []).filter(x => x.lines && x.lines.length);
+    invL.forEach(x => x.lines.forEach(l => { if (!l || !l.q) return; (out.hist[l.c] = out.hist[l.c] || []).push([x.d, l.q, l.p, x.no]); }));
+    const recent = out.orders.filter(o => o.st === 'pick' || o.st === 'ok' || o.st === 'sent' || (o.st === 'done' && !invL.some(x => x.orderId === o.id || x.order === o.no || (o.invs || []).includes(x.no)))).slice(0, 12);
     const Ls = await Promise.all(recent.map(o => S.DB.get('orderLines', o.id).catch(() => null)));
-    Ls.forEach((L, i) => { if (!L || !L.lines) return; const d = recent[i].d; L.lines.forEach(l => { const q = l.pq != null && recent[i].st === 'done' ? l.pq : l.q; if (!q) return; (out.hist[l.c] = out.hist[l.c] || []).push([d, q, l.p]); }); });
+    Ls.forEach((L, i) => { if (!L || !L.lines) return; const d = recent[i].d; L.lines.forEach(l => { const q = l.pq != null && recent[i].st === 'done' ? l.pq : l.q; if (!q) return; (out.hist[l.c] = out.hist[l.c] || []).push([d, q, l.p, '']); }); });
+    /* 같은 날 여러 장은 합치고 · 최근 것부터 · 아이템마다 8건까지 */
+    Object.keys(out.hist).forEach(c => { const by = {}; out.hist[c].forEach(h => { const k = h[0]; if (by[k]) { by[k][1] += h[1]; } else by[k] = h.slice(); }); out.hist[c] = Object.values(by).sort((x, y) => String(y[0]).localeCompare(String(x[0]))).slice(0, 8); });
   } catch (e) { out.err = String(e.code || e.message); }
   CACHE[acct] = out;
   return out;
@@ -159,7 +165,10 @@ export async function statementDialog(acct, info, back) {
   paint();
 }
 /** "10/07(3) 07/28(3)" — 최근 3번 */
-export function histText(info, code) { const h = info && info.hist[code]; if (!h || !h.length) return ''; return h.slice(0, 3).map(x => md(x[0]) + '(' + x[1] + ')').join(' '); }
+/** "9/16(3) · 7/20(6) · 5/02(12)" — 이 가게에 이 아이템이 나간 날(수량), 최근 n건 (기본 3) */
+export function histText(info, code, n) { const h = info && info.hist[code]; if (!h || !h.length) return ''; return h.slice(0, n || 3).map(x => md(x[0]) + '(' + x[1] + ')').join(' · ') + (h.length > (n || 3) ? ' …' : ''); }
+/** 카드용 한 토막 — 마지막으로 나간 날 · 수량 "9/16·3" (여러 번이면 +N) */
+export function histLast(info, code) { const h = info && info.hist[code]; if (!h || !h.length) return ''; return md(h[0][0]) + '·' + h[0][1] + (h.length > 1 ? ' +' + (h.length - 1) : ''); }
 export function lastPrice(info, code) { const h = info && info.hist[code]; return h && h.length ? h[0][2] : null; }
 
 /** 인보이스 탭 — 인보이스 기록(이전 시스템 + 앱) 과 AR 미결을 번호로 합침. 상태는 AR 이 기준 (AR 에 있으면 미결, 기준일 전 것이 AR 에 없으면 완납) */
