@@ -36,7 +36,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.128';
+export const VER = 'v0.8.129';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -356,7 +356,8 @@ async function checkUpdate() {
     const m = t.match(/app\.js\?v=([\d.]+)/); if (!m || 'v' + m[1] === VER) return;
     const b = document.createElement('button'); b.id = 'updBar'; b.className = 'updbar';
     b.innerHTML = '🔄 ' + bt('새 버전이 있습니다', 'New version available') + ' (v' + esc(m[1]) + ') — <u>' + bt('눌러서 업데이트', 'tap to update') + '</u>';
-    b.onclick = async () => { b.textContent = '🔄 …'; try { await fetch('./', { cache: 'reload' }); await fetch('index.html', { cache: 'reload' }); const r = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (r) await r.update(); } catch (e) {} location.reload(); };
+    /* 새 index.html · 앱 파일을 인터넷에서 받아 보관(서비스 워커가 reload 요청은 인터넷 먼저) → 새 서비스 워커가 있으면 자리 잡을 때까지(최대 4초) 기다린 뒤 다시 엶 — 전에는 보관본을 그대로 다시 열어 띠가 계속 남았음 */
+    b.onclick = async () => { b.textContent = '🔄 …'; try { await fetch('index.html', { cache: 'reload' }); await fetch('./', { cache: 'reload' }); const r = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (r) { await r.update(); if (r.installing || r.waiting) await new Promise(res => { const t = setTimeout(res, 4000); navigator.serviceWorker.addEventListener('controllerchange', () => { clearTimeout(t); res(); }, { once: true }); }); } } catch (e) {} location.reload(); };
     document.body.appendChild(b);
   } catch (e) { /* 인터넷 없음 — 다음에 */ }
 }
