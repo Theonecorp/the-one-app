@@ -7,7 +7,7 @@
  *            이메일 · 구글 챗은 notifyq → apps-script/Code.gs 가 5분마다 보냄
  *  notifyq/{id} = { kind: cfreq|issue|ask, toSm, toStaff, subject, text, url, chat, st: 'wait', by, at }
  * ============================================================ */
-import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, bi, bt, today, localDay, md, Router } from './ui.js';
+import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, bi, bt, today, localDay, md, Router, goHash } from './ui.js';
 import { newId } from './db.js';
 
 let S = null, STOP = [], SEEN = { req: -1, iss: -1 };
@@ -74,7 +74,7 @@ export function start() {
       const req = rows.filter(o => o.cfReq && !o.cfOk && o.st !== 'x'), day = dayPending(rows);
       const n = req.length + (day.length ? 1 : 0);
       badge(n);
-      bar('cfBarS', req.length ? '❓ ' + bt('사무실 확인 요청', 'Office asks you to confirm') + ' <b>' + req.length + '</b>' + bt('건', '') + ' — <u>' + bt('보기', 'view') + '</u>' : '', () => { location.hash = '#/order/cf'; });
+      bar('cfBarS', req.length ? '❓ ' + bt('사무실 확인 요청', 'Office asks you to confirm') + ' <b>' + req.length + '</b>' + bt('건', '') + ' — <u>' + bt('보기', 'view') + '</u>' : '', () => { goHash('#/order/cf'); });
       if (SEEN.req >= 0 && req.length > SEEN.req) { beep(); toast('❓ ' + bt('사무실에서 주문 확인을 요청했습니다', 'The office asked you to confirm an order'), 'bad'); phone('❓ ' + bt('주문 확인 요청', 'Order check requested'), req.map(o => o.store).slice(0, 3).join(', '), appUrl('order/cf')); }
       SEEN.req = req.length;
     }));
@@ -82,7 +82,7 @@ export function start() {
   if (!isSales()) {
     /* 매니저: 세일즈맨이 ⚠️ 문제 있음 / 확인 요청에 답하면 */
     STOP.push(S.DB.watch('orders', { where: [['cfIssueOpen', '==', true]] }, rows => {
-      bar('cfBarM', rows.length ? '⚠️ ' + bt('세일즈맨이 알린 주문 문제', 'Salesman flagged orders') + ' <b>' + rows.length + '</b>' + bt('건', '') + ' — <u>' + bt('보기', 'view') + '</u>' : '', () => { location.hash = '#/order/' + rows[0].id; });
+      bar('cfBarM', rows.length ? '⚠️ ' + bt('세일즈맨이 알린 주문 문제', 'Salesman flagged orders') + ' <b>' + rows.length + '</b>' + bt('건', '') + ' — <u>' + bt('보기', 'view') + '</u>' : '', () => { goHash('#/order/' + rows[0].id); });
       if (SEEN.iss >= 0 && rows.length > SEEN.iss) { beep(); toast('⚠️ ' + bt('세일즈맨이 주문 문제를 알렸습니다', 'A salesman flagged an order'), 'bad'); phone('⚠️ ' + bt('주문 문제', 'Order issue'), rows.map(o => o.store + ' · ' + (o.cfIssue || '')).slice(0, 2).join(' / '), appUrl('order/' + rows[0].id)); }
       SEEN.iss = rows.length;
     }));
@@ -114,7 +114,7 @@ export async function dayCard(el) {
     Object.keys(by).sort().map(d => { const X = by[d]; return '<div class="iday"><b>' + (d === today() ? bt('오늘', 'Today') + ' ' : '') + esc(md(d)) + '</b><span>' + X.length + bt('건', '') + ' · ' + money(X.reduce((a, o) => a + (Number(o.amt) || 0), 0)) + '</span></div>' +
       X.map(o => '<div class="pr"><div class="ct tap" data-dco="' + esc(o.id) + '"><b>' + esc(o.store || '') + '</b><small>' + esc(o.acct || '') + ' · ' + (o.n || 0) + bt('줄', ' lines') + ' · ' + (o.qty || 0) + bt('개', ' pcs') + ' · ' + esc(o.no || '') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b><button class="b-ghost b-sm" data-dci="' + esc(o.id) + '" style="margin-top:4px">⚠️</button></div></div>').join(''); }).join('') +
     '<button class="b-green" id="dcAll" style="margin-top:10px;padding:14px">✅ ' + bt('모두 맞습니다', 'All correct') + ' (' + L.length + bt('건', '') + ' · ' + money(tot) + ')</button></div>';
-  el.querySelectorAll('[data-dco]').forEach(x => x.onclick = () => { location.hash = '#/order/' + x.dataset.dco; });
+  el.querySelectorAll('[data-dco]').forEach(x => x.onclick = () => { goHash('#/order/' + x.dataset.dco); });
   el.querySelectorAll('[data-dci]').forEach(x => x.onclick = () => issueForm(L.find(o => o.id === x.dataset.dci), () => dayCard(el)));
   $('dcAll').onclick = async () => {
     if (!(await confirmBox(bt(L.length + '건 · ' + money(tot) + ' — 모두 내가 보낸 주문이 맞습니까?', 'Confirm all ' + L.length + ' orders (' + money(tot) + ')?'), bt('✅ 맞습니다', '✅ Confirm')))) return;
@@ -166,7 +166,7 @@ export async function reviewPage() {
     busy(false); reviewPage();
   };
   el.querySelectorAll('[data-rvk]').forEach(b => b.onclick = () => ok(REQ.filter(o => o.id === b.dataset.rvk)));
-  el.querySelectorAll('[data-rve]').forEach(b => b.onclick = () => { location.hash = '#/order/' + b.dataset.rve; });
+  el.querySelectorAll('[data-rve]').forEach(b => b.onclick = () => { goHash('#/order/' + b.dataset.rve); });
   el.querySelectorAll('[data-rvi]').forEach(b => b.onclick = () => issueForm(REQ.find(o => o.id === b.dataset.rvi), reviewPage));
   $('rvAll').onclick = async () => { if (!(await confirmBox(bt(REQ.length + '건 · ' + money(REQ.reduce((a, o) => a + (Number(o.amt) || 0), 0)) + ' — 전부 내가 보낸 주문이고 내용이 맞습니까?', 'Confirm all ' + REQ.length + ' orders?'), bt('✅ 모두 맞습니다', '✅ All correct')))) return; ok(REQ); };
   /* 아이템 줄 — 주문마다 (많으면 앞 40건까지) */

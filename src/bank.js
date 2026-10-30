@@ -7,7 +7,7 @@
  *    · 경영 → 🏦 은행: 월별 입금 · 출금 · 분류별 합 · 앱 수금(체크 · 현금 · COD · 카드 · ACH)과 대조 · 공장 송금과 대조 · 분류 안 된 줄
  *    · 오너 · 관리자 홈 현금 흐름 칸에 "🏦 은행 실제 입금 · 출금 · 잔액"
  * ============================================================ */
-import { $, esc, money, k, R2, num, today, md, toast, busy, openModal, closeModal, confirmBox, sortBy, groupBy, sum, sel, bt, bi } from './ui.js';
+import { $, esc, money, k, R2, num, today, md, toast, busy, openModal, closeModal, confirmBox, sortBy, groupBy, sum, sel, bt, bi, goHash } from './ui.js';
 
 let S = null;
 export function register(state) { S = state; }
@@ -88,7 +88,7 @@ export async function bankFile(file, out, readBook, aoa, parseCsv, csvDelim) {
       (P.warn.length ? '<div class="alert a-amb">⚠️ ' + P.warn.length + '줄은 읽지 못해 빠집니다<div style="font-size:12px;max-height:100px;overflow:auto">' + P.warn.slice(0, 20).map(esc).join('<br>') + '</div></div>' : '') +
       '<div class="hint">이미 들어 있는 줄 ' + (P.rows.length - fresh.length) + '개는 건너뛰고 새 줄 ' + fresh.length + '개만 넣습니다 (같은 날짜 · 내용 · 금액 · 잔액 = 같은 줄). 분류를 손으로 고친 줄은 그대로 둡니다.</div>' +
       '<div class="btns"><button class="b-blue" id="bkGo"' + (fresh.length ? '' : ' disabled') + '>' + fresh.length + '줄 넣기</button></div></div>';
-    $('bkGo').onclick = async () => { busy(true); try { const now = new Date().toISOString(); await S.DB.batch(fresh.map(x => ({ op: 'set', col: 'bank', id: x.id, data: Object.assign({}, x, { by: S.user.email, at: now }) }))); out.innerHTML = '<div class="alert a-grn">🏦 ' + fresh.length + '줄 넣었습니다. <u data-gobank style="cursor:pointer">경영 → 🏦 은행</u>에서 분류와 대조를 확인하세요.</div>'; out.querySelectorAll('[data-gobank]').forEach(u => u.onclick = () => { location.hash = '#/mg/bank'; }); toast('🏦 ' + fresh.length + '줄', 'good'); } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; } busy(false); };
+    $('bkGo').onclick = async () => { busy(true); try { const now = new Date().toISOString(); await S.DB.batch(fresh.map(x => ({ op: 'set', col: 'bank', id: x.id, data: Object.assign({}, x, { by: S.user.email, at: now }) }))); out.innerHTML = '<div class="alert a-grn">🏦 ' + fresh.length + '줄 넣었습니다. <u data-gobank style="cursor:pointer">경영 → 🏦 은행</u>에서 분류와 대조를 확인하세요.</div>'; out.querySelectorAll('[data-gobank]').forEach(u => u.onclick = () => { goHash('#/mg/bank'); }); toast('🏦 ' + fresh.length + '줄', 'good'); } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; } busy(false); };
   } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
 }
 
@@ -239,7 +239,7 @@ function bindManual(out, P, fileName) {
       const parts = P.outParts || [], pick = re => R2(sum(parts.filter(x => re.test(x[0]) && !/^Total|Subtractions|Withdrawals\/Debits/.test(x[0])), x => x[1]));
       try { await upsertCashRows(S.DB, ym, { in: doc.in, out: doc.out, checks: pick(/Checks Paid/i), fee: pick(/Fee/i) }); const M = await import('./mg.js'); if (M.dropSalesCache) M.dropSalesCache(ym.substring(0, 4)); } catch (e) {}
       out.innerHTML = '<div class="alert a-grn">🏦 ' + ym + ' — 입금 ' + money(doc.in) + ' · 출금 ' + money(doc.out) + (ops.length > 1 ? ' · 거래 줄 ' + (ops.length - 1) + '개' : '') + ' 넣었습니다 (📈 매출 탭 현금 흐름 표의 ' + Number(ym.substring(5)) + '월 칸도 채움). <u data-gobank style="cursor:pointer">경영 → 🏦 은행</u></div>';
-      out.querySelectorAll('[data-gobank]').forEach(u => u.onclick = () => { location.hash = '#/mg/bank'; }); toast('🏦 ' + ym, 'good');
+      out.querySelectorAll('[data-gobank]').forEach(u => u.onclick = () => { goHash('#/mg/bank'); }); toast('🏦 ' + ym, 'good');
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };

@@ -2,7 +2,7 @@
  *  THE ONE 앱 — 진입점: 로그인 → 역할 → 메뉴
  * ============================================================ */
 import { connect, MOCK, newId } from './db.js';
-import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt, numPadOn, setNumPad } from './ui.js';
+import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt, numPadOn, setNumPad, goHash } from './ui.js';
 import { CSS } from './style.js';
 import * as Sales from './sales.js';
 import * as Collect from './collect.js';
@@ -34,7 +34,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.123';
+export const VER = 'v0.8.124';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -311,7 +311,7 @@ async function afterLogin(user) {
   paintNav();
   setTimeout(() => Notify.start(), snap ? 1500 : 0);   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
   const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
-  if (!valid) location.hash = '#/' + navFor(S.role)[0][0];
+  if (!valid) goHash('#/' + navFor(S.role)[0][0]);
   Router.stack = [];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
   /* 빠른 시작이었으면 — 서버 것과 비교해 바뀐 것만 반영 */
