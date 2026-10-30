@@ -7,7 +7,7 @@
  *                       got: {eid: at}, miss: {eid: true}, doneAt, doneBy }
  *    entries.env = 봉투 번호 · entries.rc = 도착(② 체크 수령, 기존 그대로)
  * ============================================================ */
-import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, confirmBox, printOpen, sum, bi, bt, daysBetween } from './ui.js';
+import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, confirmBox, askOver, printOpen, sum, bi, bt, daysBetween } from './ui.js';
 import { newId } from './db.js';
 
 let S = null;
@@ -145,7 +145,7 @@ async function envModal(e, after) {
     $('mbox').querySelectorAll('[data-big]').forEach(im => im.onclick = () => { const w = window.open('', '_blank'); if (w) { w.document.write('<img src="' + im.src + '" style="max-width:100%">'); w.document.close(); } });
     if ($('evDone')) $('evDone').onclick = async () => {
       const left = (e.checks || []).filter(c => !got[c.eid + '|' + c.ref]);
-      if (left.length && !(await confirmBox(bt(left.length + '장이 아직 안 왔습니다. 미도착으로 표시하고 봉투를 닫을까요? (나중에 오면 수금 확인에서 체크 번호로 맞출 수 있습니다)', left.length + ' checks have not arrived. Mark them missing and close the envelope?'), bt('완료', 'Done')))) return;
+      if (left.length && !(await askOver(bt(left.length + '장이 아직 안 왔습니다. 미도착으로 표시하고 봉투를 닫을까요? (나중에 오면 수금 확인에서 체크 번호로 맞출 수 있습니다)', left.length + ' checks have not arrived. Mark them missing and close the envelope?'), bt('완료', 'Done')))) return;
       left.forEach(c => { miss[c.eid + '|' + c.ref] = true; dirty.add(c.eid); });
       const r = await commit({ st: 'done', doneAt: new Date().toISOString(), doneBy: S.user.email }); if (r === false) return;
       toast('✅ ' + bt('봉투 완료', 'Envelope done') + (left.length ? ' · ⚠️ ' + left.length + bt('장 미도착', ' missing') : ''), 'good'); closeModal();

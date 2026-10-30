@@ -42,7 +42,7 @@ const path = require('path');
   await pg.click('#evDone'); await pg.waitForSelector('#cfOk').catch(() => {}); if (await pg.$('#cfOk')) await pg.click('#cfOk'); await pg.waitForTimeout(1000);
   const st2 = await pg.evaluate((id) => { const M = window.__MOCK_STORE__, e = M.envelopes[id]; return { st: e.st, miss: Object.keys(e.miss).length, envMiss: Object.values(M.entries).filter(x => x.envMiss).length }; }, env2.id); log('after done:', st2);
   if (st2.st !== 'done' || st2.miss !== 1 || st2.envMiss !== 1) errs.push('envelope done / missing wrong');
-  if (await pg.$('[data-ev]')) errs.push('done envelope should leave the card');
+  await pg.waitForTimeout(1500); if (await pg.$('[data-ev]')) errs.push('done envelope should leave the card');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();
