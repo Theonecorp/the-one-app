@@ -741,9 +741,8 @@ function itemRow(it) {
   const t = typeOfItem(S, it), dc = Number((O.disc || {})[t]) || 0, hist = Store.histText(INFO, it.c), lp = Store.lastPrice(INFO, it.c);
   return '<div class="pr irow' + (cur ? ' v' : '') + tapCls(IDX[it.c]) + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
     (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
-    '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') + '</b><small class="desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</small>' + (it.k ? '<small>' + esc(kitLine(it)) + '</small>' : '') +
-    '<small><button class="pedit" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</button>' + (dc ? ' → 할인가 ' + money(it.p * (1 - dc / 100)) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · 지난번 ' + money(lp) : '') + (it.s ? ' · SRP ' + money(it.s) : '') + '</small>' +
-    (hist ? '<small class="hist">🕘 ' + esc(hist) + '</small>' : '') + '</div>' +
+    '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '<span class="nm desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</span></b>' + (it.k ? '<small>' + esc(kitLine(it)) + '</small>' : '') +
+    '<small class="ln"><button class="pedit" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</button>' + (dc ? '<span>→ ' + money(it.p * (1 - dc / 100)) + '</span>' : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? '<span>' + bt('지난번', 'last') + ' ' + money(lp) + '</span>' : '') + (it.s ? '<span>SRP ' + money(it.s) + '</span>' : '') + (hist ? '<span class="hist">🕘 ' + esc(hist) + '</span>' : '') + '</small></div>' +
     qtyBox(it.c, cur) + '</div>';
 }
 /** 사진 카드 — 누르면 1개 담김, 숫자를 누르면 수량 입력, − 로 빼기 */
