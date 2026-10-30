@@ -195,7 +195,7 @@ export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c
 
 /* ---------- 회사 정보 (관리 → 설정) ---------- */
 /* 인보이스 꼬리말(footer) — 보통 도매 인보이스에 들어가는 조건들. 관리 → 설정에서 고침. paper: letter(8.5×11) · a4, sig: 수령 서명 줄 */
-export const FOOTER_DEFAULT = 'Please make checks payable to THE ONE CORP and write the invoice number on your check.\nPayment is due by the Due Date above. Past-due balances are subject to a 1.5% monthly finance charge (18% APR).\nReturned checks are subject to a $35 NSF fee.\nPlease check your merchandise upon receipt. Claims for shortages or damages must be reported within 7 days. No returns without prior authorization.\nAll merchandise remains the property of THE ONE CORP until paid in full.';
+export const FOOTER_DEFAULT = 'Return Policy : All returns must be authorized by THE ONE CORP within 15 days of the invoice date. Returns not due to our fault are subject to a 15% restocking fee plus freight. Claims for shortages or damages must be reported within 7 days of receipt.\nPayment Terms Policy : Payment is due by the Due Date shown above. Past-due balances are subject to a 1.5% monthly finance charge (18% APR). A $35.00 fee will be charged for all returned (NSF) checks, and term privileges may be revoked without prior notice.\nPlease make checks payable to THE ONE CORP and write the invoice number on your check. All merchandise remains the property of THE ONE CORP until paid in full.';
 export const CO_DEFAULT = { name: 'THE ONE CORP', addr1: '4265 CHURCH STREET, UNIT 1009', addr2: 'SANFORD, FL 32771', tel: '(407) 878 - 7274', thanks: 'Thank You For Your Business !', footer: FOOTER_DEFAULT, paper: 'letter', sig: true };
 export function company(S) { return Object.assign({}, CO_DEFAULT, (S && S.settings && S.settings.co) || {}); }
 /** 조건에서 일수 — N30 → 30 · ACH60 → 60 · COD → 0 · 없으면 30 */
@@ -203,10 +203,15 @@ export function termDays(terms) { const t = String(terms || '').toUpperCase(); i
 const fmtD = d => { d = String(d || ''); return d.length >= 10 ? d.substring(5, 7) + '/' + d.substring(8, 10) + '/' + d.substring(2, 4) : d; };
 const n2 = v => { v = Number(v) || 0; const s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < 0 ? '-' : '') + (Math.abs(v) < 1 && Math.abs(v) > 0 ? s.replace(/^0/, '') : s); };
 
-/** 문서 머리 — 회사 · 제목 · 날짜/번호 상자 (인보이스 · 픽킹 공용) */
-export function docHead(co, title, boxes) {
-  return '<div class="ivh"><div style="display:flex;align-items:center"><img src="logo.png" class="ivlogo" alt=""><div><div class="ivco">' + esc(co.name) + '</div><div class="ivad">' + esc(co.addr1) + '<br>' + esc(co.addr2) + '<br>Phone. ' + esc(co.tel) + '</div></div></div>' +
-    '<div style="text-align:right"><div class="ivt">' + esc(title) + '</div><table class="ivbox"><tr>' + boxes.map(b => '<th>' + esc(b[0]) + '</th>').join('') + '</tr><tr>' + boxes.map(b => '<td>' + esc(b[1]) + '</td>').join('') + '</tr></table></div></div>';
+/** 문서 머리 — 회사(로고 · 이름 · 주소) 왼쪽, 큰 제목 + 회색 머리 상자(Acct. No. · Date · Invoice #) 오른쪽 (인보이스 · 스테이트먼트 · 픽킹 공용) */
+export function docHead(co, title, boxes, sub) {
+  return '<div class="ivh"><div class="ivhl"><img src="logo.png" class="ivlogo" alt=""><div class="ivcob"><div class="ivco">' + esc(co.name) + '</div><div class="ivad">' + esc(co.addr1) + ' · ' + esc(co.addr2) + '<br>TEL : ' + esc(co.tel) + '</div></div></div>' +
+    '<div class="ivhr"><div class="ivt">' + esc(title) + '</div>' + (sub ? '<div class="ivtsub">' + esc(sub) + '</div>' : '') + '<table class="ivbox"><tr>' + boxes.map(b => '<th>' + esc(b[0]) + '</th>').join('') + '</tr><tr>' + boxes.map(b => '<td>' + esc(b[1]) + '</td>').join('') + '</tr></table></div></div>';
+}
+/** 꼬리말 — "Return Policy : …" 처럼 "… Policy :" 로 시작하면 그 말을 굵게 */
+export function footerHtml(co) {
+  const L = String(co.footer == null ? FOOTER_DEFAULT : co.footer).split(/\n/).map(x => x.trim()).filter(Boolean);
+  return L.length ? '<div class="ivterms">' + L.map(x => { const m = x.match(/^([A-Za-z][A-Za-z ]{0,30}?(?:Policy|Terms|Notice|Note))\s*:\s*(.*)$/); return '<div>' + (m ? '<b>' + esc(m[1]) + ' :</b> ' + esc(m[2]) : esc(x)) + '</div>'; }).join('') + '</div>' : '';
 }
 /**
  * 세일즈 인보이스 — 이전 양식: BILL TO/SHIP TO · Acct/Terms/Rep/Ship/Via/S.O./Due · 품목 (DC % · DC Price) · 분류별 소계 · AR 에이징 · 합계
@@ -224,37 +229,38 @@ export function invoiceHtml(inv, acc, opt) {
   const dc = Number(inv.disc) || 0;
   const A = inv.shipTo ? Object.assign({}, acc || {}, inv.shipTo) : acc;   // 🏬 이 주문만 고친 이름 · 주소가 있으면 그걸로
   const addr = A ? [A.addr, [A.city, A.state].filter(Boolean).join(', ') + (A.zip ? ' ' + A.zip : '')].filter(Boolean) : [];
-  const party = (t) => '<div class="ivp"><b>' + t + ' :</b><div>' + esc(inv.store) + '</div>' + addr.map(x => '<div>' + esc(x) + '</div>').join('') + (t === 'BILL TO' ? '<div>Phone : ' + esc((acc && acc.tel) || '') + '</div>' : '') + '</div>';
+  const party = (t) => '<div class="ivp"><div class="ivlbl">' + t + '</div><div class="ivpb"><div class="ivpn">' + esc(inv.store) + '</div>' + addr.map(x => '<div>' + esc(x) + '</div>').join('') + (t === 'Bill To' && acc && acc.tel ? '<div>Tel : ' + esc(acc.tel) + '</div>' : '') + '</div></div>';
   const terms = inv.terms || (acc && acc.terms) || 'N30';
   const due = addDays(inv.d, termDays(terms));
   /* 품목 — 분류별 소계 */
   let body = '', cur = null, gq = 0, gl = 0, gd = 0, gt = 0, tq = 0;
   const gName = g => String(g || '').replace(/^""|""$/g, '').replace(/^["\[<*]+|["\]>*]+$/g, '').trim() || 'OTHER';
-  const flush = () => { if (cur === null || !byGroup) return; body += '<tr class="ivsub"><td colspan="4" class="r">' + esc(gName(cur)) + ' Sub Total:</td><td class="r">' + n2(gl) + '</td><td></td><td class="r">' + n2(gt - gl) + '</td><td class="r">' + n2(gt) + '</td></tr>'; gq = gl = gd = gt = 0; };
+  const flush = () => { if (cur === null || !byGroup) return; body += '<tr class="ivsub"><td colspan="3" class="r">' + esc(gName(cur)) + ' Sub Total</td><td class="r">' + gq + '</td><td class="r">' + n2(gl) + '</td><td></td><td class="r">' + n2(gt - gl) + '</td><td class="r">' + n2(gt) + '</td></tr>'; gq = gl = gd = gt = 0; };
   let sumT = 0;
   rows.forEach(l => {
-    const g = grpOf(l); if (byGroup && g !== cur) { flush(); cur = g; body += '<tr class="ivgh"><td colspan="7">' + esc(gName(g)) + '</td></tr>'; }
+    const g = grpOf(l); if (byGroup && g !== cur) { flush(); cur = g; body += '<tr class="ivgh"><td colspan="8">' + esc(gName(g)) + '</td></tr>'; }
     const dp = dcPrice(l.p, dc), lt = lineTotal(l.q, l.p, dc); gq += l.q; gl += l.q * l.p; gt += lt; tq += l.q; sumT += lt;
     const kitOpen = l.kit && l.kit.length && view.kits !== 'closed';
-    body += '<tr' + (kitOpen ? ' class="ivset"' : '') + '><td><b>' + esc(l.c) + '</b></td><td class="r">' + l.q + '</td><td>' + esc(l.d) + (l.kit && !kitOpen ? '<div class="ivkit">SET: ' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + '</div>' : '') + '</td><td class="r">' + n2(l.p) + '</td><td class="r">' + (dc ? dc + '%' : '%') + '</td><td class="r">' + n2(dp) + '</td><td class="r">' + n2(lt) + '</td></tr>';
-    if (kitOpen) l.kit.forEach(k => { const it = C && C.byCode[k.c]; body += '<tr class="ivkitrow"><td>&nbsp;&nbsp;↳ ' + esc(k.c) + '</td><td class="r">' + (k.q * l.q) + '</td><td>' + esc(it ? it.d : '') + '</td><td class="r"></td><td></td><td class="r"></td><td class="r">incl.</td></tr>'; });
+    body += '<tr' + (kitOpen ? ' class="ivset"' : '') + '><td><b>' + esc(l.c) + '</b></td><td>' + esc(l.d) + (l.kit && !kitOpen ? '<div class="ivkit">SET: ' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + '</div>' : '') + '</td><td class="r">' + l.q + '</td><td class="r">' + l.q + '</td><td class="r">' + n2(l.p) + '</td><td class="r">' + (dc ? dc + '%' : '') + '</td><td class="r">' + n2(dp) + '</td><td class="r">' + n2(lt) + '</td></tr>';
+    if (kitOpen) l.kit.forEach(k => { const it = C && C.byCode[k.c]; body += '<tr class="ivkitrow"><td>&nbsp;&nbsp;↳ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td class="r">' + (k.q * l.q) + '</td><td class="r">' + (k.q * l.q) + '</td><td></td><td></td><td></td><td class="r">incl.</td></tr>'; });
   });
   flush();
   sumT = R2(sumT);
   const ar = opt.ar;
-  const arBox = ar && ar.asOf ? '<div class="ivar"><div class="ivart">AR balance Aging As Of ' + esc(fmtD(ar.asOf)) + '</div><table><tr><th>0-30</th><th>31-60</th><th>61-90</th><th>Over 90</th><th>Total</th></tr><tr><td>' + n2(ar.bk[0] + ar.bk[1]) + '</td><td>' + n2(ar.bk[2]) + '</td><td>' + n2(ar.bk[3]) + '</td><td>' + n2(ar.bk[4]) + '</td><td><b>' + n2(ar.bal) + '</b></td></tr></table></div>' : '';
+  /* 아래 왼쪽 — 이 거래처의 미수 에이징 (as of) : Current · 1-30 · 31-60 · 61-90 · Over 90 · Amount Due */
+  const arBox = ar && ar.asOf ? '<div class="ivar"><table><tr><th>Current</th><th>1-30 Days</th><th>31-60 Days</th><th>61-90 Days</th><th>Over 90 Days</th><th>Amount Due</th></tr><tr><td>' + n2(ar.bk[0]) + '</td><td>' + n2(ar.bk[1]) + '</td><td>' + n2(ar.bk[2]) + '</td><td>' + n2(ar.bk[3]) + '</td><td>' + n2(ar.bk[4]) + '</td><td><b>' + n2(ar.bal) + '</b></td></tr></table><div class="ivart">Account balance as of ' + esc(fmtD(ar.asOf)) + ' · The aging period is based on the due date.</div></div>' : '<div class="ivar"></div>';
   /* 합계는 인쇄된 줄의 합 — 저장된 total 과 1센트라도 다르면(옛 인보이스) 줄 합을 믿음 */
   const net = Math.abs(sumT - inv.total) > 0.005 ? sumT : inv.total, discAmt = R2(inv.sub - net);
-  const footer = String(co.footer == null ? FOOTER_DEFAULT : co.footer).split(/\n/).map(x => x.trim()).filter(Boolean);
-  return '<div class="iv' + (co.paper === 'a4' ? ' pa4' : '') + '">' + docHead(co, 'INVOICE', [['Date', fmtD(inv.d)], ['Invoice No.', inv.no]]) +
-    '<div class="ivparties">' + party('BILL TO') + party('SHIP TO') + '</div>' +
-    '<table class="ivinfo"><tr><th>Acct. No.</th><th>Terms</th><th>Rep.</th><th>Ship</th><th>Ship Via</th><th>S.O. No.</th><th>Due Date</th></tr>' +
-    '<tr><td>' + esc(inv.acct || '') + '</td><td>' + esc(terms) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS') + '</td><td>' + esc(inv.order || '') + '</td><td>' + esc(fmtD(due)) + '</td></tr></table>' +
-    '<table class="ivlines"><thead><tr><th>Item</th><th class="r">Qty</th><th>Description</th><th class="r">Price</th><th class="r">DC %</th><th class="r">DC Price</th><th class="r">Total</th></tr></thead><tbody>' + body + '</tbody></table>' +
-    arBox +
-    '<div class="ivfoot"><div class="ivthx">' + esc(co.thanks || '') + (inv.memo ? '<br>' + esc(inv.memo) : '') + '<div class="ivpcs">' + rows.length + ' lines · ' + tq + ' pcs' + (view.kits !== 'closed' && rows.some(l => l.kit && l.kit.length) ? ' · set contents listed under each set (incl.)' : '') + '</div></div>' +
-    '<table class="ivtot"><tr><td>Sub Total</td><td class="r">' + n2(inv.sub) + '</td></tr><tr><td>Discount' + (dc ? ' ' + dc + '%' : '') + '</td><td class="r">' + n2(-discAmt) + '</td></tr><tr><td>S &amp; H</td><td class="r">' + n2(inv.ship || 0) + '</td></tr><tr class="ivT"><td>Total</td><td class="r">' + n2(net + (Number(inv.ship) || 0)) + '</td></tr></table></div>' +
-    (footer.length ? '<div class="ivterms">' + footer.map(x => '<div>• ' + esc(x) + '</div>').join('') + '</div>' : '') +
+  const total = R2(net + (Number(inv.ship) || 0));
+  return '<div class="iv' + (co.paper === 'a4' ? ' pa4' : '') + '">' + docHead(co, 'INVOICE', [['Acct. No.', inv.acct || ''], ['Date', fmtD(inv.d)], ['Invoice #', inv.no]]) +
+    (inv.order ? '<div class="ivso">Sales Order # ' + esc(inv.order) + '</div>' : '') +
+    '<div class="ivparties">' + party('Bill To') + party('Ship To') + '</div>' +
+    '<table class="ivinfo"><tr><th>Terms</th><th>Due Date</th><th>Rep.</th><th>Ship Date</th><th>Shipping Method</th><th>Shipping Memo</th></tr>' +
+    '<tr><td>' + esc(terms) + '</td><td>' + esc(fmtD(due)) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS Ground') + '</td><td>' + esc(inv.memo || (inv.boxes ? inv.boxes + ' BX' : '')) + '</td></tr></table>' +
+    '<table class="ivlines"><thead><tr><th>Item</th><th>Description</th><th class="r">Qty Ord</th><th class="r">Qty Ship</th><th class="r">Price</th><th class="r">DC %</th><th class="r">DC Price</th><th class="r">Amount</th></tr></thead><tbody>' + body + '</tbody></table>' +
+    '<div class="ivfoot"><div class="ivfl">' + arBox + '<div class="ivthx">' + esc(co.thanks || '') + '<div class="ivpcs">' + rows.length + ' lines · ' + tq + ' pcs' + (view.kits !== 'closed' && rows.some(l => l.kit && l.kit.length) ? ' · set contents listed under each set (incl.)' : '') + '</div></div></div>' +
+    '<table class="ivtot"><tr><td>Subtotal</td><td class="r">' + n2(inv.sub) + '</td></tr><tr><td>Discount' + (dc ? ' (' + dc + '%)' : '') + '</td><td class="r">' + n2(-discAmt) + '</td></tr><tr><td>Shipping Cost</td><td class="r">' + n2(inv.ship || 0) + '</td></tr><tr class="ivT"><td>Total</td><td class="r">' + n2(total) + '</td></tr><tr class="ivDue"><td>Amount Due</td><td class="r">$' + n2(total) + '</td></tr></table></div>' +
+    footerHtml(co) +
     (co.sig !== false ? '<div class="ivsig"><div>Received by (print &amp; sign)</div><div>Date</div><div>Checked by</div></div>' : '') +
-    '<div class="ivpg">' + esc(inv.no) + ' · printed ' + esc(new Date().toLocaleString('en-US')) + '</div></div>';
+    '<div class="ivpg"><span class="ivbc">' + esc(inv.no) + '</span><span>' + esc(inv.acct || '') + ' ' + esc(inv.store || '') + '</span><span>printed ' + esc(new Date().toLocaleString('en-US')) + '</span></div></div>';
 }
