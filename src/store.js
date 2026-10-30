@@ -81,23 +81,82 @@ export async function storeInfo(acct, force) {
  * ============================================================ */
 const n2 = v => { v = Number(v) || 0; const s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < 0 ? '-' : '') + s; };
 const fD = d => { d = String(d || ''); return d.length >= 10 ? d.substring(5, 7) + '/' + d.substring(8, 10) + '/' + d.substring(2, 4) : d; };
-export function statementHtml(acct, info) {
+/** 손님용 스테이트먼트 — opt = { mode: open(미결 전체) | partial(부분 결제만) | all(기간 안 인보이스 전부), from, to, pays(입금 기록 넣기), invs(기간 인보이스 · 미리 읽은 것), payRows(기간 입금) } */
+export function statementHtml(acct, info, opt) {
+  opt = Object.assign({ mode: 'open', pays: true }, opt || {});
   const a = S.accounts.byCode ? S.accounts.byCode[acct] : null, co = company(S), t = today();
-  const open = info.invs.filter(v => Math.abs(v.bal) > 0.005).slice().sort((x, y) => x.d < y.d ? -1 : 1);
   const terms = (a && a.terms) || 'N30', td = termDays(terms);
   const addr = a ? [a.addr, [a.city, a.state].filter(Boolean).join(', ') + (a.zip ? ' ' + a.zip : '')].filter(Boolean) : [];
-  const pays = (info.pays || []).slice(0, 12);
-  return '<div class="iv">' + docHead(co, 'STATEMENT', [['Date', fD(t)], ['Acct. No.', acct]]) +
+  const dueOf = d => { if (!d) return ''; const x = new Date(new Date(d + 'T12:00:00').getTime() + td * 86400000); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+  const inR = d => (!opt.from || d >= opt.from) && (!opt.to || d <= opt.to);
+  /* 줄 — 미결(AR + 앱 발행) 은 지금 잔액, 기간 모드는 기간 안 인보이스 전부(받은 것은 잔액 0) */
+  const openBy = {}; (info.invs || []).forEach(v => { openBy[invNo(v.no)] = v; });
+  let rows;
+  if (opt.mode === 'all') rows = (opt.invs || []).filter(x => x.st !== 'x' && inR(x.d)).map(x => { const v = openBy[invNo(x.no)]; const amt = v ? v.amt : (x.total || 0); const bal = v ? v.bal : (x.src !== 'legacy' && x.st === 'open' && !(info.asOf && x.d <= info.asOf) ? (x.bal != null ? x.bal : x.total) : 0); return { no: x.no, d: x.d, amt, bal, pdd: v ? v.pdd : 0 }; });
+  else rows = (info.invs || []).filter(v => Math.abs(v.bal) > 0.005).map(v => ({ no: v.no, d: v.d, amt: v.amt, bal: v.bal, pdd: v.pdd }));
+  if (opt.mode === 'partial') rows = rows.filter(v => v.bal > 0.005 && v.bal < v.amt - 0.005);
+  if (opt.mode !== 'all' && (opt.from || opt.to)) rows = rows.filter(v => inR(v.d));
+  rows.sort((x, y) => x.d < y.d ? -1 : x.d > y.d ? 1 : String(x.no).localeCompare(String(y.no)));
+  const due = R2(rows.reduce((s, v) => s + v.bal, 0)), billed = R2(rows.reduce((s, v) => s + (v.amt || 0), 0)), paidSum = R2(billed - due);
+  const pays = opt.pays ? (opt.payRows || (info.pays || []).slice(0, 12)) : [];
+  const payTot = R2(pays.reduce((s, e) => s + num(e.total != null ? e.total : e.amt), 0));
+  const title = opt.mode === 'partial' ? 'STATEMENT — PARTIALLY PAID' : opt.mode === 'all' ? 'STATEMENT OF ACCOUNT' : 'STATEMENT';
+  const period = opt.from || opt.to ? 'Period ' + fD(opt.from || '') + ' ~ ' + fD(opt.to || t) : '';
+  return '<div class="iv">' + docHead(co, title, [['Date', fD(t)], ['Acct. No.', acct]]) +
     '<div class="ivparties"><div class="ivp"><b>TO :</b><div>' + esc(a ? a.store : acct) + '</div>' + addr.map(x => '<div>' + esc(x) + '</div>').join('') + (a && a.tel ? '<div>Phone : ' + esc(a.tel) + '</div>' : '') + '</div>' +
-    '<div class="ivp" style="text-align:right"><b>Terms :</b> ' + esc(terms) + '<br><b>Rep. :</b> ' + esc(info.sm || (a && a.sm) || '') + (info.asOf ? '<br><span style="font-size:10px;color:#555">Balances as of ' + esc(fD(info.asOf)) + ' plus payments received since</span>' : '') + '</div></div>' +
+    '<div class="ivp" style="text-align:right"><b>Terms :</b> ' + esc(terms) + '<br><b>Rep. :</b> ' + esc(info.sm || (a && a.sm) || '') + (period ? '<br><b>' + esc(period) + '</b>' : '') + (info.asOf ? '<br><span style="font-size:10px;color:#555">Balances as of ' + esc(fD(info.asOf)) + ' plus payments received since</span>' : '') + '</div></div>' +
     '<table class="ivlines"><thead><tr><th>Date</th><th>Invoice</th><th>Due</th><th class="r">Amount</th><th class="r">Paid</th><th class="r">Balance</th><th class="r">Days past due</th></tr></thead><tbody>' +
-    (open.length ? open.map(v => { const due = v.d ? new Date(new Date(v.d + 'T12:00:00').getTime() + td * 86400000) : null, dueS = due ? due.getFullYear() + '-' + String(due.getMonth() + 1).padStart(2, '0') + '-' + String(due.getDate()).padStart(2, '0') : ''; const pdd = v.pdd || (dueS ? Math.max(0, daysBetween(dueS, t)) : 0);
-      return '<tr' + (v.bal < 0 ? ' style="color:#15803d"' : pdd > 60 ? ' style="font-weight:700"' : '') + '><td>' + esc(fD(v.d)) + '</td><td><b>' + esc(v.no) + '</b></td><td>' + esc(fD(dueS)) + '</td><td class="r">' + n2(v.amt) + '</td><td class="r">' + n2(v.paid || 0) + '</td><td class="r">' + n2(v.bal) + '</td><td class="r">' + (v.bal < 0 ? 'CREDIT' : pdd > 0 ? pdd : '') + '</td></tr>'; }).join('') : '<tr><td colspan="7" style="text-align:center;padding:14px">No open balance — thank you!</td></tr>') +
+    (rows.length ? rows.map(v => { const dueS = dueOf(v.d), pdd = v.bal > 0.005 ? (v.pdd || (dueS ? Math.max(0, daysBetween(dueS, t)) : 0)) : 0, paid = R2((v.amt || 0) - v.bal);
+      return '<tr' + (v.bal < 0 ? ' style="color:#15803d"' : pdd > 60 ? ' style="font-weight:700"' : '') + '><td>' + esc(fD(v.d)) + '</td><td><b>' + esc(v.no) + '</b></td><td>' + esc(fD(dueS)) + '</td><td class="r">' + n2(v.amt) + '</td><td class="r">' + (Math.abs(paid) > 0.005 ? n2(paid) : '') + '</td><td class="r">' + (Math.abs(v.bal) > 0.005 ? n2(v.bal) : 'PAID') + '</td><td class="r">' + (v.bal < 0 ? 'CREDIT' : pdd > 0 ? pdd : '') + '</td></tr>'; }).join('') :
+      '<tr><td colspan="7" style="text-align:center;padding:14px">' + (opt.mode === 'partial' ? 'No partially paid invoices' : opt.mode === 'all' ? 'No invoices in this period' : 'No open balance — thank you!') + '</td></tr>') +
     '</tbody></table>' +
-    '<div class="ivar"><div class="ivart">Aging Summary</div><table><tr><th>Current</th><th>1-30</th><th>31-60</th><th>61-90</th><th>Over 90</th><th>Total Due</th></tr><tr>' + info.bk.map(v => '<td>' + n2(v) + '</td>').join('') + '<td><b>' + n2(info.bal) + '</b></td></tr></table></div>' +
-    (pays.length ? '<div style="margin-top:12px"><div class="ivart">Recent payments received</div><table class="ivlines"><thead><tr><th>Date</th><th>Method</th><th>Applied to</th><th class="r">Amount</th></tr></thead><tbody>' + pays.map(e => '<tr><td>' + esc(fD(e.d)) + '</td><td>' + esc((e.pays || []).map(p => p.m === 'CHECK' ? 'Check #' + p.ref : p.m).join(', ') || e.method || '') + '</td><td>' + esc((e.invs || []).map(v => v.no).filter(Boolean).join(', ')) + '</td><td class="r">' + n2(e.total != null ? e.total : e.amt) + '</td></tr>').join('') + '</tbody></table></div>' : '') +
-    '<div class="ivfoot" style="margin-top:14px"><div class="ivthx">Please remit payment to:<br><b>' + esc(co.name) + '</b><br>' + esc(co.addr1) + '<br>' + esc(co.addr2) + '<br>Phone. ' + esc(co.tel) + '<br><br>' + esc(co.thanks || '') + '</div><table class="ivtot"><tr><td>Open invoices</td><td class="r">' + open.filter(v => v.bal > 0).length + '</td></tr><tr><td>Credits</td><td class="r">' + n2(open.filter(v => v.bal < 0).reduce((s, v) => s + v.bal, 0)) + '</td></tr><tr class="ivT"><td>TOTAL DUE</td><td class="r">' + n2(info.bal) + '</td></tr></table></div>' +
+    (opt.mode === 'open' && !opt.from && !opt.to ? '<div class="ivar"><div class="ivart">Aging Summary</div><table><tr><th>Current</th><th>1-30</th><th>31-60</th><th>61-90</th><th>Over 90</th><th>Total Due</th></tr><tr>' + info.bk.map(v => '<td>' + n2(v) + '</td>').join('') + '<td><b>' + n2(info.bal) + '</b></td></tr></table></div>' : '') +
+    (opt.pays ? '<div style="margin-top:12px"><div class="ivart">Payments received' + (period ? ' · ' + esc(period) : '') + '</div><table class="ivlines"><thead><tr><th>Date</th><th>Method</th><th>Applied to</th><th class="r">Amount</th></tr></thead><tbody>' + (pays.length ? pays.map(e => '<tr' + (e.bounced ? ' style="color:#b91c1c"' : '') + '><td>' + esc(fD(e.d)) + '</td><td>' + esc((e.pays || []).map(p => p.m === 'CHECK' ? 'Check #' + p.ref : p.m).join(', ') || ((e.method || '') + (e.ref ? ' ' + e.ref : ''))) + (e.bounced ? ' · RETURNED' : '') + '</td><td>' + esc((e.invs || []).map(v => v.no).filter(Boolean).join(', ')) + '</td><td class="r">' + n2(e.total != null ? e.total : e.amt) + '</td></tr>').join('') + '<tr><td colspan="3" class="r"><b>Total received</b></td><td class="r"><b>' + n2(payTot) + '</b></td></tr>' : '<tr><td colspan="4" style="text-align:center;padding:10px">No payments in this period</td></tr>') + '</tbody></table></div>' : '') +
+    '<div class="ivfoot" style="margin-top:14px"><div class="ivthx">Please remit payment to:<br><b>' + esc(co.name) + '</b><br>' + esc(co.addr1) + '<br>' + esc(co.addr2) + '<br>Phone. ' + esc(co.tel) + '<br><br>' + esc(co.thanks || '') + '</div><table class="ivtot">' +
+    (opt.mode === 'all' ? '<tr><td>Invoiced</td><td class="r">' + n2(billed) + '</td></tr><tr><td>Paid</td><td class="r">' + n2(paidSum) + '</td></tr><tr class="ivT"><td>BALANCE (these)</td><td class="r">' + n2(due) + '</td></tr>' + (Math.abs(due - info.bal) > 0.005 ? '<tr><td>Total account due</td><td class="r">' + n2(info.bal) + '</td></tr>' : '') :
+      opt.mode === 'partial' || opt.from || opt.to ? '<tr><td>Invoices</td><td class="r">' + rows.length + '</td></tr><tr class="ivT"><td>BALANCE (these)</td><td class="r">' + n2(due) + '</td></tr><tr><td>Total account due</td><td class="r">' + n2(info.bal) + '</td></tr>' :
+      '<tr><td>Open invoices</td><td class="r">' + rows.filter(v => v.bal > 0).length + '</td></tr><tr><td>Credits</td><td class="r">' + n2(rows.filter(v => v.bal < 0).reduce((s, v) => s + v.bal, 0)) + '</td></tr><tr class="ivT"><td>TOTAL DUE</td><td class="r">' + n2(info.bal) + '</td></tr>') + '</table></div>' +
     '<div class="ivpg">Statement · ' + esc(acct) + ' · printed ' + esc(new Date().toLocaleString('en-US')) + '</div></div>';
+}
+/** 🖨 스테이트먼트 옵션 — 종류(미결 · 부분 결제만 · 기간 안 전부) · 기간 · 입금 기록. 기간 입금은 현장 수금 + COD · ACH · 카드 */
+let STO = { mode: 'open', p: 'all', from: '', to: '', pays: true };
+export async function statementDialog(acct, info, back) {
+  const t = today(), addM = (n) => { const d = new Date(t + 'T12:00:00'); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
+  const PR = { all: ['전체 기간', 'All time', '', ''], m1: ['최근 1달', 'Last month', addM(-1), t], m3: ['최근 3달', 'Last 3 months', addM(-3), t], m6: ['최근 6달', 'Last 6 months', addM(-6), t], y: ['올해', 'This year', t.slice(0, 4) + '-01-01', t] };
+  const paint = () => {
+    const [f, to] = STO.p === 'custom' ? [STO.from, STO.to] : PR[STO.p].slice(2);
+    $('mbox').innerHTML = '<h2>🖨 ' + bi('손님용 스테이트먼트', 'Customer statement') + '</h2><div class="muted">' + esc((S.accounts.byCode && S.accounts.byCode[acct] || {}).store || acct) + '</div>' +
+      '<div class="fg" style="margin-top:8px"><label>' + bt('무엇을', 'What') + '</label><div class="seg" style="flex-wrap:wrap">' + [['open', '미결 전체', 'Open balance'], ['partial', '부분 결제만', 'Partially paid'], ['all', '기간 안 인보이스 전부', 'All invoices in period']].map(m => '<button class="' + (STO.mode === m[0] ? 'on' : '') + '" data-stm="' + m[0] + '">' + bi(m[1], m[2]) + '</button>').join('') + '</div></div>' +
+      '<div class="fg"><label>' + bt('기간 (인보이스 날짜 · 입금 날짜)', 'Period (invoice and payment dates)') + '</label><div class="chips" style="margin:0">' + Object.keys(PR).map(k => '<button class="' + (STO.p === k ? 'on' : '') + '" data-stp="' + k + '">' + bi(PR[k][0], PR[k][1]) + '</button>').join('') + '<button class="' + (STO.p === 'custom' ? 'on' : '') + '" data-stp="custom">📅 ' + bt('직접', 'Custom') + '</button></div>' +
+      (STO.p === 'custom' ? '<div class="two" style="margin-top:6px"><input type="date" id="stF" value="' + esc(STO.from) + '"><input type="date" id="stT" value="' + esc(STO.to || t) + '"></div>' : (f ? '<div class="muted" style="font-size:12px;margin-top:4px">' + esc(f) + ' ~ ' + esc(to) + '</div>' : '')) + '</div>' +
+      '<label class="pick on" style="margin-top:4px"><input type="checkbox" id="stPay" class="ck-big"' + (STO.pays ? ' checked' : '') + '><span class="pm"><b>💵 ' + bi('손님이 낸 입금 기록 같이', 'Include payments received') + '</b><small>' + bt('현장 수금(체크 · 캐쉬 · Zelle) + COD · ACH · 카드', 'Field + COD · ACH · card') + '</small></span></label>' +
+      (STO.mode === 'all' && !f ? '<div class="alert a-amb">' + bt('기간 안 인보이스 전부는 기간을 고르세요 (전체 기간이면 인보이스가 아주 많을 수 있음)', 'Pick a period for “all invoices”') + '</div>' : '') +
+      '<div class="btns"><button class="b-ghost" id="stBack">‹ ' + bt('가게 창', 'Store') + '</button><button class="b-blue" id="stGo">🖨 ' + bt('스테이트먼트 보기 · 인쇄', 'View · print') + '</button></div>';
+    document.querySelectorAll('[data-stm]').forEach(b => b.onclick = () => { STO.mode = b.dataset.stm; if (STO.mode === 'all' && STO.p === 'all') STO.p = 'm3'; paint(); });
+    document.querySelectorAll('[data-stp]').forEach(b => b.onclick = () => { STO.p = b.dataset.stp; if (STO.p === 'custom' && !STO.from) { STO.from = addM(-3); STO.to = t; } paint(); });
+    if ($('stF')) { $('stF').onchange = () => { STO.from = $('stF').value; }; $('stT').onchange = () => { STO.to = $('stT').value; }; }
+    $('stPay').onchange = () => { STO.pays = $('stPay').checked; };
+    $('stBack').onclick = () => back ? back() : closeModal();
+    $('stGo').onclick = async () => {
+      const [from, to] = STO.p === 'custom' ? [STO.from, STO.to || t] : PR[STO.p].slice(2);
+      busy(true);
+      try {
+        const sm = isStaff() ? '' : mySm(), wh = [['acct', '==', acct]].concat(sm ? [['sm', '==', sm]] : []);
+        const inR = d => (!from || d >= from) && (!to || d <= to);
+        let invs = null, payRows = null;
+        if (STO.mode === 'all') invs = await S.DB.list('invoices', { where: info.access && info.access.k === 'none' ? wh : [['acct', '==', acct]] }).catch(() => []);
+        if (STO.pays) {
+          const [ents, cods] = await Promise.all([S.DB.list('entries', { where: wh }).catch(() => []), S.DB.list('cod', { where: wh }).catch(() => [])]);
+          payRows = ents.filter(e => !e.void && !e.repl && inR(e.d)).concat(cods.filter(c => !c.void && inR(c.d)).map(c => Object.assign({}, c, { total: c.amt })));
+          payRows.sort((x, y) => x.d < y.d ? -1 : x.d > y.d ? 1 : 0);
+          if (!from && !to) payRows = payRows.slice(-30);   // 전체 기간이면 최근 30건
+        }
+        busy(false);
+        printOpen(statementHtml(acct, info, { mode: STO.mode, from, to, pays: STO.pays, invs, payRows }));
+      } catch (e) { busy(false); toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    };
+  };
+  paint();
 }
 /** "10/07(3) 07/28(3)" — 최근 3번 */
 export function histText(info, code) { const h = info && info.hist[code]; if (!h || !h.length) return ''; return h.slice(0, 3).map(x => md(x[0]) + '(' + x[1] + ')').join(' '); }
@@ -225,7 +284,7 @@ export async function storeSheet(acct, onPick, opt0) {
       '<div style="max-height:45vh;overflow:auto">' + body + '</div>' +
       '<div class="btns"><button class="b-ghost" id="ssStmt">🖨 ' + bi('손님용 스테이트먼트', 'Customer statement') + '</button>' + (onPick ? '<button class="b-blue" id="ssPick">' + bi('이 가게로 주문', 'Order for this store') + '</button>' : '') + '</div>';
     $('ssX').onclick = closeModal;
-    $('ssStmt').onclick = () => printOpen(statementHtml(acct, info));
+    $('ssStmt').onclick = () => statementDialog(acct, info, () => { openModal(''); paint(); });
     document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { tab = b.dataset.ss; paint(); });
     document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); location.hash = '#/order/' + encodeURIComponent(el.dataset.so); });
     document.querySelectorAll('[data-si]').forEach(el => el.onclick = () => invDetail(el.dataset.si, acct, paint));
