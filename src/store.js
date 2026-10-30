@@ -3,7 +3,7 @@
  *    미수금(AR) · 에이징 · 지난 주문 · 수금 기록, 그리고 아이템별 "이 가게가 최근에 산 기록"
  *  세일즈맨은 자기 가게(자기 sm 의 AR · 수금)만, 담당자는 가게 담당 세일즈맨 기준으로 봅니다
  * ============================================================ */
-import { $, esc, money, R2, num, md, toast, busy, openModal, closeModal, confirmBox, sortBy, daysBetween, today, bi, bt, printOpen, sortInv, invNo, sel } from './ui.js';
+import { $, esc, money, R2, num, md, toast, busy, openModal, closeModal, confirmBox, sortBy, daysBetween, today, bi, bt, printOpen, sortInv, invNo, sel, goHash } from './ui.js';
 import { company, docHead, termDays, getInvoice, dropInvCache, rebuildSalesM } from './invoicing.js';
 import { searchAccounts } from './accounts.js';
 import { can } from './main.js';
@@ -219,7 +219,7 @@ export async function invDetail(no, acct, back) {
   const toStore = () => storeSheet(acct, null, 'invh');
   $('idStore').onclick = toStore; $('idStore2').onclick = toStore;
   if ($('idPrint')) $('idPrint').onclick = async () => { const { printInvoices } = await import('./fulfill.js'); printInvoices([x], a); };
-  if ($('idOrder')) $('idOrder').onclick = () => { closeModal(); location.hash = '#/order/' + encodeURIComponent(x.orderId); };
+  if ($('idOrder')) $('idOrder').onclick = () => { closeModal(); goHash('#/order/' + encodeURIComponent(x.orderId)); };
   if ($('idEdit')) $('idEdit').onclick = () => invEditForm(x, () => invDetail(no, '', back));
   if ($('idDel')) $('idDel').onclick = async () => {
     if (!(await confirmBox('🗑 ' + no + ' · ' + (x.store || acct) + ' · ' + money(x.total) + '\n' + bt('이 인보이스를 지울까요? (이전 시스템 인보이스 — 월별 매출 요약도 다시 계산합니다)', 'Delete this invoice? Monthly sales summary is recalculated.'), bt('지우기', 'Delete')))) return;
@@ -286,7 +286,7 @@ export async function storeSheet(acct, onPick, opt0) {
     $('ssX').onclick = closeModal;
     $('ssStmt').onclick = () => statementDialog(acct, info, () => { openModal(''); paint(); });
     document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { tab = b.dataset.ss; paint(); });
-    document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); location.hash = '#/order/' + encodeURIComponent(el.dataset.so); });
+    document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); goHash('#/order/' + encodeURIComponent(el.dataset.so)); });
     document.querySelectorAll('[data-si]').forEach(el => el.onclick = () => invDetail(el.dataset.si, acct, paint));
     if ($('ssReq')) $('ssReq').onclick = () => requestAccess({ acct });
     if ($('ssPick')) $('ssPick').onclick = () => { closeModal(); onPick(acct); };

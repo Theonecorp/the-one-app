@@ -12,6 +12,9 @@ button{transition:transform .08s,filter .08s}button:active{transform:scale(.95);
 header{position:sticky;top:0;z-index:40;background:var(--navy);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
 header h1{font-size:15px;margin:0;font-weight:700}header .hlogo{width:26px;height:26px;border-radius:50%}
 header .hr{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:#94a3b8}
+/* 📱 좁은 폰(360px 등) — 머리줄이 화면보다 넓어져 페이지 전체가 가로로 넘치면(아래 메뉴 · 창 ✕ 가 화면 밖으로) 안 됨: 머리줄 칸들이 줄어들게 */
+html,body{overflow-x:hidden;max-width:100%}header{max-width:100vw;box-sizing:border-box;min-width:0}header h1,#hTitle{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hr{min-width:0;flex-shrink:1;gap:6px}#hWho{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34vw}.hr .hb{flex:none}
+@media (max-width:420px){header{gap:6px;padding-left:8px;padding-right:8px}#hTitle{display:none}#hLang{padding:4px 6px;font-size:11px}#hNet{font-size:0}#hNet::first-letter{font-size:12px}#hWho{max-width:30vw;font-size:11px}}
 header .hb{background:rgba(255,255,255,.12);color:#fff;border:0;font-size:17px;padding:5px 11px;border-radius:9px}
 #hBack{display:none;font-size:22px;line-height:1;padding:2px 12px 5px;margin-right:2px}#hBack.show{display:inline-block}
 .wrap{max-width:880px;margin:0 auto;padding:12px 12px 0}
@@ -87,7 +90,11 @@ nav button.on{color:var(--blue)}
 /* 🔢 숫자 패드 */
 .npad{position:fixed;inset:0;z-index:125;display:flex;align-items:flex-end;justify-content:center;background:rgba(15,23,42,.25)}.npad .npbox{background:#fff;border-radius:16px 16px 0 0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));width:100%;max-width:440px;box-shadow:0 -8px 30px rgba(0,0,0,.25)}.npad .nphd{display:flex;justify-content:space-between;align-items:center;font-size:12.5px}.npad .npx{width:36px;height:36px;border-radius:50%;background:#f1f5f9;border:0;font-size:16px;font-weight:800;color:#0f172a}.npad .npv{font-size:34px;font-weight:800;text-align:right;padding:4px 8px;font-variant-numeric:tabular-nums;color:var(--navy);min-height:46px}.npad .npq{display:flex;gap:6px;margin:4px 0 6px}.npad .npq button{flex:1;padding:8px 0;border-radius:10px;border:1.5px solid var(--line);background:#eff6ff;color:var(--navy);font-weight:800;font-size:14px}.npad .npk{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.npad .npk button{padding:13px 0;font-size:22px;font-weight:800;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:#0f172a}.npad .npk button:active{background:#e0e7ff}.npad .npb{display:flex;gap:6px;margin-top:6px}.npad .npb button{flex:1;padding:12px 0;font-size:15px}.npad .npb .b-green{flex:2}
 @media (min-width:700px){.npad{align-items:center}.npad .npbox{border-radius:16px}}
-#modal .box{background:#fff;border-radius:16px 16px 0 0;padding:16px;width:100%;max-width:min(600px,100%);max-height:90vh;overflow:auto;overflow-x:hidden}
+#modal .box{background:#fff;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));width:100%;max-width:min(600px,100%);max-height:90vh;max-height:min(90dvh,calc(var(--vvh,100dvh) - 12px));overflow:auto;overflow-x:hidden;overscroll-behavior:contain}
+/* 창의 맨 아래 버튼 줄(확인 · 저장 · 취소)은 창 아래에 붙어 늘 보이고 눌림 — 긴 창 · 안드로이드 아래 버튼 · 키보드 */
+#modal .box>.btns:last-child,#modal .box>.btns:last-of-type{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom,0px));margin:12px -16px calc(-16px - env(safe-area-inset-bottom,0px));padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:#fff;border-top:1px solid var(--line);z-index:2}
+/* ⌨ 키보드 올라온 동안 — 아래 메뉴 · 아래 고정 칸 숨김 */
+body.kb nav#nav,body.kb .sticky,body.kb .bulkbar{display:none!important}body.kb{padding-bottom:12px}
 #modal .box h2{font-size:16px;margin:0 0 8px}
 .hits{border:1.5px solid var(--line);border-radius:10px;margin-top:4px;max-height:55vh;overflow:auto;background:#fff}
 .hits div{padding:11px 12px;border-bottom:1px solid var(--line);font-size:15px;cursor:pointer}.hits div:last-child{border-bottom:0}.hits div small{display:block;color:var(--muted);font-size:11.5px}

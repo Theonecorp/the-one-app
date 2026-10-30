@@ -56,27 +56,52 @@ export function busy(on) {
 }
 /* 창(모달)은 ✕ 나 닫기 버튼으로만 닫힘 — 바깥을 눌러도 안 닫힘. 코너의 ✕ 는 어느 창에나 자동으로 붙음.
  *  📱 안드로이드 뒤로가기(브라우저 back)로는 창만 닫히고 화면은 그대로 — 창을 열 때 히스토리에 빈 칸을 하나 넣고, 뒤로가기(popstate)가 그 칸을 빼면 창을 닫음 */
-let HIST = false, LAST_HASH = location.hash;   // 창용 빈 히스토리 칸이 위에 있는지 · 마지막 해시 (해시 이동도 popstate 를 내므로 구분용)
+/* 📱 뒤로가기 (안드로이드 버튼 · 아이폰 밀기) — 앱 안의 화면 이동은 기록을 쌓지 않고(location.replace) 지금 칸만 바꿈.
+ *   대신 "뒤로 갈 곳"이 있으면(창 · 겹침 질문 · 숫자 패드 · 인쇄 화면 · 한 단계 위 화면) 빈 칸(guard)을 하나 올려 둠 →
+ *   뒤로가기는 그 빈 칸을 빼면서 popstate → 겹침 질문 → 패드 → 창 → 인쇄 → 한 단계 위 순으로 하나만 처리. 홈(위가 없음)에서는 빈 칸이 없어 앱이 닫힘(폰 기본) */
+const BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';   // Node(시험)에서 불러도 멈추지 않게
+let GUARD = false, LAST_HASH = BROWSER ? location.hash : '';
 export function openModal(html, opts) {
   const m = $('modal'), box = $('mbox');
   box.className = 'box' + (opts && opts.wide ? ' wide' : ''); box.innerHTML = html; m.classList.add('on');
   box.scrollTop = 0;
   if (opts && opts.onClose) m._onClose = opts.onClose; else m._onClose = null;
   if (!m.querySelector('.mclose')) { const x = document.createElement('button'); x.className = 'mclose'; x.type = 'button'; x.setAttribute('aria-label', 'close'); x.innerHTML = '✕'; x.onclick = () => closeModal(); m.appendChild(x); }
-  if (!HIST) { try { history.pushState({ modal: 1 }, ''); HIST = true; } catch (e) {} }
+  guardSync();
 }
 export function closeModal() { const m = $('modal'); m.classList.remove('on'); if (m._onClose) { const f = m._onClose; m._onClose = null; f(); } }
 export const modalOpen = () => { const m = $('modal'); return !!(m && m.classList.contains('on')); };
-/* 뒤로가기 → 열린 겹침 질문(.ovr) → 창 → 숫자 패드 순으로 닫기만 하고 화면은 그대로. 빈 칸만 남아 있으면(창은 이미 ✕ 로 닫음) 한 번 더 뒤로 */
-window.addEventListener('popstate', () => {
-  if (location.hash !== LAST_HASH) { LAST_HASH = location.hash; HIST = false; return; }   // 해시가 바뀐 이동 — Router 가 처리 (여기선 빈 칸 판단 안 함)
-  const ov = document.querySelector('.ovr'); if (ov) { const no = ov.querySelector('#cfNo'); if (no) no.click(); else ov.remove(); if (modalOpen() || document.querySelector('.ovr')) { try { history.pushState({ modal: 1 }, ''); HIST = true; } catch (e) {} } return; }
-  if (document.querySelector('.npad')) { numPadClose(); if (modalOpen()) { try { history.pushState({ modal: 1 }, ''); HIST = true; } catch (e) {} } return; }
-  if (modalOpen()) { HIST = false; closeModal(); return; }
-  if (HIST) { HIST = false; try { history.back(); } catch (e) {} }
+export function goHash(h) { h = String(h || ''); if (h.charAt(0) !== '#') h = '#' + h; if (h === location.hash) return; try { location.replace(location.href.split('#')[0] + h); } catch (e) { location.hash = h; } }   // 주소 전체로 (<base> 가 있어도 같은 페이지)
+const needGuard = () => modalOpen() || !!document.querySelector('.ovr') || !!document.querySelector('.npad') || !!(document.getElementById('prt') && document.getElementById('prt').classList.contains('on')) || !!document.getElementById('viewer') || !!(Router.hasUp && Router.hasUp());
+export function guardSync() { if (GUARD || !needGuard()) return; try { history.pushState({ g: 1 }, ''); GUARD = true; } catch (e) {} }
+if (BROWSER) window.addEventListener('popstate', () => {
+  if (location.hash !== LAST_HASH) { LAST_HASH = location.hash; GUARD = false; setTimeout(guardSync, 0); return; }   // 다른 칸으로 간 진짜 이동 (예: 옛 기록)
+  GUARD = false;
+  const ov = document.querySelector('.ovr');
+  if (ov) { const no = ov.querySelector('#cfNo'); if (no) no.click(); else ov.remove(); }
+  else if (document.querySelector('.npad')) numPadClose();
+  else if (document.getElementById('viewer')) document.getElementById('viewer').remove();
+  else if (modalOpen()) closeModal();
+  else if (document.getElementById('prt') && document.getElementById('prt').classList.contains('on')) printClose();
+  else if (Router.hasUp && Router.hasUp()) Router.back();
+  setTimeout(guardSync, 30);
 });
-/* 화면(해시)이 바뀌면 — 열려 있던 창 · 겹침 질문 · 숫자 패드 · 바쁨 표시를 정리해 화면이 굳지 않게 */
-window.addEventListener('hashchange', () => { LAST_HASH = location.hash; HIST = false; if (modalOpen()) closeModal(); document.querySelectorAll('.ovr').forEach(o => o.remove()); numPadClose(); busy(false); });
+/* 화면(해시)이 바뀌면 — 열려 있던 창 · 겹침 질문 · 숫자 패드 · 바쁨 표시를 정리해 화면이 굳지 않게, 그리고 뒤로 갈 곳이 있으면 빈 칸 */
+if (BROWSER) window.addEventListener('hashchange', () => { LAST_HASH = location.hash; if (modalOpen()) closeModal(); document.querySelectorAll('.ovr').forEach(o => o.remove()); numPadClose(); busy(false); setTimeout(guardSync, 60); });
+/* 화면 안의 #/ 링크도 기록을 쌓지 않게 */
+if (BROWSER) document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('a[href^="#/"]'); if (!a || e.defaultPrevented || a.target) return; e.preventDefault(); goHash(a.getAttribute('href')); });
+
+/* ↔ 화면보다 넓은 표 — 표만 옆으로 밀어 볼 수 있게 감쌈 (페이지 전체가 넘치면 아래 메뉴 · 버튼이 화면 밖으로 감) */
+let WRAP_T = null;
+function wrapWide() { document.querySelectorAll('#page table, #mbox table').forEach(t => { const p = t.parentElement; if (!p || p.classList.contains('xwrap') || t.closest('#prtbody')) return; if (t.scrollWidth > p.clientWidth + 2) { const w = document.createElement('div'); w.className = 'xwrap'; p.insertBefore(w, t); w.appendChild(t); } }); }
+try { new MutationObserver(() => { clearTimeout(WRAP_T); WRAP_T = setTimeout(wrapWide, 80); }).observe(document.documentElement, { childList: true, subtree: true }); } catch (e) {}
+
+/* ⌨ 폰 키보드가 올라오면 — 아래 메뉴 · 아래 고정 칸(합계 · 저장)을 잠시 숨겨 화면을 넓히고, 입력 칸이 키보드에 가리지 않게 가운데로 */
+const typing = t => t && ((t.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file|date|color|range)$/.test(t.type)) || t.tagName === 'TEXTAREA' || t.isContentEditable);
+let KB_T = null;
+if (BROWSER) document.addEventListener('focusin', e => { if (!typing(e.target) || !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) return; clearTimeout(KB_T); document.body.classList.add('kb'); const t = e.target; if (t.closest('header, nav, .ehead, .npad, .sticky')) return; setTimeout(() => { try { if (document.activeElement !== t) return; const r = t.getBoundingClientRect(), vh = window.visualViewport ? window.visualViewport.height : innerHeight, top = (document.querySelector('.ehead') || document.querySelector('header') || { getBoundingClientRect: () => ({ bottom: 0 }) }).getBoundingClientRect().bottom; if (r.bottom > vh - 8 || r.top < top) t.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (x) {} }, 320); });   // 가려진 칸만 가운데로 (위에 고정된 검색 칸 · 창 안은 그대로)
+if (BROWSER) document.addEventListener('focusout', e => { if (!typing(e.target)) return; clearTimeout(KB_T); KB_T = setTimeout(() => { if (!typing(document.activeElement)) document.body.classList.remove('kb'); }, 120); });
+if (BROWSER && window.visualViewport) window.visualViewport.addEventListener('resize', () => { const vv = window.visualViewport; document.documentElement.style.setProperty('--vvh', Math.round(vv.height) + 'px'); });
 
 /* ============================================================
  *  🔢 숫자 패드 — 폰 · 태블릿에서 수량 · 금액 칸을 누르면 키보드 대신 팝업 패드 (키보드가 화면 아래를 가리지 않게)
@@ -101,7 +126,7 @@ export function numPad(inp) {
     '<div class="npk">' + ['7', '8', '9', '4', '5', '6', '1', '2', '3'].map(k => '<button type="button" data-np="' + k + '">' + k + '</button>').join('') +
     '<button type="button" data-np="' + (dec ? '.' : neg ? '-' : '00') + '">' + (dec ? '.' : neg ? '±' : '00') + '</button><button type="button" data-np="0">0</button><button type="button" data-np="bs">⌫</button></div>' +
     '<div class="npb"><button type="button" class="b-ghost" data-np="kb">⌨ ' + esc(bt('키보드', 'Keyboard')) + '</button><button type="button" class="b-ghost" data-np="c">C</button><button type="button" class="b-green" data-np="ok">OK</button></div></div>';
-  document.body.appendChild(el);
+  document.body.appendChild(el); guardSync();
   PAD = { el, inp, im: inp.getAttribute('inputmode') };
   const show = () => { const d = el.querySelector('#npV'); if (d) d.textContent = v === '' ? '0' : v; };
   const commit = () => { const n = v === '' || v === '-' ? '' : String(Number(v)); const changed = n !== String(inp.value); inp.value = n; numPadClose(); if (changed) { inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); } };
@@ -124,14 +149,14 @@ export function numPad(inp) {
   el.onpointerdown = e => { if (e.target === el) e.preventDefault(); };
 }
 /* 폰에서 숫자 칸을 누르면 키보드 대신 패드 — 누르는 순간 inputmode=none 으로 키보드를 막고, 포커스가 오면 패드를 띄움 */
-document.addEventListener('pointerdown', e => { const t = e.target; if (numPadOn() && padWants(t)) { if (!t.dataset.im0) t.dataset.im0 = t.getAttribute('inputmode') || '-'; t.setAttribute('inputmode', 'none'); } }, true);
-document.addEventListener('focusin', e => { const t = e.target; if (!numPadOn() || !padWants(t)) return; if (t.getAttribute('inputmode') !== 'none') return; numPad(t); const im0 = t.dataset.im0; if (PAD) PAD.im = im0 === '-' ? '' : im0; });
-document.addEventListener('focusout', e => { const t = e.target; if (t && t.dataset && t.dataset.im0 != null && PAD && PAD.inp !== t) { const im0 = t.dataset.im0; if (im0 === '-') t.removeAttribute('inputmode'); else t.setAttribute('inputmode', im0); } });
+if (BROWSER) document.addEventListener('pointerdown', e => { const t = e.target; if (numPadOn() && padWants(t)) { if (!t.dataset.im0) t.dataset.im0 = t.getAttribute('inputmode') || '-'; t.setAttribute('inputmode', 'none'); } }, true);
+if (BROWSER) document.addEventListener('focusin', e => { const t = e.target; if (!numPadOn() || !padWants(t)) return; if (t.getAttribute('inputmode') !== 'none') return; numPad(t); const im0 = t.dataset.im0; if (PAD) PAD.im = im0 === '-' ? '' : im0; });
+if (BROWSER) document.addEventListener('focusout', e => { const t = e.target; if (t && t.dataset && t.dataset.im0 != null && PAD && PAD.inp !== t) { const im0 = t.dataset.im0; if (im0 === '-') t.removeAttribute('inputmode'); else t.setAttribute('inputmode', im0); } });
 /* 열려 있는 창 위에 겹쳐 묻기 — 취소해도 아래 입력 창이 그대로 남음 (입력 중 경고용) */
 export function askOver(msg, okLabel) {
   return new Promise(res => {
     const o = document.createElement('div'); o.className = 'ovr'; o.innerHTML = '<div class="obox"><h2>' + esc(msg) + '</h2><div class="btns"><button class="b-ghost" id="cfNo">취소</button><button class="b-red" id="cfOk">' + esc(okLabel || '확인') + '</button></div></div>';
-    document.body.appendChild(o);
+    document.body.appendChild(o); guardSync();
     o.querySelector('#cfNo').onclick = () => { o.remove(); res(false); }; o.querySelector('#cfOk').onclick = () => { o.remove(); res(true); };
   });
 }
@@ -178,14 +203,14 @@ export function inputDate(id, v, extra) { return '<input type="date" id="' + id 
 export function sel(id, opts, v, extra) {
   return '<select id="' + id + '" ' + (extra || '') + '>' + opts.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return '<option value="' + esc(val) + '" ' + (val === v ? 'selected' : '') + '>' + esc(lab) + '</option>'; }).join('') + '</select>';
 }
-export function printOpen(html) { $('prtbody').innerHTML = html; $('prt').classList.add('on'); window.scrollTo(0, 0); }
+export function printOpen(html) { $('prtbody').innerHTML = html; $('prt').classList.add('on'); window.scrollTo(0, 0); guardSync(); }
 export function printClose() { $('prt').classList.remove('on'); }
 
 /* 간단 라우터 — 해시 기반 (#/page/sub) */
 export const Router = {
   routes: {}, cur: '', stack: [], home: '', gen: 0, done: 0,
   on(name, fn) { this.routes[name] = fn; },
-  go(name, arg) { location.hash = '#/' + name + (arg ? '/' + encodeURIComponent(arg) : ''); },
+  go(name, arg) { goHash('#/' + name + (arg ? '/' + encodeURIComponent(arg) : '')); },
   /** 화면마다 "한 단계 위" 가 따로 있으면 — up[name](arg) 가 처리하고 true, upHas[name]() 는 위가 있는지 */
   up: {}, upHas: {},
   /** ‹ 뒤로 = 한 단계 위로 (바로 전에 본 화면이 아님) — 열린 창 → 닫기, 상세 → 그 목록, 목록 → 그 탭의 첫 화면, 탭 → 홈 */
@@ -194,7 +219,7 @@ export const Router = {
     const v = document.getElementById('viewer'); if (v) { v.remove(); return; }
     const p = $('prt'); if (p && p.classList.contains('on')) { printClose(); return; }
     const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
-    if (this.backTo && arg && this.backTo.name === name) { const b = this.backTo.hash; this.backTo = null; location.hash = b; return; }   // 다른 화면(🧭 흐름 감독)에서 열었으면 그리로
+    if (this.backTo && arg && this.backTo.name === name) { const b = this.backTo.hash; this.backTo = null; goHash(b); return; }   // 다른 화면(🧭 흐름 감독)에서 열었으면 그리로
     const up = this.up[name]; if (up && up(arg ? decodeURIComponent(arg) : '')) { this.refreshBack(); return; }
     if (arg) this.go(name); else if (this.home && name !== this.home) this.go(this.home);
   },
