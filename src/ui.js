@@ -45,6 +45,9 @@ export function toast(m, kind) {
 }
 /* 잠깐 막기(돌아가는 동그라미) — 8초 넘게 안 풀리면 "화면 풀기" 버튼이 나와 화면이 영영 멈추지 않게 */
 let busyT = 0;
+/* 📸 화면 스냅숏 — 무거운 첫 화면(경영 대시보드 등)을 지난번 모습으로 바로 보여 주고, 새 자료가 오면 바꿈 */
+export function snapGet(key, maxAgeMs) { try { const j = JSON.parse(localStorage.getItem('theone.snap.' + key) || 'null'); if (j && j.html && (!maxAgeMs || Date.now() - j.at < maxAgeMs)) return j; } catch (e) {} return null; }
+export function snapPut(key, html) { try { localStorage.setItem('theone.snap.' + key, JSON.stringify({ html, at: Date.now() })); } catch (e) {} }
 export function busy(on) {
   const b = $('busy'); if (!b) return;
   b.classList.toggle('on', !!on); clearTimeout(busyT);

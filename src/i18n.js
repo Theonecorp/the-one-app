@@ -143,8 +143,9 @@ export async function initLang(ver) {
   document.documentElement.lang = LANG === 'pt' ? 'pt-BR' : LANG;
   document.documentElement.classList.add('L-' + LANG);
   /* 한국어 화면은 사전을 기다리지 않고 바로 시작 (사전은 한글 옆 영어 지우기용 — 받아지면 화면 전체에 한 번 더) */
-  const load = fetch('i18n.json?v=' + encodeURIComponent(ver || '')).then(r => r.ok ? r.json() : null).catch(() => null).then(j => { if (j) D = j; D.r = D.r || {}; D.p = D.p || {}; buildE2P(); });
-  if (LANG !== 'ko') await load; else { D.r = D.r || {}; D.p = D.p || {}; load.then(() => walk(document.body)); }
+  const get = () => fetch('i18n.json?v=' + encodeURIComponent(ver || '')).then(r => r.ok ? r.json() : null).catch(() => null).then(j => { if (j) D = j; D.r = D.r || {}; D.p = D.p || {}; buildE2P(); });
+  /* 한국어는 사전(350KB)을 첫 화면 뒤에 받음 — 시작할 때 인터넷을 Firebase · 첫 화면 자료에 양보 */
+  if (LANG !== 'ko') await get(); else { D.r = D.r || {}; D.p = D.p || {}; setTimeout(() => get().then(() => walk(document.body)), 2500); }
 
   if (ON) return; ON = true;
   walk(document.body);

@@ -34,7 +34,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.120';
+export const VER = 'v0.8.121';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -271,38 +271,61 @@ function paintNav() {
 /* ⏱ 로딩 시간 기록 — 🔎 연결 · 권한 점검에 보임 (어느 단계가 느린지) */
 const PERF = { t0: performance.now() };
 const mark = k => { PERF[k] = Math.round(performance.now()); };
+/* ⚡ 빠른 시작 — 지난번에 받은 내 기록 · 설정 · 세일즈맨을 폰에 두고(theone.boot.<email>) 켤 때 바로 씀 → 서버 왕복 2번을 기다리지 않음.
+ *   서버에서 새로 받은 것은 뒤에서 확인해 바뀐 것만 반영 (역할 · 일 · 거래처 버전 · 비활성) */
+const BOOT_KEY = e => 'theone.boot.' + String(e || '').toLowerCase();
+const bootSave = (email, me, sms, st) => { try { localStorage.setItem(BOOT_KEY(email), JSON.stringify({ me, sms, settings: st, at: Date.now() })); } catch (e) {} };
+const bootLoad = email => { try { const j = JSON.parse(localStorage.getItem(BOOT_KEY(email)) || 'null'); return j && j.me && j.me.active !== false && Array.isArray(j.sms) && j.settings ? j : null; } catch (e) { return null; } };
+function applyBase(sms, st) { S.sms = sms || []; S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; }); S.settings = st || {}; setInvTypeMap(invTypes(S)); }
 async function afterLogin(user) {
   mark('auth'); S.user = user;
-  const email = user.email;
+  const email = user.email, snap = bootLoad(email);
+  const meP = S.DB.get('users', email);
   let me = null;
-  try { me = await S.DB.get('users', email); } catch (e) { loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ')'); return; }
-  if (!me && ADMIN_EMAILS.includes(email)) {
-    me = { id: email, email, name: user.name, role: 'admin', active: true, createdAt: today() };
-    try { await S.DB.set('users', email, me); } catch (e) { loginScreen('관리자 기록을 만들지 못했습니다: ' + e.message); return; }
-  }
-  if (!me || me.active === false) { waitScreen(email); return; }
-  /* 옛 버전이 만든 관리자 기록에 active 가 없으면 규칙의 "등록된 사용자" 검사에 걸림 → 채워 둠 */
-  if (ADMIN_EMAILS.includes(email) && (me.active !== true || me.role !== 'admin')) {
-    try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
+  if (snap) me = snap.me;
+  else {
+    try { me = await meP; } catch (e) { loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ')'); return; }
+    if (!me && ADMIN_EMAILS.includes(email)) {
+      me = { id: email, email, name: user.name, role: 'admin', active: true, createdAt: today() };
+      try { await S.DB.set('users', email, me); } catch (e) { loginScreen('관리자 기록을 만들지 못했습니다: ' + e.message); return; }
+    }
+    if (!me || me.active === false) { waitScreen(email); return; }
+    /* 옛 버전이 만든 관리자 기록에 active 가 없으면 규칙의 "등록된 사용자" 검사에 걸림 → 채워 둠 */
+    if (ADMIN_EMAILS.includes(email) && (me.active !== true || me.role !== 'admin')) {
+      try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
+    }
   }
   mark('me'); S.me = me; S.role = me.role || 'salesman';
   /* 여러 화면을 쓰는 사람 (관리자 · 추가 역할) — 이 폰에서 마지막으로 본 화면으로 */
   try { const v = localStorage.getItem(VIEW_KEY()); if (v && viewsOf(me).includes(v)) S.role = v; } catch (e) {}
-  busy(true);
-  try {
-    const [sms, st] = await Promise.all([S.DB.list('salesmen', { order: ['code', 'asc'] }), S.DB.get('settings', 'app')]);   // 동시에 읽기
-    S.sms = sms; S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; });
-    S.settings = st || {};
-    mark('base'); setInvTypeMap(invTypes(S));
-    S.accounts = await loadAccounts(S); mark('acc');
-  } catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
-  busy(false);
+  const baseP = Promise.all([S.DB.list('salesmen', { order: ['code', 'asc'] }), S.DB.get('settings', 'app')]);
+  if (snap) {
+    applyBase(snap.sms, snap.settings); mark('base');
+    try { S.accounts = await loadAccounts(S); } catch (e) { S.accounts = []; S.accounts.byCode = {}; } mark('acc');
+  } else {
+    busy(true);
+    try { const [sms, st] = await baseP; applyBase(sms, st); mark('base'); S.accounts = await loadAccounts(S); mark('acc'); bootSave(email, me, sms, st); }
+    catch (e) { toast('기본 자료를 읽지 못했습니다: ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  }
   paintNav();
-  Notify.start();   // 🔔 확인 요청 · 주문 문제 실시간 알림
+  setTimeout(() => Notify.start(), snap ? 1500 : 0);   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
   const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) location.hash = '#/' + navFor(S.role)[0][0];
   Router.stack = [];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
+  /* 빠른 시작이었으면 — 서버 것과 비교해 바뀐 것만 반영 */
+  if (snap) {
+    Promise.all([meP, baseP]).then(async ([m2, [sms2, st2]]) => {
+      if (!m2 || m2.active === false) { waitScreen(email); return; }
+      bootSave(email, m2, sms2, st2);
+      const roleChg = m2.role !== snap.me.role || (m2.job || '') !== (snap.me.job || '') || (m2.sm || '') !== (snap.me.sm || '') || JSON.stringify(m2.views || m2.extra || null) !== JSON.stringify(snap.me.views || snap.me.extra || null);
+      const accChg = String((st2 || {}).accountsVer || '0') !== String((snap.settings || {}).accountsVer || '0');
+      S.me = m2; applyBase(sms2, st2);
+      if (accChg) { try { S.accounts = await loadAccounts(S); } catch (e) {} }
+      if (roleChg) { if (!viewsOf(m2).includes(S.role)) S.role = m2.role || 'salesman'; paintNav(); const f = Router.routes[Router.cur]; if (f) f(location.hash.replace(/^#\/?/, '').split('/')[1] || ''); }
+    }).catch(() => { /* 인터넷 없음 — 폰에 있는 것으로 계속 */ });
+  }
   setTimeout(() => { const poll = setInterval(() => { const p = $('page'); if (p && p.textContent.length > 120 && !/읽는 중|Loading/.test(p.textContent.slice(0, 60))) { mark('first'); clearInterval(poll); } }, 200); setTimeout(() => clearInterval(poll), 30000); }, 0);
 }
 let ROUTER_ON = false;
