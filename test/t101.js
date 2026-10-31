@@ -14,7 +14,7 @@ const path = require('path');
   const h0 = await H(); log('start:', JSON.stringify(h0));
   /* 홈 → 🛒 세일(목록) → 주문 상세 — 앱 안 이동 */
   await pg.tap('#nav button[data-go="order"]'); await pg.waitForTimeout(800);
-  const o1 = await pg.$('.pr.tap[data-oid="O261014-AAAA"]'); if (!o1) errs.push('order list empty'); else { await o1.tap(); await pg.waitForTimeout(900); }
+  const o1 = await pg.$('[data-oid="O261014-AAAA"]'); if (!o1) errs.push('order list empty'); else { await o1.tap(); await pg.waitForTimeout(900); }
   const h1 = await H(); log('detail:', JSON.stringify(h1)); if (!/#\/order\//.test(h1.hash)) errs.push('should be on an order detail');
   if (h1.len > h0.len + 2) errs.push('in-app moves should not stack history (len ' + h0.len + ' → ' + h1.len + ')');
   /* 창 열고 뒤로 → 창만 닫힘 */

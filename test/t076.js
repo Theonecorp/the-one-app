@@ -45,7 +45,7 @@ const path = require('path');
   await pg.click('#nav button[data-go="shome"]'); await pg.waitForTimeout(1200);
   const home = await txt(pg, '#page'); log('home:', home.slice(0, 120)); if (!(await pg.$('.hgrid, [data-hg]'))) errs.push('staff Home should show tiles');
   await pg.click('#nav button[data-go="order"]'); await pg.waitForTimeout(1500);
-  const sale = await txt(pg, '#page'); log('sale:', sale.slice(0, 120)); if (await pg.$('.hgrid')) errs.push('Sale tab should show the work list, not tiles'); if (!(await pg.$('.chips [data-st], .lhead, #ordList, .pr'))) errs.push('Sale tab should show a list');
+  const sale = await txt(pg, '#page'); log('sale:', sale.slice(0, 120)); if (await pg.$('.hgrid')) errs.push('Sale tab should show the work list, not tiles'); if (!(await pg.$('.chips [data-st], .lhead, #ordList, .pr, .dtw'))) errs.push('Sale tab should show a list');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();

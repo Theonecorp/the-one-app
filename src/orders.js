@@ -9,7 +9,7 @@
  *  orderLines/{id} = { sm, lines:[{c, d, q, p, lp, t, pq?, note?}] }   (lp = 목록가, t = 인보이스 종류, pq = 픽킹 수량)
  *  st: draft(임시저장) → sent(보냄) → pick(픽킹 중) → done(인보이스 확정) · x(취소)
  * ============================================================ */
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead } from './ui.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
 import { jobOf, can } from './main.js';
@@ -131,7 +131,7 @@ let INV_TAB = false;
 export function invTab() {
   if (!INV_TAB) { INV_TAB = true; LF.im = 'date'; LF.ip = LF.ip || 'month'; }
   LF.st = 'inv';
-  return Fulfill.invBrowser(LF, '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📄 ' + bi('인보이스', 'Invoices') + '</h2><div class="muted">' + bt('앱에서 발행한 것 + 이전 시스템에서 가져온 것 — 인보이스 번호 순 (종류별). 거래처는 이름 순. 거래처 · 번호 · 종류 · 세일즈맨으로 찾기', 'App + imported invoices by invoice number (per type); customers by name — search by customer, number, type, salesman') + '</div></div>');
+  return Fulfill.invBrowser(LF, pageHead('📄 ' + bi('인보이스', 'Invoices'), bt('앱에서 발행한 것 + 이전 시스템에서 가져온 것 — 인보이스 번호 순 (종류별). 거래처는 이름 순. 거래처 · 번호 · 종류 · 세일즈맨으로 찾기', 'App + imported invoices by invoice number (per type); customers by name — search by customer, number, type, salesman')));
 }
 /** 다른 화면(관리자 현황)에서 주문 목록을 바로 열기 — st: sent · pick · picked · done · shipped · bo · inv · all, 기간은 선택 */
 export function openList(st, from, to) { LF.init = true; LF.list = true; LF.st = st; if (from) { LF.hp = 'custom'; LF.hfrom = from; LF.hto = to; LF.ip = 'custom'; LF.ifrom = from; LF.ito = to; LF.im = 'date'; } if (location.hash === '#/order') pageOrder(''); else Router.go('order'); }
@@ -184,11 +184,11 @@ async function pageOrder(arg) {
   let h = '';
   if (wip) h += '<div class="alert a-amb tap" id="oWip" style="margin:0 0 12px">✏️ 작성 중인 주문 — ' + esc(wip.store || '가게 미선택') + ' · ' + wip.lines.length + '줄 <b>이어서 하기 ›</b></div>';
   if (out.length) h += '<div class="card" style="border:2px solid #fecaca"><h2>📤 아직 회사로 안 간 주문 ' + out.length + '건</h2><div class="muted">폰에 안전하게 저장돼 있습니다. 인터넷이 되면 자동으로 보내고, 아래 버튼으로 바로 보낼 수도 있습니다.</div>' +
-    out.map(x => orderRow(x.o, true, x.err)).join('') + '<button class="b-blue" id="oSync" style="margin-top:8px">📤 지금 모두 보내기</button></div>';
+    oTbl(out.map(x => orderRow(x.o, true, x.err)).join('')) + '<button class="b-blue" id="oSync" style="margin-top:8px">📤 지금 모두 보내기</button></div>';
   if (err) h += '<div class="alert a-amb">회사 기록을 읽지 못했습니다 (' + esc(err) + ') — 인터넷이 안 되면 폰에 저장된 것만 보입니다.</div>';
   if (!isStaff()) h += '<div id="dayCfL"></div>';
   const cfs = isStaff() ? [] : rows.filter(o => o.cfReq && !o.cfOk && o.st !== 'x');
-  if (cfs.length) h += '<div class="card" style="border:2px solid #fde68a"><h2>❓ ' + bi('사무실에서 확인 요청한 주문', 'Office asks you to confirm') + ' ' + cfs.length + '건</h2><div class="muted">열어서 내용이 맞으면 <b>✅ 맞습니다</b>, 아니면 <b>✏️ 수정</b>. <span class="en">Open each order and confirm or edit.</span></div>' + cfs.map(o => orderRow(o)).join('') + '</div>';
+  if (cfs.length) h += '<div class="card" style="border:2px solid #fde68a"><h2>❓ ' + bi('사무실에서 확인 요청한 주문', 'Office asks you to confirm') + ' ' + cfs.length + '건</h2><div class="muted">열어서 내용이 맞으면 <b>✅ 맞습니다</b>, 아니면 <b>✏️ 수정</b>. <span class="en">Open each order and confirm or edit.</span></div>' + oTbl(cfs.map(o => orderRow(o)).join('')) + '</div>';
   const drafts = isStaff() ? (LF.st === 'draft' ? rows : []) : rows.filter(o => o.st === 'draft');
   if (isStaff() && LF.st === 'draft') rows = [];   // 아래 목록에 또 나오지 않게
   if (drafts.length) h += '<div class="card" style="border:2px solid #bfdbfe"><h2>✅ ' + bi('주문 확인 · 보낼 주문', 'Review & send') + ' ' + drafts.length + '건 · ' + money(drafts.reduce((a, o) => a + (o.amt || 0), 0)) + '</h2><div class="muted">저장해 둔 주문입니다. <b>열기</b>로 내용을 확인한 뒤, 체크한 것을 한 번에 회사로 보냅니다 (보낸 뒤에도 픽킹 시작 전까지는 고칠 수 있습니다). <span class="en">Open to review, then send the checked orders.</span></div>' +
@@ -405,25 +405,34 @@ function bindHead() {
 }
 /** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */
 function dayGroups(rows) {
-  if (!isStaff()) return rows.map(o => orderRow(o)).join('');
+  if (!isStaff()) return oTbl(rows.map(o => orderRow(o)).join(''));
   const ck = (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine');
   if (LF.grp !== 'day' && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'picked' || LF.st === 'mine')) {
     const by = {}; rows.forEach(o => { const k = o.sm || '—'; (by[k] = by[k] || []).push(o); });
-    return Object.keys(by).sort().map(sm => { const L = by[sm], cf = L.filter(o => o.cfReq && !o.cfOk).length; const ask = LF.st === 'sent' && L.filter(o => cfAble(o) && !o.cfReq).length; return '<div class="smgrp"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + (cf ? ' · <span class="warn">확인 대기 ' + cf + '</span>' : '') + (ask ? ' <button type="button" class="b-blue b-sm" data-smcf="' + esc(sm) + '" style="margin-left:6px;padding:4px 9px">❓ ' + bt('전체 확인 요청', 'Ask to confirm') + ' ' + ask + '</button>' : '') + ' ▾</span></div><div class="smbody">' + L.map(o => orderRow(o, false, '', ck)).join('') + '</div></div>'; }).join('');
+    return Object.keys(by).sort().map(sm => { const L = by[sm], cf = L.filter(o => o.cfReq && !o.cfOk).length; const ask = LF.st === 'sent' && L.filter(o => cfAble(o) && !o.cfReq).length; return '<div class="smgrp"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + (cf ? ' · <span class="warn">확인 대기 ' + cf + '</span>' : '') + (ask ? ' <button type="button" class="b-blue b-sm" data-smcf="' + esc(sm) + '" style="margin-left:6px;padding:4px 9px">❓ ' + bt('전체 확인 요청', 'Ask to confirm') + ' ' + ask + '</button>' : '') + ' ▾</span></div><div class="smbody">' + oTbl(L.map(o => orderRow(o, false, '', ck)).join(''), ck) + '</div></div>'; }).join('');
   }
   const days = {}; rows.forEach(o => { const k = localDay(o.st === 'sent' && o.sentAt ? o.sentAt : o.updatedAt || o.createdAt || o.d); (days[k] = days[k] || []).push(o); });
   const asc = !!NEWK[LF.st] || OPEN_CH.includes(LF.st);   // 안 끝난 칸은 오래된 날짜가 위
-  return (asc ? Object.keys(days).sort() : Object.keys(days).sort().reverse()).map(d => { const L = days[d]; return '<div class="iday"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>' + L.map(o => orderRow(o, false, '', ck)).join(''); }).join('');
+  return (asc ? Object.keys(days).sort() : Object.keys(days).sort().reverse()).map(d => { const L = days[d]; return '<div class="iday"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>' + oTbl(L.map(o => orderRow(o, false, '', ck)).join(''), ck); }).join('');
 }
 const WDK = ['일', '월', '화', '수', '목', '금', '토'];
 function dayLbl(d) { const t = today(); const x = new Date(d + 'T12:00:00'); return (d === t ? '오늘 Today · ' : '') + Number(d.substring(5, 7)) + '/' + Number(d.substring(8, 10)) + ' (' + WDK[x.getDay()] + ')'; }
 export const cfTag = o => (o.cfIssueOpen ? ' <span class="tag t-r" title="' + esc(o.cfIssue || '') + '">⚠️ ' + bt('세일즈맨 문의', 'Salesman flagged') + '</span>' : '') + (o.cfOk ? ' <span class="tag t-k" title="Confirmed by salesman">✅ 세일즈맨 확인' + (o.cfHow === 'day' ? ' (' + bt('일괄', 'batch') + ')' : '') + '</span>' : o.cfReq ? ' <span class="tag t-c" title="Waiting for salesman">❓ 확인 대기</span>' : '');
+/* 📊 주문 표 — ☐ · 가게(상태 · 표시) · 번호 · 날짜 · 세일즈맨 · 금액 · 줄/개 · 메모(담당 · 인보이스 · 트래킹 · 대기 시간) (· 📄) */
+function oTbl(rowsHtml, ck) {
+  return '<div class="dtw"><table class="dt"><thead><tr>' + (ck ? '<th style="width:30px"></th>' : '') + '<th>' + bt('가게', 'Store') + '</th><th>' + bt('번호', 'No.') + '</th><th>' + bt('날짜', 'Date') + '</th><th class="hs">' + bt('세일즈맨', 'Rep') + '</th><th class="r">' + bt('금액', 'Amount') + '</th><th class="r hs">' + bt('줄 · 개', 'Lines · pcs') + '</th><th>' + bt('메모', 'Notes') + '</th>' + (ck && assignMode() ? '<th></th>' : '') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+}
 function orderRow(o, local, err, ck) {
   const flags = (NewAcct.isTemp(o.acct) ? ' <span class="tag t-b">🆕 ' + bt('신규 거래처', 'New account') + '</span>' : '') + (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '') + (isStaff() ? cfTag(o) : (o.cfReq && !o.cfOk ? ' <span class="tag t-c">❓ 확인 요청</span>' : o.cfOk ? ' <span class="tag t-k">✅ 확인함</span>' : ''));
-  const who = o.pickerName || o.picker ? ' · 👷 ' + esc(o.pickerName || String(o.picker).split('@')[0]) : '';
+  const who = o.pickerName || o.picker ? '👷 ' + esc(o.pickerName || String(o.picker).split('@')[0]) : '';
   const ag = isStaff() && !local ? stageAge(o) : null, agT = ag ? ' <span class="tag agetag' + (ag.day ? ' old' : ag.late ? ' late' : '') + '" title="' + esc(bt('이 단계에서 기다린 시간', 'Waiting in this stage')) + '">⏱ ' + esc(ag.t) + '</span>' : '';
   const ty = isStaff() && o.ty ? Object.keys(o.ty).filter(k => k !== DT() && o.ty[k]).map(k => ' <span class="tag t-a" title="' + esc(bt('인보이스 종류 ', 'Invoice type ') + k) + '">🏷 ' + esc(k) + ' ' + o.ty[k] + '</span>').join('') : '';
-  return '<div class="pr tap" data-oid="' + esc(o.id) + '">' + (ck ? '<span class="ckw" data-ckw="' + esc(o.id) + '"><input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '"></span>' : '') + '<div class="ct"><b>' + esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + agT + flags + ty + '</b><small>' + esc(md(o.d)) + ' · ' + esc(o.sm) + ' · ' + esc(o.no) + who + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.track ? ' · 🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : '') + (o.deliveredAt ? ' · <b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : '') + '</small>' + (err ? '<small class="warn">' + esc(err) + '</small>' : '') + '</div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div>' + (ck && o.st === 'sent' && assignMode() ? '<button type="button" class="b-ghost b-sm qa" data-open="' + esc(o.id) + '" title="' + esc(bt('주문 내용 보기', 'Open order')) + '">📄</button>' : '') + '</div>';
+  const notes = [who, (o.invs && o.invs.length ? '🧾 ' + esc(o.invs.join(', ')) : ''), (o.track ? '🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : ''), (o.deliveredAt ? '<b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : ''), (o.memo ? '📝 ' + esc(String(o.memo).slice(0, 40)) : '')].filter(Boolean).join(' · ');
+  return '<tr class="tap" data-oid="' + esc(o.id) + '">' + (ck ? '<td><span class="ckw" data-ckw="' + esc(o.id) + '"><input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '"></span></td>' : '') +
+    '<td class="ct wrap" style="min-width:150px"><b>' + esc(o.store || '-') + '</b> ' + stTag(local ? 'local' : o.st) + agT + flags + ty + (err ? '<div class="warn" style="font-size:11.5px">' + esc(err) + '</div>' : '') + '</td>' +
+    '<td class="sub0">' + esc(o.no) + '</td><td>' + esc(md(o.d)) + '</td><td class="hs">' + (o.sm ? '<span class="tag t-x">' + esc(o.sm) + '</span>' : '') + '</td>' +
+    '<td class="r"><b>' + money(o.amt) + '</b></td><td class="r hs sub0">' + (o.n || 0) + ' · ' + (o.qty || 0) + '</td><td class="wrap sub0" style="min-width:120px">' + notes + '</td>' +
+    (ck && assignMode() ? '<td>' + (o.st === 'sent' ? '<button type="button" class="b-ghost b-sm qa" data-open="' + esc(o.id) + '" title="' + esc(bt('주문 내용 보기', 'Open order')) + '">📄</button>' : '') + '</td>' : '') + '</tr>';
 }
 
 /* ============================================================

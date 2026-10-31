@@ -25,9 +25,9 @@ const path = require('path');
   const miss0 = await pg.evaluate(() => [...document.querySelectorAll('[data-nop]')].map(b => b.textContent.trim()));
   log('missing chips:', miss0);
   /* 전체 → 아이템 화면 사진 없음 */
-  await pg.click('[data-nop=""]'); await pg.waitForSelector('#itList .pr', { timeout: 8000 }); await pg.waitForTimeout(400);
+  await pg.click('[data-nop=""]'); await pg.waitForSelector('#itList .irow', { timeout: 8000 }); await pg.waitForTimeout(400);
   const seg = await pg.$eval('[data-im="noph"]', b => b.className + '|' + b.textContent.trim()); log('seg:', seg); if (!/^on/.test(seg)) errs.push('noph mode not active');
-  const rows = await pg.$$eval('#itList .pr', r => r.map(x => x.querySelector('[data-it]').dataset.it + ':' + (x.querySelector('img') ? 'img' : x.querySelector('.noph') ? 'noph' : '?')));
+  const rows = await pg.$$eval('#itList .irow', r => r.map(x => (x.dataset.it || x.querySelector('[data-it]').dataset.it) + ':' + (x.querySelector('img') ? 'img' : x.querySelector('.noph') ? 'noph' : '?')));
   log('rows:', rows.slice(0, 5), rows.length); if (!rows.length || rows.some(r => !/noph$/.test(r))) errs.push('noph list should contain only items without photo');
   const code = rows[0].split(':')[0];
   /* 아이템 열어 사진 올리기 */

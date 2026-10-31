@@ -14,12 +14,12 @@ const path = require('path');
   /* 담당자 홈 배너 */
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#hOldB', { timeout: 8000 }).catch(() => errs.push('home banner missing'));
   if (await pg.$('#hOldB')) { log('home:', (await pg.textContent('#hOldB')).trim()); await pg.click('#hOldB'); await pg.waitForTimeout(1000);
-    const shown = await pg.$$eval('[data-oid] .ct b', b => b.map(x => x.textContent));
+    const shown = await pg.$$eval('[data-oid] .ct', b => b.map(x => x.textContent));
     log('after banner (old only):', shown); if (shown.length !== 1 || !/OLDEST/.test(shown[0])) errs.push('banner should filter to the 1 old order');
     await pg.click('#oOld'); await pg.waitForTimeout(800); }
   for (const grp of ['sm', 'day']) {
     if (await pg.$('[data-grp="' + grp + '"]')) { await pg.click('[data-grp="' + grp + '"]'); await pg.waitForTimeout(700); }
-    const names = await pg.$$eval('[data-oid] .ct b', b => b.map(x => x.textContent.replace(/\s+/g, ' ')));
+    const names = await pg.$$eval('[data-oid] .ct', b => b.map(x => x.textContent.replace(/\s+/g, ' ')));
     log(grp, names);
     if (!/OLDEST/.test(names[0]) || !/NEWEST/.test(names[names.length - 1])) errs.push(grp + ': oldest should be first, newest last');
     if (!/⏱ 3일째/.test(names[0]) || !/⏱ 5시간/.test(names[1]) || !/⏱ 30분/.test(names[2])) errs.push(grp + ': age badges wrong');
