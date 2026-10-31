@@ -121,16 +121,21 @@ async function paintFind() {
   box.innerHTML = '<div class="card"><input id="skQ" placeholder="' + esc(bt('코드 · 이름 · 바코드 (스캔)', 'Code · name · barcode (scan)')) + '" value="' + esc(ST.q) + '" autocomplete="off" autocapitalize="characters"><div class="muted" style="margin-top:6px">' + bt('아이템을 누르면 재고 기록 · ✏️ 조정(실사 · ±)', 'Tap an item for its history and ✏️ adjust (count · ±)') + '</div><div id="skRes" style="margin-top:8px"></div></div>';
   const paint = async () => {
     const q = $('skQ').value.trim(); ST.q = q; const res = $('skRes'); if (!res) return;
-    if (!q) { res.innerHTML = '<div class="none">' + bt('코드나 이름을 치세요', 'Type a code or name') + '</div>'; return; }
-    const ex = exactItem(q), hits = ex ? [ex].concat((searchItems(q, [], 40) || []).filter(x => x.c !== ex.c)) : (searchItems(q, [], 40) || []);
+    /* 전체 아이템이 기본 (코드 순) · 치는 대로 걸러짐 — 📊 표: 코드 · 이름 · 📍 통로 · 📦 재고 · 가격 */
+    const C = catalog(), ex = q ? exactItem(q) : null;
+    const hits = q ? (ex ? [ex] : []).concat((searchItems(q, [], 100000, undefined, true) || []).filter(x => !ex || x.c !== ex.c)) : C.items.filter(x => !x.virt);
     if (!hits.length) { res.innerHTML = '<div class="none">' + bt('없음', 'No match') + '</div>'; return; }
-    res.innerHTML = '<div class="load">…</div>';
-    const st = await stockOf(hits.map(x => x.c)); if ($('skQ').value.trim() !== q) return;
-    res.innerHTML = hits.map(it => itemRow(it, st[it.c])).join('');
-    res.querySelectorAll('[data-sti]').forEach(el => el.onclick = () => itemSheet(el.dataset.sti, paint));
+    if (!ST.all) { res.innerHTML = '<div class="load">…</div>'; try { ST.all = await stockAll(); } catch (e) { ST.all = {}; } if ($('skQ').value.trim() !== q) return; }
+    const st = ST.all, lim = ST.lim || 200, show = hits.slice(0, lim), nIn = hits.filter(x => (st[x.c] || 0) > 0).length;
+    res.innerHTML = '<div class="muted" style="margin:0 0 6px">' + hits.length.toLocaleString() + bt('개', ' items') + ' · 📦 ' + bt('재고 있음', 'in stock') + ' ' + nIn.toLocaleString() + '</div>' +
+      '<div class="dtw"><table class="dt"><thead><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th>📍 ' + bt('통로', 'Aisle') + '</th><th class="r">📦 ' + bt('재고', 'Stock') + '</th><th class="r hs">' + bt('가격', 'Price') + '</th></tr></thead><tbody>' +
+      show.map(it => { const n = st[it.c] || 0; return '<tr class="tap' + (it.h ? ' hid' : '') + '" data-sti="' + esc(it.c) + '"><td><b>' + esc(it.c) + '</b>' + (it.h ? ' 🙈' : '') + '</td><td class="wrap" style="min-width:150px">' + esc(it.d || '') + '</td><td>' + (locOf(it) ? '<span class="loc">' + esc(locOf(it)) + '</span>' : '<span class="muted">—</span>') + '</td><td class="r">' + (n > 0 ? '<span class="stk' + (n < 12 ? ' slow' : '') + '">' + n.toLocaleString() + '</span>' : '<span class="stk s0">' + bt('없음', 'out') + '</span>') + '</td><td class="r hs">' + (it.p ? money(it.p) : '') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      (hits.length > show.length ? '<button class="b-ghost" id="skMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (hits.length - show.length).toLocaleString() + ')</button>' : '');
+    res.querySelectorAll('[data-sti]').forEach(el => el.onclick = () => itemSheet(el.dataset.sti, () => { ST.all = null; paint(); }));
+    if ($('skMore')) $('skMore').onclick = () => { ST.lim = lim + 200; paint(); };
   };
-  $('skQ').oninput = debounce(paint, 200); $('skQ').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const ex = exactItem($('skQ').value.trim()); if (ex) itemSheet(ex.c, paint); } };
-  if (ST.q) paint(); if (!('ontouchstart' in window)) $('skQ').focus();
+  $('skQ').oninput = debounce(() => { ST.lim = 200; paint(); }, 200); $('skQ').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const ex = exactItem($('skQ').value.trim()); if (ex) itemSheet(ex.c, paint); } };
+  paint(); if (!('ontouchstart' in window)) $('skQ').focus();
 }
 /** 아이템 한 장 — 재고 · 위치 · 최근 움직임 · ✏️ 실사 / ± 조정 */
 export async function itemSheet(code, done) {

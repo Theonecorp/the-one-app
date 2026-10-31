@@ -53,6 +53,25 @@ export function itabs(items, cur, attr, cls) {
     return '<button class="' + (k === cur ? 'on' : '') + '" data-' + attr + '="' + esc(k) + '" title="' + esc(ko + (en ? ' · ' + en : '')) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + (en ? ' <span class="en">' + en + '</span>' : '') + '</span>' + (badge ? '<span class="badge" id="' + esc(badge) + '" style="display:none">0</span>' : '') + '</button>'; };
   return '<div class="itabs' + (cls ? ' ' + cls : '') + '">' + items.map(one).join('') + '</div>';
 }
+/** 📊 표 — 목록을 엑셀처럼 칸으로 (v0.8.142). cols: [{ h: 머리글, k: 필드, f: row => html, cls: 'r'(오른쪽) | 'c', w: 너비, sm: false(폰에서 숨김), sort: row => 값 }]
+ *   머리글을 누르면 그 칸으로 정렬(두 번 = 반대) — 표 id 로 기억. rows 에 _grp(묶음 이름) 가 있으면 묶음 머리줄을 넣고, 정렬은 묶음 안에서만 */
+export const DT_SORT = {};
+export function dtable(id, cols, rows, opt) {
+  opt = opt || {}; const st = DT_SORT[id];
+  let L = rows.slice();
+  if (st) { const c = cols.find(x => (x.k || x.h) === st.k); if (c) { const v = r => c.sort ? c.sort(r) : (c.k ? r[c.k] : ''); const gi = {}; L.forEach((r, i) => { if (!(r._grp in gi)) gi[r._grp] = i; });
+    L.sort((a, b) => { const g = (gi[a._grp] || 0) - (gi[b._grp] || 0); if (g) return g; const x = v(a), y = v(b); const n = typeof x === 'number' && typeof y === 'number' ? x - y : String(x == null ? '' : x).localeCompare(String(y == null ? '' : y), 'en', { numeric: true }); return st.d ? -n : n; }); } }
+  const cell = (c, r) => c.f ? c.f(r) : esc(r[c.k] == null ? '' : r[c.k]);
+  const th = cols.map(c => '<th class="' + (c.cls || '') + (c.sm === false ? ' hs' : '') + (st && (c.k || c.h) === st.k ? (st.d ? ' sd' : ' sa') : '') + '"' + (c.w ? ' style="width:' + c.w + '"' : '') + (c.k || c.sort ? ' data-dts="' + esc(c.k || c.h) + '"' : '') + '>' + c.h + '</th>').join('');
+  let body = '', g = null;
+  L.forEach(r => { if (r._grp != null && r._grp !== g) { g = r._grp; body += '<tr class="grp"><td colspan="' + cols.length + '">' + r._grp + (r._grpSub ? ' <span>' + r._grpSub + '</span>' : '') + '</td></tr>'; }
+    body += '<tr class="' + (opt.rowCls ? opt.rowCls(r) : '') + '"' + (opt.rowAttr ? opt.rowAttr(r) : '') + '>' + cols.map(c => '<td class="' + (c.cls || '') + (c.sm === false ? ' hs' : '') + '">' + cell(c, r) + '</td>').join('') + '</tr>'; });
+  return '<div class="dtw"><table class="dt" data-dt="' + esc(id) + '"><thead><tr>' + th + '</tr></thead><tbody>' + (body || '<tr><td colspan="' + cols.length + '" class="none">' + (opt.empty || bt('없음', 'none')) + '</td></tr>') + '</tbody></table></div>';
+}
+/** 머리글 정렬 연결 — repaint() 는 표를 다시 그리는 함수 */
+export function bindDtable(root, repaint) { if (!root) return; root.querySelectorAll('[data-dts]').forEach(th => th.onclick = () => { const id = th.closest('table').dataset.dt, k = th.dataset.dts, st = DT_SORT[id]; DT_SORT[id] = st && st.k === k ? (st.d ? null : { k, d: true }) : { k, d: false }; repaint(); }); }
+/** 화면 머리 — 제목 · 작은 설명 · 오른쪽 단추들 (직원 재고 프로그램 모양) */
+export function pageHead(title, sub, acts) { return '<div class="pgh"><div><h1>' + title + '</h1>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' + (acts ? '<div class="acts">' + acts + '</div>' : '') + '</div>'; }
 export function snapGet(key, maxAgeMs) { try { const j = JSON.parse(localStorage.getItem('theone.snap.' + key) || 'null'); if (j && j.html && (!maxAgeMs || Date.now() - j.at < maxAgeMs)) return j; } catch (e) {} return null; }
 export function snapPut(key, html) { try { localStorage.setItem('theone.snap.' + key, JSON.stringify({ html, at: Date.now() })); } catch (e) {} }
 export function busy(on) {

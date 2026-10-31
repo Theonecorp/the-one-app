@@ -2,7 +2,7 @@
  *  담당자(회계) 화면 — 수금 확인(① 접수 확인 · ② 체크 수령) · COD/카드/ACH 입력 · ACH · 거래처 · AR 올리기
  * ============================================================ */
 import { invTypes, getInvoice } from './invoicing.js';
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt, invNo, askOver, itabs } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, pad4, nz, daysBetween, debounce, hasWords, bi, bt, invNo, askOver, itabs, dtable, bindDtable, pageHead } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, dropAccountCache, activeOnly, sortStores } from './accounts.js';
 import { inactiveTool, reactivate, register as regInactive } from './inactive.js';
@@ -289,7 +289,18 @@ async function pageStores() {
   if (!STM.mode) { STM.mode = 'q'; if (isSales) STM.sm = mine; }   // 처음엔 모두 전체 거래처 (가게 이름 ABC) — 세일즈맨은 👤 세일즈맨별에 내 가게가 골라져 있음
   const A = activeOnly(S.accounts), Z = S.accounts.filter(a => a.inactive);   // 💤 비활성은 목록 · 지도에서 빼고 따로
   const canZ = S.role === 'admin' || S.role === 'owner' || (!isSales && (S.me && (S.me.job || 'office') === 'office'));
-  const row = a => '<div class="pr tap" data-st="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + (a.inactive ? ' <span class="tag t-g">💤 ' + bt('비활성', 'Inactive') + '</span>' : '') + '</b><small>' + esc(a.acct) + ' · ' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.tel ? ' · ' + esc(a.tel) : '') + '</small></div>' + (!isSales ? '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' : '') + '</div>';
+  /* 📊 거래처 표 — 코드 · 매장 · 도시, 주 · 주소 · 연락처 · 담당 · 조건 · 상태 (· ✏️). 줄을 누르면 가게 창 */
+  const COLS = [
+    { h: bt('코드', 'Code'), k: 'acct', w: '64px', f: a => '<b>' + esc(a.acct) + '</b>' },
+    { h: bt('매장 · 고객명', 'Store'), k: 'store', f: a => '<span class="ct"><b>' + esc(a.store) + '</b></span>' },
+    { h: bt('도시, 주', 'City, State'), k: '_cs', sort: a => String(a.state || '') + String(a.city || ''), f: a => esc([a.city, a.state].filter(Boolean).join(', ')) + (a.zip ? '<div class="sub0">' + esc(a.zip) + '</div>' : '') },
+    { h: bt('주소', 'Address'), k: 'addr', sm: false, f: a => '<span class="sub0">' + esc(a.addr || '') + '</span>' },
+    { h: bt('연락처', 'Phone'), k: 'tel', sm: false },
+    { h: bt('담당 영업', 'Rep'), k: 'sm', f: a => a.sm ? '<span class="tag t-x">' + esc(a.sm) + '</span>' : '<span class="muted">—</span>' },
+    { h: bt('결제 조건', 'Terms'), k: 'terms', sm: false, f: a => a.terms ? '<span class="tag t-f">' + esc(a.terms) + '</span>' : '' },
+    { h: bt('상태', 'Status'), k: 'inactive', sort: a => a.inactive ? 1 : 0, f: a => a.inactive ? '<span class="tag t-g">💤 ' + bt('비활성', 'Inactive') + '</span>' : '<span class="tag t-k">' + bt('활성', 'Active') + '</span>' }
+  ].concat(isSales ? [] : [{ h: '', w: '44px', f: a => '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' }]);
+  const tbl = L => dtable('stores', COLS, L, { rowAttr: a => ' data-st="' + esc(a.acct) + '"', rowCls: a => 'tap' + (a.inactive ? ' dim' : ''), empty: bt('없음', 'none') });
   const cnt = (list, f) => { const m = {}; list.forEach(a => { const k = f(a) || '—'; m[k] = (m[k] || 0) + 1; }); return m; };
   let body = '', sub = '';
   if (STM.mode === 'q') {
@@ -299,7 +310,7 @@ async function pageStores() {
     const bySm = cnt(A, a => String(a.sm || '').toUpperCase()), sms = Object.keys(bySm).sort((x, y) => x === mine ? -1 : y === mine ? 1 : x < y ? -1 : 1);
     sub = '<div class="chips" style="margin-top:8px">' + sms.map(k => '<button class="' + (STM.sm === k ? 'on' : '') + '" data-stsm="' + esc(k) + '">' + (k === mine ? '👤 ' : '') + esc(k) + ' <span class="en">' + bySm[k] + '</span></button>').join('') + '</div>';
     const list = sortStores(A.filter(a => String(a.sm || '').toUpperCase() === (STM.sm || '—') || (STM.sm === '—' && !a.sm)));
-    body = STM.sm ? (list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.sm) + ' · ' + list.length + '곳 · 이름순</div>' + list.map(row).join('') : '<div class="none">없음</div>') : '<div class="none">세일즈맨을 고르세요</div>';
+    body = STM.sm ? (list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.sm) + ' · ' + list.length + '곳 · 이름순</div>' + tbl(list) : '<div class="none">없음</div>') : '<div class="none">세일즈맨을 고르세요</div>';
   } else if (STM.mode === 'z') {
     /* 💤 비활성 — 3년 거래 없는 곳. 다시 활성 가능 */
     sub = '<div class="muted" style="margin-top:8px">' + bi('최근 3년 동안 거래가 없어 목록 · 지도 · 가게 찾기 맨 뒤로 뺀 거래처입니다. 다시 거래하면 앱에서 인보이스를 발행할 때 자동으로 활성으로 돌아갑니다.', 'No activity for 3 years — removed from lists and the map. Issuing an invoice makes them active again.') + '</div>' + (canZ ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="stZscan">🔎 ' + bi('3년 거래 없는 곳 다시 찾기', 'Scan again') + '</button></div>' : '');
@@ -318,16 +329,16 @@ async function pageStores() {
       const inState = A.filter(a => String(a.state || '').toUpperCase() === STM.state), byCity = cnt(inState, a => String(a.city || '').toUpperCase()), cities = Object.keys(byCity).sort();
       sub += '<div class="chips">' + '<button class="' + (STM.city ? '' : 'on') + '" data-stct="">' + bi('전체', 'All') + ' ' + inState.length + '</button>' + cities.map(k => '<button class="' + (STM.city === k ? 'on' : '') + '" data-stct="' + esc(k) + '">' + esc(k) + ' <span class="en">' + byCity[k] + '</span></button>').join('') + '</div>';
       const list = sortStores(inState.filter(a => !STM.city || String(a.city || '').toUpperCase() === STM.city));
-      body = list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.state) + (STM.city ? ' · ' + esc(STM.city) : '') + ' · ' + list.length + '곳</div>' + list.slice(0, 400).map(row).join('') + (list.length > 400 ? '<div class="hint">400곳까지 표시 — 도시를 고르세요</div>' : '') : '<div class="none">없음</div>';
+      body = list.length ? '<div class="muted" style="margin:0 0 6px">' + esc(STM.state) + (STM.city ? ' · ' + esc(STM.city) : '') + ' · ' + list.length + '곳</div>' + tbl(list.slice(0, 400)) + (list.length > 400 ? '<div class="hint">400곳까지 표시 — 도시를 고르세요</div>' : '') : '<div class="none">없음</div>';
     } else body = '<div class="none">주(State)를 고르세요</div>';
   }
   /* 🗂 보기 방식은 아이콘 타일로 · 화면 위에 고정 (v0.8.136) */
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">🏬 ' + bi('거래처', 'Customers') + ' <span class="muted" style="font-size:12px;font-weight:400">' + A.length + '곳</span></h2></div>' +
+  $('page').innerHTML = pageHead('🏬 ' + bi('거래처', 'Customers'), bt('등록 거래처', 'Customers') + ' ' + A.length.toLocaleString() + bt('곳', '') + (Z.length ? ' · 💤 ' + Z.length : ''), isSales ? '' : '<button class="b-blue" id="stNew">＋ ' + bi('신규 거래처', 'New customer') + '</button>' + (canZ ? '<button class="b-ghost" id="stZ">💤 ' + bi('비활성 정리', 'Clean up') + '</button>' : '')) +
     itabs([['q', '🔎', '검색', 'Search'], ['sm', '👤', '세일즈맨별', 'By salesman'], ['geo', '🏙', '주 · 도시별', 'State · city'], ['map', '🗺', '지도', 'Map'], ['z', '💤', '비활성 ' + Z.length, 'Inactive']], STM.mode, 'stm', 'stick') +
-    '<div class="card">' + sub +
-    (!isSales ? '<div class="btns" style="justify-content:flex-start;flex-wrap:wrap"><button class="b-ghost b-sm" id="stNew">＋ 새 거래처</button>' + (canZ ? '<button class="b-ghost b-sm" id="stZ">💤 ' + bi('비활성 정리 (3년 거래 없음)', 'Clean up inactive (3 yrs)') + '</button>' : '') + '</div>' : '') + '</div>' +
+    (sub ? '<div class="card">' + sub + '</div>' : '') +
     '<div class="card">' + body + '</div>';
   Router.refreshBack();
+  bindDtable($('page'), pageStores);
   if (STM.mode === 'map') {
     const smsAll = Object.keys(cnt(A, a => String(a.sm || '').toUpperCase())).filter(k => k !== '—').sort();
     const list = STM.msm ? A.filter(a => String(a.sm || '').toUpperCase() === STM.msm) : A;
@@ -355,9 +366,10 @@ async function pageStores() {
     let lim = 300;
     const paintList = () => {
       const hits = STQ.trim() ? searchAccounts(S.accounts, STQ, 100000) : sortStores(A), show = hits.slice(0, lim);   // 검색하면 💤 비활성도 맨 뒤에
-      $('stList').innerHTML = '<div class="muted" style="margin:0 0 6px">' + (STQ.trim() ? bt('찾음', 'Found') + ' ' : bt('전체 · 이름순', 'All · by name') + ' ') + hits.length.toLocaleString() + '</div>' + (show.length ? show.map(row).join('') : '<div class="none">없음 · no match</div>') + (hits.length > show.length ? '<button class="b-ghost" id="stMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (hits.length - show.length).toLocaleString() + ')</button>' : '');
+      $('stList').innerHTML = '<div class="muted" style="margin:0 0 6px">' + (STQ.trim() ? bt('찾음', 'Found') + ' ' : bt('전체 · 이름순', 'All · by name') + ' ') + hits.length.toLocaleString() + '</div>' + tbl(show) + (hits.length > show.length ? '<button class="b-ghost" id="stMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (hits.length - show.length).toLocaleString() + ')</button>' : '');
       $('stList').querySelectorAll('[data-st]').forEach(el => el.onclick = () => storeSheet(el.dataset.st));
       $('stList').querySelectorAll('[data-ste]').forEach(el => el.onclick = e => { e.stopPropagation(); storeForm(S.accounts.byCode[el.dataset.ste]); });
+      bindDtable($('stList'), paintList);
       if ($('stMore')) $('stMore').onclick = () => { lim += 300; paintList(); };
     };
     $('stQ').oninput = debounce(() => { STQ = $('stQ').value; lim = 300; paintList(); }, 150);

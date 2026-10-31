@@ -6,7 +6,7 @@
  *    엑셀(Item Master) 전체 올리기는 관리 → 📦 아이템. 저장하면 카탈로그를 다시 발행해 모든 폰이 새 목록을 받음
  *  행 모양: [code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide]
  * ============================================================ */
-import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, itabs } from './ui.js';
+import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, itabs, pageHead } from './ui.js';
 import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1, setItemPhoto, shrinkImage, photoOv } from './catalog.js';
 import { stockAll } from './stock.js';
 import { typeOfItem, invTypes } from './invoicing.js';
@@ -74,8 +74,8 @@ function paint() {
   const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
   /* 🗂 분류별 · 📍 통로별은 그 보기에서만 칩이 나옴 — 기본(📋 목록)은 검색 + 걸러보기만, 목록은 바로 (v0.8.139) */
   const view = IT.view || 'list';
-  $('page').innerHTML = '<div class="card"><h2>🏷 ' + bi('아이템 관리', 'Items') + ' <span class="muted" style="font-weight:400;font-size:12px">' + nAll.toLocaleString() + '개 · 👁 보임 ' + (nAll - nHid).toLocaleString() + ' · 🙈 숨김 ' + nHid.toLocaleString() + '</span></h2>' +
-    '<div style="display:flex;gap:6px;margin-top:8px"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
+  $('page').innerHTML = pageHead('🏷 ' + bi('아이템 관리', 'Items'), nAll.toLocaleString() + bt('개', ' items') + ' · 👁 ' + (nAll - nHid).toLocaleString() + ' · 🙈 ' + nHid.toLocaleString() + ' · 📦 ' + bt('재고 있음', 'in stock') + ' ' + nStk.in.toLocaleString(), locOnly() ? '' : '<button class="b-blue" id="itNew">＋ ' + bi('신규 아이템', 'New item') + '</button>') +
+    '<div class="card"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters">' +
     itabs([['list', '📋', '목록', 'List'], ['tree', '🗂', '분류별', 'By category'], ['aisle', '📍', '통로별', 'By aisle']], view, 'iv') +
     '<div class="chips">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()], ['instk', '📦 ' + bt('재고 있음', 'In stock') + ' ' + nStk.in.toLocaleString()], ['lowstk', '⚠️ ' + bt('재고 부족', 'Low') + ' ' + nStk.low.toLocaleString()], ['nostk', '✕ ' + bt('재고 없음', 'Out') + ' ' + nStk.out.toLocaleString()]].concat(['nolv', 'nopr', 'nobar'].includes(IT.mode) ? [[IT.mode, { nolv: '🗂 ' + bt('분류 없음', 'No category'), nopr: '💲 ' + bt('가격 없음', 'No price'), nobar: '🏷 ' + bt('바코드 없음', 'No barcode') }[IT.mode]]] : []).map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
     (view === 'tree' ? crumbs + tiles : '') + (view === 'aisle' ? aisleRow(C) : '') +
@@ -112,22 +112,30 @@ function list() {
   const showList = true;   // 목록은 늘 바로 보임 (전체 · 코드 순) — 전에는 분류나 검색어가 있어야 나와 "아이템이 안 보인다"고 느껴짐
   const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + all.length.toLocaleString() + (IT.aisle ? '개 (위치 순)' : '개 (코드 순)') + (!q && !IT.path.length && IT.mode === 'all' && !IT.aisle ? ' · ' + bt('전체', 'all') : '') + '</span>' +
     (showList && all.length ? '<label class="tap" style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex:0 0 auto"><input type="checkbox" id="itAll" ' + (all.length && all.every(x => IT.sel.has(x.c)) ? 'checked' : '') + '> ' + bi('모두 선택', 'All') + ' ' + Math.min(all.length, 2000).toLocaleString() + '</label>' : '') + '</div>';
-  $('itList').innerHTML = head + (showList ? (res.length ? res.map(row).join('') + (all.length > res.length ? '<button class="b-ghost" id="itMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') :
+  $('itList').innerHTML = head + (showList ? (res.length ? '<div class="dtw"><table class="dt">' + TH() + '<tbody>' + res.map(row).join('') + '</tbody></table></div>' + (all.length > res.length ? '<button class="b-ghost" id="itMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') :
     '<div class="none">맞는 아이템이 없습니다' + (q ? ' — <a href="#" id="itMk">＋ "' + esc(q.toUpperCase()) + '" 로 새 아이템 등록</a>' : '') + '</div>') : '');
   $('itList').querySelectorAll('[data-it]').forEach(el => el.onclick = () => form(C.byCode[el.dataset.it]));
-  $('itList').querySelectorAll('[data-ic]').forEach(ck => ck.onchange = () => { if (ck.checked) IT.sel.add(ck.dataset.ic); else IT.sel.delete(ck.dataset.ic); bulk(); });
+  $('itList').querySelectorAll('[data-ic]').forEach(ck => { ck.onclick = e => e.stopPropagation(); ck.onchange = () => { if (ck.checked) IT.sel.add(ck.dataset.ic); else IT.sel.delete(ck.dataset.ic); bulk(); }; });
   $('itList').querySelectorAll('[data-ih]').forEach(b => b.onclick = e => { e.stopPropagation(); applyHidden([b.dataset.ih], b.dataset.on === '1'); });
   if ($('itAll')) $('itAll').onchange = () => { const on = $('itAll').checked; all.slice(0, 2000).forEach(x => { if (on) IT.sel.add(x.c); else IT.sel.delete(x.c); }); list(); };
   if ($('itMore')) $('itMore').onclick = () => { IT.page += 100; list(); };
   if ($('itMk')) $('itMk').onclick = e => { e.preventDefault(); form(null, q.toUpperCase()); };
   bulk();
 }
+/* 📊 아이템 표 — ☐ · 사진 · 코드 · 설명 · 분류 · 📍 통로 · 📦 재고 · 상태 · 가격 · SRP · 공급업체 · 👁/🙈. 줄을 누르면 수정 */
+const TH = () => '<thead><tr><th style="width:28px"></th><th style="width:44px">' + bt('사진', 'Photo') + '</th><th>' + bt('코드', 'Code') + '</th><th>' + bt('설명', 'Description') + '</th><th class="hs">' + bt('분류', 'Category') + '</th><th>📍 ' + bt('통로', 'Aisle') + '</th><th class="r">📦 ' + bt('재고', 'Stock') + '</th><th class="hs">' + bt('상태', 'Status') + '</th><th class="r">' + bt('가격', 'Price') + '</th><th class="r hs">SRP</th><th class="hs">🏭 ' + bt('공급', 'Supplier') + '</th><th style="width:40px"></th></tr></thead>';
 function row(it) {
-  return '<div class="pr irow' + (it.h ? ' hid' : '') + '"><input type="checkbox" data-ic="' + esc(it.c) + '" ' + (IT.sel.has(it.c) ? 'checked' : '') + ' style="width:20px;height:20px;margin-right:8px;flex:0 0 auto">' +
-    (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:8px" alt="">' : '<span class="noph" title="' + esc(bt('사진 없음', 'No photo')) + '">📷✕</span>') +
-    '<div class="ct tap" data-it="' + esc(it.c) + '"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a">🧩 세트</span>' : '') + (it.h ? ' <span class="tag t-x">🙈 숨김</span>' : '') + (locOf(it) ? ' <span class="loc"' + (it.loc ? '' : ' style="background:#64748b" title="분류 기본 위치"') + '>📍' + esc(locOf(it)) + '</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + esc(pathOf(it).filter(Boolean).map(cleanName).join(' › ') || '분류 없음') + (it.b ? ' · ' + esc(it.b) : '') + '</small></div>' +
-    '<div class="pa"><b>' + money(it.p) + '</b>' + (it.s ? '<small>SRP ' + money(it.s) + '</small>' : '') + '<small class="stk' + ((STK[it.c] || 0) <= 0 ? ' s0' : STK[it.c] < 12 ? ' slow' : '') + '">📦 ' + ((STK[it.c] || 0) > 0 ? STK[it.c].toLocaleString() : bt('없음', 'out')) + '</small>' + (it.sup ? '<small class="muted">🏭 ' + esc(it.sup) + '</small>' : '') + '</div>' +
-    (it.virt || locOnly() ? '' : '<button class="b-ghost b-sm" data-ih="' + esc(it.c) + '" data-on="' + (it.h ? '0' : '1') + '" title="' + (it.h ? '보이기' : '숨기기') + '" style="margin-left:6px">' + (it.h ? '👁' : '🙈') + '</button>') + '</div>';
+  const n = STK[it.c] || 0, stk = n > 0 ? '<span class="stk' + (n < 12 ? ' slow' : '') + '">' + n.toLocaleString() + '</span>' : '<span class="stk s0">' + bt('없음', 'out') + '</span>';
+  return '<tr class="irow tap' + (it.h ? ' hid' : '') + '" data-it="' + esc(it.c) + '"><td><input type="checkbox" data-ic="' + esc(it.c) + '" ' + (IT.sel.has(it.c) ? 'checked' : '') + '></td>' +
+    '<td>' + (it.ph ? '<img class="thumb" src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" alt="">' : '<span class="noph" title="' + esc(bt('사진 없음', 'No photo')) + '">📷✕</span>') + '</td>' +
+    '<td class="ct"><b>' + esc(it.c) + '</b>' + (it.k ? ' <span class="tag t-a">🧩</span>' : '') + (it.b ? '<div class="sub0">' + esc(it.b) + '</div>' : '') + '</td>' +
+    '<td class="wrap" style="min-width:160px">' + esc(it.d) + '</td>' +
+    '<td class="hs sub0">' + esc(pathOf(it).filter(Boolean).map(cleanName).join(' › ') || '—') + '</td>' +
+    '<td>' + (locOf(it) ? '<span class="loc"' + (it.loc ? '' : ' style="background:#e2e8f0;color:#475569" title="분류 기본 위치"') + '>' + esc(locOf(it)) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+    '<td class="r">' + stk + '</td>' +
+    '<td class="hs">' + (it.h ? '<span class="tag t-x">🙈 ' + bt('숨김', 'Hidden') + '</span>' : '<span class="tag t-k">👁 ' + bt('보임', 'Visible') + '</span>') + '</td>' +
+    '<td class="r"><b>' + money(it.p) + '</b></td><td class="r hs sub0">' + (it.s ? money(it.s) : '') + '</td><td class="hs sub0">' + esc(it.sup || '') + '</td>' +
+    '<td>' + (it.virt || locOnly() ? '' : '<button class="b-ghost b-sm" data-ih="' + esc(it.c) + '" data-on="' + (it.h ? '0' : '1') + '" title="' + (it.h ? '보이기' : '숨기기') + '">' + (it.h ? '👁' : '🙈') + '</button>') + '</td></tr>';
 }
 /** 아래 고정 — 선택한 것들에 한 번에 */
 function bulk() {
