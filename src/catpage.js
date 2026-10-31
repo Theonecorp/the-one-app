@@ -59,7 +59,7 @@ function paint() {
   list();
 }
 function list() {
-  const all = current(), show = all.slice(0, CP.lim), showList = CP.q.trim() || CP.path.length;
+  const all = current(), show = all.slice(0, CP.lim), showList = true;   // 분류를 안 골라도 전체 아이템이 바로 (코드 순) — v0.8.139
   const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + (showList ? all.length.toLocaleString() + ' ' + bt('개', 'items') : bt('분류를 고르거나 검색하세요', 'Pick a category or search')) + '</span>' +
     (showList && all.length ? '<label class="tap" style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="cpAll" ' + (all.every(x => CP.sel.has(x.c)) ? 'checked' : '') + '> ' + bi('모두 선택', 'Select all') + ' ' + Math.min(all.length, 1000).toLocaleString() + '</label>' : '') + '</div>';
   $('cpList').innerHTML = head + (showList ? (show.length ? '<div class="' + (CP.view === 'grid' ? 'cpgrid' : '') + '">' + show.map(CP.view === 'grid' ? card : row).join('') + '</div>' + (all.length > show.length ? '<button class="b-ghost" id="cpMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (all.length - show.length).toLocaleString() + ')</button>' : '') : '<div class="none">' + bt('맞는 아이템이 없습니다', 'No matching items') + '</div>') : '');

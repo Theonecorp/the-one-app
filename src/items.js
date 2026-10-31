@@ -6,7 +6,7 @@
  *    엑셀(Item Master) 전체 올리기는 관리 → 📦 아이템. 저장하면 카탈로그를 다시 발행해 모든 폰이 새 목록을 받음
  *  행 모양: [code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide]
  * ============================================================ */
-import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt } from './ui.js';
+import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, itabs } from './ui.js';
 import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1, setItemPhoto, shrinkImage, photoOv } from './catalog.js';
 import { typeOfItem, invTypes } from './invoicing.js';
 import { can } from './main.js';
@@ -14,7 +14,7 @@ import { levelTool } from './lvtool.js';
 
 let S = null;
 /* 화면 상태 — 탭을 오가도 유지 */
-const IT = { mode: 'all', path: [], q: '', page: 100, sel: new Set(), aisle: '', showA: false };
+const IT = { mode: 'all', path: [], q: '', page: 100, sel: new Set(), aisle: '', showA: false, view: 'list' };   // view: 📋 목록 · 🗂 분류별 · 📍 통로별 (v0.8.139)
 const COLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 export function register(state) {
   S = state; Router.on('items', page);
@@ -65,19 +65,22 @@ function paint() {
   const crumbs = '<div class="chips crumbs" style="margin-top:8px">' + (depth ? '<button class="up" data-ip="' + (depth - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (depth ? '' : 'on') + '" data-ip="0">' + bi('전체', 'All') + '</button>' + under.map((p, i) => '<button class="' + (i === depth - 1 ? 'on' : '') + '" data-ip="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
   const kids = node.kids.filter(k => IT.mode === 'hid' ? k.nh > 0 : IT.mode !== 'all' ? k.n > 0 : true);
   const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
+  /* 🗂 분류별 · 📍 통로별은 그 보기에서만 칩이 나옴 — 기본(📋 목록)은 검색 + 걸러보기만, 목록은 바로 (v0.8.139) */
+  const view = IT.view || 'list';
   $('page').innerHTML = '<div class="card"><h2>🏷 ' + bi('아이템 관리', 'Items') + ' <span class="muted" style="font-weight:400;font-size:12px">' + nAll.toLocaleString() + '개 · 👁 보임 ' + (nAll - nHid).toLocaleString() + ' · 🙈 숨김 ' + nHid.toLocaleString() + '</span></h2>' +
-    '<div class="muted">분류를 눌러 내려가거나 검색해서 전체를 훑어보세요. 체크해서 여러 개를 한 번에 <b>숨기기 · 보이기 · 분류 옮기기 · 삭제</b>. 🙈 숨김 아이템은 목록엔 있지만 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연). 저장하면 모든 폰에 반영됩니다.</div>' +
-    (locOnly() ? '' : '<button class="b-ghost" id="itLv" style="margin-top:8px">📥 ' + bi('레벨 · 그룹 일괄 변경 (엑셀)', 'Level · Group bulk update (Excel)') + '</button>') +
-    '<div style="display:flex;gap:6px;margin-top:10px"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
-    '<div class="seg" style="margin-top:8px">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()]].concat(['nolv', 'nopr', 'nobar'].includes(IT.mode) ? [[IT.mode, { nolv: '🗂 ' + bt('분류 없음', 'No category'), nopr: '💲 ' + bt('가격 없음', 'No price'), nobar: '🏷 ' + bt('바코드 없음', 'No barcode') }[IT.mode]]] : []).map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
-    crumbs + tiles + aisleRow(C) + '</div>' +
+    '<div style="display:flex;gap:6px;margin-top:8px"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
+    itabs([['list', '📋', '목록', 'List'], ['tree', '🗂', '분류별', 'By category'], ['aisle', '📍', '통로별', 'By aisle']], view, 'iv') +
+    '<div class="chips">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()]].concat(['nolv', 'nopr', 'nobar'].includes(IT.mode) ? [[IT.mode, { nolv: '🗂 ' + bt('분류 없음', 'No category'), nopr: '💲 ' + bt('가격 없음', 'No price'), nobar: '🏷 ' + bt('바코드 없음', 'No barcode') }[IT.mode]]] : []).map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
+    (view === 'tree' ? crumbs + tiles : '') + (view === 'aisle' ? aisleRow(C) : '') +
+    (locOnly() ? '' : '<div class="muted" style="margin-top:6px;font-size:12px">' + bt('체크해서 여러 개를 한 번에 숨기기 · 보이기 · 분류 옮기기 · 삭제. 🙈 숨김은 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연).', 'Check items to hide · show · move · delete in bulk. Hidden items do not appear on the salesman order screen.') + ' <a href="#" id="itLv" onclick="return false">📥 ' + bt('레벨 · 그룹 엑셀로 일괄 변경', 'Bulk update levels by Excel') + '</a></div>') + '</div>' +
     '<div class="card"><div id="itList"></div></div>' + (isAdmin() ? '<div id="itSbm"></div>' : '') +
     '<div class="bulkbar" id="itBulk" style="display:none"></div>';
   Router.refreshBack();
   if ($('itLv')) $('itLv').onclick = () => levelTool(S, paint);
   document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { IT.mode = b.dataset.im; IT.page = 100; paint(); });
+  document.querySelectorAll('[data-iv]').forEach(b => b.onclick = () => { IT.view = b.dataset.iv; if (IT.view !== 'aisle') IT.aisle = ''; if (IT.view !== 'tree') IT.path = []; IT.page = 100; paint(); });
   document.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => { IT.path = IT.path.slice(0, Number(b.dataset.ip)); IT.page = 100; paint(); });
-  document.querySelectorAll('[data-ia]').forEach(b => b.onclick = () => { IT.aisle = IT.aisle === b.dataset.ia ? '' : b.dataset.ia; IT.page = 100; paint(); });
+  document.querySelectorAll('[data-ia]').forEach(b => b.onclick = () => { IT.aisle = b.dataset.ia; IT.page = 100; paint(); });
   if ($('itAisT')) $('itAisT').onclick = () => { IT.showA = !IT.showA; paint(); };
   document.querySelectorAll('[data-ik]').forEach(b => b.onclick = () => { IT.path = IT.path.concat([b.dataset.ik]); IT.page = 100; paint(); });
   $('itQ').oninput = debounce(() => { IT.q = $('itQ').value; IT.page = 100; list(); }, 150);
@@ -90,10 +93,8 @@ function paint() {
 function aisleRow(C) {
   const m = {}; C.items.forEach(x => { if (x.virt) return; const a = aisleOf(locOf(x)) || '—'; m[a] = (m[a] || 0) + 1; });
   const keys = Object.keys(m).filter(k => k !== '—').sort(COLL.compare); if (m['—']) keys.push('—');
-  if (!keys.length || (keys.length === 1 && keys[0] === '—')) return '';
-  const open = IT.showA || IT.aisle;
-  return '<div style="margin-top:8px"><button class="b-ghost b-sm" id="itAisT">📍 ' + bi('통로별 보기', 'By aisle') + ' ' + (IT.aisle ? '· <b>' + esc(IT.aisle === '—' ? bt('위치 없음', 'No location') : IT.aisle) + '</b>' : '(' + keys.filter(k => k !== '—').length + ')') + ' ' + (open ? '▴' : '▾') + '</button>' +
-    (open ? '<div class="chips">' + keys.map(k => '<button class="' + (IT.aisle === k ? 'on' : '') + '" data-ia="' + esc(k) + '">' + (k === '—' ? bt('위치 없음', 'No location') : esc(k)) + ' <span class="en">' + m[k] + '</span></button>').join('') + '</div>' : '') + '</div>';
+  if (!keys.length || (keys.length === 1 && keys[0] === '—')) return '<div class="alert a-amb" style="margin-top:8px">📍 ' + bt('위치가 입력된 아이템이 없습니다 — 아이템을 열어 📍 위치(예: A-03)를 넣거나, 관리 → 가져오기에서 위치 열이 있는 엑셀을 올리세요. 그동안은 📋 목록 · 🗂 분류별로 보세요.', 'No item has a location yet — open an item and enter its location (e.g. A-03), or import an Excel file with a Location column. Use 📋 List or 🗂 By category meanwhile.') + '</div>';
+  return '<div class="muted" style="margin:8px 0 2px">📍 ' + bt('통로를 누르면 그 통로 아이템이 위치 순으로', 'Tap an aisle for its items in location order') + '</div><div class="chips">' + '<button class="' + (IT.aisle ? '' : 'on') + '" data-ia="">' + bi('전체', 'All') + '</button>' + keys.map(k => '<button class="' + (IT.aisle === k ? 'on' : '') + '" data-ia="' + esc(k) + '">' + (k === '—' ? bt('위치 없음', 'No location') : esc(k)) + ' <span class="en">' + m[k] + '</span></button>').join('') + '</div>';
 }
 /** 다른 화면(📷 사진 작업대)에서 아이템 하나 열어 고치기 — 저장 뒤 done() */
 let AFTER = null;
@@ -101,8 +102,8 @@ export function openItem(code, done) { const C = catalog(); if (!C || !C.byCode[
 function list() {
   if (!$('itList')) return;
   const C = catalog(), all = current(), res = all.slice(0, IT.page), q = IT.q.trim();
-  const showList = q || IT.path.length || IT.mode !== 'all' || IT.aisle;
-  const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + (showList ? all.length.toLocaleString() + (IT.aisle ? '개 (위치 순)' : '개 (코드 순)') : '전체 ' + all.length.toLocaleString() + '개 — 분류를 고르거나 검색하면 목록이 나옵니다') + '</span>' +
+  const showList = true;   // 목록은 늘 바로 보임 (전체 · 코드 순) — 전에는 분류나 검색어가 있어야 나와 "아이템이 안 보인다"고 느껴짐
+  const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + all.length.toLocaleString() + (IT.aisle ? '개 (위치 순)' : '개 (코드 순)') + (!q && !IT.path.length && IT.mode === 'all' && !IT.aisle ? ' · ' + bt('전체', 'all') : '') + '</span>' +
     (showList && all.length ? '<label class="tap" style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex:0 0 auto"><input type="checkbox" id="itAll" ' + (all.length && all.every(x => IT.sel.has(x.c)) ? 'checked' : '') + '> ' + bi('모두 선택', 'All') + ' ' + Math.min(all.length, 2000).toLocaleString() + '</label>' : '') + '</div>';
   $('itList').innerHTML = head + (showList ? (res.length ? res.map(row).join('') + (all.length > res.length ? '<button class="b-ghost" id="itMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') :
     '<div class="none">맞는 아이템이 없습니다' + (q ? ' — <a href="#" id="itMk">＋ "' + esc(q.toUpperCase()) + '" 로 새 아이템 등록</a>' : '') + '</div>') : '');
