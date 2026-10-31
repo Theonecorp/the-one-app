@@ -97,7 +97,7 @@ export function parsePacking(aoa, byCode) {
 /* ---------- 화면 ---------- */
 async function page(arg) {
   if (!isStaff() || !can('items')) { $('page').innerHTML = '<div class="card"><div class="none">' + bt('재고는 창고 · 오피스 담당자가 봅니다', 'Inventory is for warehouse and office staff') + '</div></div>'; return; }
-  if (arg) ST.tab = arg;
+  if (arg && ['find', 'recv', 'log', 'low'].includes(arg)) ST.tab = arg; else if (arg) { ST.tab = 'find'; ST.q = decodeURIComponent(arg); }   // 아이템 코드로 열면 조회 탭에서 그 코드
   try { await loadCatalog(S); } catch (e) {}
   const T = [['find', '🔍', '조회', 'Find'], ['recv', '📥', '입고', 'Receive'], ['log', '📋', '기록', 'History'], ['low', '⚠️', '부족', 'Low']];
   $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📦 ' + bi('재고', 'Inventory') + '</h2>' + itabs(T, ST.tab, 'sk') + '</div><div id="skBody"></div>';
