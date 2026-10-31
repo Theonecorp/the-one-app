@@ -32,9 +32,9 @@ const path = require('path');
   await pg3.goto('http://127.0.0.1:8821/test/demo.html'); await pg3.waitForSelector('#nav button'); const nav5 = await pg3.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('admin nav:', nav5);
   if (nav5.join() !== 'own,hub/look,hub/biz,hub/wh,admin,view/menu') errs.push('v0.8.135: admin nav should be 홈 · 조회 · 경영 · 재고 · 관리 · 모드' + nav5.join());   // v0.8.112 · v0.8.114
   await pg3.waitForSelector('[data-og="mg/sales"]', { timeout: 10000 }).catch(() => errs.push('admin dashboard did not render'));
-  await pg3.click('#nav button[data-go="view/menu"]'); await pg3.waitForSelector('#mbox [data-r]', { timeout: 4000 }).catch(() => errs.push('mode tab should open the view chooser'));
-  const rs = await pg3.$$eval('#mbox [data-r]', b => b.map(x => x.dataset.r)); log('admin modes:', rs); if (!rs.includes('owner') || !rs.includes('manager') || !rs.includes('salesman')) errs.push('admin should be able to pick owner · manager · salesman');
-  await pg3.click('#mbox [data-r="manager"]'); await pg3.waitForTimeout(1200); const nav6 = await pg3.$$eval('#nav button', b => b.map(x => x.dataset.go)); if (nav6[0] !== 'shome' || !nav6.includes('view/menu')) errs.push('manager mode should show staff nav with the mode tab');
+  await pg3.click('#nav button[data-go="view/menu"]'); await pg3.waitForSelector('#drawer [data-r]', { timeout: 4000 }).catch(() => errs.push('mode tab should open the view chooser'));
+  const rs = await pg3.$$eval('#drawer [data-r]', b => b.map(x => x.dataset.r)); log('admin modes:', rs); if (!rs.includes('owner') || !rs.includes('manager') || !rs.includes('salesman')) errs.push('admin should be able to pick owner · manager · salesman');
+  await pg3.click('#drawer [data-r="manager"]'); await pg3.waitForTimeout(1200); const nav6 = await pg3.$$eval('#nav button', b => b.map(x => x.dataset.go)); if (nav6[0] !== 'shome' || !nav6.includes('view/menu')) errs.push('manager mode should show staff nav with the mode tab');
   await pg3.click('[data-og="bossar"], #nav button[data-go="view/menu"]').catch(() => {});
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);

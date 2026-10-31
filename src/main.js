@@ -2,7 +2,11 @@
  *  THE ONE 앱 — 진입점: 로그인 → 역할 → 메뉴
  * ============================================================ */
 import { connect, MOCK, newId } from './db.js';
-import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt, numPadOn, setNumPad, goHash } from './ui.js';
+import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt, bi, numPadOn, setNumPad, goHash, debounce, money } from './ui.js';
+import { openScanner } from './scan.js';
+import { searchAccounts } from './accounts.js';
+import { loadCatalog, catalog, exactItem, searchItems, thumb } from './catalog.js';
+import { storeSheet, invDetail } from './store.js';
 import { CSS } from './style.js';
 import * as Sales from './sales.js';
 import * as Collect from './collect.js';
@@ -37,7 +41,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.146';
+export const VER = 'v0.8.147';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -112,7 +116,7 @@ function navFor(r) {
 function shell() {
   document.head.insertAdjacentHTML('beforeend', '<style>' + CSS + '</style>');
   document.body.innerHTML =
-    '<header><button class="hb" id="hBack" title="뒤로">‹</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb hlang" id="hLang" translate="no" title="Language">🌐 ' + LANG.toUpperCase() + '</button><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
+    '<header><button class="hb" id="hBack" title="뒤로">‹</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hSearch" title="검색 · Search">🔍</button><button class="hb" id="hScan" title="바코드 스캔 · Scan">📷</button><button class="hb hlang" id="hLang" translate="no" title="Language">🌐 ' + LANG.toUpperCase() + '</button><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
     '<div class="wrap" id="page"><div class="load">불러오는 중…</div></div>' +
     '<nav id="nav"></nav>' +
     '<div id="busy"><div class="spin"></div></div><div id="topbar"></div>' +
@@ -128,7 +132,7 @@ function shell() {
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button.b-blue,button.b-red,button.b-green,button.b-amb,#nav button'); if (!b) return; const t = Date.now(); if (b._tap && t - b._tap < 450) { e.stopImmediatePropagation(); e.preventDefault(); return; } b._tap = t; }, true);
   let tbT = 0; window.addEventListener('dbbusy', e => { const n = e.detail, tb = $('topbar'); if (!tb) return; clearTimeout(tbT); if (n > 0) tbT = setTimeout(() => tb.classList.add('on'), 150); else tb.classList.remove('on'); });
   $('prtClose').onclick = printClose;
-  $('hMenu').onclick = userMenu;
+  $('hMenu').onclick = userMenu; $('hSearch').onclick = globalSearch; $('hScan').onclick = headerScan;
   /* 🌐 언어 — 앱 위쪽 버튼으로 바로 (이 폰 · 컴퓨터에 저장, 로그인한 사람과 상관없이) */
   $('hLang').onclick = () => { openModal('<h2 translate="no">🌐 Language · 언어 · Idioma</h2><div class="langpick" translate="no">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'b-blue' : 'b-ghost') + '" data-lang="' + l[0] + '">' + ({ ko: '🇰🇷 ', en: '🇺🇸 ', pt: '🇧🇷 ' })[l[0]] + l[1] + '</button>').join('') + '</div>');
     document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { closeModal(); if (b.dataset.lang !== LANG) setLang(b.dataset.lang); }); };
@@ -169,26 +173,73 @@ function waitScreen(email) {
     '<button class="b-ghost" id="btnOut">로그아웃 Sign out</button></div>';
   $('btnOut').onclick = () => S.AUTH.signOut();
 }
+/* ☰ 서랍 메뉴 — 왼쪽에서 밀려 나오는 메뉴 (회사 · 역할별 묶음 화면 · 설정 · 사용자 · 언어). 아래 메뉴 "모드" · 헤더 ☰ · 이름 누르기 모두 여기로 */
 function userMenu() {
   if (!S.user) return;
   const isAdm = S.me && S.me.role === 'admin';
   const vs = viewsOf(S.me), roles = vs.length > 1 ? vs : [];
-  openMenu('<h2>' + esc(S.user.name || S.user.email) + '</h2><p class="muted">' + esc(S.user.email) + ' · ' + (S.role === 'manager' ? jobLabel(jobOf()) : roleLabel(S.role)) + ' · ' + VER + '</p>' +
-    (roles.length ? '<div class="fg"><label>화면 바꾸기 <span class="en">Switch view</span></label><div class="seg">' + roles.map(r => '<button class="' + (S.role === r ? 'on' : '') + '" data-r="' + r + '">' + roleLabel(r) + '</button>').join('') + '</div>' +
-      (S.role === 'manager' && isAdm ? '<div class="seg">' + JOBS.map(j => '<button class="' + (jobOf() === j[0] ? 'on' : '') + '" data-j="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div>' : '') + '</div>' : '') +
-    '<div class="fg"><label>🌐 언어 · Language · Idioma</label><div class="seg">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '" translate="no">' + l[1] + '</button>').join('') + '</div></div>' +
-    '<div class="fg"><label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label><div class="seg"><button class="' + (numPadOn() ? 'on' : '') + '" data-np="1">' + bt('팝업 패드 (작은 숫자판)', 'Popup pad') + '</button><button class="' + (numPadOn() ? '' : 'on') + '" data-np="0">' + bt('폰 키보드', 'Phone keyboard') + '</button></div></div>' +
-    '<div class="btns"><button class="b-ghost" id="mOut">로그아웃 <span class="en">Sign out</span></button><button class="b-blue" id="mReload">새로고침 <span class="en">Reload</span></button></div>' +
-    (isApp() ? '' : '<button class="b-blue b-sm" id="mInst" style="margin-top:10px">📲 ' + bt('앱으로 설치 (홈 화면)', 'Install as app') + '</button>') +
-    '<button class="b-ghost b-sm" id="mDiag" style="margin-top:10px">🔎 연결 · 권한 점검 <span class="en">Check connection</span></button><div id="diagOut"></div>');
+  const items = navFor(S.role).filter(x => !/^view\//.test(x[0]));
+  const row = x => '<button type="button" data-dgo="' + esc(x[0]) + '"' + (location.hash.indexOf('#/' + x[0]) === 0 ? ' class="on"' : '') + '><span class="i">' + x[1] + '</span><span class="t">' + esc(x[2]) + '<small>' + esc(x[3] || '') + '</small></span></button>';
+  let secs = '', plain = [];
+  items.forEach(x => { if (/^hub\//.test(x[0])) { const k = x[0].split('/')[1], H = Hub.HUBS[k], L = Hub.hubItems(k); if (L.length) secs += '<div class="dsec"><small>' + (H ? H.icon + ' ' : '') + esc(x[2]) + ' · ' + esc(x[3] || '') + '</small>' + L.map(c => row([c[0], c[1], c[2], c[3]])).join('') + '</div>'; } else plain.push(x); });
+  const main = plain.length ? '<div class="dsec"><small>' + bt('주요 화면', 'Main') + '</small>' + plain.map(row).join('') + '</div>' : '';
+  const seg = (arr, attr, cur, lab) => '<div class="seg dseg">' + arr.map(a => '<button type="button" class="' + (cur === a[0] ? 'on' : '') + '" data-' + attr + '="' + esc(a[0]) + '">' + lab(a) + '</button>').join('') + '</div>';
+  const settings = '<div class="dsec dset"><small>⚙️ ' + bt('설정', 'Settings') + '</small>' +
+    (roles.length ? '<label>' + bt('화면 바꾸기', 'Switch view') + '</label>' + seg(roles.map(r => [r]), 'r', S.role, a => roleLabel(a[0]).split(' ')[0]) + (S.role === 'manager' && isAdm ? seg(JOBS, 'j', jobOf(), a => a[1]) : '') : '') +
+    '<label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label>' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', a => a[1]) +
+    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
+  const name = S.user.name || S.user.email, ini = String(name).split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase();
+  let d = $('drawer'); if (!d) { d = document.createElement('div'); d.id = 'drawer'; document.body.appendChild(d); }
+  d.innerHTML = '<div class="dback" id="dBack"></div><aside class="dpanel"><div class="dhead"><img src="logo-96.png" alt=""><b>THE ONE CORP</b><button type="button" class="hb" id="dX">✕</button></div>' +
+    '<div class="dbody">' + main + secs + settings + '</div>' +
+    '<div class="dfoot"><div class="dav">' + esc(ini) + '</div><div class="dwho"><b>' + esc(name) + '</b><small>' + esc(S.role === 'manager' ? jobLabel(jobOf()) : roleLabel(S.role)) + ' · ' + VER + '</small></div><button type="button" class="hb" id="mOut" title="' + esc(bt('로그아웃', 'Sign out')) + '">⎋</button></div>' +
+    '<div class="dlang seg" translate="no">' + LANGS.map(l => '<button type="button" class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '">' + ({ ko: 'KR', en: 'EN', pt: 'PT' }[l[0]] || l[0].toUpperCase()) + '</button>').join('') + '</div></aside>';
+  d.classList.add('on'); document.body.classList.add('drawer-on');
+  const close = () => { d.classList.remove('on'); document.body.classList.remove('drawer-on'); };
+  $('dBack').onclick = close; $('dX').onclick = close;
+  d.querySelectorAll('[data-dgo]').forEach(b => b.onclick = () => { close(); const g = b.dataset.dgo, [r, a] = g.split('/'); if (a) Router.go(r, a); else Router.go(g); });
   $('mDiag').onclick = diag;
-  document.querySelectorAll('#mbox [data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); userMenu(); });
-  if ($('mInst')) $('mInst').onclick = () => { closeModal(); doInstall(); };
-  document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
-  document.querySelectorAll('#mbox [data-r]').forEach(b => b.onclick = () => { switchRole(b.dataset.r); closeModal(); });
-  document.querySelectorAll('#mbox [data-j]').forEach(b => b.onclick = () => { S.me.job = b.dataset.j; switchRole('manager'); closeModal(); });
-  $('mOut').onclick = () => { closeModal(); S.AUTH.signOut(); };
+  d.querySelectorAll('[data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); userMenu(); });
+  if ($('mInst')) $('mInst').onclick = () => { close(); doInstall(); };
+  d.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
+  d.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { close(); switchRole(b.dataset.r); });
+  d.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { close(); S.me.job = b.dataset.j; switchRole('manager'); });
+  $('mOut').onclick = () => { close(); S.AUTH.signOut(); };
   $('mReload').onclick = () => location.reload();
+}
+export const closeDrawer = () => { const d = $('drawer'); if (d) d.classList.remove('on'); document.body.classList.remove('drawer-on'); };
+/* 🔍 어디서나 검색 — 거래처 · 아이템 · 인보이스 번호를 한 칸에서 */
+function globalSearch(pre) {
+  openModal('<h2>🔍 ' + bi('검색', 'Search') + '</h2><input id="gsQ" placeholder="' + esc(bt('가게 이름 · 계정코드 · 아이템 코드 · 바코드 · 인보이스 #', 'Store · acct # · item code · barcode · invoice #')) + '" autocomplete="off" autocapitalize="characters" value="' + esc(typeof pre === 'string' ? pre : '') + '"><div id="gsRes" class="gsres"></div>');
+  const q = $('gsQ'), res = $('gsRes');
+  const run = async () => {
+    const v = q.value.trim(); if (!v) { res.innerHTML = ''; return; }
+    let h = '';
+    const A = S.accounts && S.accounts.byCode ? searchAccounts(S.accounts, v, 6) : [];
+    if (A.length) h += '<div class="gsh">🏬 ' + bt('거래처', 'Customers') + '</div>' + A.map(a => '<button type="button" class="gsr" data-gsa="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b><small>' + esc([a.acct, a.city, a.state, a.sm].filter(Boolean).join(' · ')) + '</small></button>').join('');
+    try { await loadCatalog(S); } catch (e) {}
+    const C = catalog(); let I = [];
+    if (C) { const ex = exactItem(v); I = (ex ? [ex] : []).concat((searchItems(v, [], 6, undefined, true) || []).filter(x => !ex || x.c !== ex.c)).slice(0, 6); }
+    if (I.length) h += '<div class="gsh">🏷 ' + bt('아이템', 'Items') + '</div>' + I.map(it => '<button type="button" class="gsr" data-gsi="' + esc(it.c) + '">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" alt="">' : '<span class="noph">📷</span>') + '<span><b>' + esc(it.c) + '</b><small>' + esc(it.d || '') + ' · ' + money(it.p) + '</small></span></button>').join('');
+    const m = /^([A-Za-z]{1,2})?-?(\d{4,7})$/.exec(v.replace(/\s+/g, ''));
+    if (m) h += '<div class="gsh">📄 ' + bt('인보이스', 'Invoice') + '</div><button type="button" class="gsr" data-gsn="' + esc(v.replace(/\s+/g, '').toUpperCase()) + '"><b>' + esc(v.toUpperCase()) + '</b><small>' + bt('인보이스 번호로 열기', 'Open by invoice number') + '</small></button>';
+    if (q.value.trim() !== v) return;
+    res.innerHTML = h || '<div class="none">' + bt('맞는 것이 없습니다', 'No match') + '</div>';
+    res.querySelectorAll('[data-gsa]').forEach(b => b.onclick = () => { closeModal(); storeSheet(b.dataset.gsa); });
+    res.querySelectorAll('[data-gsi]').forEach(b => b.onclick = () => { closeModal(); Router.go('cat', b.dataset.gsi); });
+    res.querySelectorAll('[data-gsn]').forEach(b => b.onclick = () => { closeModal(); invDetail(b.dataset.gsn); });
+  };
+  q.oninput = debounce(run, 150); q.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const f = res.querySelector('.gsr'); if (f) f.click(); } };
+  if (q.value) run(); else if (!('ontouchstart' in window)) setTimeout(() => q.focus(), 50);
+}
+/* 📷 헤더 스캔 — 아이템이면 아이템 창(재고 · 위치), 아니면 검색 창에 넣어 줌 */
+function headerScan() {
+  openScanner(async code => {
+    try { await loadCatalog(S); } catch (e) {}
+    const it = exactItem(code);
+    if (it) { Router.go('cat', it.c); return; }
+    toast(bt('목록에 없는 바코드입니다', 'Barcode not in the catalog') + ': ' + code, 'bad'); globalSearch(code);
+  });
 }
 /** 어떤 자료를 읽을 수 있는지 하나씩 시험 — 권한 오류 원인 찾기용 */
 async function diag() {
@@ -231,7 +282,6 @@ async function diag() {
   if (S.role === 'admin') { L.push('공장 인보이스: <b>' + await cnt('factoryInvoices') + '</b> · 송금: <b>' + await cnt('factoryPayments') + '</b> · 1099: <b>' + await cnt('pay1099') + '</b> · 보너스 적립: <b>' + await cnt('bonusAcc') + '</b>'); }
   out.insertAdjacentHTML('beforeend', '<div class="sumbox" style="line-height:1.8;margin-top:8px"><b>📊 서버 자료 건수</b><br>' + L.join('<br>') + '</div>');
 }
-function openMenu(h) { openModal(h); }
 /* 📲 앱으로 설치 — 안드로이드 크롬이 "설치 가능" 하다고 알려 주면 그 신호를 받아 두었다가 버튼으로 (홈 화면에서 크롬 없이 앱처럼 열림) */
 let INSTALL = null;
 const isApp = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
