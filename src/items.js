@@ -35,7 +35,7 @@ const inPath = (x, path) => { const L = x.lv1 == null ? [x.g, x.l1, x.l2, x.l3] 
 async function page(arg) {
   if (!isStaff()) { $('page').innerHTML = '<div class="card"><div class="none">담당자 · 관리자만 쓰는 화면입니다</div></div>'; return; }
   if (arg === 'new') { IT.q = ''; IT.path = []; IT.mode = 'all'; setTimeout(() => form(null, ''), 400); }
-  else if (arg === 'nolv' || arg === 'nopr' || arg === 'nobar' || arg === 'hid') { IT.q = ''; IT.path = []; IT.mode = arg; }   // 🎨 할 일: 분류 없음 · 가격 없음 · 바코드 없음 · 숨김
+  else if (arg === 'nolv' || arg === 'nopr' || arg === 'nobar' || arg === 'hid' || arg === 'noloc') { IT.q = ''; IT.path = []; IT.mode = arg; }   // 🎨 할 일: 분류 없음 · 가격 없음 · 바코드 없음 · 숨김
   else if (arg === 'noph' || String(arg || '').indexOf('noph:') === 0) { IT.q = ''; IT.mode = 'noph'; IT.path = arg.length > 5 ? decodeURIComponent(arg.substring(5)).split('/').filter(Boolean) : []; }   // 📷 사진 없는 아이템 (분류 경로)
   else if (arg) { IT.q = decodeURIComponent(arg); IT.path = []; }
   $('page').innerHTML = '<div class="load">아이템 목록 읽는 중…</div>';
@@ -57,6 +57,7 @@ function current() {
   if (IT.path.length) list = list.filter(x => inPath(x, IT.path));
   if (IT.mode === 'vis') list = list.filter(x => !x.h); else if (IT.mode === 'hid') list = list.filter(x => x.h); else if (IT.mode === 'noph') list = list.filter(x => !x.ph && !x.h);   // 📷 사진 없음 (숨김 제외)
   else if (IT.mode === 'instk') list = list.filter(x => (STK[x.c] || 0) > 0); else if (IT.mode === 'nostk') list = list.filter(x => !x.h && !(STK[x.c] > 0)); else if (IT.mode === 'lowstk') list = list.filter(x => (STK[x.c] || 0) > 0 && STK[x.c] < 12);   // 📦 재고 있음 · 없음 · 부족
+  else if (IT.mode === 'noloc') list = list.filter(x => !locOf(x) && !x.virt && !x.h);
   else if (IT.mode === 'nolv') list = list.filter(x => !x.l1 && !x.virt && !x.h); else if (IT.mode === 'nopr') list = list.filter(x => !(x.p > 0) && !x.h); else if (IT.mode === 'nobar') list = list.filter(x => !x.b && !x.virt && !x.h);
   return list;
 }
