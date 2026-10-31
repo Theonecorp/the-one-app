@@ -63,7 +63,7 @@ export function labelsHtml(L, o) {
     const loc = o.loc ? locOf(it) : '';
     return '<div class="lb"><div class="lt"><b>' + esc(it.c) + '</b>' + (o.srp && it.s ? '<span>SRP ' + money(it.s) + '</span>' : '') + (o.price ? '<span>' + money(it.p) + '</span>' : '') + (loc && !big ? '<span class="lloc">📍' + esc(loc) + '</span>' : '') + '</div>' +
       '<div class="ld">' + esc(String(it.d || '').substring(0, dmax)) + '</div>' +
-      (big ? '<div class="lloc">' + (loc ? '📍 ' + esc(loc) : '&nbsp;') + '</div>' : '') +
+      (big ? '<div class="lloc">📍 ' + (loc ? esc(loc) : '—') + '</div>' : '') +
       '<div class="lbc">' + barcodeSvg(barOf(it, o.useCode), bc) + '</div></div>';
   }).join('') + '</div>';
 }
