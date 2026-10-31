@@ -36,7 +36,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.139';
+export const VER = 'v0.8.140';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -265,7 +265,8 @@ function navH() {
   if (cs && cs.display === 'none') return;   // 키보드 모드(body.kb)로 숨긴 동안 재면 0 이 되어 키보드가 내려간 뒤 고정 바가 메뉴를 덮음 — 그때는 지난 값 유지
   let h = cs && cs.position === 'fixed' && cs.flexDirection !== 'column' ? n.offsetHeight : 0;   // 넓은 화면의 왼쪽 세로 메뉴는 0 (아래 여백 없음)
   if (h > 140) h = 140;   // 잘못 잰 큰 값(세로 메뉴 · 겹침)으로 고정 바가 공중에 뜨지 않게
-  document.documentElement.style.setProperty('--navh', h + 'px'); const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
+  document.documentElement.style.setProperty('--navh', h + 'px');
+  const pg = $('page'); if (pg && pg.clientWidth) document.documentElement.style.setProperty('--cw', pg.clientWidth + 'px');   /* 📐 본문 너비 — 타일 칸 수는 화면이 아니라 본문 너비로 (왼쪽 메뉴가 있는 컴퓨터에서도 줄지 않게) */ const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
 window.addEventListener('resize', () => setTimeout(navH, 50));
 /* 위 고정 메뉴(주문 상태 아이콘) 작게 · 크게 — 버튼으로만 (스크롤에 따라 저절로 접고 펴면 메뉴 높이가 바뀌어 아이폰에서 목록이 튕김) */
 try { if (localStorage.getItem('theone.ocompact') === '1') document.body.classList.add('oscr'); } catch (e) {}
