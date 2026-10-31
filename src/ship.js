@@ -41,7 +41,7 @@ export async function shipModal(o, after) {
 
   const paint = () => {
     const done = q && q.st === 'done', working = q && (q.st === 'wait' || q.st === 'working' || q.st === 'void');
-    let h = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h2 style="margin:0">🚚 ' + bi('UPS 출고', 'UPS shipment') + '</h2><div class="muted">' + esc(o.store) + ' · ' + esc(invs.join(', ') || o.no) + ' · ' + esc(o.sm) + '</div></div><button class="b-ghost b-sm" id="shX">✕</button></div>';
+    let h = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h2 style="margin:0">🚚 ' + bi('UPS 출고', 'UPS shipment') + '</h2><div class="muted">' + esc(o.store) + ' · ' + esc(invs.join(', ') || o.no) + ' · ' + esc(o.sm) + '</div></div><button class="b-ghost b-sm xin" id="shX">✕</button></div>';
     if (done) {
       h += '<div class="shs" style="background:#ecfdf5"><h3>✅ ' + bi('UPS 라벨', 'UPS labels') + ' ' + (q.labels || []).length + (q.env === 'test' ? ' <span class="tag t-c">' + bt('시험 라벨', 'TEST') + '</span>' : '') + '</h3>' +
         (q.labels || []).map((l, i) => { const b = (q.boxes || [])[i] || {}; return '<div class="shpbox"><div class="top"><div><span class="trk">📦 ' + (i + 1) + '/' + q.labels.length + ' · ' + esc(l.trk) + '</span><div class="muted" style="font-size:12px">' + esc((b.invs || []).join(', ') || '') + (b.w ? ' · ' + b.w + ' lb' : '') + ([b.l, b.wd, b.h].filter(Number).length === 3 ? ' · ' + b.l + '×' + b.wd + '×' + b.h + '"' : '') + '</div></div><a class="b-ghost b-sm lnk" href="https://www.ups.com/track?tracknum=' + esc(l.trk) + '" target="_blank" rel="noopener">UPS.com</a></div></div>'; }).join('') +

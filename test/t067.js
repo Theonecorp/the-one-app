@@ -16,7 +16,7 @@ const path = require('path');
   await pg.click('#eNewAcct'); await pg.waitForSelector('#naStore'); await pg.screenshot({ path: path.resolve(__dirname, 'out', 'newacct_form.png') });
   await pg.click('#naGo'); await pg.waitForTimeout(1000); if (!(await pg.$('#naStore'))) errs.push('form should require address');
   await pg.fill('#naAddr', '1 test st'); await pg.fill('#naCity', 'miami'); await pg.fill('#naZip', '33101'); await pg.fill('#naTel', '305-555-0000'); await pg.click('#naApp b');
-  await pg.click('#naGo'); await pg.waitForTimeout(1200); if (await pg.$('#ssX')) await pg.click('#ssX');
+  await pg.click('#naGo'); await pg.waitForTimeout(1200); if (await pg.$('#modal.on')) await pg.click('#modal .mclose');
   const acc = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.accounts).find(a => a.pending));
   log('temp account:', acc && [acc.id, acc.store, acc.sm, acc.appGot]); if (!acc || !/^N\d{6}-[A-Z0-9]{4}$/.test(acc.id) || acc.sm !== 'BRANDON' || acc.store !== 'ZZ BRAND NEW SHOP') errs.push('temp account wrong');
   await pg.fill('#eQ1', 'AHG100'); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(300);

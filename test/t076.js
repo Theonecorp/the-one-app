@@ -13,7 +13,7 @@ const path = require('path');
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; try { localStorage.setItem('theone.vm', 'grid'); localStorage.removeItem('theone.order.pre'); } catch (x) {} });
   await pg.goto('http://127.0.0.1:8810/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
-  await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#ssX')) await pg.click('#ssX');
+  await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) await pg.click('#modal .mclose');
   await pg.click('[data-ck="Earrings · Hoops & Pincatch"]'); await pg.waitForTimeout(200); await pg.click('[data-ck="Aluminum"]'); await pg.waitForTimeout(150); await pg.click('[data-ck="Gold"]'); await pg.waitForTimeout(300);
   await pg.click('[data-qk="6"]'); await pg.waitForTimeout(100);
   const code = 'AHG100';

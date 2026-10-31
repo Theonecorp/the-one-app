@@ -107,7 +107,7 @@ async function itemSheet(it) {
   if (!it) return;
   try { await loadJsBarcode(); } catch (e) {}
   const P = levels(it).filter(Boolean).map(cleanName).join(' › ');
-  openModal('<div style="display:flex;justify-content:space-between;gap:8px"><h2 style="margin:0">' + esc(it.c) + (it.k ? ' 🧩' : '') + '</h2><button class="b-ghost b-sm" id="isX">✕</button></div>' +
+  openModal('<div style="display:flex;justify-content:space-between;gap:8px"><h2 style="margin:0">' + esc(it.c) + (it.k ? ' 🧩' : '') + '</h2><button class="b-ghost b-sm xin" id="isX">✕</button></div>' +
     (it.ph ? '<img src="' + esc(thumb(it.ph, 700)) + '" alt="" style="width:100%;max-height:46vh;object-fit:contain;border-radius:12px;background:#f8fafc;margin-top:8px">' : '') +
     '<div style="font-weight:700;margin-top:8px">' + esc(it.d) + '</div><div class="muted">' + esc(P) + '</div>' +
     '<div class="kpi" style="grid-template-columns:1fr 1fr;margin-top:8px"><div><b>' + money(it.p) + '</b><span>' + bt('도매가', 'Price') + '</span></div><div><b>' + (it.s ? money(it.s) : '—') + '</b><span>SRP</span></div></div>' +

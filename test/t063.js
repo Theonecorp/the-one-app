@@ -15,7 +15,7 @@ const path = require('path');
   log('pill online:', await pill()); if (!/온라인/.test(await pill())) errs.push('pill should say online');
   await ctx.setOffline(true); await pg.waitForTimeout(300); log('offline:', await pg.evaluate(() => navigator.onLine), 'pill:', await pill()); if (!/오프라인/.test(await pill())) errs.push('pill should say offline');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
-  await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#ssX')) await pg.click('#ssX');
+  await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) await pg.click('#modal .mclose');
   await pg.fill('#eQ1', 'AHG100'); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(300);
   await pg.click('#eDraft'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(1200);
   const toastTxt = await pg.evaluate(() => (document.querySelector('.toast') || {}).textContent || ''); log('toast:', toastTxt);

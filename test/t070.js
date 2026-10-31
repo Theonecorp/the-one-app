@@ -13,7 +13,7 @@ const path = require('path');
   /* ① 세일즈맨 */
   let pg = await mk('brandon@x.com');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
-  await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#ssX')) await pg.click('#ssX');
+  await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) await pg.click('#modal .mclose');
   await pg.click('[data-ck="Earrings · Hoops & Pincatch"]'); await pg.waitForTimeout(200); await pg.click('[data-ck="Aluminum"]'); await pg.waitForTimeout(150); await pg.click('[data-ck="Gold"]'); await pg.waitForTimeout(300);
   await pg.click('[data-qk="3"]'); await pg.waitForTimeout(100);
   await pg.click('[data-gc="AHG100"]'); await pg.waitForTimeout(150); await pg.click('[data-gc="AHG100"]'); await pg.waitForTimeout(150); await pg.click('[data-gc="AHG105"]'); await pg.waitForTimeout(200);

@@ -37,7 +37,7 @@ const path = require('path'), fs = require('fs');
   /* 2. 세일즈맨: 가게 창 → 스테이트먼트 */
   pg = await mk('brandon@x.com');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', 'ali b/s'); await pg.waitForTimeout(250); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(1200);
-  if (!(await pg.$('#ssStmt'))) { if (await pg.$('#ssX')) await pg.click('#ssX'); await pg.click('#eStoreI'); await pg.waitForSelector('#ssStmt'); }
+  if (!(await pg.$('#ssStmt'))) { if (await pg.$('#modal.on')) await pg.click('#modal .mclose'); await pg.click('#eStoreI'); await pg.waitForSelector('#ssStmt'); }
   await pg.click('#ssStmt'); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(300);
   const st = await txt(pg, '#prtbody'); log('statement:', st.slice(0, 300)); await shot(pg, 'f1_statement');
   if (!/STATEMENT/.test(st) || !/TOTAL DUE/.test(st) || !/A00002/.test(st)) errs.push('statement missing parts');
