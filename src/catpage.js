@@ -10,6 +10,7 @@ import { loadCatalog, catalog, searchItems, exactItem, thumb, cleanName, treeFor
 import { stockOf } from './stock.js';
 import { addToWip } from './orders.js';
 import { labelPrint } from './labels.js';
+import { openScanner, loadScanner } from './scan.js';
 import { can } from './main.js';
 /** 🏷 라벨 인쇄 — 디자인 · 카탈로그 담당 (관리자 포함) 만 */
 const canLabel = () => S.role === 'admin' || S.role === 'owner' || can('catalog');
@@ -23,7 +24,7 @@ export function register(state) {
 }
 const loadScript = (src, test) => test() ? Promise.resolve() : new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('불러오지 못했습니다 (인터넷 확인)')); document.head.appendChild(s); });
 export const loadJsBarcode = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js', () => !!window.JsBarcode);
-export const loadScanner = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js', () => !!window.Html5Qrcode);
+export { loadScanner };
 const loadXlsx = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', () => !!window.XLSX);
 
 async function page(arg) {
@@ -133,23 +134,13 @@ async function itemSheet(it) {
   if ($('isStock')) $('isStock').onclick = () => { closeModal(); Router.go('stock', it.c); };
 }
 
-/* ---------- 📷 스캔 ---------- */
-async function scan() {
-  openModal('<h2>📷 ' + bi('바코드 스캔', 'Scan barcode') + '</h2><div id="scanBox" style="width:100%;min-height:240px;border-radius:12px;overflow:hidden;background:#0f172a"></div><div class="muted" style="margin-top:6px">' + bt('바코드를 네모 안에 맞추세요', 'Fit the barcode in the box') + '</div><div class="btns"><button class="b-ghost" id="scX">' + bt('닫기', 'Close') + '</button></div>');
-  let sc = null, done = false;
-  const stop = async () => { if (sc) { try { await sc.stop(); } catch (e) {} try { sc.clear(); } catch (e) {} sc = null; } };
-  $('scX').onclick = async () => { await stop(); closeModal(); };
-  try {
-    await loadScanner();
-    const H = window.Html5QrcodeSupportedFormats || {};
-    sc = new window.Html5Qrcode('scanBox', { formatsToSupport: [H.UPC_A, H.UPC_E, H.EAN_13, H.EAN_8, H.CODE_128, H.CODE_39, H.QR_CODE].filter(x => x != null), experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false });
-    await sc.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 130 } }, async text => {
-      if (done) return; done = true; await stop();
-      const it = exactItem(text);
-      if (it) { if (navigator.vibrate) try { navigator.vibrate(30); } catch (e) {} itemSheet(it); }
-      else { closeModal(); CP.q = text; paint(); toast(bt('목록에 없는 바코드입니다', 'Barcode not in the catalog') + ': ' + text, 'bad'); }
-    }, () => {});
-  } catch (e) { await stop(); if ($('scanBox')) $('scanBox').outerHTML = '<div class="alert a-red">' + esc(bt('카메라를 쓸 수 없습니다 — 브라우저 카메라 권한을 허용하세요', 'Camera not available — allow camera access')) + ' (' + esc(e.message || e) + ')</div>'; }
+/* ---------- 📷 스캔 — 공용 전체 화면 스캐너 (scan.js) ---------- */
+function scan() {
+  openScanner(text => {
+    const it = exactItem(text);
+    if (it) itemSheet(it);
+    else { CP.q = text; paint(); toast(bt('목록에 없는 바코드입니다', 'Barcode not in the catalog') + ': ' + text, 'bad'); }
+  });
 }
 
 /* ---------- 🖨 카탈로그 ---------- */

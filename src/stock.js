@@ -11,6 +11,7 @@
 import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy, itabs } from './ui.js';
 import { loadCatalog, catalog, searchItems, exactItem, locOf } from './catalog.js';
 import { can } from './main.js';
+import { openScanner } from './scan.js';
 import { newId } from './db.js';
 
 let S = null;
@@ -118,7 +119,8 @@ const itemRow = (it, qty, extra) => '<div class="pr tap" data-sti="' + esc(it.c)
 /* 🔍 조회 */
 async function paintFind() {
   const box = $('skBody');
-  box.innerHTML = '<div class="card"><input id="skQ" placeholder="' + esc(bt('코드 · 이름 · 바코드 (스캔)', 'Code · name · barcode (scan)')) + '" value="' + esc(ST.q) + '" autocomplete="off" autocapitalize="characters"><div class="muted" style="margin-top:6px">' + bt('아이템을 누르면 재고 기록 · ✏️ 조정(실사 · ±)', 'Tap an item for its history and ✏️ adjust (count · ±)') + '</div><div id="skRes" style="margin-top:8px"></div></div>';
+  box.innerHTML = '<div class="card"><div style="display:flex;gap:6px"><input id="skQ" placeholder="' + esc(bt('코드 · 이름 · 바코드 (스캔)', 'Code · name · barcode (scan)')) + '" value="' + esc(ST.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1;min-width:0"><button type="button" class="b-ghost ib" id="skScan" title="' + esc(bt('바코드 스캔', 'Scan')) + '">📷</button></div><div class="muted" style="margin-top:6px">' + bt('아이템을 누르면 재고 기록 · ✏️ 조정(실사 · ±)', 'Tap an item for its history and ✏️ adjust (count · ±)') + '</div><div id="skRes" style="margin-top:8px"></div></div>';
+  if ($('skScan')) $('skScan').onclick = () => openScanner(code => { const it = exactItem(code); $('skQ').value = it ? it.c : code; paint(); });
   const paint = async () => {
     const q = $('skQ').value.trim(); ST.q = q; const res = $('skRes'); if (!res) return;
     /* 전체 아이템이 기본 (코드 순) · 치는 대로 걸러짐 — 📊 표: 코드 · 이름 · 📍 통로 · 📦 재고 · 가격 */
