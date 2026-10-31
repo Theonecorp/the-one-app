@@ -22,7 +22,7 @@ const path = require('path');
   /* 📄 인보이스 탭 — 날짜별 묶음 */
   await pg.evaluate(() => { location.hash = '#/invs'; }); await pg.waitForSelector('#iList .kpi', { timeout: 8000 }).catch(() => errs.push('invoice tab missing')); await pg.waitForTimeout(500);
   let t = await txt(pg, '#iList'); log('tab:', t.slice(0, 220));
-  const heads = await pg.$$eval('#iList .iday b', e => e.map(x => x.textContent)); log('day heads:', heads);
+  const heads = await pg.$$eval('#iList tr.grp .gline b', e => e.map(x => x.textContent)); log('day heads:', heads);
   if (!heads.length || !heads.every(h => /📅/.test(h))) errs.push('invoice tab should group by date'); if (heads.length !== 3) errs.push('three day groups expected');
   if (!/12071/.test(t) || !/A43001/.test(t)) errs.push('both invoices should be listed');
   /* 상세 — 가게 연결 안 된 인보이스: 경고 + ✏️ 수정으로 가게 연결 */
