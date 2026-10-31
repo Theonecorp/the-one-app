@@ -9,6 +9,10 @@ import { $, esc, money, toast, busy, openModal, closeModal, Router, debounce, bi
 import { loadCatalog, catalog, searchItems, exactItem, thumb, cleanName, treeFor, levelsOf, catStart, locOf } from './catalog.js';
 import { stockOf } from './stock.js';
 import { addToWip } from './orders.js';
+import { labelPrint } from './labels.js';
+import { can } from './main.js';
+/** 🏷 라벨 인쇄 — 디자인 · 카탈로그 담당 (관리자 포함) 만 */
+const canLabel = () => S.role === 'admin' || S.role === 'owner' || can('catalog');
 
 let S = null;
 const CP = { path: [], q: '', view: 'grid', lim: 60, sel: new Set() };
@@ -84,10 +88,10 @@ function rowOld(it) {
 function bulk() {
   const bar = $('cpBulk'); if (!bar) return;
   const n = CP.sel.size; bar.style.display = n ? '' : 'none'; if (!n) return;
-  bar.innerHTML = '<b>' + n.toLocaleString() + ' ' + bt('개 선택', 'selected') + '</b><button class="b-ghost b-sm" id="cbCat">🖨 ' + bt('카탈로그', 'Catalog') + '</button><button class="b-ghost b-sm" id="cbLbl">🏷 ' + bt('바코드 라벨', 'Barcode labels') + '</button><button class="b-ghost b-sm" id="cbXls">⬇️ ' + bt('엑셀', 'Excel') + '</button><button class="b-blue b-sm" id="cbOrd">🛒 ' + bt('주문에 담기', 'Add to order') + '</button><button class="b-ghost b-sm" id="cbClr">✕</button>';
+  bar.innerHTML = '<b>' + n.toLocaleString() + ' ' + bt('개 선택', 'selected') + '</b><button class="b-ghost b-sm" id="cbCat">🖨 ' + bt('카탈로그', 'Catalog') + '</button>' + (canLabel() ? '<button class="b-ghost b-sm" id="cbLbl">🏷 ' + bt('바코드 라벨', 'Barcode labels') + '</button>' : '') + '<button class="b-ghost b-sm" id="cbXls">⬇️ ' + bt('엑셀', 'Excel') + '</button><button class="b-blue b-sm" id="cbOrd">🛒 ' + bt('주문에 담기', 'Add to order') + '</button><button class="b-ghost b-sm" id="cbClr">✕</button>';
   const items = () => Array.from(CP.sel).map(c => catalog().byCode[c]).filter(Boolean);
   $('cbCat').onclick = () => catalogPrint(items());
-  $('cbLbl').onclick = () => labelPrint(items());
+  if ($('cbLbl')) $('cbLbl').onclick = () => labelPrint(items());
   $('cbXls').onclick = () => exportXlsx(items());
   $('cbOrd').onclick = () => toOrder(items().map(x => x.c));
   $('cbClr').onclick = () => { CP.sel.clear(); list(); };
@@ -120,11 +124,11 @@ async function itemSheet(it) {
     '<div class="muted" style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap"><span>📍 ' + bt('위치', 'Location') + ' <b>' + esc(loc || '—') + '</b></span><span>🏷 ' + bt('바코드', 'Barcode') + ' <b>' + esc(it.b || '—') + '</b></span></div>' +
     (it.k ? '<div class="muted" style="margin-top:6px">🧩 ' + bt('세트 구성', 'Set contents') + ': ' + it.k.map(k => esc(k[0]) + ' × ' + k[1]).join(', ') + '</div>' : '') +
     '<div class="cpbar">' + (barcodeSvg(barOf(it, false), { h: 60, w: 2 }) || '<span class="muted">' + bt('등록된 바코드가 없습니다 — 라벨은 아이템 코드로 뽑습니다', 'No barcode — labels use the item code') + '</span>') + '</div>' +
-    '<div class="btns" style="flex-wrap:wrap">' + (it.h && !staff ? '' : '<button class="b-blue" id="isOrd">🛒 ' + bi('주문에 담기', 'Add to order') + '</button>') + '<button class="b-ghost" id="isLbl">🏷 ' + bi('라벨', 'Label') + '</button>' + (staff ? '<button class="b-ghost" id="isEd">✏️ ' + bi('수정', 'Edit') + '</button><button class="b-ghost" id="isStock">📦 ' + bi('재고 기록', 'Stock log') + '</button>' : '') + '</div>');
+    '<div class="btns" style="flex-wrap:wrap">' + (it.h && !staff ? '' : '<button class="b-blue" id="isOrd">🛒 ' + bi('주문에 담기', 'Add to order') + '</button>') + '' + (canLabel() ? '<button class="b-ghost" id="isLbl">🏷 ' + bi('라벨', 'Label') + '</button>' : '') + '' + (staff ? '<button class="b-ghost" id="isEd">✏️ ' + bi('수정', 'Edit') + '</button><button class="b-ghost" id="isStock">📦 ' + bi('재고 기록', 'Stock log') + '</button>' : '') + '</div>');
   /* 📦 지금 재고 — stock/{code} (누구나 읽음) */
   stockOf([it.c]).then(m => { const e = $('isStk'); if (e) { const n = m[it.c] || 0; e.textContent = n.toLocaleString(); e.style.color = n > 0 ? '#15803d' : '#b91c1c'; } }).catch(() => { const e = $('isStk'); if (e) e.textContent = '—'; });
   if ($('isOrd')) $('isOrd').onclick = () => toOrder([it.c]);
-  $('isLbl').onclick = () => { closeModal(); labelPrint([it]); };
+  if ($('isLbl')) $('isLbl').onclick = () => { closeModal(); labelPrint([it]); };
   if ($('isEd')) $('isEd').onclick = () => { closeModal(); Router.go('items', it.c); };
   if ($('isStock')) $('isStock').onclick = () => { closeModal(); Router.go('stock', it.c); };
 }
@@ -166,33 +170,6 @@ function catalogPrint(items) {
       items.map(it => '<div class="cpi">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 400)) + '" alt="">' : '<div class="noph">No photo</div>') + '<b>' + esc(it.c) + '</b><small>' + esc(it.d) + '</small>' +
         (o.price || o.srp ? '<div class="pp">' + (o.price ? '<b>' + money(it.p) + '</b>' : '') + (o.srp && it.s ? '<span>SRP ' + money(it.s) + '</span>' : '') + '</div>' : '') + (o.bar && it.b ? '<div class="bc">' + barcodeSvg(it.b, { h: 28, w: 1.2, fs: 10 }) + '</div>' : '') + '</div>').join('') + '</div></div>');
   };
-}
-
-/* ---------- 🏷 바코드 라벨 ---------- */
-const SIZES = [['5160', 'Avery 5160 · 2⅝ × 1" (30/sheet)'], ['2x1', '2 × 1" ' + 'label printer (Zebra · Dymo)'], ['shelf', '3 × 1¼" shelf tag']];
-function labelPrint(items) {
-  const o = { size: '5160', n: 1, price: false, srp: true, useCode: true };
-  const paint = () => {
-    $('mbox').innerHTML = '<h2>🏷 ' + bi('바코드 라벨', 'Barcode labels') + ' — ' + items.length + '</h2>' +
-      '<div class="fg"><label>' + bi('라벨 크기', 'Label size') + '</label><div class="seg" style="flex-wrap:wrap">' + SIZES.map(z => '<button class="' + (o.size === z[0] ? 'on' : '') + '" data-lz="' + z[0] + '" translate="no">' + z[1] + '</button>').join('') + '</div></div>' +
-      '<div class="fg"><label>' + bi('아이템마다 몇 장', 'Copies per item') + '</label><input id="lN" type="number" min="1" max="100" inputmode="numeric" value="' + o.n + '" style="width:100px"></div>' +
-      [['srp', 'SRP'], ['price', bi('도매가', 'Price')], ['useCode', bi('바코드 없으면 아이템 코드로', 'Use item code when no barcode')]].map(x => '<label class="pick ' + (o[x[0]] ? 'on' : '') + '" data-lo="' + x[0] + '" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>' + x[1] + '</b></span></label>').join('') +
-      (items.some(x => !x.b) ? '<div class="muted" style="margin-top:6px">' + bt('바코드 없는 아이템', 'Items without barcode') + ': ' + items.filter(x => !x.b).length + '</div>' : '') +
-      '<div class="btns"><button class="b-ghost" id="lX">' + bt('닫기', 'Close') + '</button><button class="b-blue" id="lGo">🖨 ' + bt('보기 · 인쇄', 'Preview · print') + '</button></div>';
-    document.querySelectorAll('[data-lz]').forEach(b => b.onclick = () => { o.size = b.dataset.lz; o.n = Number($('lN').value) || 1; paint(); });
-    document.querySelectorAll('[data-lo]').forEach(el => el.onclick = e => { e.preventDefault(); o.n = Number($('lN').value) || 1; o[el.dataset.lo] = !o[el.dataset.lo]; paint(); });
-    $('lX').onclick = closeModal;
-    $('lGo').onclick = async () => {
-      o.n = Math.max(1, Math.min(100, Math.floor(Number($('lN').value) || 1))); closeModal(); busy(true);
-      try { await loadJsBarcode(); } catch (e) { busy(false); return toast(e.message, 'bad'); }
-      busy(false);
-      const L = []; items.forEach(it => { const v = barOf(it, o.useCode); if (!v) return; for (let i = 0; i < o.n; i++) L.push(it); });
-      if (!L.length) return toast(bt('뽑을 바코드가 없습니다', 'No barcodes to print'), 'bad');
-      const big = o.size === 'shelf';
-      printOpen('<style>@page{' + ({ '5160': 'size:letter;margin:0', '2x1': 'size:2in 1in;margin:0', shelf: 'size:letter;margin:.4in' })[o.size] + '}</style><div class="lbls s' + o.size + '" translate="no">' + L.map(it => '<div class="lb"><div class="lt"><b>' + esc(it.c) + '</b>' + (o.srp && it.s ? '<span>SRP ' + money(it.s) + '</span>' : '') + (o.price ? '<span>' + money(it.p) + '</span>' : '') + '</div><div class="ld">' + esc(String(it.d || '').substring(0, big ? 60 : 34)) + '</div><div class="lbc">' + barcodeSvg(barOf(it, o.useCode), { h: big ? 34 : 26, w: big ? 1.6 : 1.3, fs: 10 }) + '</div></div>').join('') + '</div>');
-    };
-  };
-  openModal(''); paint();
 }
 
 /* ---------- ⬇️ 엑셀 (가게 POS 등록용) ---------- */

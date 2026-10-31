@@ -31,12 +31,13 @@ import * as Reports from './reports.js';
 import * as Flow from './flow.js';
 import * as Invlook from './invlook.js';
 import * as Access from './access.js';
+import * as Labels from './labels.js';
 import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.143';
+export const VER = 'v0.8.144';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -59,7 +60,7 @@ const NAV = {
   invoice:  [HOME_STAFF, SALE, HUB_LOOK, HUB_WH],   // 인보이스 담당: 수금은 안 봄 (오피스 매니저 · 회계 담당만) — 인보이스 · 조회 · 재고 (v0.8.137)
   whmgr:    [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],   // 창고 매니저: 재고 · 출고 중심
   pick:     [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],
-  catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['catmg/tree', '🗂', '분류', 'Categories'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 분류 · 카탈로그만 (주문 · 수금 없음)
+  catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['labels', '🖨', '라벨', 'Labels'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 라벨 · 카탈로그 (분류는 홈 안의 탭) — 주문 · 수금 없음
   /* 오너 · 관리자 (v0.8.135) — 🏠 홈(대시보드) · 📚 조회(인보이스 · 거래처 · 배송 · 카탈로그) · 💼 경영(매출 · 경영 · 정산 · 미수금 · 수금 현황 · 리포트) · (관리자) 📦 재고 · ⚙️ 관리 */
   owner:    [['own', '🏠', '홈', 'Home'], HUB_LOOK, HUB_BIZ],   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
   admin:    [['own', '🏠', '홈', 'Home'], HUB_LOOK, HUB_BIZ, HUB_WH, ['admin', '⚙️', '관리', 'Admin']]   // 관리자: 오너와 같은 대시보드 + 정산 · 관리 · 🔁 모드(오너 · 담당자 · 세일즈) — 미수금 · 수금은 홈 칸에서
@@ -373,7 +374,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }

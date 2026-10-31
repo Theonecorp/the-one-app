@@ -111,6 +111,31 @@ export async function setItemPhoto(S, code, o) {
   await idbSet(IDB_KEY + '.ov', { ver: now, m: OV });
   if (CAT) { fixPhotos(CAT); CAT.photoStat = CAT.photoStat || {}; }
 }
+/** 📁 사진 일괄 등록 — list: [{code, data, file}] 를 차례로 저장하고 메타(photoVer)는 한 번만 · onStep(i, n, code) 진행 표시 */
+export async function setItemPhotosBulk(S, list, onStep) {
+  const now = new Date().toISOString(), by = (S.user && S.user.email) || '';
+  let n = 0;
+  for (const x of list) {
+    if (onStep) onStep(n, list.length, x.code);
+    if (x.file) { try { await queueDrivePhoto(S, x.code, x.file); } catch (e) { console.warn('drive queue', e); } }
+    const d = { code: x.code, data: x.data || '', none: false, by, at: now };
+    await S.DB.set('itemPhotos', x.code, d); OV[x.code] = { data: d.data, none: false }; n++;
+  }
+  if (!n) return 0;
+  const meta = (await S.DB.get('catalog', 'meta')) || {}; OV_VER = now;
+  await S.DB.update('catalog', 'meta', { photoVer: now }).catch(() => S.DB.set('catalog', 'meta', Object.assign(meta, { photoVer: now })));
+  await idbSet(IDB_KEY + '.ov', { ver: now, m: OV });
+  if (CAT) { fixPhotos(CAT); CAT.photoStat = CAT.photoStat || {}; }
+  return n;
+}
+/** 파일 이름 → 아이템 코드 (확장자 떼고, 그대로 → " (1)" · "-1" · "_front" 같은 꼬리를 떼며 맞는 코드 찾기) */
+export function itemByFileName(name) {
+  let b = String(name || '').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '').trim();
+  const tries = [b, b.replace(/\s*\(\d+\)$/, ''), b.replace(/[\s_-]+(copy|front|back|side|top|\d{1,2})$/i, ''), b.replace(/[\s_-]+\w+$/, '')];
+  for (const t of tries) { if (t && CAT && CAT.byCode[t.toUpperCase()]) return CAT.byCode[t.toUpperCase()]; }   // 정확한 코드가 먼저 ("AHG101 (1)" 이 AHG1011 로 가지 않게)
+  for (const t of tries) { if (!t) continue; const it = exactItem(t); if (it) return it; }
+  return null;
+}
 /** 사진 파일 → 작게 줄인 JPEG dataURL (긴 쪽 max px · maxBytes 넘으면 더 줄임) — Firestore 문서에 들어갈 크기로 */
 export function shrinkImage(file, max, maxBytes) {
   max = max || 480; maxBytes = maxBytes || 60000;
