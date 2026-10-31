@@ -10,6 +10,7 @@
  *  st: draft(임시저장) → sent(보냄) → pick(픽킹 중) → done(인보이스 확정) · x(취소)
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead } from './ui.js';
+import { REQ_KINDS, reqClean, reqText, reqCount } from './reqs.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
 import { jobOf, can } from './main.js';
@@ -427,7 +428,7 @@ function orderRow(o, local, err, ck) {
   const who = o.pickerName || o.picker ? '👷 ' + esc(o.pickerName || String(o.picker).split('@')[0]) : '';
   const ag = isStaff() && !local ? stageAge(o) : null, agT = ag ? ' <span class="tag agetag' + (ag.day ? ' old' : ag.late ? ' late' : '') + '" title="' + esc(bt('이 단계에서 기다린 시간', 'Waiting in this stage')) + '">⏱ ' + esc(ag.t) + '</span>' : '';
   const ty = isStaff() && o.ty ? Object.keys(o.ty).filter(k => k !== DT() && o.ty[k]).map(k => ' <span class="tag t-a" title="' + esc(bt('인보이스 종류 ', 'Invoice type ') + k) + '">🏷 ' + esc(k) + ' ' + o.ty[k] + '</span>').join('') : '';
-  const notes = [who, (o.invs && o.invs.length ? '🧾 ' + esc(o.invs.join(', ')) : ''), (o.track ? '🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : ''), (o.deliveredAt ? '<b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : ''), (o.memo ? '📝 ' + esc(String(o.memo).slice(0, 40)) : '')].filter(Boolean).join(' · ');
+  const notes = [(reqCount(o.req) ? '<b style="color:#b45309">🎁 ' + reqText(o.req) + '</b>' : ''), who, (o.invs && o.invs.length ? '🧾 ' + esc(o.invs.join(', ')) : ''), (o.track ? '🚚 ' + esc(String(o.track).split(' ')[0]) + (String(o.track).includes(' ') ? ' +' + (String(o.track).split(' ').length - 1) : '') : ''), (o.deliveredAt ? '<b style="color:#15803d">✅ 배달 ' + esc(md(o.deliveredAt)) + '</b>' : ''), (o.memo ? '📝 ' + esc(String(o.memo).slice(0, 40)) : '')].filter(Boolean).join(' · ');
   return '<tr class="tap" data-oid="' + esc(o.id) + '">' + (ck ? '<td><span class="ckw" data-ckw="' + esc(o.id) + '"><input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '"></span></td>' : '') +
     '<td class="ct wrap" style="min-width:150px"><b>' + esc(o.store || '-') + '</b> ' + stTag(local ? 'local' : o.st) + agT + flags + ty + (err ? '<div class="warn" style="font-size:11.5px">' + esc(err) + '</div>' : '') + '</td>' +
     '<td class="sub0">' + esc(o.no) + '</td><td>' + esc(md(o.d)) + '</td><td class="hs">' + (o.sm ? '<span class="tag t-x">' + esc(o.sm) + '</span>' : '') + '</td>' +
@@ -458,6 +459,7 @@ function viewOrder(o, lines, local) {
     '<button class="b-ghost b-sm" id="oBack">‹ 목록</button></div>' + typeSummary(by) +
     (pd.n ? '<div class="alert a-amb">가격 수정 ' + pd.n + '줄 · 목록가 대비 ' + (pd.diff >= 0 ? '+' : '') + money(pd.diff) + ' (' + pd.pct + '%)</div>' : '') +
     (o.st === 'x' ? '<div class="alert a-red">✕ <b>' + bi('취소된 주문', 'Cancelled order') + '</b>' + (o.cancelWhy ? ' — ' + bi('사유', 'Reason') + ': <b>' + esc(o.cancelWhy) + '</b>' : '') + (o.cancelAt ? ' <span class="muted">' + esc(String(o.cancelAt).substring(0, 16).replace('T', ' ')) + '</span>' : '') + '</div>' : '') +
+    (reqCount(o.req) ? '<div class="alert a-amb">🎁 ' + bi('인서트 · 디스플레이 요청', 'Insert · display request') + ': <b>' + reqText(o.req) + '</b></div>' : '') +
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
     (local ? '<div class="alert a-red">📤 아직 회사로 안 갔습니다 — 폰에 저장돼 있습니다</div>' : '') +
     (o.cfReq && !o.cfOk ? '<div class="alert a-amb">❓ ' + bi('사무실에서 이 주문 내용이 맞는지 확인을 요청했습니다. 아래 아이템을 보고 맞으면 ✅, 아니면 ✏️ 수정.', 'The office asks you to confirm this order.') + (o.cfNote ? '<div style="margin-top:6px;font-weight:800">💬 ' + esc(o.cfNote) + '</div>' : '') + '</div>' : o.cfOk ? '<div class="alert a-grn">✅ ' + bi('확인한 주문', 'Confirmed') + ' ' + esc(String(o.cfAt || '').substring(0, 16).replace('T', ' ')) + '</div>' : '') + '</div>';
@@ -531,7 +533,7 @@ function clearWip() { try { localStorage.removeItem(wipKey()); } catch (e) {} }
 /** 📒 카탈로그에서 고른 아이템을 작성 중 주문에 담기 (없으면 새 주문, 이미 있으면 +1) — 담은 개수 */
 export function addToWip(codes) {
   const C = catalog(); if (!C) return 0;
-  const w = O || readWip() || { id: '', no: '', st: 'draft', sm: isStaff() ? '' : mySm(), acct: '', store: '', memo: '', disc: {}, lines: [], d: today() };
+  const w = O || readWip() || { id: '', no: '', st: 'draft', sm: isStaff() ? '' : mySm(), acct: '', store: '', memo: '', req: {}, disc: {}, lines: [], d: today() };
   let n = 0;
   codes.forEach(code => { const it = C.byCode[code]; if (!it) return; const ex = w.lines.find(l => l.c === it.c); if (ex) ex.q += 1; else { const l = { c: it.c, d: it.d, q: 1, p: it.p, lp: it.p, t: typeOfItem(S, it) }; if (it.k) l.kit = it.k.map(x => ({ c: x[0], q: x[1] })); w.lines.push(l); } n++; });
   w.view = 'cart';
@@ -552,8 +554,8 @@ export async function openEditor(order, wip, lines) {
   if (wip) O = wip;
   else if (order) {
     if (!lines) { const L = await S.DB.get('orderLines', order.id); lines = (L && L.lines) || []; }
-    O = { id: order.id, no: order.no, st: order.st, sm: order.sm, acct: order.acct, store: order.store, memo: order.memo || '', disc: Object.assign({}, order.disc || {}), lines: lines.map(l => Object.assign({}, l)), createdAt: order.createdAt, createdBy: order.createdBy, d: order.d, sentAt: order.sentAt || '' };
-  } else O = { id: '', no: '', st: 'draft', sm: isStaff() ? '' : mySm(), acct: '', store: '', memo: '', disc: {}, lines: [], d: today() };
+    O = { id: order.id, no: order.no, st: order.st, sm: order.sm, acct: order.acct, store: order.store, memo: order.memo || '', req: Object.assign({}, order.req || {}), disc: Object.assign({}, order.disc || {}), lines: lines.map(l => Object.assign({}, l)), createdAt: order.createdAt, createdBy: order.createdBy, d: order.d, sentAt: order.sentAt || '' };
+  } else O = { id: '', no: '', st: 'draft', sm: isStaff() ? '' : mySm(), acct: '', store: '', memo: '', req: {}, disc: {}, lines: [], d: today() };
   O.disc = O.disc || {};
   O.view = O.view || (O.lines.length ? 'cart' : 'add'); O.q = ''; O.path = O.path || [];
   INFO = null; FOCUS = '';
@@ -571,7 +573,7 @@ function paintEditor() {
   let h = '<div class="ehead' + (slim ? ' slim' : '') + '" id="eHead"><div class="etop"><div class="erow">';
   if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + (slim ? '' : ' · ' + [acc.city, acc.state].filter(Boolean).join(', ')) : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small><small id="eStoreHist"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="' + esc(bt('이 가게 기록 — 인보이스 · 주문 · 수금 · 노트', 'Store history — invoices · orders · payments · notes')) + '">📋 ' + bt('기록', 'History') + '</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + (slim ? '🔁' : bi('바꾸기', 'Change')) + '</button></div>';
   else h += '<div style="flex:1;min-width:0;position:relative"><input id="eStoreQ" placeholder="🏬 가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div></div>';
-  h += '</div><div class="etabs"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + (O.memo ? ' •' : '') + '</button></div></div><div id="eTop"></div></div>';
+  h += '</div><div class="etabs"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + '<span id="eMdot">' + (O.memo || reqCount(O.req) ? ' •' : '') + '</span></button></div></div><div id="eTop"></div></div>';
   /* 고정 칸 밖: 수정 중 표시 · 메모 · 고정 노트 · (담당자) 세일즈맨 */
   if (O.id) h += '<div class="alert a-amb" style="margin:0 0 8px">✏️ ' + esc(O.no) + ' 수정 중 ' + stTag(O.st) + '</div>';
   if (acc && acc.note) h += '<div class="alert a-blu" style="margin:0 0 8px">📝 ' + esc(acc.note) + '</div>';
@@ -634,12 +636,19 @@ if (typeof window !== 'undefined') window.addEventListener('resize', () => setTi
 /* 📝 메모 탭 — 배송 · 특이사항 · 할인 요청 + 주문 요약 */
 function paintMemo() {
   const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
-  $('eBody').innerHTML = '<div class="card"><h2>📝 ' + bi('메모', 'Memo') + '</h2><div class="muted">배송 방법 · 특이사항 · 할인 요청 등 사무실에 전할 말 <span class="en">Shipping, special requests, discount asks</span></div>' +
+  const rq = O.req || (O.req = {});
+  const reqCard = '<div class="card"><h2>🎁 ' + bi('인서트 · 디스플레이 요청', 'Insert · display request') + '</h2><div class="muted">' + bt('가게에 같이 보낼 인서트 · 디스플레이 — 출고 담당이 보고 인보이스에도 찍힙니다', 'Inserts and displays to ship with this order — warehouse sees it and it prints on the invoice') + '</div>' +
+    '<div class="reqs">' + REQ_KINDS.map(k => '<div class="reqrow' + (rq[k[0]] > 0 ? ' on' : '') + '"><b>' + bi(k[1], k[2]) + '</b><span class="rqs"><button type="button" data-rqm="' + k[0] + '">−</button><span data-rqv="' + k[0] + '">' + (rq[k[0]] || 0) + '</span><button type="button" data-rqp="' + k[0] + '">＋</button></span></div>').join('') + '</div>' +
+    (reqCount(rq) ? '<div class="alert a-amb" style="margin-top:8px">🎁 ' + reqText(rq) + '</div>' : '') + '</div>';
+  $('eBody').innerHTML = reqCard + '<div class="card"><h2>📝 ' + bi('메모', 'Memo') + '</h2><div class="muted">배송 방법 · 특이사항 · 할인 요청 등 사무실에 전할 말 <span class="en">Shipping, special requests, discount asks</span></div>' +
     '<textarea id="eMemo" rows="4" placeholder="예: UPS 로 보내 주세요 / 금요일 전 도착 / 디스플레이 같이" style="margin-top:8px">' + esc(O.memo || '') + '</textarea>' +
     '<div class="chips" style="margin-top:8px">' + ['UPS 배송', '픽업 (가게에서 가져감)', '세일즈맨 직접 배달', '급함 — 먼저 처리', '디스플레이 같이 보내기'].map(x => '<button data-mq="' + esc(x) + '">+ ' + esc(x) + '</button>').join('') + '</div></div>' +
     '<div class="card"><h2>' + bi('주문 요약', 'Summary') + '</h2><div class="pr"><div class="ct"><b>' + esc(O.store || '가게 미선택') + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : '') + '</small></div></div>' +
     '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div><b>' + esc(O.sm || '-') + '</b><span>세일즈맨</span></div></div>' + typeSummary(t.by) + '</div>';
-  const ta = $('eMemo'); ta.oninput = () => { O.memo = ta.value; saveWip(); };
+  const ta = $('eMemo'); ta.oninput = () => { O.memo = ta.value; saveWip(); if ($('eMdot')) $('eMdot').textContent = O.memo || reqCount(O.req) ? ' •' : ''; };
+  const bump = (k, d) => { O.req = O.req || {}; O.req[k] = Math.max(0, Math.min(99, (Number(O.req[k]) || 0) + d)); saveWip(); paintMemo(); if ($('eMdot')) $('eMdot').textContent = O.memo || reqCount(O.req) ? ' •' : ''; };
+  document.querySelectorAll('[data-rqp]').forEach(b => b.onclick = () => bump(b.dataset.rqp, 1));
+  document.querySelectorAll('[data-rqm]').forEach(b => b.onclick = () => bump(b.dataset.rqm, -1));
   document.querySelectorAll('[data-mq]').forEach(b => b.onclick = () => { const v = b.dataset.mq; if ((O.memo || '').includes(v)) return; O.memo = (O.memo ? O.memo.trim() + ' / ' : '') + v; ta.value = O.memo; saveWip(); });
 }
 function typeMini(by) { const g = Object.values(by || {}); return g.length ? g.map(x => x.t + ' ' + money(x.total)).join(' · ') : ''; }
@@ -923,6 +932,7 @@ function paintCart() {
   }).join('');
   $('eBody').innerHTML = '<div class="card">' + (discRows ? '<h2>할인</h2><div class="two">' + discRows + '</div><div class="muted" style="margin:6px 0 10px">가게 기본 할인이 먼저 들어갑니다. 바꾸면 매니저가 확인할 때 표시됩니다.</div>' : '') +
     '<div class="alert a-blu" style="margin:0 0 8px">💾 ' + bi('다 담았으면 아래 저장. 보내기는 주문 목록의 "주문 확인 · 보낼 주문"에서 확인한 뒤 한 번에.', 'Save when done; send from "Review & send" in the order list.') + '</div><div class="muted" style="margin-top:8px">🧾 ' + bi('인보이스 미리보기 — 픽킹이 끝난 뒤 확정할 때 종류(A · P · W)별로 따로 번호가 납니다', 'Invoice preview — split into A / P / W after picking') + '</div><div id="eTypes"></div>' + (O.lines.length > 15 ? '<input id="eF" placeholder="주문 안에서 찾기" autocomplete="off" style="margin:8px 0 6px">' : '') + '<div id="eCart"></div>' +
+    (reqCount(O.req) ? '<div class="alert a-amb" style="margin-top:10px">🎁 ' + reqText(O.req) + '</div>' : '') +
     (O.memo ? '<div class="alert a-blu" style="margin-top:10px">📝 ' + esc(O.memo) + '</div>' : '') + '</div>';
   const paintTypes = () => { if (O && $('eTypes')) $('eTypes').innerHTML = typeSummary(totals().by); };
   const paint = () => {
@@ -972,7 +982,7 @@ async function saveOrder(st) {
   if (st !== 'sent' && !(await confirmBox((mt.length ? '⚠️ ' + bt('여러 번 눌린 아이템', 'Tapped several times') + ' ' + mt.length + bt('개 (색 표시 · ×N)', ' (colored · ×N)') + ': ' + mt.slice(0, 5).map(l => l.c + ' ' + l.q + bt('개', 'pcs') + ' ×' + l.tap).join(', ') + ' — ' + bt('수량을 확인하세요', 'check the quantities') + '\n\n' : '') + O.store + ' — ' + O.lines.length + '줄 · ' + t.qty + '개 · ' + money(t.amt) + '\n저장할까요? (보내기는 주문 목록의 "보낼 주문"에서) / Save this order?', '저장 Save'))) return;
   const now = new Date().toISOString();
   if (!O.id) { O.no = newNo(); O.id = O.no; }
-  const base = { id: O.id, no: O.no, d: O.d || today(), ym: ym(O.d || today()), sm: O.sm, acct: O.acct || '', store: O.store, st, memo: O.memo || '', updatedAt: now,
+  const base = { id: O.id, no: O.no, d: O.d || today(), ym: ym(O.d || today()), sm: O.sm, acct: O.acct || '', store: O.store, st, memo: O.memo || '', req: reqClean(O.req), updatedAt: now,
     createdBy: O.createdBy || S.user.email, createdAt: O.createdAt || now, catVer: catalog().ver || '' };
   if (st === 'sent') base.sentAt = O.sentAt || now;
   const lines = O.lines.filter(l => l.q > 0).map(l => { const x = { c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }; if (l.pq != null) x.pq = l.pq; if (l.note) x.note = l.note; if (l.kit) x.kit = l.kit; return x; });

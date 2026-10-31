@@ -6,6 +6,7 @@
  *  invoices/{no} = { no, t, order, acct, store, sm, d, ym, lines:[{c,d,q,p,lp}], sub, disc, total, bal, terms, st:'open'|'x', memo, createdBy, createdAt }
  * ============================================================ */
 import { esc, money, R2, addDays, invNo, invNoOld } from './ui.js';
+import { reqText } from './reqs.js';
 import { catalog } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
@@ -254,6 +255,7 @@ export function invoiceHtml(inv, acc, opt) {
   const total = R2(net + (Number(inv.ship) || 0));
   return '<div class="iv' + (co.paper === 'a4' ? ' pa4' : '') + '">' + docHead(co, 'INVOICE', [['Acct. No.', inv.acct || ''], ['Date', fmtD(inv.d)], ['Invoice #', inv.no]]) +
     (inv.order ? '<div class="ivso">Sales Order # ' + esc(inv.order) + '</div>' : '') +
+    (inv.req && reqText(inv.req, true) ? '<div class="ivreq">DISPLAY / INSERT REQUEST : ' + esc(reqText(inv.req, true)) + '</div>' : '') +
     '<div class="ivparties">' + party('Bill To') + party('Ship To') + '</div>' +
     '<table class="ivinfo"><tr><th>Terms</th><th>Due Date</th><th>Rep.</th><th>Ship Date</th><th>Shipping Method</th><th>Shipping Memo</th></tr>' +
     '<tr><td>' + esc(terms) + '</td><td>' + esc(fmtD(due)) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS Ground') + '</td><td>' + esc(inv.memo || (inv.boxes ? inv.boxes + ' BX' : '')) + '</td></tr></table>' +
