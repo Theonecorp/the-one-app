@@ -599,7 +599,7 @@ export async function invBrowser(LF, head) {
   if (byAcct) acc = LF.iacct ? (S.accounts.byCode || {})[LF.iacct] || null : null;
   else { accs = q && !isNo ? searchAccounts(S.accounts, q, 6) : []; acc = accs.length === 1 || (accs.length && accs[0].acct === q) ? accs[0] : null; }
   const [from, to] = periodRange(LF.ip, LF.ifrom, LF.ito);
-  const modeSeg = itabs([['acct', '🏬', '거래처별', 'By customer'], ['date', '📅', '기간별', 'By date']], byAcct ? 'acct' : 'date', 'im');
+  const modeSeg = itabs([['acct', '🏬', '거래처별', 'By customer'], ['date', '📅', '기간별', 'By date'], ['sm', '👤', '세일즈맨별', 'By salesman'], ['geo', '🏙', '지역별', 'By region'], ['type', '🏷', '종류별', 'By type']], byAcct ? 'acct' : (LF.im || 'date'), 'im');   // 기간 안의 인보이스를 어떻게 묶어 볼지 (v0.8.138)
   if (byAcct && !acc && !isNo) return acctList(LF, head, modeSeg);
   const top = '<div class="card" style="padding-bottom:8px">' + modeSeg + (byAcct && acc ? '<button class="b-ghost b-sm" id="iqBackA" style="margin-bottom:6px">‹ ' + bi('거래처 목록', 'All customers') + '</button>' : '') +
     (byAcct && acc ? '' : '<div style="display:flex;gap:6px"><input id="iqQ" placeholder="가게 이름 · 어카운트 # · 인보이스 # · 주문 # / Store · Acct · Invoice · Order" value="' + esc(LF.iq) + '" autocomplete="off" style="flex:1">' + (LF.iq ? '<button class="b-ghost b-sm" id="iqX">✕</button>' : '') + '</div>') +
@@ -627,24 +627,38 @@ export async function invBrowser(LF, head) {
   if (!LF.ivoid) rows = rows.filter(r => r.st !== 'x');
   if (q && !acc && !isNo) { const qq = q.toUpperCase(); rows = rows.filter(r => String(r.store || '').toUpperCase().includes(qq) || String(r.no).includes(qq) || String(r.order || '').includes(qq) || String(r.acct || '') === qq); }
   rows = sortInv(rows, r => r.no, false);   // 하루 안에서는 인보이스 번호 순
+  /* 묶음 — 📅 날짜별(기본 · 최근 날이 위, ↕ 로 반대) · 👤 세일즈맨별 · 🏙 지역별(주 › 도시 칩으로 좁힘) · 🏷 종류별(A · P · W). 거래처 · 번호로 볼 때는 날짜별 */
+  const gm = acc || isNo || byAcct ? 'date' : (LF.im || 'date');
+  const accOf = r => (S.accounts.byCode && S.accounts.byCode[r.acct]) || null, stOf = r => { const a = accOf(r); return String((a && a.state) || '').toUpperCase() || '—'; }, ctOf = r => { const a = accOf(r); return String((a && a.city) || '').toUpperCase() || '—'; };
+  let geoChips = '';
+  if (gm === 'geo') {
+    const byS = {}; rows.forEach(r => { const k = stOf(r); byS[k] = (byS[k] || 0) + 1; }); if (LF.ist && !byS[LF.ist]) LF.ist = '';
+    geoChips = '<div class="chips" style="margin:0 0 6px"><button class="' + (LF.ist ? '' : 'on') + '" data-ist="">' + bi('전체', 'All') + ' ' + rows.length + '</button>' + Object.keys(byS).sort().map(k => '<button class="' + (LF.ist === k ? 'on' : '') + '" data-ist="' + esc(k) + '">' + esc(k) + ' <span class="en">' + byS[k] + '</span></button>').join('') + '</div>';
+    if (LF.ist) { rows = rows.filter(r => stOf(r) === LF.ist); const byC = {}; rows.forEach(r => { const k = ctOf(r); byC[k] = (byC[k] || 0) + 1; }); if (LF.ict && !byC[LF.ict]) LF.ict = '';
+      geoChips += '<div class="chips" style="margin:0 0 6px"><button class="' + (LF.ict ? '' : 'on') + '" data-ict="">' + bi('전체', 'All') + ' ' + rows.length + '</button>' + Object.keys(byC).sort().map(k => '<button class="' + (LF.ict === k ? 'on' : '') + '" data-ict="' + esc(k) + '">' + esc(k) + ' <span class="en">' + byC[k] + '</span></button>').join('') + '</div>';
+      if (LF.ict) rows = rows.filter(r => ctOf(r) === LF.ict); }
+  }
   const live = rows.filter(r => r.st !== 'x'), tot = live.reduce((a, r) => a + (r.total || 0), 0), bal = live.reduce((a, r) => a + (r.bal != null ? r.bal : r.total || 0), 0);
-  /* 📅 날짜별 묶음 — 최근 날이 위 (↕ 로 오래된 날부터). 하루치가 한눈에, 종류(A · P · W)는 줄의 태그로 */
-  const days = {}; rows.forEach(r => { const k = String(r.d || '').substring(0, 10) || '—'; (days[k] = days[k] || []).push(r); });
-  const dayKeys = Object.keys(days).sort(); if (!LF.idesc) dayKeys.reverse();
-  let h = '';
+  const keyOf = gm === 'sm' ? r => r.sm || '—' : gm === 'type' ? r => r.t || invParts(r.no)[0] : gm === 'geo' ? (LF.ist ? ctOf : stOf) : r => String(r.d || '').substring(0, 10) || '—';
+  const labelOf = gm === 'sm' ? k => '👤 ' + esc(k) : gm === 'type' ? k => '🏷 ' + esc(k) + ' ' + esc((types.find(t => t.c === k) || {}).n || '') : gm === 'geo' ? k => '🏙 ' + esc(k) : k => '📅 ' + esc(dayLabel(k));
+  const days = {}; rows.forEach(r => { const k = keyOf(r); (days[k] = days[k] || []).push(r); });
+  const dayKeys = Object.keys(days).sort(); if (gm === 'date' && !LF.idesc) dayKeys.reverse();
+  let h = geoChips;
   if (err) h += '<div class="alert a-red">' + esc(err) + '</div>';
   if (cnt) h += (cnt.all ? '<div class="muted" style="margin:0 0 8px;font-size:12.5px">📊 ' + bt('전체 인보이스', 'All invoices') + ' <b>' + cnt.all.toLocaleString() + '</b>' + bt('장', '') + ' · ' + cnt.y + ' ' + cnt.c0.toLocaleString() + ' · ' + (cnt.y - 1) + ' ' + cnt.c1.toLocaleString() + ' · ' + bt('그 전', 'earlier') + ' ' + cnt.c2.toLocaleString() + '</div>' : '<div class="alert a-amb">📄 ' + bt('인보이스가 아직 하나도 없습니다 — ⚙️ 관리 → 가져오기에서 이전 시스템 인보이스 목록(sales_invoice)을 올리면 여기 · 가게 창 · 세일즈맨 앱에 모두 보입니다.', 'No invoices yet — import the legacy invoice list (sales_invoice) under Admin → Import; they then show here, in store windows and in the salesman app.') + '</div>');
   if (latest) h += '<div class="alert a-blu">📅 ' + bt('이 기간(' + md(from) + ' ~ ' + md(to) + ')에는 인보이스가 없어 가장 최근 200장을 보여 줍니다 — 위 기간 버튼으로 바꾸세요.', 'No invoices in this period — showing the latest 200. Change the period above.') + '</div>';
   if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 ' + bi('가게 창', 'Store') + '</button></div></div>';
   h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스 Invoices</span></div><div><b>' + money(tot) + '</b><span>합계 Total</span></div><div><b>' + money(bal) + '</b><span>미수 Balance</span></div><div><b>' + new Set(rows.map(r => r.d)).size + '</b><span>날짜 Days</span></div></div>' +
     '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : latest ? bt('가장 최근 200장', 'Latest 200') : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + (rows.length > 1 ? ' · <a id="iSort" href="#" onclick="return false">' + (LF.idesc ? bt('오래된 날부터 ↑', 'Oldest day first ↑') : bt('최근 날부터 ↓', 'Newest day first ↓')) + '</a>' : '') + '</div>' +
-    (rows.length ? dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<div class="iday"><b>📅 ' + esc(dayLabel(d)) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>' + L.map(r => invRow(r)).join(''); }).join('') : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
+    (rows.length ? dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<div class="iday"><b>' + labelOf(d) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>' + L.map(r => invRow(r)).join(''); }).join('') : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
   $('iList').innerHTML = h;
   /* 인보이스를 누르면 인보이스 · AR 잔액 · 수금을 한 화면에 (가게 창 · 미수금과 같은 화면) */
   document.querySelectorAll('#iList [data-go]').forEach(el => el.onclick = () => { const g = el.dataset.go; if (g.indexOf('inv:') === 0) invDetail(g.substring(4)); else Router.go('order', g); });
   if (isNo && !rows.length && $('iList')) { $('iList').insertAdjacentHTML('afterbegin', '<div class="card"><button class="b-blue" id="iArFind">🔎 ' + bt('AR(미수금)에서 이 번호 찾기', 'Look up this number in A/R') + '</button></div>'); $('iArFind').onclick = () => invDetail(q.toUpperCase()); }
   if ($('iAcc')) $('iAcc').onclick = () => storeSheet(acc.acct, null, 'invh');
   if ($('iSort')) $('iSort').onclick = e => { e.preventDefault(); LF.idesc = !LF.idesc; invBrowser(LF, head); };
+  document.querySelectorAll('#iList [data-ist]').forEach(b => b.onclick = () => { LF.ist = b.dataset.ist; LF.ict = ''; invBrowser(LF, head); });
+  document.querySelectorAll('#iList [data-ict]').forEach(b => b.onclick = () => { LF.ict = b.dataset.ict; invBrowser(LF, head); });
   if ($('iCsv')) $('iCsv').onclick = e => { e.preventDefault();
     const csv = [['Invoice', 'Date', 'Type', 'Acct', 'Store', 'SalesRep', 'Terms', 'Order', 'Qty', 'Sub', 'Disc%', 'Total', 'Balance', 'Status']].concat(rows.map(r => [r.no, r.d, r.t, r.acct, r.store, r.sm, r.terms || '', r.order, r.qty, r.sub, r.disc || 0, r.total, r.bal != null ? r.bal : r.total, r.st === 'x' ? 'VOID' : 'open'])).map(a => a.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'invoices-' + (acc ? acc.acct : from + '_' + to) + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
@@ -663,7 +677,7 @@ export async function invBrowser(LF, head) {
     const vb = document.querySelector('[data-ivoid]'); if (vb) vb.onclick = () => { LF.ivoid = !LF.ivoid; invBrowser(LF, head); };
     if ($('iCal')) $('iCal').onclick = async () => { const r = await pickDates({ from, to, quick: quickRanges() }); if (!r) return; LF.ip = 'custom'; LF.ifrom = r[0]; LF.ito = r[1]; invBrowser(LF, head); };
     if ($('iqBackA')) $('iqBackA').onclick = () => { LF.iacct = ''; invBrowser(LF, head); };
-    document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { LF.im = b.dataset.im; LF.iacct = ''; LF.iq = ''; invBrowser(LF, head); });
+    document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { LF.im = b.dataset.im; LF.iacct = ''; LF.iq = ''; LF.ist = ''; LF.ict = ''; invBrowser(LF, head); });
   }
 }
 /** 🏬 거래처별 인보이스 — 전체 거래처를 이름순으로, 치는 대로 걸러짐. 인보이스 번호를 치면 Enter 로 바로 찾기 */

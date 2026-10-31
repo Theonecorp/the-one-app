@@ -22,7 +22,7 @@ export const HUBS = {
     ['invs', '📄', '인보이스', 'Invoices', '날짜별 · 가게별 · 번호', 'by date · store · number', () => true],
     ['stores', '🏬', '거래처', 'Customers', '가게 창 · 미수금 · 지도', 'store window · A/R · map', () => true],
     ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹 · 받은 날', 'boxes · tracking', () => true],
-    ['cat', '📒', '카탈로그 · 바코드', 'Catalog · Barcodes', '사진 · 라벨 · 엑셀', 'photos · labels', () => true]
+    ['cat', '📒', '아이템 · 카탈로그', 'Items · Catalog', '검색 · 사진 · 재고 · 위치 · 라벨', 'search · photos · stock · location · labels', () => true]
   ] },
   wh: { icon: '📦', ko: '재고', en: 'Inventory', items: [
     ['stock', '📦', '재고', 'Inventory', '조회 · 입고(팩킹 리스트) · 실사', 'find · receive · count', () => can('items')],
@@ -40,7 +40,7 @@ export const HUBS = {
   ] },
   slook: { icon: '📚', ko: '조회', en: 'Lookup', items: [
     ['invs', '📄', '인보이스', 'Invoices', '내 인보이스 · 가게별', 'my invoices · by store', () => true],
-    ['cat', '📒', '카탈로그', 'Catalog', '사진 · 가격 · 손님 보기', 'photos · prices · customer view', () => true],
+    ['cat', '📒', '아이템 · 카탈로그', 'Items · Catalog', '검색 · 사진 · 가격 · 재고 · 손님 보기', 'search · photos · prices · stock', () => true],
     ['mysales', '📈', '내 매출', 'My sales', '이번 달 · 월별 · 가게별', 'this month · by month · by store', () => true],
     ['track', '🚚', '배송 조회', 'Tracking', '내 가게 박스 · 트래킹', 'boxes · tracking', () => true]
   ] },

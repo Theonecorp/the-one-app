@@ -5,8 +5,9 @@
  *    · 숨김(🙈) 아이템은 안 보임 — 세일즈맨 주문 화면과 같음
  *  바코드 그림: JsBarcode (12자리 UPC-A · 13자리 EAN-13 · 8자리 EAN-8 · 그 외 CODE128, 바코드가 없으면 아이템 코드로)
  * ============================================================ */
-import { $, esc, money, toast, busy, openModal, closeModal, Router, debounce, bi, bt, printOpen, today } from './ui.js';
-import { loadCatalog, catalog, searchItems, exactItem, thumb, cleanName, treeFor, levelsOf, catStart } from './catalog.js';
+import { $, esc, money, toast, busy, openModal, closeModal, Router, debounce, bi, bt, printOpen, today, itabs } from './ui.js';
+import { loadCatalog, catalog, searchItems, exactItem, thumb, cleanName, treeFor, levelsOf, catStart, locOf } from './catalog.js';
+import { stockOf } from './stock.js';
 import { addToWip } from './orders.js';
 
 let S = null;
@@ -31,7 +32,7 @@ async function page(arg) {
 const levels = x => levelsOf(x, catStart(S));
 function current() {
   const C = catalog(), q = CP.q.trim();
-  let L = q ? searchItems(q, CP.path, 100000, catStart(S)) : C.vis;
+  let L = q ? searchItems(q, CP.path, 100000, catStart(S), true) : C.vis;   // 검색은 숨김(🙈 단종 · 재입고 지연)도 포함 — 조회는 누구나, 주문은 담당자만
   if (!q && CP.path.length) L = L.filter(x => { const P = levels(x); return CP.path.every((p, i) => P[i] === p); });
   return L;
 }
@@ -42,10 +43,10 @@ function paint() {
   CP.path = under;
   const crumbs = '<div class="chips crumbs" style="margin-top:8px">' + (under.length ? '<button class="up" data-cpp="' + (under.length - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (under.length ? '' : 'on') + '" data-cpp="0">' + bi('전체', 'All') + '</button>' + under.map((p, i) => '<button class="' + (i === under.length - 1 ? 'on' : '') + '" data-cpp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
   const kids = CP.q.trim() ? [] : node.kids;
-  $('page').innerHTML = '<div class="card"><h2>📒 ' + bi('카탈로그 · 바코드', 'Catalog · Barcodes') + ' <span class="muted" style="font-weight:400;font-size:12px">' + C.vis.length.toLocaleString() + '</span></h2>' +
-    '<div class="muted">' + bi('아이템을 체크해서 카탈로그 인쇄 · 바코드 라벨 · 엑셀(가게 POS 등록용)로 뽑거나 주문에 담으세요. 📷 로 가게 물건의 바코드를 찍으면 그 아이템이 나옵니다.', 'Check items to print a catalog, barcode labels, export to Excel (for the store POS) or add to an order. Scan a barcode with 📷 to find the item.') + '</div>' +
+  $('page').innerHTML = '<div class="card"><h2>📒 ' + bi('아이템 · 카탈로그', 'Items · Catalog') + ' <span class="muted" style="font-weight:400;font-size:12px">' + C.vis.length.toLocaleString() + '</span></h2>' +
+    '<div class="muted">' + bi('코드 · 이름 · 바코드로 찾고, 누르면 사진 · 가격 · 분류 · 바코드 · 📦 재고 · 📍 위치가 보입니다. 체크해서 카탈로그 인쇄 · 라벨 · 엑셀 · 주문 담기. 📷 로 바코드를 찍어도 됩니다.', 'Search by code, name or barcode; tap for photo, price, category, barcode, stock and location. Check items to print a catalog, labels, export or add to an order. 📷 scans a barcode.') + '</div>' +
     '<div style="display:flex;gap:6px;margin-top:10px"><input id="cpQ" placeholder="' + esc(bt('코드 · 이름 · 바코드', 'Code · name · barcode')) + '" value="' + esc(CP.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1"><button class="b-blue" id="cpScan" style="flex:0 0 auto;width:auto">📷 ' + bi('스캔', 'Scan') + '</button></div>' +
-    '<div class="seg" style="margin-top:8px"><button class="' + (CP.view === 'grid' ? 'on' : '') + '" data-cpv="grid">🖼 ' + bi('사진', 'Photos') + '</button><button class="' + (CP.view === 'list' ? 'on' : '') + '" data-cpv="list">☰ ' + bi('목록', 'List') + '</button></div>' +
+    itabs([['grid', '🖼', '사진', 'Photos'], ['list', '☰', '목록', 'List']], CP.view, 'cpv') +
     crumbs + (kids.length ? '<div class="chips itcats">' + kids.map(k => '<button data-cpk="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + k.n + '</span></button>').join('') + '</div>' : '') + '</div>' +
     '<div class="card"><div id="cpList"></div></div><div class="bulkbar" id="cpBulk" style="display:none"></div>';
   Router.refreshBack();
@@ -70,10 +71,10 @@ function list() {
 }
 const ck = it => '<input type="checkbox" class="cpck" data-cpc="' + esc(it.c) + '" ' + (CP.sel.has(it.c) ? 'checked' : '') + '>';
 function card(it) {
-  return '<div class="cpcard tap" data-cpi="' + esc(it.c) + '">' + ck(it) + '<div class="cpph">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="">' : '<span>📦</span>') + '</div><b>' + esc(it.c) + (it.k ? ' 🧩' : '') + '</b><small>' + esc(it.d) + '</small><div class="cppr"><b>' + money(it.p) + '</b>' + (it.s ? '<span>SRP ' + money(it.s) + '</span>' : '') + '</div></div>';
+  return '<div class="cpcard tap' + (it.h ? ' hid' : '') + '" data-cpi="' + esc(it.c) + '">' + ck(it) + '<div class="cpph">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="">' : '<span>📦</span>') + '</div><b>' + esc(it.c) + (it.k ? ' 🧩' : '') + (it.h ? ' 🙈' : '') + '</b><small>' + esc(it.d) + '</small><div class="cppr"><b>' + money(it.p) + '</b>' + (it.s ? '<span>SRP ' + money(it.s) + '</span>' : '') + '</div></div>';
 }
 function row(it) {
-  return '<div class="pr"><span style="margin-right:8px">' + ck(it) + '</span>' + (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:8px" alt="">' : '') + '<div class="ct tap" data-cpi="' + esc(it.c) + '"><b>' + esc(it.c) + (it.k ? ' 🧩' : '') + '</b><small>' + esc(it.d) + '</small><small>' + (it.b ? '▮▯ ' + esc(it.b) : '<span class="muted">' + bt('바코드 없음', 'no barcode') + '</span>') + '</small></div><div class="pa"><b>' + money(it.p) + '</b>' + (it.s ? '<small>SRP ' + money(it.s) + '</small>' : '') + '</div></div>';
+  return '<div class="pr' + (it.h ? ' hid' : '') + '"><span style="margin-right:8px">' + ck(it) + '</span>' + (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:8px" alt="">' : '') + '<div class="ct tap" data-cpi="' + esc(it.c) + '"><b>' + esc(it.c) + (it.k ? ' 🧩' : '') + (it.h ? ' <span class="tag t-g">🙈 ' + bt('숨김', 'hidden') + '</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + (it.b ? '▮▯ ' + esc(it.b) : '<span class="muted">' + bt('바코드 없음', 'no barcode') + '</span>') + '</small></div><div class="pa"><b>' + money(it.p) + '</b>' + (it.s ? '<small>SRP ' + money(it.s) + '</small>' : '') + '</div></div>';
 }
 function bulk() {
   const bar = $('cpBulk'); if (!bar) return;
@@ -106,18 +107,21 @@ const barOf = (it, useCode) => it.b || (useCode ? it.c : '');
 async function itemSheet(it) {
   if (!it) return;
   try { await loadJsBarcode(); } catch (e) {}
-  const P = levels(it).filter(Boolean).map(cleanName).join(' › ');
-  openModal('<div style="display:flex;justify-content:space-between;gap:8px"><h2 style="margin:0">' + esc(it.c) + (it.k ? ' 🧩' : '') + '</h2><button class="b-ghost b-sm xin" id="isX">✕</button></div>' +
-    (it.ph ? '<img src="' + esc(thumb(it.ph, 700)) + '" alt="" style="width:100%;max-height:46vh;object-fit:contain;border-radius:12px;background:#f8fafc;margin-top:8px">' : '') +
-    '<div style="font-weight:700;margin-top:8px">' + esc(it.d) + '</div><div class="muted">' + esc(P) + '</div>' +
-    '<div class="kpi" style="grid-template-columns:1fr 1fr;margin-top:8px"><div><b>' + money(it.p) + '</b><span>' + bt('도매가', 'Price') + '</span></div><div><b>' + (it.s ? money(it.s) : '—') + '</b><span>SRP</span></div></div>' +
-    (it.k ? '<div class="muted" style="margin-top:6px">🧩 ' + it.k.map(k => esc(k[0]) + ' × ' + k[1]).join(', ') + '</div>' : '') +
+  const P = levels(it).filter(Boolean).map(cleanName).join(' › '), loc = locOf(it), staff = S.role !== 'salesman';
+  openModal('<h2 style="margin:0 36px 0 0">' + esc(it.c) + (it.k ? ' 🧩' : '') + (it.h ? ' <span class="tag t-g">🙈 ' + bt('숨김 · 주문 불가', 'hidden · not orderable') + '</span>' : '') + '</h2>' +
+    (it.ph ? '<img src="' + esc(thumb(it.ph, 700)) + '" alt="" style="width:100%;max-height:40vh;object-fit:contain;border-radius:12px;background:#f8fafc;margin-top:8px">' : '') +
+    '<div style="font-weight:700;margin-top:8px;font-size:15px">' + esc(it.d) + '</div><div class="muted">' + esc(P || '—') + '</div>' +
+    '<div class="kpi" style="grid-template-columns:1fr 1fr 1fr;margin-top:8px"><div><b>' + money(it.p) + '</b><span>' + bt('도매가', 'Price') + '</span></div><div><b>' + (it.s ? money(it.s) : '—') + '</b><span>SRP</span></div><div><b id="isStk">…</b><span>📦 ' + bt('재고', 'In stock') + '</span></div></div>' +
+    '<div class="muted" style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap"><span>📍 ' + bt('위치', 'Location') + ' <b>' + esc(loc || '—') + '</b></span><span>🏷 ' + bt('바코드', 'Barcode') + ' <b>' + esc(it.b || '—') + '</b></span></div>' +
+    (it.k ? '<div class="muted" style="margin-top:6px">🧩 ' + bt('세트 구성', 'Set contents') + ': ' + it.k.map(k => esc(k[0]) + ' × ' + k[1]).join(', ') + '</div>' : '') +
     '<div class="cpbar">' + (barcodeSvg(barOf(it, false), { h: 60, w: 2 }) || '<span class="muted">' + bt('등록된 바코드가 없습니다 — 라벨은 아이템 코드로 뽑습니다', 'No barcode — labels use the item code') + '</span>') + '</div>' +
-    '<div class="btns" style="flex-wrap:wrap"><button class="b-blue" id="isOrd">🛒 ' + bi('주문에 담기', 'Add to order') + '</button><button class="b-ghost" id="isLbl">🏷 ' + bi('라벨', 'Label') + '</button>' + (S.role !== 'salesman' ? '<button class="b-ghost" id="isEd">✏️ ' + bi('아이템 관리', 'Edit item') + '</button>' : '') + '</div>');
-  $('isX').onclick = closeModal;
-  $('isOrd').onclick = () => toOrder([it.c]);
+    '<div class="btns" style="flex-wrap:wrap">' + (it.h && !staff ? '' : '<button class="b-blue" id="isOrd">🛒 ' + bi('주문에 담기', 'Add to order') + '</button>') + '<button class="b-ghost" id="isLbl">🏷 ' + bi('라벨', 'Label') + '</button>' + (staff ? '<button class="b-ghost" id="isEd">✏️ ' + bi('수정', 'Edit') + '</button><button class="b-ghost" id="isStock">📦 ' + bi('재고 기록', 'Stock log') + '</button>' : '') + '</div>');
+  /* 📦 지금 재고 — stock/{code} (누구나 읽음) */
+  stockOf([it.c]).then(m => { const e = $('isStk'); if (e) { const n = m[it.c] || 0; e.textContent = n.toLocaleString(); e.style.color = n > 0 ? '#15803d' : '#b91c1c'; } }).catch(() => { const e = $('isStk'); if (e) e.textContent = '—'; });
+  if ($('isOrd')) $('isOrd').onclick = () => toOrder([it.c]);
   $('isLbl').onclick = () => { closeModal(); labelPrint([it]); };
   if ($('isEd')) $('isEd').onclick = () => { closeModal(); Router.go('items', it.c); };
+  if ($('isStock')) $('isStock').onclick = () => { closeModal(); Router.go('stock', it.c); };
 }
 
 /* ---------- 📷 스캔 ---------- */
