@@ -788,9 +788,9 @@ function itemRow(it) {
   return '<tr class="irow' + (cur ? ' v' : '') + tapCls(IDX[it.c]) + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
     '<td class="pho">' + (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith"></div>') + '</td>' +
     '<td class="ct wrap"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '</b><div class="desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</div>' + (it.k ? '<small class="sub0">' + esc(kitLine(it)) + '</small>' : '') + (hist ? '<small class="hist">🕘 ' + esc(hist) + '</small>' : '') + '</td>' +
-    '<td class="pc"><button class="pedit" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</button><small class="sub0">' + [dc ? '→ ' + money(it.p * (1 - dc / 100)) : '', lp != null && Math.abs(lp - it.p) > 0.001 ? bt('지난번', 'last') + ' ' + money(lp) : '', it.s ? 'SRP ' + money(it.s) : ''].filter(Boolean).join(' · ') + '</small></td>' +
+    '<td class="pc"><span data-pp="' + esc(it.c) + '">' + priceTxt(it, true) + '</span><small class="sub0">' + [dc ? '→ ' + money(it.p * (1 - dc / 100)) : '', lp != null && Math.abs(lp - it.p) > 0.001 ? bt('지난번', 'last') + ' ' + money(lp) : '', it.s ? 'SRP ' + money(it.s) : ''].filter(Boolean).join(' · ') + '</small></td>' +
     '<td class="r"><span class="stk" data-stk="' + esc(it.c) + '">…</span></td>' +
-    '<td>' + qtyBox(it.c, cur) + '</td></tr>';
+    '<td class="qc">' + qtyBox(it.c, cur) + '</td></tr>';
 }
 /** 📦 실재고 — 보이는 아이템만 읽어 와서 줄 · 카드에 채움 (0 이면 빨강 "없음", 적으면 주황). 못 읽어도 화면은 그대로 */
 function fillStock(root, codes) {
@@ -822,11 +822,11 @@ function itemCard(it) {
     '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'"><span class="gz" data-gz="' + esc(it.c) + '" title="' + esc(bt('사진 크게', 'Zoom photo')) + '">🔍</span>' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + (hl ? '<span class="ghist" title="' + esc(Store.histText(INFO, it.c, 8)) + '">🕘 ' + esc(hl) + '</span>' : '') + '<span class="gstk" data-stk="' + esc(it.c) + '"></span></div>' +
     (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') +
     '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (multi(ln) ? '<span class="gtap" data-gt="' + esc(it.c) + '">×' + ln.tap + '</span>' : '') + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
-    '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</span></div></div>';
+    '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pp="' + esc(it.c) + '">' + priceTxt(it, true) + '</span></div></div>';
 }
 /** 담은 줄의 가격 (바꿨으면 그 가격 · 목록가 줄긋기) — ✎ 누르면 가격 · 수량 */
-function priceTxt(it) { const l = IDX[it.c], p = l ? l.p : it.p, chg = l && Math.abs(l.p - it.p) > 0.0001; return (chg ? '<s>' + money(it.p) + '</s> ' : '') + '<b' + (chg ? ' class="chgp"' : '') + '>' + money(p) + '</b><i class="pen"> ✎</i>'; }
-function refreshRowPrice(c) { const it = catalog().byCode[c]; if (!it) return; document.querySelectorAll('[data-pe="' + CSS.escape(c) + '"]').forEach(el => { el.innerHTML = priceTxt(it); }); }
+function priceTxt(it, plain) { const l = IDX[it.c], p = l ? l.p : it.p, chg = l && Math.abs(l.p - it.p) > 0.0001; return (chg ? '<s>' + money(it.p) + '</s> ' : '') + '<b' + (chg ? ' class="chgp"' : '') + '>' + money(p) + '</b>' + (plain ? '' : '<i class="pen"> ✎</i>'); }
+function refreshRowPrice(c) { const it = catalog().byCode[c]; if (!it) return; document.querySelectorAll('[data-pe="' + CSS.escape(c) + '"]').forEach(el => { el.innerHTML = priceTxt(it); }); document.querySelectorAll('[data-pp="' + CSS.escape(c) + '"]').forEach(el => { el.innerHTML = priceTxt(it, true); }); }
 const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data-d="-1">−</button><input type="number" inputmode="numeric" min="0" data-qi="' + esc(c) + '" value="' + (v || '') + '" placeholder="0"><button data-dq="' + esc(c) + '" data-d="1">＋</button></div>';
 function paintResults() {
   if (!O || !$('eRes')) return;
@@ -853,7 +853,9 @@ function paintResults() {
   root.querySelectorAll('[data-big]').forEach(el => el.onclick = e => { e.stopPropagation(); photoPop(el.dataset.big); });
   root.querySelectorAll('[data-gz]').forEach(el => { el.onpointerdown = e => e.stopPropagation(); el.onclick = e => { e.stopPropagation(); e.preventDefault(); photoPop(el.dataset.gz); }; });
   /* 목록 보기에서 줄(이름 · 사진)을 누르면 카드처럼 담김 (프리셋 적용) */
-  root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = tapAdd(c); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
+  /* 목록 줄을 길게 누르면 수량 · 가격 창 (카드의 길게 누르기와 같음) */
+  root.querySelectorAll('[data-frow] .ct, [data-frow] .pc').forEach(el => { let t = null; el.addEventListener('pointerdown', () => { clearTimeout(t); t = setTimeout(() => { el.dataset.long = '1'; qtyPad(el.closest('[data-frow]').dataset.frow); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(t))); });
+  root.querySelectorAll('[data-frow] .ct, [data-frow] .pc, [data-frow] td.r').forEach(el => el.onclick = () => { if (el.dataset.long) { delete el.dataset.long; return; } const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = tapAdd(c); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
   root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
   root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); sure(c); refreshCard(c); });
   root.querySelectorAll('[data-pe]').forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); qtyPad(b.dataset.pe, true); });
