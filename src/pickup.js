@@ -72,7 +72,7 @@ function handover(G, done) {
   let driver = '', scanner = null, sigData = '';
   const paint = () => {
     const nOk = boxes.filter(b => ok.has(b.trk || b.o.id + ':' + b.box)).length;
-    $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><h2 style="margin:0">🚚 ' + bi('UPS 트럭 인계', 'Hand over to UPS') + '</h2><button class="b-ghost b-sm" id="hoX">✕</button></div>' +
+    $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><h2 style="margin:0">🚚 ' + bi('UPS 트럭 인계', 'Hand over to UPS') + '</h2><button class="b-ghost b-sm xin" id="hoX">✕</button></div>' +
       '<div class="muted">' + bt('트럭에 싣는 박스의 라벨을 스캔하거나 눌러서 확인하세요. 확인한 박스의 주문이 출고 완료가 됩니다.', 'Scan or tap each box as it goes on the truck.') + '</div>' +
       '<div class="sumbox" style="display:flex;justify-content:space-between;align-items:center"><span>' + bt('확인', 'Checked') + ' <b style="font-size:20px" id="hoN">' + nOk + '</b> / ' + boxes.length + ' ' + bt('박스', 'boxes') + '</span><span><button class="b-ghost b-sm" id="hoAll">☑ ' + bt('모두', 'All') + '</button> <button class="b-ghost b-sm" id="hoNone">☐</button></span></div>' +
       '<div style="display:flex;gap:6px"><input id="hoScan" placeholder="' + esc(bt('라벨 바코드 스캔 · 1Z… 입력 + Enter', 'Scan label · type 1Z… + Enter')) + '" autocomplete="off" autocapitalize="characters" style="flex:1"><button class="b-blue" id="hoCam" style="flex:0 0 auto;width:auto">📷</button></div><div id="hoCamBox"></div>' +

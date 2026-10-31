@@ -21,7 +21,7 @@ const FILE = process.argv[2]; if (!FILE || !fs.existsSync(FILE)) { console.log('
   log('report sm year:', (await pg.textContent('#rBody')).replace(/\s+/g, ' ').slice(0, 300));
   /* 가게 창 인보이스 탭 */
   await pg.evaluate(() => { location.hash = '#/stores'; }); await pg.waitForSelector('#stQ'); await pg.fill('#stQ', '1111'); await pg.waitForTimeout(500); await pg.click('[data-st]'); await pg.waitForSelector('[data-ss="invh"]'); await pg.click('[data-ss="invh"]'); await pg.waitForTimeout(300);
-  log('store invh:', (await pg.textContent('#mbox')).replace(/\s+/g, ' ').slice(0, 300)); await pg.click('#ssX');
+  log('store invh:', (await pg.textContent('#mbox')).replace(/\s+/g, ' ').slice(0, 300)); await pg.click('#modal .mclose');
   /* 인보이스 조회 (이번 달) */
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('.htile', { timeout: 60000 }); await pg.click('[data-hg="inv"]'); await pg.waitForSelector('#iList .kpi', { timeout: 60000 }); log('inv browser:', (await pg.textContent('#iList .kpi')).replace(/\s+/g, ' ').slice(0, 160));
   log('errors:', errs.length ? errs : 'none'); await br.close(); srv.kill(); process.exit(errs.length ? 1 : 0);

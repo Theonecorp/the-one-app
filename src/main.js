@@ -36,7 +36,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.136';
+export const VER = 'v0.8.137';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -56,7 +56,7 @@ const NAV = {
   office:   [HOME_STAFF, SALE, HUB_MONEY, HUB_LOOK, HUB_WH],
   acct:     [['verify', '🏠', '홈', 'Home'], HUB_MONEY, HUB_LOOK],   // 회계: 홈 = 수금 확인
   pickinv:  [HOME_STAFF, SALE, HUB_LOOK, HUB_WH],
-  invoice:  [HOME_STAFF, SALE, HUB_MONEY, HUB_LOOK],
+  invoice:  [HOME_STAFF, SALE, HUB_LOOK, HUB_WH],   // 인보이스 담당: 수금은 안 봄 (오피스 매니저 · 회계 담당만) — 인보이스 · 조회 · 재고 (v0.8.137)
   whmgr:    [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],   // 창고 매니저: 재고 · 출고 중심
   pick:     [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],
   catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['catmg/tree', '🗂', '분류', 'Categories'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 분류 · 카탈로그만 (주문 · 수금 없음)
@@ -73,7 +73,7 @@ export const CAN = {
   office:  ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
   acct:    ['verify', 'cod', 'ach', 'invLookup'],
   pickinv: ['flow', 'invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],
-  invoice: ['newOrder', 'invoice', 'void', 'verify', 'bo'],
+  invoice: ['newOrder', 'invoice', 'void', 'items', 'bo'],
   whmgr:   ['flow', 'assign', 'pick', 'ship', 'items', 'bo'],
   pick:    ['pick', 'ship', 'items'],
   catalog: ['items', 'catalog']   // 🎨 디자인 · 카탈로그 담당: 아이템 · 분류 · 사진 · 세트 · 바코드 (주문 · 수금은 안 봄)

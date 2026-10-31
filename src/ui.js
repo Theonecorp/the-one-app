@@ -70,10 +70,13 @@ const BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined'
 let GUARD = false, LAST_HASH = BROWSER ? location.hash : '';
 export function openModal(html, opts) {
   const m = $('modal'), box = $('mbox');
+  /* 창(box)을 .bwrap 으로 한 번 감싸고 ✕ 는 그 안에 — 화면 모서리가 아니라 창 모서리에 붙음 (v0.8.137) */
+  let w = m.querySelector('.bwrap'); if (!w) { w = document.createElement('div'); w.className = 'bwrap'; m.insertBefore(w, box); w.appendChild(box); }
+  w.className = 'bwrap' + (opts && opts.wide ? ' wide' : '');
   box.className = 'box' + (opts && opts.wide ? ' wide' : ''); box.innerHTML = html; m.classList.add('on');
   box.scrollTop = 0;
   if (opts && opts.onClose) m._onClose = opts.onClose; else m._onClose = null;
-  if (!m.querySelector('.mclose')) { const x = document.createElement('button'); x.className = 'mclose'; x.type = 'button'; x.setAttribute('aria-label', 'close'); x.innerHTML = '✕'; x.onclick = () => closeModal(); m.appendChild(x); }
+  if (!w.querySelector('.mclose')) { const x = document.createElement('button'); x.className = 'mclose'; x.type = 'button'; x.setAttribute('aria-label', 'close'); x.innerHTML = '✕'; x.onclick = () => closeModal(); w.appendChild(x); }
   guardSync();
 }
 export function closeModal() { const m = $('modal'); m.classList.remove('on'); if (m._onClose) { const f = m._onClose; m._onClose = null; f(); } }

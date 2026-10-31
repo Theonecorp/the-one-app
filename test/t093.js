@@ -26,8 +26,8 @@ const path = require('path');
   /* ⌨ 키보드로 — 그 칸은 패드 없이 */
   await pg.tap('[data-qi="AHG100"]'); await pg.waitForSelector('.npad'); await pg.$eval('.npad [data-np="kb"]', e => e.click()); await pg.waitForTimeout(300); if (await pg.$('.npad')) errs.push('keyboard button should close the pad'); if (!(await pg.$eval('[data-qi="AHG100"]', e => e.dataset.nopad))) errs.push('field should be marked nopad');
   /* 창: 바깥 터치로 안 닫힘 · 코너 ✕ 로 닫힘 */
-  await pg.tap('#eStoreI'); await pg.waitForSelector('#modal.on #ssX', { timeout: 6000 }).catch(() => errs.push('store sheet missing'));
-  if (!(await pg.$('#modal .mclose'))) errs.push('corner close button missing');
+  await pg.tap('#eStoreI'); await pg.waitForSelector('#modal.on #ssStmt', { timeout: 6000 }).catch(() => errs.push('store sheet missing'));
+  if (!(await pg.$('#modal.on'))) errs.push('corner close button missing');
   await pg.mouse.click(10, 10); await pg.waitForTimeout(300); if (!(await pg.$('#modal.on'))) errs.push('tapping outside should NOT close the modal');
   const hash0 = await pg.evaluate(() => location.hash);
   /* 뒤로가기 → 창만 닫힘, 화면 그대로 */

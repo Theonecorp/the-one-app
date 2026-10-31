@@ -11,7 +11,7 @@ const path = require('path'), fs = require('fs');
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; window.__AFTER_SEED__ = s => { s.settings[0].ordersOn = true; }; });
   await pg.goto('http://127.0.0.1:8769/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
-  await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200); await pg.waitForTimeout(700); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(150); }
+  await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200); await pg.waitForTimeout(700); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(150); }
   await shot('g0_cats');
   await pg.click('[data-ck="Earrings · Hoops & Pincatch"]'); await pg.waitForTimeout(200);
   log('branch (no items yet):', !!(await pg.$('#eAll')), '| L2 tiles:', await pg.$$eval('[data-ck]', els => els.map(e => e.textContent.trim()).join(' | ')));
@@ -33,7 +33,7 @@ const path = require('path'), fs = require('fs');
   await pg.fill('#eQ1', 'C4-EB01'); await pg.waitForTimeout(300); await pg.click('[data-gc="C4-EB01"] .gkit'); await pg.waitForSelector('#kAll'); await pg.click('#kAll'); await pg.waitForTimeout(100);
   await pg.waitForTimeout(500); log('kit spread EB103:', await pg.evaluate(() => (JSON.parse(localStorage.getItem('theone.order.wip.luke@theonefl.com')).lines.find(l => l.c === 'EB103') || {}).q));
   /* 손님 보기 */
-  await pg.fill('#eQ1', ''); await pg.click('[data-ck="Earrings · Hoops & Pincatch"]').catch(() => {}); await pg.waitForTimeout(150); await pg.click('[data-ck="Aluminum"]').catch(() => {}); await pg.waitForTimeout(150); await pg.click('[data-ck="Gold"]').catch(() => {}); await pg.waitForTimeout(250);
+  await pg.fill('#eQ1', ''); await pg.waitForTimeout(300); /* v0.8.132: 검색어가 있으면 분류 타일이 숨어 있으므로 지운 뒤 잠깐 */ await pg.click('[data-ck="Earrings · Hoops & Pincatch"]', { timeout: 3000 }).catch(() => {}); await pg.waitForTimeout(150); await pg.click('[data-ck="Aluminum"]', { timeout: 3000 }).catch(() => {}); await pg.waitForTimeout(150); await pg.click('[data-ck="Gold"]', { timeout: 3000 }).catch(() => {}); await pg.waitForTimeout(250);
   await pg.click('#eShow'); await pg.waitForSelector('#viewer'); await pg.click('#vR'); await pg.click('#vA'); await pg.click('#vP'); await shot('g3_show'); await pg.click('#vX');
   await pg.click('[data-ev="cart"]'); await pg.waitForTimeout(200); await shot('g4_cart');
   log('types:', (await pg.textContent('#eTypes')).replace(/\s+/g, ' '));
@@ -85,7 +85,7 @@ const path = require('path'), fs = require('fs');
   log('csv head:', await pg.evaluate(async () => (await import('/src/catalog.js')).catalogCsv().split('\r\n')[0]));
   /* 세일즈맨: 임시저장 2건 → 보낼 오더 카드 → 한 번에 보내기 */
   await pg.click('#hMenu'); await pg.waitForSelector('#mOut'); await pg.evaluate(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'Brandon' }; }); await pg.click('#mOut'); await pg.waitForSelector('#btnLogin'); await pg.click('#btnLogin'); await pg.waitForSelector('#nav button');
-  for (let k = 0; k < 2; k++) { await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', k ? '1271' : 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200); await pg.waitForTimeout(700); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(150); } await pg.fill('#eQ1', 'AHG10' + k); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(100); await pg.click('#eDraft'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(700); }
+  for (let k = 0; k < 2; k++) { await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', k ? '1271' : 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200); await pg.waitForTimeout(700); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(150); } await pg.fill('#eQ1', 'AHG10' + k); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(100); await pg.click('#eDraft'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(700); }
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#oSendAll'); await shot('g12_sendcard');
   log('drafts to send:', await pg.$$eval('[data-sd]', els => els.length));
   await pg.click('#oSendAll'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(1200);

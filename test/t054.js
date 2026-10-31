@@ -40,7 +40,7 @@ const path = require('path'), fs = require('fs');
   log('back chain: entry→ar →back', b1, '→back', b2); if (b1 !== h0 || b2 !== h0) errs.push('back should go up to home (tab → home), got ' + b1 + ' ' + b2);   // v0.8.44: 뒤로 = 한 단계 위
   /* 새 오더 → 저장만 있어야 함 */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
-  await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(200); }
+  await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(200); }
   log('editor buttons:', await pg.$$eval('.sticky .btns button', b => b.map(x => x.id + ':' + x.textContent.trim())));
   if (await pg.$('#eSend')) errs.push('editor must not have Send button');
   await pg.fill('#eQ1', 'AHG100'); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(300);
@@ -114,7 +114,7 @@ const path = require('path'), fs = require('fs');
   log('after edit:', (await txt(pg, '[data-it="NEWX1"]')).slice(0, 80));
   await shot(pg, 'd3_items');
   /* 오더 화면에서 새 아이템 검색 */
-  await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(200); }
+  await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(200); }
   await pg.fill('#eQ1', 'NEWX1'); await pg.waitForTimeout(400); log('order search NEWX1:', (await txt(pg, '#eRes')).slice(0, 80));
   if (!/NEWX1/.test(await txt(pg, '#eRes'))) errs.push('new item not searchable in order');
   await pg.close();

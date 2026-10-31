@@ -12,7 +12,7 @@ const path = require('path');
   let pg = await mk('brandon@x.com');
   let nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('salesman nav:', nav.join(' ')); if (nav.includes('mycomm')) errs.push('salesman nav should not have 정산서'); if (nav.includes('stock')) errs.push('salesman should not have stock tab');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', '1271'); await pg.waitForSelector('[data-ac="1271"]'); await pg.click('[data-ac="1271"]'); await pg.waitForTimeout(1200);
-  if (await pg.$('#ssX')) { await pg.click('#ssX'); await pg.waitForTimeout(300); }
+  if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(300); }
   await pg.fill('#eQ1', 'AHG10'); await pg.waitForTimeout(500); await pg.click('[data-gc="AHG100"]'); await pg.waitForTimeout(400); await pg.click('[data-gc="AHG100"]'); await pg.waitForTimeout(400); await pg.click('[data-gc="AHG101"]'); await pg.waitForTimeout(400);
   for (let i = 0; i < 4; i++) { await pg.click('[data-gc="AHG101"]'); await pg.waitForTimeout(400); }
   log('grid qty:', await pg.textContent('[data-gq="AHG100"]'), await pg.textContent('[data-gq="AHG101"]'));
