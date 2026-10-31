@@ -27,7 +27,13 @@ export async function stockOf(codes) {
   const out = {}; codes.forEach(c => { out[c] = STOCK[c] ? Number(STOCK[c].qty) || 0 : 0; });
   return out;
 }
-export function dropStockCache() { Object.keys(STOCK).forEach(k => { delete STOCK[k]; }); }
+/** 📦 전체 재고 한 번에 (아이템 목록 · 걸러보기용) — 5분 보관 */
+let ALL = null, ALL_AT = 0;
+export async function stockAll(force) {
+  if (!force && ALL && Date.now() - ALL_AT < 300000) return ALL;
+  const rows = await S.DB.list('stock'); const m = {}; rows.forEach(r => { m[r.code || r.id] = Number(r.qty) || 0; STOCK[r.code || r.id] = r; }); ALL = m; ALL_AT = Date.now(); return m;
+}
+export function dropStockCache() { ALL = null; Object.keys(STOCK).forEach(k => { delete STOCK[k]; }); }
 /** 움직임 적용 — moves: [{ c, delta, note? }] (같은 코드는 합침). kind: recv · adj · count · inv · void. count 면 delta 대신 to(세어 본 수량) */
 export async function applyMoves(moves, kind, ref, note) {
   const by = {}; moves.forEach(m => { const c = String(m.c || '').toUpperCase(); if (!c) return; by[c] = by[c] || { c, delta: 0, to: null, note: m.note || '' }; if (m.to != null) by[c].to = Number(m.to) || 0; else by[c].delta += Number(m.delta) || 0; });

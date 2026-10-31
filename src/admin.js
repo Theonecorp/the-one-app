@@ -1342,19 +1342,27 @@ async function locFileImport(file, out, after) {
     const sug = suggestCatLocs(rows), cur = catLocs(), newSug = Object.keys(sug).filter(k => cur[k] !== sug[k]);
     const aisles = {}; r.patches.forEach(p => { const a = p.set.loc.split(/[-.\s/]/)[0]; aisles[a] = (aisles[a] || 0) + 1; });
     const al = Object.keys(aisles).sort(new Intl.Collator('en', { numeric: true }).compare);
-    out.innerHTML = '<div class="alert a-blu">파일 위치 <b>' + r.patches.length.toLocaleString() + '</b>줄 · 목록에 있는 아이템 중 바뀌는 것 <b>' + sum.changed.toLocaleString() + '</b>개 · 통로 ' + al.length + '개 (' + esc(al.slice(0, 30).join(' · ')) + (al.length > 30 ? ' …' : '') + ')' + (r.blank ? '<br>통로가 비어 있는 줄 ' + r.blank + '개는 건너뜀' : '') + '</div>' +
-      (sum.missing.length ? '<div class="alert a-amb">우리 아이템 목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 12).join(', ')) + '</div>' : '') +
+    /* 📦 재고 수량 — 파일에 있으면 우리 목록에 있는 코드만 "세어 본 수량"으로 맞춤 (지금 재고와 같은 것은 건너뜀) */
+    const byC = catalog().byCode, qRows = (r.qtys || []).filter(x => byC[x.code]), qMiss = (r.qtys || []).length - qRows.length, qSum = qRows.reduce((a, x) => a + x.q, 0);
+    let qChg = null; if (qRows.length) { try { const { stockOf } = await import('./stock.js'); const cur = await stockOf(qRows.map(x => x.code)); qChg = qRows.filter(x => (cur[x.code] || 0) !== x.q); } catch (e) { qChg = qRows; } }
+    out.innerHTML = '<div class="alert a-blu">파일 위치 <b>' + r.patches.length.toLocaleString() + '</b>줄 · 목록에 있는 아이템 중 바뀌는 것 <b>' + sum.changed.toLocaleString() + '</b>개 · 통로 ' + al.length + '개 (' + esc(al.slice(0, 30).join(' · ')) + (al.length > 30 ? ' …' : '') + ')' + (r.blank ? '<br>통로가 비어 있는 줄(00 · 빈칸) ' + r.blank + '개는 건너뜀' : '') + '</div>' +
+      (sum.missing.length ? '<div class="alert a-amb">우리 아이템 목록에 없는 코드 ' + sum.missing.length + '개 (건너뜀): ' + esc(sum.missing.slice(0, 12).join(', ')) + (sum.missing.length > 12 ? ' …' : '') + '</div>' : '') +
+      (qRows.length ? '<label class="pick on" id="locQty" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>📦 재고 수량도 맞추기 — ' + qRows.length.toLocaleString() + '개 아이템 · 합 ' + qSum.toLocaleString() + '개</b><small>파일의 "재고 수량"을 지금 재고로 (실사와 같음 · 재고 기록에 "가져오기"로 남음)' + (qChg ? ' · 지금과 다른 것 ' + qChg.length.toLocaleString() + '개' : '') + (qMiss ? ' · 목록에 없는 코드 ' + qMiss + '개 건너뜀' : '') + '</small></span></label>' : '') +
       (newSug.length ? '<label class="pick on" id="locCat" style="margin-top:6px"><span class="ck">✓</span><span class="pm"><b>분류 기본 위치도 채우기 · ' + newSug.length + '개 분류</b><small>' + esc(newSug.slice(0, 8).map(k => k.split('\u0001').join(' › ') + ' → ' + sug[k]).join(' / ')) + (newSug.length > 8 ? ' …' : '') + '</small></span></label>' : '') +
-      (sum.changed || newSug.length ? '<button class="b-blue" id="locGo" style="margin-top:8px">이대로 적용</button>' : '<div class="none">바뀌는 것이 없습니다</div>');
+      (sum.changed || newSug.length || qRows.length ? '<button class="b-blue" id="locGo" style="margin-top:8px">이대로 적용</button>' : '<div class="none">바뀌는 것이 없습니다</div>');
     if ($('locCat')) $('locCat').onclick = () => $('locCat').classList.toggle('on');
+    if ($('locQty')) $('locQty').onclick = () => $('locQty').classList.toggle('on');
     if ($('locGo')) $('locGo').onclick = async () => {
-      const withCat = $('locCat') && $('locCat').classList.contains('on');
-      if (!(await confirmBox(sum.changed.toLocaleString() + '개 아이템 위치' + (withCat ? ' + 분류 ' + newSug.length + '개 기본 위치' : '') + '를 저장할까요? 모든 폰의 픽킹 리스트에 반영됩니다.', '적용'))) return;
+      const withCat = $('locCat') && $('locCat').classList.contains('on'), withQty = $('locQty') && $('locQty').classList.contains('on') && qRows.length;
+      const qL = withQty ? (qChg || qRows) : [];
+      if (!(await confirmBox(sum.changed.toLocaleString() + '개 아이템 위치' + (withCat ? ' + 분류 ' + newSug.length + '개 기본 위치' : '') + (withQty ? ' + 📦 재고 수량 ' + qL.length.toLocaleString() + '개' : '') + '를 저장할까요? 모든 폰에 반영됩니다.', '적용'))) return;
       busy(true);
       try {
         if (sum.changed) await editCatalog(S, (rw, ct, st) => applyBulk(rw, ct, st, r.patches));
         if (withCat) { const app = (await S.DB.get('settings', 'app')) || {}; const m = Object.assign({}, app.catLoc || {}); newSug.forEach(k => { m[k] = sug[k]; }); app.catLoc = m; await S.DB.set('settings', 'app', app); S.settings.catLoc = m; setLocs(m); }
-        toast('📍 위치 저장 — 아이템 ' + sum.changed + (withCat ? ' · 분류 ' + newSug.length : ''), 'good'); out.innerHTML = '<div class="alert a-grn">📍 위치 저장 — 아이템 ' + sum.changed + (withCat ? ' · 분류 ' + newSug.length : '') + '</div>'; (after || treeAdmin)();
+        let nQ = 0;
+        if (withQty && qL.length) { const { applyMoves } = await import('./stock.js'); for (let i = 0; i < qL.length; i += 200) { nQ += await applyMoves(qL.slice(i, i + 200).map(x => ({ c: x.code, to: x.q })), 'count', 'import', '📥 ' + file.name); out.innerHTML = '<div class="load">📦 재고 ' + Math.min(i + 200, qL.length).toLocaleString() + ' / ' + qL.length.toLocaleString() + '…</div>'; } }
+        toast('📍 위치 저장 — 아이템 ' + sum.changed + (withCat ? ' · 분류 ' + newSug.length : '') + (withQty ? ' · 📦 재고 ' + nQ : ''), 'good'); out.innerHTML = '<div class="alert a-grn">📍 위치 저장 — 아이템 ' + sum.changed + (withCat ? ' · 분류 ' + newSug.length : '') + (withQty ? ' · 📦 재고 수량 ' + nQ.toLocaleString() + '개 맞춤' : '') + '</div>'; (after || treeAdmin)();
       } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
       busy(false);
     };

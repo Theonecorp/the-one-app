@@ -8,13 +8,15 @@
  * ============================================================ */
 import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, itabs } from './ui.js';
 import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1, setItemPhoto, shrinkImage, photoOv } from './catalog.js';
+import { stockAll } from './stock.js';
 import { typeOfItem, invTypes } from './invoicing.js';
 import { can } from './main.js';
 import { levelTool } from './lvtool.js';
 
 let S = null;
 /* 화면 상태 — 탭을 오가도 유지 */
-const IT = { mode: 'all', path: [], q: '', page: 100, sel: new Set(), aisle: '', showA: false, view: 'list' };   // view: 📋 목록 · 🗂 분류별 · 📍 통로별 (v0.8.139)
+const IT = { mode: 'all', path: [], q: '', page: 100, sel: new Set(), aisle: '', showA: false, view: 'list' };
+let STK = {};   // 📦 코드 → 재고 수량 (stockAll 로 한 번 읽음)   // view: 📋 목록 · 🗂 분류별 · 📍 통로별 (v0.8.139)
 const COLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 export function register(state) {
   S = state; Router.on('items', page);
@@ -39,7 +41,10 @@ async function page(arg) {
   $('page').innerHTML = '<div class="load">아이템 목록 읽는 중…</div>';
   try { await loadCatalog(S); } catch (e) { if (!catalog()) { $('page').innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; } }
   IT.page = 100; paint();
+  /* 📦 재고 — 한 번 읽어 줄마다 표시 · 재고 걸러보기 (없어도 화면은 그대로) */
+  if (!STK_AT || Date.now() - STK_AT > 300000) { try { STK = await stockAll(); STK_AT = Date.now(); if ($('itList')) paint(); } catch (e) {} }
 }
+let STK_AT = 0;
 
 /** 지금 조건(분류 경로 · 걸러보기 · 검색)에 맞는 아이템 — 코드 순 */
 function current() {
@@ -51,6 +56,7 @@ function current() {
   if (IT.aisle) list = list.filter(x => (aisleOf(locOf(x)) || '—') === IT.aisle).sort((a, b) => COLL.compare(locOf(a), locOf(b)) || COLL.compare(a.c, b.c));
   if (IT.path.length) list = list.filter(x => inPath(x, IT.path));
   if (IT.mode === 'vis') list = list.filter(x => !x.h); else if (IT.mode === 'hid') list = list.filter(x => x.h); else if (IT.mode === 'noph') list = list.filter(x => !x.ph && !x.h);   // 📷 사진 없음 (숨김 제외)
+  else if (IT.mode === 'instk') list = list.filter(x => (STK[x.c] || 0) > 0); else if (IT.mode === 'nostk') list = list.filter(x => !x.h && !(STK[x.c] > 0)); else if (IT.mode === 'lowstk') list = list.filter(x => (STK[x.c] || 0) > 0 && STK[x.c] < 12);   // 📦 재고 있음 · 없음 · 부족
   else if (IT.mode === 'nolv') list = list.filter(x => !x.l1 && !x.virt && !x.h); else if (IT.mode === 'nopr') list = list.filter(x => !(x.p > 0) && !x.h); else if (IT.mode === 'nobar') list = list.filter(x => !x.b && !x.virt && !x.h);
   return list;
 }
@@ -58,6 +64,7 @@ function current() {
 function paint() {
   const C = catalog();
   const nAll = C.items.filter(x => !x.virt).length, nHid = C.items.filter(x => x.h && !x.virt).length, nNoPh = C.items.filter(x => !x.ph && !x.h).length;
+  const nStk = { in: 0, low: 0, out: 0 }; C.items.forEach(x => { if (x.virt) return; const n = STK[x.c] || 0; if (n > 0) { nStk.in++; if (n < 12) nStk.low++; } else if (!x.h) nStk.out++; });
   let node = C.treeA; const under = [];
   for (const p of IT.path) { if (node.map[p]) { node = node.map[p]; under.push(p); } else break; }
   IT.path = under;
@@ -70,7 +77,7 @@ function paint() {
   $('page').innerHTML = '<div class="card"><h2>🏷 ' + bi('아이템 관리', 'Items') + ' <span class="muted" style="font-weight:400;font-size:12px">' + nAll.toLocaleString() + '개 · 👁 보임 ' + (nAll - nHid).toLocaleString() + ' · 🙈 숨김 ' + nHid.toLocaleString() + '</span></h2>' +
     '<div style="display:flex;gap:6px;margin-top:8px"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (locOnly() ? '' : '<button class="b-blue" id="itNew" style="flex:0 0 auto;width:auto;white-space:nowrap">＋ ' + bi('새 아이템', 'New') + '</button>') + '</div>' +
     itabs([['list', '📋', '목록', 'List'], ['tree', '🗂', '분류별', 'By category'], ['aisle', '📍', '통로별', 'By aisle']], view, 'iv') +
-    '<div class="chips">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()]].concat(['nolv', 'nopr', 'nobar'].includes(IT.mode) ? [[IT.mode, { nolv: '🗂 ' + bt('분류 없음', 'No category'), nopr: '💲 ' + bt('가격 없음', 'No price'), nobar: '🏷 ' + bt('바코드 없음', 'No barcode') }[IT.mode]]] : []).map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
+    '<div class="chips">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()], ['instk', '📦 ' + bt('재고 있음', 'In stock') + ' ' + nStk.in.toLocaleString()], ['lowstk', '⚠️ ' + bt('재고 부족', 'Low') + ' ' + nStk.low.toLocaleString()], ['nostk', '✕ ' + bt('재고 없음', 'Out') + ' ' + nStk.out.toLocaleString()]].concat(['nolv', 'nopr', 'nobar'].includes(IT.mode) ? [[IT.mode, { nolv: '🗂 ' + bt('분류 없음', 'No category'), nopr: '💲 ' + bt('가격 없음', 'No price'), nobar: '🏷 ' + bt('바코드 없음', 'No barcode') }[IT.mode]]] : []).map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
     (view === 'tree' ? crumbs + tiles : '') + (view === 'aisle' ? aisleRow(C) : '') +
     (locOnly() ? '' : '<div class="muted" style="margin-top:6px;font-size:12px">' + bt('체크해서 여러 개를 한 번에 숨기기 · 보이기 · 분류 옮기기 · 삭제. 🙈 숨김은 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연).', 'Check items to hide · show · move · delete in bulk. Hidden items do not appear on the salesman order screen.') + ' <a href="#" id="itLv" onclick="return false">📥 ' + bt('레벨 · 그룹 엑셀로 일괄 변경', 'Bulk update levels by Excel') + '</a></div>') + '</div>' +
     '<div class="card"><div id="itList"></div></div>' + (isAdmin() ? '<div id="itSbm"></div>' : '') +
@@ -119,7 +126,7 @@ function row(it) {
   return '<div class="pr irow' + (it.h ? ' hid' : '') + '"><input type="checkbox" data-ic="' + esc(it.c) + '" ' + (IT.sel.has(it.c) ? 'checked' : '') + ' style="width:20px;height:20px;margin-right:8px;flex:0 0 auto">' +
     (it.ph ? '<img src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:8px;margin-right:8px" alt="">' : '<span class="noph" title="' + esc(bt('사진 없음', 'No photo')) + '">📷✕</span>') +
     '<div class="ct tap" data-it="' + esc(it.c) + '"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a">🧩 세트</span>' : '') + (it.h ? ' <span class="tag t-x">🙈 숨김</span>' : '') + (locOf(it) ? ' <span class="loc"' + (it.loc ? '' : ' style="background:#64748b" title="분류 기본 위치"') + '>📍' + esc(locOf(it)) + '</span>' : '') + '</b><small>' + esc(it.d) + '</small><small>' + esc(pathOf(it).filter(Boolean).map(cleanName).join(' › ') || '분류 없음') + (it.b ? ' · ' + esc(it.b) : '') + '</small></div>' +
-    '<div class="pa"><b>' + money(it.p) + '</b>' + (it.s ? '<small>SRP ' + money(it.s) + '</small>' : '') + '</div>' +
+    '<div class="pa"><b>' + money(it.p) + '</b>' + (it.s ? '<small>SRP ' + money(it.s) + '</small>' : '') + '<small class="stk' + ((STK[it.c] || 0) <= 0 ? ' s0' : STK[it.c] < 12 ? ' slow' : '') + '">📦 ' + ((STK[it.c] || 0) > 0 ? STK[it.c].toLocaleString() : bt('없음', 'out')) + '</small>' + (it.sup ? '<small class="muted">🏭 ' + esc(it.sup) + '</small>' : '') + '</div>' +
     (it.virt || locOnly() ? '' : '<button class="b-ghost b-sm" data-ih="' + esc(it.c) + '" data-on="' + (it.h ? '0' : '1') + '" title="' + (it.h ? '보이기' : '숨기기') + '" style="margin-left:6px">' + (it.h ? '👁' : '🙈') + '</button>') + '</div>';
 }
 /** 아래 고정 — 선택한 것들에 한 번에 */
@@ -214,7 +221,7 @@ function form(it, newCode) {
     '<div class="two"><div class="fg"><label>도매가 <span class="en">Price</span> * $</label><input id="fP" value="' + esc(x.p === '' ? '' : x.p) + '" inputmode="decimal" style="font-weight:800;text-align:right"></div><div class="fg"><label>소비자가 <span class="en">SRP</span> $</label><input id="fS" value="' + esc(x.s || '') + '" inputmode="decimal" style="text-align:right"></div></div>' +
     '<div class="two">' + catPick('fG', '그룹 <span class="en">Group</span>', L.groups, x.g) + catPick('fL1', 'Level 1', L.l1s(x.g), x.l1) + '</div>' +
     '<div class="two">' + catPick('fL2', 'Level 2', L.l2s(x.g, x.l1), x.l2) + catPick('fL3', 'Level 3', L.l3s(x.g, x.l1, x.l2), x.l3) + '</div>' +
-    '<div class="two"><div class="fg"><label>📍 창고 위치 · 통로 <span class="en">Location · Aisle</span></label><input id="fLoc" value="' + esc(x.loc || '') + '" placeholder="' + esc(it ? (locOf(Object.assign({}, x, { loc: '' })) || 'A-03-2') : 'A-03-2') + '" autocapitalize="characters" style="text-transform:uppercase"></div><div class="fg"><label>사진 주소 <span class="en">Photo URL</span></label><input id="fPh" value="' + esc(x.phSrc === 'app' || x.phSrc === 'none' ? (x.ph0 || '') : (x.ph || '')) + '" placeholder="https://…"></div></div>' +
+    '<div class="two"><div class="fg"><label>📍 창고 위치 · 통로 <span class="en">Location · Aisle</span></label><input id="fLoc" value="' + esc(x.loc || '') + '" placeholder="' + esc(it ? (locOf(Object.assign({}, x, { loc: '' })) || 'A-03-2') : 'A-03-2') + '" autocapitalize="characters" style="text-transform:uppercase"></div><div class="fg"><label>🏭 공급업체 <span class="en">Supplier</span></label><input id="fSup" value="' + esc(x.sup || '') + '" placeholder="#CHINA2 · SHENGXING" autocapitalize="characters" list="fSupL"><datalist id="fSupL">' + Array.from(new Set(C.items.map(i => i.sup).filter(Boolean))).sort().map(v => '<option value="' + esc(v) + '">').join('') + '</datalist></div></div><div class="two"><div class="fg"><label>사진 주소 <span class="en">Photo URL</span></label><input id="fPh" value="' + esc(x.phSrc === 'app' || x.phSrc === 'none' ? (x.ph0 || '') : (x.ph || '')) + '" placeholder="https://…"></div></div>' +
     aisleHint(C) +
     (isNew ? '<div class="phbox"><b>📷 ' + bt('사진', 'Photo') + '</b> <label class="b-blue b-sm" style="margin:0;cursor:pointer">📷 ' + bt('사진 고르기', 'Pick photo') + '<input type="file" id="fPhNew" accept="image/*" style="display:none"></label> <span class="muted" id="fPhNewN" style="font-size:12px">' + bt('등록할 때 함께 저장됩니다. 드라이브 item_picture 폴더에 코드 이름(예: 18KCNG01.jpg)으로 사진을 넣으면 사진 주소 없이도 자동으로 붙습니다.', 'Saved with the item. A photo named by the code (e.g. 18KCNG01.jpg) in the Drive item_picture folder attaches automatically — no URL needed.') + '</span></div>' : '<div class="phbox" id="fPhBox"></div>') +
     (x.virt ? '' : '<label class="pick ' + (x.h ? '' : 'on') + '" id="fVis"><span class="ck">✓</span><span class="pm"><b>👁 세일즈맨 주문 화면에 보이기 <span class="en">Visible to salesmen</span></b><small>끄면 🙈 숨김 — 목록 · 기록엔 남고 주문 분류 · 검색에서만 빠집니다 (단종 · 재입고 지연)</small></span></label>') +
@@ -264,12 +271,12 @@ function form(it, newCode) {
     if (isNew && C.byCode[v.c]) return toast('이미 있는 코드입니다 — 찾아서 수정하세요', 'bad');
     if (v.b) { const dup = C.items.find(i => i.b === v.b && i.c !== v.c); if (dup && !(await confirmBox('바코드 ' + v.b + ' 는 ' + dup.c + ' 에도 있습니다. 그래도 저장할까요?', '저장'))) return; }
     if (v.ph && !/^https?:\/\//i.test(v.ph)) return toast('사진 주소는 https:// 로 시작해야 합니다', 'bad');
-    const locV = $('fLoc') ? $('fLoc').value.trim().toUpperCase() : (x.loc || '');
+    const locV = $('fLoc') ? $('fLoc').value.trim().toUpperCase() : (x.loc || ''), supV = $('fSup') ? $('fSup').value.trim().toUpperCase() : (x.sup || '');
     const phNew = $('fPhNew') && $('fPhNew').files[0];
     closeModal();
     IT.q = v.c;
     await save((rows, cats) => {
-      const row = [v.c, v.d, v.p, v.s, v.b, v.g, v.l1, v.l2, v.l3, v.ph, vis ? 0 : 1, locV];
+      const row = [v.c, v.d, v.p, v.s, v.b, v.g, v.l1, v.l2, v.l3, v.ph, vis ? 0 : 1, locV, supV];
       const i = rows.findIndex(r => r[0] === v.c); if (i >= 0) rows[i] = row; else rows.push(row);
       ensureCats(rows, cats); return 1;
     }, () => (isNew ? '등록 — ' : '저장 — ') + v.c + (vis ? '' : ' (🙈 숨김)'));
