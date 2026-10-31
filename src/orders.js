@@ -18,6 +18,7 @@ import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
 import * as Notes from './notes.js';
 import { stageAge } from './flow.js';
+import { stockOf } from './stock.js';
 import * as NewAcct from './newacct.js';
 import * as Notify from './notify.js';
 
@@ -746,8 +747,14 @@ function itemRow(it) {
   return '<div class="pr irow' + (cur ? ' v' : '') + tapCls(IDX[it.c]) + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
     (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith" data-big="' + esc(it.c) + '"></div>') +
     '<div class="ct"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '<span class="nm desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</span></b>' + (it.k ? '<small>' + esc(kitLine(it)) + '</small>' : '') +
-    '<small class="ln"><button class="pedit" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</button>' + (dc ? '<span>→ ' + money(it.p * (1 - dc / 100)) + '</span>' : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? '<span>' + bt('지난번', 'last') + ' ' + money(lp) + '</span>' : '') + (it.s ? '<span>SRP ' + money(it.s) + '</span>' : '') + (hist ? '<span class="hist">🕘 ' + esc(hist) + '</span>' : '') + '</small></div>' +
+    '<small class="ln"><button class="pedit" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</button>' + (dc ? '<span>→ ' + money(it.p * (1 - dc / 100)) + '</span>' : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? '<span>' + bt('지난번', 'last') + ' ' + money(lp) + '</span>' : '') + (it.s ? '<span>SRP ' + money(it.s) + '</span>' : '') + '<span class="stk" data-stk="' + esc(it.c) + '">📦 …</span>' + (hist ? '<span class="hist">🕘 ' + esc(hist) + '</span>' : '') + '</small></div>' +
     qtyBox(it.c, cur) + '</div>';
+}
+/** 📦 실재고 — 보이는 아이템만 읽어 와서 줄 · 카드에 채움 (0 이면 빨강 "없음", 적으면 주황). 못 읽어도 화면은 그대로 */
+function fillStock(root, codes) {
+  if (!codes.length) return;
+  stockOf(codes).then(m => { root.querySelectorAll('[data-stk]').forEach(el => { const c = el.dataset.stk; if (!(c in m)) return; const n = m[c] || 0; const card = el.classList.contains('gstk'); el.textContent = card ? (n > 0 ? '📦' + (n > 999 ? '999+' : n) : '✕') : '📦 ' + (n > 0 ? n.toLocaleString() : bt('없음', 'out')); el.classList.toggle('s0', n <= 0); el.classList.toggle('slow', n > 0 && n < 12); }); })
+    .catch(() => root.querySelectorAll('[data-stk]').forEach(el => { el.textContent = ''; }));
 }
 /** 사진 카드 — 누르면 1개 담김, 숫자를 누르면 수량 입력, − 로 빼기 */
 /** 세트 사진이 없을 때 — 구성품 사진 4장 모자이크 (세트라는 표시와 함께) */
@@ -763,7 +770,7 @@ function itemCard(it) {
   const name = it.k ? (it.kn || it.d) : it.d;
   const ln = IDX[it.c], hl = Store.histLast(INFO, it.c);   // 🕘 이 가게에 마지막으로 나간 날·수량
   return '<div class="gcard' + (cur ? ' on' : '') + tapCls(ln) + (it.k ? ' kit' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
-    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'">' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + (hl ? '<span class="ghist" title="' + esc(Store.histText(INFO, it.c, 8)) + '">🕘 ' + esc(hl) + '</span>' : '') + '</div>' +
+    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'">' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + (hl ? '<span class="ghist" title="' + esc(Store.histText(INFO, it.c, 8)) + '">🕘 ' + esc(hl) + '</span>' : '') + '<span class="gstk" data-stk="' + esc(it.c) + '"></span></div>' +
     (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') +
     '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (multi(ln) ? '<span class="gtap" data-gt="' + esc(it.c) + '">×' + ln.tap + '</span>' : '') + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
     '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pe="' + esc(it.c) + '">' + priceTxt(it) + '</span></div></div>';
@@ -792,6 +799,7 @@ function paintResults() {
     (all.length > res.length ? '<button class="b-ghost" id="eMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') : '<div class="none">' + bt('찾는 아이템이 없습니다', 'No items found') + (isStaff() && O.q ? '<br><a href="#/items/' + encodeURIComponent(O.q.trim()) + '">🏷 ＋ 새 아이템으로 등록 · Register as new item</a>' : '') + '</div>');
   const root = $('eRes');
   bindQty(root);
+  fillStock(root, res.map(x => x.c));
   if ($('eMore')) $('eMore').onclick = () => { PAGE += 60; paintResults(); };
   root.querySelectorAll('[data-big]').forEach(el => el.onclick = () => { const i = LAST.findIndex(x => x.c === el.dataset.big); showMode(LAST, Math.max(0, i)); });
   /* 목록 보기에서 줄(이름 · 사진)을 누르면 카드처럼 담김 (프리셋 적용) */

@@ -243,7 +243,7 @@ function setKind(x, byCode) {
 }
 const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function index(pack) {
-  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
+  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', sup: r[12] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
   const byCode = {}, byBar = {}, byNorm = {};
   items.forEach(x => { byCode[x.c] = x; if (x.b) byBar[x.b] = byBar[x.b] || x; const n = norm(x.c); if (!byNorm[n]) byNorm[n] = x; });
   /* 세트: 아이템 목록에 있으면 그 아이템에 구성을 붙이고, 없으면 세트 아이템을 새로 만듦 (가격 = 구성품 합) */
@@ -573,10 +573,16 @@ export function parseLocSheet(aoa) {
   let hi = -1, ci = -1, li = -1;
   for (let i = 0; i < Math.min(10, aoa.length); i++) { const h = (aoa[i] || []).map(x => String(x == null ? '' : x).trim()); const c = h.findIndex(isCode), l = h.findIndex(isLoc); if (c >= 0 && l >= 0) { hi = i; ci = c; li = l; break; } }
   if (hi < 0) throw new Error('머리글에서 "코드"(Code · Código · 상품 코드) 칸과 "통로"(Corredor · Aisle · Location) 칸을 찾지 못했습니다');
-  const fix = v => { if (v == null) return ''; if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 100) return String(v).padStart(2, '0'); const s = String(v).trim().toUpperCase(); return /^\d$/.test(s) ? '0' + s : s; };
-  const patches = [], seen = {}; let blank = 0;
-  for (let i = hi + 1; i < aoa.length; i++) { const r = aoa[i] || []; const code = String(r[ci] == null ? '' : r[ci]).trim().toUpperCase(); if (!code || seen[code]) continue; seen[code] = 1; const loc = fix(r[li]); if (!loc) { blank++; continue; } patches.push({ code, set: { loc } }); }
-  return { patches, blank, cols: ['loc'] };
+  /* '00' · '0' · '-' 는 위치 없음 (직원 재고 프로그램은 통로 미정을 00 으로 내보냄) */
+  const fix = v => { if (v == null) return ''; if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 100) return v === 0 ? '' : String(v).padStart(2, '0'); const s = String(v).trim().toUpperCase(); if (/^0+$|^-+$|^N\/?A$|^NONE$/.test(s)) return ''; return /^\d$/.test(s) ? '0' + s : s; };
+  /* 📦 재고 수량 칸이 같이 있으면 (재고 수량 · qty · stock · estoque · quantidade) 그것도 읽어 줌 → qtys [{ code, q }] */
+  const isQty = h => /^(재고 ?수량|재고|qty|quantity|stock|in[_ ]?stock|stock[_ ]?qty|qty[_ ]?on[_ ]?hand|on[_ ]?hand|estoque|quantidade|saldo|수량)$/i.test(h);
+  const qi = (aoa[hi] || []).map(x => String(x == null ? '' : x).trim()).findIndex(isQty);
+  const patches = [], qtys = [], seen = {}; let blank = 0;
+  for (let i = hi + 1; i < aoa.length; i++) { const r = aoa[i] || []; const code = String(r[ci] == null ? '' : r[ci]).trim().toUpperCase(); if (!code || seen[code]) continue; seen[code] = 1;
+    if (qi >= 0) { const raw = String(r[qi] == null ? '' : r[qi]).replace(/[,\s]/g, ''); if (raw !== '' && !isNaN(Number(raw))) qtys.push({ code, q: Math.max(0, Math.round(Number(raw))) }); }
+    const loc = fix(r[li]); if (!loc) { blank++; continue; } patches.push({ code, set: { loc } }); }
+  return { patches, qtys, blank, cols: ['loc'].concat(qi >= 0 ? ['qty'] : []) };
 }
 /** 위치가 들어간 아이템으로 분류 기본 위치 추천 — Level 1 › 2 (없으면 Level 1) 안에서 한 통로가 70% 이상이면 그 통로 */
 export function suggestCatLocs(rows) {
