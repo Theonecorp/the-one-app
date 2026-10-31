@@ -8,14 +8,16 @@
  *  stockLog/{id}   = { code, d, delta, after, kind: recv|adj|count|inv|void, ref, note, by, at }
  *  receipts/{id}   = { id, d, from, file, n, qty, lines:[{c, q, d}], note, by, at }   ← 입고 한 건
  * ============================================================ */
-import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy, itabs } from './ui.js';
-import { loadCatalog, catalog, searchItems, exactItem, locOf } from './catalog.js';
+import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy, itabs, pageHead } from './ui.js';
+import { loadCatalog, catalog, searchItems, exactItem, locOf, aisleOf, thumb, editCatalog, setLoc, levelsOf, catStart, cleanName } from './catalog.js';
 import { can } from './main.js';
 import { openScanner } from './scan.js';
 import { newId } from './db.js';
 
 let S = null;
-const ST = { tab: 'find', q: '', recv: [], from: '', file: '', note: '' };
+const ST = { tab: 'find', q: '', recv: [], from: '', file: '', note: '', aisle: '', amode: 'map', ast: 'all', asort: 'aisle', ist: 'all' };
+const COLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+const narrow = () => window.innerWidth <= 640;
 export function register(state) { S = state; Router.on('stock', page); }
 const isStaff = () => S.role !== 'salesman';
 const who = () => (S.me && S.me.name) || S.user.name || String(S.user.email || '').split('@')[0];
@@ -104,11 +106,12 @@ export function parsePacking(aoa, byCode) {
 /* ---------- 화면 ---------- */
 async function page(arg) {
   if (!isStaff() || !can('items')) { $('page').innerHTML = '<div class="card"><div class="none">' + bt('재고는 창고 · 오피스 담당자가 봅니다', 'Inventory is for warehouse and office staff') + '</div></div>'; return; }
-  if (arg && ['find', 'recv', 'log', 'low'].includes(arg)) ST.tab = arg; else if (arg) { ST.tab = 'find'; ST.q = decodeURIComponent(arg); }   // 아이템 코드로 열면 조회 탭에서 그 코드
+  if (arg && ['find', 'aisle', 'recv', 'log', 'low'].includes(arg)) ST.tab = arg; else if (arg && arg.indexOf('aisle:') === 0) { ST.tab = 'aisle'; ST.aisle = decodeURIComponent(arg.substring(6)); } else if (arg) { ST.tab = 'find'; ST.q = decodeURIComponent(arg); }   // 아이템 코드로 열면 조회 탭에서 그 코드
   try { await loadCatalog(S); } catch (e) {}
-  const T = [['find', '🔍', '조회', 'Find'], ['recv', '📥', '입고', 'Receive'], ['log', '📋', '기록', 'History'], ['low', '⚠️', '부족', 'Low']];
+  const T = [['find', '🔍', '조회', 'Find'], ['aisle', '📍', '통로별', 'By aisle'], ['recv', '📥', '입고', 'Receive'], ['log', '📋', '기록', 'History'], ['low', '⚠️', '부족', 'Low']];
   $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📦 ' + bi('재고', 'Inventory') + '</h2>' + itabs(T, ST.tab, 'sk') + '</div><div id="skBody"></div>';
-  document.querySelectorAll('[data-sk]').forEach(b => b.onclick = () => { ST.tab = b.dataset.sk; page(); });
+  document.querySelectorAll('[data-sk]').forEach(b => b.onclick = () => { ST.tab = b.dataset.sk; if (ST.tab !== 'aisle') ST.aisle = ''; page(); });
+  if (ST.tab === 'aisle') return paintAisle();
   if (ST.tab === 'recv') return paintRecv();
   if (ST.tab === 'log') return paintLog();
   if (ST.tab === 'low') return paintLow();
@@ -130,8 +133,7 @@ async function paintFind() {
     if (!ST.all) { res.innerHTML = '<div class="load">…</div>'; try { ST.all = await stockAll(); } catch (e) { ST.all = {}; } if ($('skQ').value.trim() !== q) return; }
     const st = ST.all, lim = ST.lim || 200, show = hits.slice(0, lim), nIn = hits.filter(x => (st[x.c] || 0) > 0).length;
     res.innerHTML = '<div class="muted" style="margin:0 0 6px">' + hits.length.toLocaleString() + bt('개', ' items') + ' · 📦 ' + bt('재고 있음', 'in stock') + ' ' + nIn.toLocaleString() + '</div>' +
-      '<div class="dtw"><table class="dt"><thead><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th>📍 ' + bt('통로', 'Aisle') + '</th><th class="r">📦 ' + bt('재고', 'Stock') + '</th><th class="r hs">' + bt('가격', 'Price') + '</th></tr></thead><tbody>' +
-      show.map(it => { const n = st[it.c] || 0; return '<tr class="tap' + (it.h ? ' hid' : '') + '" data-sti="' + esc(it.c) + '"><td><b>' + esc(it.c) + '</b>' + (it.h ? ' 🙈' : '') + '</td><td class="wrap" style="min-width:150px">' + esc(it.d || '') + '</td><td>' + (locOf(it) ? '<span class="loc">' + esc(locOf(it)) + '</span>' : '<span class="muted">—</span>') + '</td><td class="r">' + (n > 0 ? '<span class="stk' + (n < 12 ? ' slow' : '') + '">' + n.toLocaleString() + '</span>' : '<span class="stk s0">' + bt('없음', 'out') + '</span>') + '</td><td class="r hs">' + (it.p ? money(it.p) : '') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+      stList(show, st) +
       (hits.length > show.length ? '<button class="b-ghost" id="skMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (hits.length - show.length).toLocaleString() + ')</button>' : '');
     res.querySelectorAll('[data-sti]').forEach(el => el.onclick = () => itemSheet(el.dataset.sti, () => { ST.all = null; paint(); }));
     if ($('skMore')) $('skMore').onclick = () => { ST.lim = lim + 200; paint(); };
@@ -139,6 +141,61 @@ async function paintFind() {
   $('skQ').oninput = debounce(() => { ST.lim = 200; paint(); }, 200); $('skQ').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const ex = exactItem($('skQ').value.trim()); if (ex) itemSheet(ex.c, paint); } };
   paint(); if (!('ontouchstart' in window)) $('skQ').focus();
 }
+/* ---------- 재고 상태 · 줄 그리기 (폰: 카드 줄 · 컴퓨터: 표) ---------- */
+/** 재고 상태 — 0 이하 없음 · 12 미만 부족 · 그 외 정상 */
+export const stStatus = n => n <= 0 ? ['out', bt('재고 없음', 'Out of stock')] : n < 12 ? ['low', bt('재고 부족', 'Low stock')] : ['ok', bt('재고 정상', 'In stock')];
+const stBadge = n => { const [k, t] = stStatus(n); return '<span class="sbadge ' + k + '">● ' + t + '</span>'; };
+const catOf = it => { const L = levelsOf(it, catStart(S)).filter(Boolean); return L.length ? cleanName(L[L.length - 1]) : ''; };
+/** 아이템 목록 — 폰에서는 직원 재고 프로그램 모양의 카드 줄(번호 · 코드 · 통로 · 분류 · 상태 · 수량 · ›), 넓은 화면에서는 표 */
+export function stList(items, st, opt) {
+  opt = opt || {};
+  if (narrow()) return '<div class="crows">' + items.map((it, i) => { const n = st[it.c] || 0; return '<div class="crow tap' + (it.h ? ' hid' : '') + '" data-sti="' + esc(it.c) + '"><span class="cidx">' + ((opt.from || 0) + i + 1) + '</span><div class="cmain"><b>' + esc(it.c) + (it.h ? ' 🙈' : '') + '</b><small>' + bt('통로', 'Aisle') + ' ' + esc(locOf(it) || '—') + (catOf(it) ? ' · ' + esc(catOf(it)) : '') + '</small></div><div class="cright">' + stBadge(n) + '<b class="cnum' + (n <= 0 ? ' warn' : '') + '">' + n.toLocaleString() + '</b><small>' + bt('개', 'pcs') + '</small></div><span class="chev">›</span></div>'; }).join('') + '</div>';
+  return '<div class="dtw"><table class="dt"><thead><tr><th style="width:36px">#</th><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th style="width:70px">📍 ' + bt('통로', 'Aisle') + '</th><th class="hs">' + bt('분류', 'Category') + '</th><th style="width:96px">' + bt('상태', 'Status') + '</th><th class="r" style="width:80px">📦 ' + bt('재고', 'Stock') + '</th><th class="r hs" style="width:76px">' + bt('가격', 'Price') + '</th></tr></thead><tbody>' +
+    items.map((it, i) => { const n = st[it.c] || 0; return '<tr class="tap' + (it.h ? ' hid' : '') + '" data-sti="' + esc(it.c) + '"><td class="sub0">' + ((opt.from || 0) + i + 1) + '</td><td><b>' + esc(it.c) + '</b>' + (it.h ? ' 🙈' : '') + '</td><td class="wrap" style="min-width:150px">' + esc(it.d || '') + '</td><td>' + (locOf(it) ? '<span class="loc">' + esc(locOf(it)) + '</span>' : '<span class="muted">—</span>') + '</td><td class="hs sub0">' + esc(catOf(it)) + '</td><td>' + stBadge(n) + '</td><td class="r"><b' + (n <= 0 ? ' class="warn"' : '') + '>' + n.toLocaleString() + '</b></td><td class="r hs">' + (it.p ? money(it.p) : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+}
+
+/* ---------- 📍 통로별 재고 — 직원 재고 프로그램의 "통로별 재고" 화면 (KPI · 통로 없음 경고 · 지도/목록 · 통로 카드 → 통로 안 아이템) ---------- */
+async function paintAisle() {
+  const box = $('skBody'); box.innerHTML = '<div class="load">…</div>';
+  if (!ST.all) { try { ST.all = await stockAll(); } catch (e) { ST.all = {}; } }
+  const st = ST.all, C = catalog(), items = C.items.filter(x => !x.virt && !x.h);
+  if (ST.aisle) return paintAisleList(items, st);
+  const A = {}; let placed = 0, nowhere = 0;
+  items.forEach(x => { const loc = locOf(x), a = aisleOf(loc); if (!a) { nowhere++; return; } placed++; const g = A[a] = A[a] || { a, n: 0, out: 0, qty: 0, ph: [], pre: {} }; g.n++; const q = st[x.c] || 0; if (q <= 0) g.out++; g.qty += q; if (x.ph && g.ph.length < 3) g.ph.push(x.ph); const p = (/^[A-Z]+/.exec(String(x.c)) || [''])[0]; if (p) g.pre[p] = (g.pre[p] || 0) + 1; });
+  let L = Object.values(A);
+  if (ST.ast === 'warn') L = L.filter(g => g.out > 0); else if (ST.ast === 'ok') L = L.filter(g => !g.out);
+  L.sort(ST.asort === 'n' ? (x, y) => y.n - x.n : ST.asort === 'qty' ? (x, y) => y.qty - x.qty : ST.asort === 'out' ? (x, y) => y.out - x.out : (x, y) => COLL.compare(x.a, y.a));
+  const used = Object.keys(A).length, totalA = Math.max(used, Number((S.settings && S.settings.aisles) || 0));
+  const sel = (id, opts, cur, lab) => '<label class="fsel"><span>' + lab + '</span><select id="' + id + '">' + opts.map(o => '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></label>';
+  const card = g => { const pre = Object.keys(g.pre).sort((x, y) => g.pre[y] - g.pre[x]); return '<button type="button" class="acard' + (g.out ? ' warn' : '') + '" data-sta="' + esc(g.a) + '"><div class="al"><div class="ah"><b>' + esc(g.a) + '</b>' + (g.out ? '<span class="sbadge low">' + bt('주의', 'Check') + '</span>' : '<span class="sbadge ok">' + bt('정상', 'OK') + '</span>') + '</div><div class="an">' + bt('상품', 'Items') + ' ' + g.n.toLocaleString() + bt('개', '') + (g.out ? ' · <span class="warn">' + bt('재고 없음', 'out') + ' ' + g.out + bt('개', '') + '</span>' : '') + '</div><div class="ap">📍 ' + esc(pre.slice(0, 3).join(' · ')) + (pre.length > 3 ? ' +' + (pre.length - 3) : '') + '</div></div><div class="ar">' + (g.ph.length ? '<div class="aph">' + g.ph.map(p => '<img src="' + esc(thumb(p, 80)) + '" loading="lazy" alt="">').join('') + '</div>' : '') + '<div class="aq">' + bt('재고', 'Stock') + ': <b>' + g.qty.toLocaleString() + '</b></div></div><span class="chev">›</span></button>'; };
+  box.innerHTML = pageHead('📍 ' + bi('통로별 재고', 'Stock by aisle'), bt('통로를 누르면 그 통로의 아이템이 위치 순으로 나옵니다', 'Tap an aisle for its items in location order')) +
+    '<div class="card" style="padding:12px 14px"><div class="kpi" style="grid-template-columns:1fr 1fr;margin:0"><div><b>' + used + (totalA > used ? ' / ' + totalA : '') + '</b><span>' + bt('사용 중인 통로', 'Aisles in use') + '</span></div><div><b>' + placed.toLocaleString() + '</b><span>' + bt('배치된 상품', 'Items placed') + ' · ' + used + bt('개 통로', ' aisles') + '</span></div></div>' +
+    (nowhere ? '<button type="button" class="abanner" id="skNoLoc">⚠️ <b>' + bt('통로 없음', 'No aisle') + ' ' + nowhere.toLocaleString() + bt('개', '') + '</b><span>' + bt('지금 배치하기', 'Place now') + ' ›</span></button>' : '') +
+    '<div class="seg" style="margin-top:10px"><button type="button" class="' + (ST.amode === 'map' ? 'on' : '') + '" data-sam="map">🗺 ' + bt('지도', 'Map') + '</button><button type="button" class="' + (ST.amode === 'list' ? 'on' : '') + '" data-sam="list">☰ ' + bt('목록', 'List') + '</button></div>' +
+    '<div class="two" style="margin-top:8px">' + sel('skAst', [['all', bt('전체', 'All')], ['warn', bt('주의 (재고 없음 있음)', 'Check (has out of stock)')], ['ok', bt('정상', 'OK')]], ST.ast, bt('상태', 'Status')) + sel('skAsort', [['aisle', bt('통로', 'Aisle')], ['n', bt('상품 수', 'Items')], ['qty', bt('재고', 'Stock')], ['out', bt('재고 없음', 'Out of stock')]], ST.asort, bt('정렬', 'Sort')) + '</div></div>' +
+    (L.length ? (ST.amode === 'map' ? '<div class="agrid">' + L.map(card).join('') + '</div>' :
+      '<div class="card"><div class="dtw"><table class="dt"><thead><tr><th>' + bt('통로', 'Aisle') + '</th><th class="r">' + bt('상품', 'Items') + '</th><th class="r">' + bt('재고 없음', 'Out') + '</th><th class="r">📦 ' + bt('재고', 'Stock') + '</th><th class="hs">' + bt('코드', 'Codes') + '</th></tr></thead><tbody>' + L.map(g => '<tr class="tap" data-sta="' + esc(g.a) + '"><td><b>' + esc(g.a) + '</b></td><td class="r">' + g.n + '</td><td class="r' + (g.out ? ' warn' : '') + '">' + g.out + '</td><td class="r"><b>' + g.qty.toLocaleString() + '</b></td><td class="hs sub0">' + esc(Object.keys(g.pre).sort((x, y) => g.pre[y] - g.pre[x]).slice(0, 5).join(' · ')) + '</td></tr>').join('') + '</tbody></table></div></div>') :
+      '<div class="card"><div class="none">' + bt('위치가 입력된 아이템이 없습니다 — 관리 → 가져오기에서 통로 파일을 올리거나 아이템에 📍 위치를 넣으세요', 'No items have a location yet — import an aisle file (Admin → Import) or set 📍 on items') + '</div></div>');
+  box.querySelectorAll('[data-sta]').forEach(el => el.onclick = () => { ST.aisle = el.dataset.sta; ST.ist = 'all'; paintAisle(); });
+  box.querySelectorAll('[data-sam]').forEach(b => b.onclick = () => { ST.amode = b.dataset.sam; paintAisle(); });
+  $('skAst').onchange = () => { ST.ast = $('skAst').value; paintAisle(); }; $('skAsort').onchange = () => { ST.asort = $('skAsort').value; paintAisle(); };
+  if ($('skNoLoc')) $('skNoLoc').onclick = () => Router.go('items', 'noloc');
+}
+/** 통로 하나 — 그 통로 아이템을 위치 순으로 (상태 걸러보기 · 폰은 카드 줄) */
+function paintAisleList(items, st) {
+  const box = $('skBody'), a = ST.aisle;
+  let L = items.filter(x => aisleOf(locOf(x)) === a).sort((x, y) => COLL.compare(locOf(x), locOf(y)) || COLL.compare(x.c, y.c));
+  const n0 = L.filter(x => (st[x.c] || 0) <= 0).length, n1 = L.filter(x => { const q = st[x.c] || 0; return q > 0 && q < 12; }).length, qty = L.reduce((s2, x) => s2 + (st[x.c] || 0), 0), all = L.length;
+  if (ST.ist === 'out') L = L.filter(x => (st[x.c] || 0) <= 0); else if (ST.ist === 'low') L = L.filter(x => { const q = st[x.c] || 0; return q > 0 && q < 12; }); else if (ST.ist === 'ok') L = L.filter(x => (st[x.c] || 0) >= 12);
+  const chip = (k, t, n) => '<button type="button" class="' + (ST.ist === k ? 'on' : '') + '" data-sis="' + k + '">' + t + ' <small>' + n + '</small></button>';
+  box.innerHTML = pageHead('📍 ' + bi('통로', 'Aisle') + ' ' + esc(a), bt('상품', 'Items') + ' ' + all + ' · 📦 ' + qty.toLocaleString() + (n0 ? ' · <span class="warn">' + bt('재고 없음', 'out') + ' ' + n0 + '</span>' : ''), '<button type="button" class="b-ghost b-sm" id="skABack">‹ ' + bt('통로 전체', 'All aisles') + '</button>') +
+    '<div class="card"><div class="chips">' + chip('all', bt('전체', 'All'), all) + chip('out', '● ' + bt('재고 없음', 'Out'), n0) + chip('low', '● ' + bt('부족', 'Low'), n1) + chip('ok', '● ' + bt('정상', 'OK'), all - n0 - n1) + '</div>' +
+    (L.length ? stList(L, st) : '<div class="none">' + bt('없음', 'None') + '</div>') + '</div>';
+  $('skABack').onclick = () => { ST.aisle = ''; paintAisle(); };
+  box.querySelectorAll('[data-sis]').forEach(b => b.onclick = () => { ST.ist = b.dataset.sis; paintAisle(); });
+  box.querySelectorAll('[data-sti]').forEach(el => el.onclick = () => itemSheet(el.dataset.sti, () => { ST.all = null; paintAisle(); }));
+}
+
 /** 아이템 한 장 — 재고 · 위치 · 최근 움직임 · ✏️ 실사 / ± 조정 */
 export async function itemSheet(code, done) {
   const it = catalog().byCode[code] || { c: code, d: '' };
@@ -150,9 +207,15 @@ export async function itemSheet(code, done) {
     '<div class="kpi" style="margin-top:10px"><div><b' + (st[code] <= 0 ? ' class="warn"' : '') + '>' + st[code].toLocaleString() + '</b><span>' + bt('지금 재고', 'On hand') + '</span></div><div><b>' + (STOCK[code] && STOCK[code].at ? esc(md(STOCK[code].at.substring(0, 10))) : '—') + '</b><span>' + bt('마지막 변동', 'Last change') + '</span></div></div>' +
     '<div class="two" style="margin-top:10px"><div class="fg"><label>🔢 ' + bt('실사 — 세어 본 수량', 'Count — qty on shelf') + '</label><input type="number" inputmode="numeric" id="skCnt" placeholder="' + st[code] + '"></div><div class="fg"><label>± ' + bt('조정 (예: -3 · 12)', 'Adjust (e.g. -3 · 12)') + '</label><input type="number" inputmode="numeric" id="skAdj" placeholder="0"></div></div>' +
     '<div class="fg"><label>' + bt('이유 · 메모', 'Reason · note') + '</label><input id="skWhy" placeholder="' + esc(bt('예: 파손 · 분실 · 세어 봄 · 샘플', 'e.g. damaged · lost · counted · sample')) + '"></div>' +
-    '<div class="btns" style="margin-top:4px"><button class="b-blue" id="skSave">💾 ' + bt('저장', 'Save') + '</button></div>' +
+    '<div class="btns" style="margin-top:4px">' + (can('items') ? '<button class="b-ghost" id="skLoc">📍 ' + bt('통로 변경', 'Change aisle') + '</button>' : '') + '<button class="b-blue" id="skSave">💾 ' + bt('저장', 'Save') + '</button></div>' +
     '<h2 style="font-size:14px;margin-top:12px">📋 ' + bt('최근 움직임', 'Recent moves') + '</h2>' + (log.length ? '<table><tr><th>' + bt('날짜', 'Date') + '</th><th>' + bt('종류', 'Kind') + '</th><th class="r">±</th><th class="r">' + bt('재고', 'After') + '</th><th>' + bt('메모', 'Note') + '</th></tr>' + log.map(x => '<tr><td>' + esc(md(x.d)) + '</td><td>' + (K[x.kind] || esc(x.kind)) + (x.ref ? ' <span class="muted">' + esc(x.ref) + '</span>' : '') + '</td><td class="r"><b' + (x.delta < 0 ? ' class="warn"' : '') + '>' + (x.delta > 0 ? '+' : '') + x.delta + '</b></td><td class="r">' + x.after + '</td><td class="muted" style="font-size:11px">' + esc(x.note || '') + (x.byName ? ' · ' + esc(x.byName) : '') + '</td></tr>').join('') + '</table>' : '<div class="none">' + bt('기록 없음', 'No moves yet') + '</div>');
   $('skX').onclick = closeModal;
+  if ($('skLoc')) $('skLoc').onclick = () => {
+    const cur = locOf(it) || '';
+    openModal('<h2>📍 ' + bi('통로 변경', 'Change aisle') + ' — ' + esc(it.c) + '</h2><div class="muted">' + esc(it.d || '') + '</div><div class="fg" style="margin-top:8px"><label>' + bt('새 위치 (예: 04B · 16A-03)', 'New location (e.g. 04B · 16A-03)') + '</label><input id="skLocIn" value="' + esc(cur) + '" autocapitalize="characters" autocomplete="off"></div><div class="btns"><button class="b-ghost" id="skLocX">' + bt('닫기', 'Close') + '</button><button class="b-blue" id="skLocOk">💾 ' + bt('저장', 'Save') + '</button></div>');
+    $('skLocX').onclick = () => itemSheet(code, done); if (!('ontouchstart' in window)) $('skLocIn').focus();
+    $('skLocOk').onclick = async () => { const v = $('skLocIn').value.trim().toUpperCase(); closeModal(); busy(true); try { await editCatalog(S, rows => setLoc(rows, [code], v)); toast('📍 ' + code + ' → ' + (v || bt('비움', 'cleared')), 'good'); if (done) done(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
+  };
   $('skSave').onclick = async () => {
     const cnt = $('skCnt').value.trim(), adj = Number($('skAdj').value) || 0, why = $('skWhy').value.trim();
     if (cnt === '' && !adj) return toast(bt('실사 수량이나 ± 조정을 넣으세요', 'Enter a count or an adjustment'), 'bad');
