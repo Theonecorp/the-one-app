@@ -31,7 +31,7 @@ const path = require('path');
   log('rows:', rows.slice(0, 5), rows.length); if (!rows.length || rows.some(r => !/noph$/.test(r))) errs.push('noph list should contain only items without photo');
   const code = rows[0].split(':')[0];
   /* 아이템 열어 사진 올리기 */
-  await pg.click('[data-it="' + code + '"]'); await pg.waitForSelector('#fPhBox'); log('form photo:', (await pg.textContent('#fPhBox')).replace(/\s+/g, ' ').slice(0, 60));
+  await pg.click('[data-it="' + code + '"]'); await pg.waitForSelector('#isEd'); await pg.click('#isEd'); await pg.waitForSelector('#fPhBox'); log('form photo:', (await pg.textContent('#fPhBox')).replace(/\s+/g, ' ').slice(0, 60));
   await pg.setInputFiles('#fPhFile', path.resolve(__dirname, 'fixtures', 'check.png')); await pg.waitForTimeout(1500);
   const st1 = await pg.evaluate(c => { const M = window.__MOCK_STORE__; const d = M.itemPhotos && M.itemPhotos[c]; return { has: !!d, size: d ? d.data.length : 0, jpeg: d ? d.data.startsWith('data:image/jpeg') : false, ver: !!(M.catalog.meta.photoVer), img: !!document.querySelector('#fPhBox img'), lab: (document.querySelector('#fPhBox .muted') || {}).textContent }; }, code);
   log('after upload:', st1); if (!st1.has || !st1.jpeg || st1.size > 90000 || !st1.ver || !st1.img || !/앱에서 올린/.test(st1.lab)) errs.push('upload failed / too big / not applied');
