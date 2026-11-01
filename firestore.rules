@@ -27,6 +27,20 @@ service cloud.firestore {
       allow create: if registered() && request.resource.data.by == email() && request.resource.data.st == 'wait';
       allow read, update, delete: if isStaff();
     }
+    // 💬 메시지 — 보낸 사람 또는 받는 주소(내 이메일 · 내 세일즈맨 코드 · 내 역할 묶음)가 맞아야 읽음 · 읽음 표시(reads)는 받는 쪽이 갱신
+    function msgTargets() {
+      let r = role(); let j = userDoc().get('job', 'office');
+      return ['g:all', 'u:' + email()]
+        .concat(r == 'salesman' ? ['g:sales', 'sm:' + mySm()] : [])
+        .concat(r == 'admin' || r == 'owner' ? ['g:office', 'g:wh', 'g:staff'] : [])
+        .concat(r == 'manager' ? ['g:staff'].concat(j == 'whmgr' || j == 'pick' || j == 'pickinv' ? ['g:wh'] : []).concat(j != 'whmgr' && j != 'pick' ? ['g:office'] : []) : []);
+    }
+    match /msgs/{id} {
+      allow read: if registered() && (resource.data.from == email() || resource.data.to in msgTargets());
+      allow create: if registered() && request.resource.data.from == email() && request.resource.data.text is string && request.resource.data.text.size() <= 1000;
+      allow update: if registered() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reads']) && (resource.data.to in msgTargets() || resource.data.from == email());
+      allow delete: if isAdmin();
+    }
     match /accounts/{id} {
       allow read: if registered();
       allow write: if isStaff();

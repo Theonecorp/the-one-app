@@ -492,6 +492,7 @@ function viewOrder(o, lines, local) {
     (o.cfReq && !o.cfOk ? '<div class="alert a-amb">❓ ' + bi('사무실에서 이 주문 내용이 맞는지 확인을 요청했습니다. 아래 아이템을 보고 맞으면 ✅, 아니면 ✏️ 수정.', 'The office asks you to confirm this order.') + (o.cfNote ? '<div style="margin-top:6px;font-weight:800">💬 ' + esc(o.cfNote) + '</div>' : '') + '</div>' : o.cfOk ? '<div class="alert a-grn">✅ ' + bi('확인한 주문', 'Confirmed') + ' ' + esc(String(o.cfAt || '').substring(0, 16).replace('T', ' ')) + '</div>' : '') + '</div>';
   const B = [];
   if (o.acct) B.push('<button class="b-ghost" id="oStoreI">📋 가게 기록</button>');
+  if (!local && !isStaff()) B.push('<button class="b-ghost" id="oMsg">💬 ' + bi('사무실에 문의', 'Ask the office') + '</button>');
   if (canEdit(o)) B.push('<button class="b-ghost" id="oEdit">✏️ 수정</button>');
   if (!local && canEdit(o)) B.push('<button class="b-ghost" id="oStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>');
   if (local) B.push('<button class="b-blue" id="oSyncOne">📤 지금 보내기</button>');
@@ -519,6 +520,7 @@ function viewOrder(o, lines, local) {
   if ($('oStoreChg')) $('oStoreChg').onclick = () => Fulfill.changeStore(o, () => goOrder(o.id));
   if ($('oCfOk')) $('oCfOk').onclick = async () => { busy(true); try { await S.DB.update('orders', o.id, { cfOk: true, cfAt: new Date().toISOString(), cfBy: S.user.email }); toast('✅ 확인했습니다 — 사무실에 표시됩니다', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('oStoreI')) $('oStoreI').onclick = () => Store.storeSheet(o.acct);
+  if ($('oMsg')) $('oMsg').onclick = async () => { const M = await import('./msg.js'); M.compose({ to: 'g:office', ref: { kind: 'order', id: o.id, label: o.no + ' · ' + o.store } }); };
   if ($('oCx')) $('oCx').onclick = () => Fulfill.cancelAsk(o, true);
   if ($('oCxLocal')) $('oCxLocal').onclick = async () => { if (!(await confirmBox(bt('아직 회사로 안 간 주문입니다. 폰에서 지울까요?', 'This order has not reached the office yet. Delete it from this phone?') + '\n' + (o.store || '') + ' · ' + money(o.amt || 0), '✕ ' + bt('지우기', 'Delete')))) return; const b = readOut(); delete b[o.id]; writeOut(b); toast(bt('지웠습니다', 'Deleted'), 'good'); Router.go('order'); };
   if ($('oCxReq')) $('oCxReq').onclick = () => cancelReq(o);
