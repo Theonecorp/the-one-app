@@ -9,7 +9,7 @@
  *  receipts/{id}   = { id, d, from, file, n, qty, lines:[{c, q, d}], note, by, at }   ← 입고 한 건
  * ============================================================ */
 import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy, itabs, pageHead } from './ui.js';
-import { loadCatalog, catalog, searchItems, exactItem, locOf, aisleOf, thumb, editCatalog, setLoc, levelsOf, catStart, cleanName } from './catalog.js';
+import { loadCatalog, catalog, searchItems, exactItem, locOf, aisleOf, thumb, editCatalog, setLoc, levelsOf, catStart, cleanName, kvGet, kvSet } from './catalog.js';
 import { can } from './main.js';
 import { openScanner } from './scan.js';
 import { newId } from './db.js';
@@ -34,9 +34,17 @@ export async function stockOf(codes) {
 let ALL = null, ALL_AT = 0;
 export async function stockAll(force) {
   if (!force && ALL && Date.now() - ALL_AT < 300000) return ALL;
-  const rows = await S.DB.list('stock'); const m = {}; rows.forEach(r => { m[r.code || r.id] = Number(r.qty) || 0; STOCK[r.code || r.id] = r; }); ALL = m; ALL_AT = Date.now(); return m;
+  /* ⚡ 폰에 보관해 둔 전체 재고를 쓰고, 그 뒤에 바뀐 것(at 이 더 늦은 문서)만 읽어 합침 — 4천 개를 매번 다시 읽지 않음 */
+  let cache = null; try { cache = await kvGet('stock.all'); } catch (e) {}
+  const m = cache && cache.m ? Object.assign({}, cache.m) : {}; let since = cache && cache.since || '';
+  const rows = since ? await S.DB.list('stock', { where: [['at', '>', since]] }) : await S.DB.list('stock');
+  rows.forEach(r => { const c = r.code || r.id; m[c] = Number(r.qty) || 0; STOCK[c] = r; if (r.at && r.at > since) since = r.at; });
+  if (!since) since = new Date().toISOString();
+  ALL = m; ALL_AT = Date.now();
+  try { await kvSet('stock.all', { since, m, at: Date.now() }); } catch (e) {}
+  return m;
 }
-export function dropStockCache() { ALL = null; Object.keys(STOCK).forEach(k => { delete STOCK[k]; }); }
+export function dropStockCache() { ALL = null; Object.keys(STOCK).forEach(k => { delete STOCK[k]; }); kvSet('stock.all', null).catch(() => {}); }
 /** 움직임 적용 — moves: [{ c, delta, note? }] (같은 코드는 합침). kind: recv · adj · count · inv · void. count 면 delta 대신 to(세어 본 수량) */
 export async function applyMoves(moves, kind, ref, note) {
   const by = {}; moves.forEach(m => { const c = String(m.c || '').toUpperCase(); if (!c) return; by[c] = by[c] || { c, delta: 0, to: null, note: m.note || '' }; if (m.to != null) by[c].to = Number(m.to) || 0; else by[c].delta += Number(m.delta) || 0; });

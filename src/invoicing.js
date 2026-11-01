@@ -7,7 +7,7 @@
  * ============================================================ */
 import { esc, money, R2, addDays, invNo, invNoOld } from './ui.js';
 import { reqText } from './reqs.js';
-import { catalog } from './catalog.js';
+import { catalog, kvGet, kvSet } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
  *  comm: 커미션 계산 때 어느 칸으로 셀지 (A 기본 · P · W) */
@@ -92,13 +92,18 @@ export function dropInvCache() { INV_M.clear(); INV_AT = 0; }
 export async function invoicesBetween(S, from, to) {
   if (Date.now() - INV_AT > 15 * 60000) { INV_M.clear(); INV_AT = Date.now(); }   // 15분마다 새로
   const months = []; let m = from.substring(0, 7); while (m <= to.substring(0, 7)) { months.push(m); const y = Number(m.substring(0, 4)), mm = Number(m.substring(5, 7)); m = (mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0')); }
-  const miss = months.filter(k => !INV_M.has(k));
+  let miss = months.filter(k => !INV_M.has(k));
+  /* ⚡ 지난 달들은 폰 보관(6시간) 에서 — 이번 달만 늘 새로 읽음 */
+  const cur = new Date().toISOString().substring(0, 7);
+  for (const k of miss.filter(k => k < cur)) { try { const c = await kvGet('inv.m.' + k); if (c && c.rows && Date.now() - c.at < 6 * 3600000) INV_M.set(k, c.rows); } catch (e) {} }
+  miss = months.filter(k => !INV_M.has(k));
   if (miss.length) {
     /* 연속된 달은 한 번에 */
     const first = miss[0], last = miss[miss.length - 1];
     const rows = await S.DB.list('invoices', { where: [['d', '>=', first + '-01'], ['d', '<=', last + '-31']] });
     miss.forEach(k => INV_M.set(k, []));
     rows.forEach(r => { const k = String(r.d || '').substring(0, 7); if (INV_M.has(k)) INV_M.get(k).push(r); });
+    miss.filter(k => k < cur).forEach(k => kvSet('inv.m.' + k, { rows: INV_M.get(k), at: Date.now() }).catch(() => {}));
   }
   const out = []; months.forEach(k => (INV_M.get(k) || []).forEach(r => { if (r.d >= from && r.d <= to) out.push(r); }));
   return out;
