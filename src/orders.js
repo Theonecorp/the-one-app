@@ -94,25 +94,47 @@ export async function syncOutbox(quiet) {
 /* ============================================================
  *  🏠 홈 (세일즈맨) — SBMGo 시작 화면처럼 큰 버튼
  * ============================================================ */
+/* 🏠 세일즈맨 홈 — 오늘 한눈에: 인사 · 숫자 4개 · ✅ 오늘 할 일 · 📝 오늘 플랜 · 바로 가기 (주문 작업 자체는 🛒 세일 탭) */
+const PLAN_KEY = () => 'theone.plan.' + ((S.user && S.user.email) || '');
+const planGet = () => { try { return JSON.parse(localStorage.getItem(PLAN_KEY()) || 'null') || { text: '', at: '' }; } catch (e) { return { text: '', at: '' }; } };
+const planPut = text => { try { localStorage.setItem(PLAN_KEY(), JSON.stringify({ text, at: new Date().toISOString() })); } catch (e) {} };
+const WD_KO = ['일', '월', '화', '수', '목', '금', '토'], WD_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 async function pageHome() {
-  const name = (S.user && (S.user.name || S.user.email)) || '';
-  const out = outboxList().filter(x => x.o.sm === mySm()).length;
-  const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + icon + '</span><b>' + label + '</b><small id="hs-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
-  $('page').innerHTML = '<div class="card" style="text-align:center"><img src="logo.png" alt="" style="width:64px;height:64px"><div style="font-weight:800;font-size:17px;margin-top:4px">' + esc(name) + '</div><div class="muted">' + esc(mySm()) + ' · ' + (navigator.onLine === false ? '<span class="warn">오프라인 Offline</span>' : '<span class="ok">온라인 Online</span>') + (out ? ' · <span class="warn">📤 안 보낸 주문 ' + out + '건</span>' : '') + '</div></div>' +
-    '<div class="hgrid">' + tile('order/new', '🛒', bi('새 주문', 'New order'), '가게 고르고 담기 · pick a store', 'blue') + tile('order', '📤', bi('보낼 주문', 'To send'), '읽는 중…', 'green') + tile('order', '📋', bi('내 주문', 'My orders'), '최근 2달 · last 2 months') + tile('credit/new', '↩', bi('크레딧 · 리턴', 'Credit · Return'), bt('대미지 · 교환 · 가격 조정', 'damage · exchange · price'), 'amber') + tile('order', '❓', bi('확인 요청', 'To confirm'), '읽는 중…', 'amber') + tile('stores', '🏬', bi('거래처', 'Customers'), '가게 정보 · 미수금 · 기록') + tile('mysales', '📈', bi('내 매출', 'My sales'), bt('이번 달 · 월별', 'this month · by month')) + tile('entry/new', '✍️', bi('수금 입력', 'Payment'), '체크 · 캐쉬 / check · cash') + tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 가격 · 바코드 라벨 / photos · labels') + tile('track', '🚚', bi('배송 조회', 'Tracking'), '박스 · 인보이스 · 받은 날 / boxes · delivered') + tile('ar', '💰', bi('미수금', 'A/R'), '내 가게 미수금 / my stores') + '</div>' +
-    '<button class="b-ghost" id="hMine" style="margin-top:4px">📋 ' + bi('내 수금 기록', 'My payment log') + '</button>';
+  const name = (S.user && (S.user.name || S.user.email)) || '', sm = mySm(), now = new Date(), hr = now.getHours();
+  const hello = hr < 11 ? bt('좋은 아침이에요', 'Good morning') : hr < 17 ? bt('좋은 오후예요', 'Good afternoon') : bt('수고 많으셨어요', 'Good evening');
+  const dateTxt = bt((now.getMonth() + 1) + '월 ' + now.getDate() + '일 (' + WD_KO[now.getDay()] + ')', WD_EN[now.getDay()] + ', ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][now.getMonth()] + ' ' + now.getDate());
+  const out = outboxList().filter(x => x.o.sm === sm);
+  const kpi = (id, v, lab, go) => '<button type="button" class="dk" data-hg="' + go + '"><b id="' + id + '">' + v + '</b><span>' + lab + '</span></button>';
+  const qa = (go, icon, lab, cls) => '<button type="button" class="qb ' + (cls || '') + '" data-hg="' + go + '"><span class="i">' + icon + '</span><b>' + lab + '</b></button>';
+  const plan = planGet();
+  $('page').innerHTML =
+    '<div class="card dhead"><div><div class="muted">' + dateTxt + '</div><h1>' + hello + ', ' + esc(String(name).split(/\s+/)[0]) + '</h1><div class="muted">🧑‍💼 ' + esc(sm) + ' · ' + (navigator.onLine === false ? '<span class="warn">' + bt('오프라인', 'Offline') + '</span>' : '<span class="ok">' + bt('온라인', 'Online') + '</span>') + (out.length ? ' · <span class="warn">📤 ' + bt('안 보낸 주문', 'unsent') + ' ' + out.length + '</span>' : '') + '</div></div><img src="logo.png" alt=""></div>' +
+    '<div class="dkpi">' + kpi('dkSales', '…', bt('이번 달 매출', 'Sales this month'), 'mysales') + kpi('dkToday', '…', bt('오늘 주문', 'Orders today'), 'order') + kpi('dkSend', out.length ? out.length : '…', bt('보낼 주문', 'To send'), 'order') + kpi('dkAr', '…', bt('미수금', 'Receivables'), 'ar') + '</div>' +
+    '<div class="card"><h2>✅ ' + bi('오늘 할 일', 'Today') + '</h2><div id="dTodo" class="todo"><div class="muted">' + bt('읽는 중…', 'Loading…') + '</div></div></div>' +
+    '<div class="card"><h2>📝 ' + bi('오늘 플랜', 'Today\'s plan') + ' <span class="muted" style="font-weight:400;font-size:12px" id="dPlanAt">' + (plan.at ? bt('마지막 수정', 'last edit') + ' ' + esc(md(plan.at.substring(0, 10))) : bt('이 폰에 저장됩니다', 'saved on this phone')) + '</span></h2>' +
+    '<textarea id="dPlan" rows="3" placeholder="' + esc(bt('예: 올랜도 3곳 방문 · ALI 수금 · 샘플 전달', 'e.g. 3 stores in Orlando · collect at ALI · drop samples')) + '">' + esc(plan.text) + '</textarea></div>' +
+    '<div class="card"><h2>⚡ ' + bi('바로 가기', 'Quick actions') + '</h2><div class="qgrid">' + qa('order/new', '🛒', bi('새 주문', 'New order'), 'blue') + qa('entry/new', '✍️', bi('수금 입력', 'Payment')) + qa('credit/new', '↩', bi('크레딧 · 리턴', 'Credit')) + qa('stores', '🏬', bi('가게 찾기', 'Stores')) + qa('cat', '📒', bi('카탈로그', 'Catalog')) + qa('mysales', '📈', bi('내 매출', 'My sales')) + qa('track', '🚚', bi('배송 조회', 'Tracking')) + qa('mine', '📋', bi('수금 기록', 'Payment log')) + '</div></div>' +
+    '<div id="dayCf"></div><div id="offCard"></div>' + (Notify.notifyState() === 'default' ? '<button class="b-ghost" id="hNotif" style="margin-top:4px">🔔 ' + bi('알림 켜기', 'Turn on notifications') + '</button>' : '');
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
-  $('hMine').onclick = () => Router.go('mine');
-  try { const ms = JSON.parse(localStorage.getItem('theone.snap.mysales.' + mySm()) || 'null'), M = ms && ms.html && ms.html.M, k = M && Object.keys(M).sort().pop(); if (k && $('hs-mysales')) $('hs-mysales').textContent = bt('이번 달', 'This month') + ' ' + money(M[k].tot); } catch (e) {}   // 📈 지난번 읽은 이번 달 매출
-  /* 📋 보낸 주문 한 번에 확인 · 🔔 알림 켜기 */
-  $('page').querySelector('.card').insertAdjacentHTML('afterend', '<div id="dayCf"></div><div id="offCard"></div>' + (Notify.notifyState() === 'default' ? '<button class="b-ghost" id="hNotif" style="margin:0 0 10px">🔔 ' + bi('폰 알림 켜기 (사무실 확인 요청)', 'Turn on phone notifications') + '</button>' : ''));
+  const ta = $('dPlan'); ta.oninput = debounce(() => { planPut(ta.value); const at = $('dPlanAt'); if (at) at.textContent = bt('저장됨', 'saved') + ' ' + md(today()); }, 400);
   Notify.dayCard($('dayCf')); import('./offline.js').then(O => O.homeCard($('offCard'), true)); if ($('hNotif')) $('hNotif').onclick = async () => { await Notify.askPermission(); $('hNotif').remove(); };
+  /* 숫자 — 폰에 둔 지난 값 먼저, 그 다음 새로 읽음 */
+  try { const ms = JSON.parse(localStorage.getItem('theone.snap.mysales.' + sm) || 'null'), M = ms && ms.html && ms.html.M, k = M && Object.keys(M).sort().pop(); if (k && $('dkSales')) $('dkSales').textContent = money(M[k].tot || 0); } catch (e) {}
+  const todo = [];
   try {
-    const rows = await S.DB.list('orders', { where: [['sm', '==', mySm()], ['ym', 'in', recentYms(2)]] });
-    const d = rows.filter(o => o.st === 'draft').length + out, sent = rows.filter(o => o.st === 'sent').length;
+    const rows = await S.DB.list('orders', { where: [['sm', '==', sm], ['ym', 'in', recentYms(2)]] });
+    const t = today(), drafts = rows.filter(o => o.st === 'draft').length + out.length, todayN = rows.filter(o => o.d === t && o.st !== 'x').length + out.filter(x => x.o.d === t).length;
     const cf = rows.filter(o => o.cfReq && !o.cfOk && o.st !== 'x').length;
-    const el = document.querySelectorAll('#hs-order'); if (el[0]) el[0].textContent = d ? d + '건 대기 중 · waiting' : '보낼 것 없음 · nothing to send'; if (el[1]) el[1].textContent = rows.length + '건 · 회사 처리 중 in office ' + sent; if (el[2]) { el[2].innerHTML = cf ? '<b style="color:#b45309">' + cf + '건 — 사무실이 기다립니다</b>' : '없음 · none'; }
-  } catch (e) { const el = $('hs-order'); if (el) el.textContent = '—'; }
+    if ($('dkToday')) $('dkToday').textContent = todayN; if ($('dkSend')) $('dkSend').textContent = drafts;
+    if (drafts) todo.push(['order', '📤', bt('보낼 주문', 'Orders to send') + ' <b>' + drafts + '</b>' + bt('건', ''), bt('주문 확인 · 보낼 주문에서 한 번에', 'review and send together'), 'warn']);
+    if (cf) todo.push(['order/cf', '❓', bt('사무실이 확인 요청한 주문', 'Office asks you to confirm') + ' <b>' + cf + '</b>' + bt('건', ''), bt('내용을 보고 ✅ 또는 ✏️', 'open and confirm or fix'), 'warn']);
+    if ($('dkSales') && $('dkSales').textContent === '…') { const m = ym(t); const tot = R2(sum(rows.filter(o => o.ym === m && o.st !== 'x' && o.st !== 'draft'), o => o.amt || 0)); $('dkSales').textContent = money(tot); }
+  } catch (e) { if ($('dkToday')) $('dkToday').textContent = '—'; }
+  try { const ar = await S.DB.get('ar', sm); if ($('dkAr')) $('dkAr').textContent = ar ? money(ar.total || 0) : '—'; if (ar && ar.total > 0) todo.push(['ar', '💰', bt('미수금', 'Receivables') + ' <b>' + money(ar.total) + '</b> · ' + (ar.n || 0) + bt('곳', ' stores'), bt('기준일', 'as of') + ' ' + esc(md(String(ar.asOf || '').substring(0, 10))), '']); } catch (e) { if ($('dkAr')) $('dkAr').textContent = '—'; }
+  try { const E = await S.DB.list('entries', { where: [['sm', '==', sm], ['d', '==', today()]] }); const n = E.length, amt = R2(sum(E, x => Number(x.amt) || 0)); if (n) todo.push(['mine', '✍️', bt('오늘 수금 입력', 'Payments entered today') + ' <b>' + n + '</b>' + bt('건', '') + ' · ' + money(amt), bt('퇴근 전 Daily Report 전송', 'send the daily report before you leave'), 'ok']); } catch (e) {}
+  const box = $('dTodo'); if (!box) return;
+  box.innerHTML = (todo.length ? todo.map(x => '<button type="button" class="trow ' + x[4] + '" data-hg="' + x[0] + '"><span class="i">' + x[1] + '</span><span class="t"><b>' + x[2] + '</b><small>' + x[3] + '</small></span><span class="chev">›</span></button>').join('') : '<div class="none">🎉 ' + bt('밀린 일이 없습니다 — 새 주문을 시작하세요', 'Nothing pending — start a new order') + '</div>');
+  box.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
 }
 
 /* ============================================================
@@ -383,7 +405,8 @@ async function staffHome() {
   } catch (e) { if ($('hSales')) $('hSales').innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; }
 }
 function listHead() {
-  if (!isStaff()) return '<button class="b-blue" id="oNew" style="margin-bottom:12px;padding:15px">＋ ' + bi('새 주문', 'New order') + '</button>';
+  if (!isStaff()) return pageHead('🛒 ' + bi('세일', 'Sales'), bt('새 주문 · 보낼 주문 · 사무실 확인 · 최근 주문', 'new order · to send · office confirmations · recent orders')) +
+    '<div class="qgrid sale" style="margin-bottom:12px"><button type="button" class="qb blue" id="oNew"><span class="i">🛒</span><b>' + bi('새 주문', 'New order') + '</b></button><button type="button" class="qb" data-hg="credit/new"><span class="i">↩</span><b>' + bi('크레딧 · 리턴', 'Credit') + '</b></button><button type="button" class="qb" data-hg="invs"><span class="i">📄</span><b>' + bi('인보이스', 'Invoices') + '</b></button><button type="button" class="qb" data-hg="mysales"><span class="i">📈</span><b>' + bi('내 매출', 'My sales') + '</b></button></div>';
   const j = jobOf();
   const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto);
   const per = (LF.st === 'all' || LF.st === 'done' || LF.st === 'x' || LF.st === 'shipped') ? '<div class="chips" style="margin-top:0">' + Fulfill.PERIODS.filter(c => ['today', 'week', 'month', 'quarter', 'year'].includes(c[0])).map(c => '<button class="' + ((LF.hp || 'today') === c[0] ? 'on' : '') + '" data-hp2="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (['today', 'week', 'month', 'quarter', 'year'].includes(LF.hp || 'today') ? '' : 'on') + '" id="hCal2">📅 ' + esc(md(pr[0]) + (pr[0] !== pr[1] ? ' ~ ' + md(pr[1]) : '')) + '</button></div>' : '';
@@ -397,6 +420,7 @@ function listHead() {
     (j === 'pick' ? '' : '<div style="margin-bottom:10px">' + sel('lfSm', [['', '세일즈맨 전체 · All salesmen']].concat(S.sms.map(s => [s.code, s.code])), LF.sm) + '</div>');
 }
 function bindHead() {
+  document.querySelectorAll('#page .qgrid.sale [data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
   document.querySelectorAll('[data-hp2]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp2; pageOrder(''); });
   if ($('hCal2')) $('hCal2').onclick = async () => { const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto), r = await pickDates({ from: pr[0], to: pr[1], quick: Fulfill.quickRanges() }); if (!r) return; LF.hp = 'custom'; LF.hfrom = r[0]; LF.hto = r[1]; pageOrder(''); };
   if ($('oNew')) $('oNew').onclick = () => { if (readWip() && !confirm('작성 중인 주문가 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); Router.go('order', 'new'); };
