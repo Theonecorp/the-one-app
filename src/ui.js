@@ -265,10 +265,12 @@ export const Router = {
     const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
     if (this.backTo && arg && this.backTo.name === name) { const b = this.backTo.hash; this.backTo = null; goHash(b); return; }   // 다른 화면(🧭 흐름 감독)에서 열었으면 그리로
     const up = this.up[name]; if (up && up(arg ? decodeURIComponent(arg) : '')) { this.refreshBack(); return; }
+    /* ‹ 뒤로 = 바로 전 화면 (우리가 기록한 순서대로). 전 화면이 없을 때만 묶음 · 홈으로 */
+    if (this.stack.length > 1) { this.stack.pop(); const prev = this.stack[this.stack.length - 1]; this._back = true; goHash('#/' + prev); return; }
     if (name === 'hub') { if (this.home && name !== this.home) this.go(this.home); return; }   // 🗂 묶음 → 홈
     if (arg) this.go(name); else if (this.parent && this.parent[name] && location.hash !== '#/' + this.parent[name]) { const [r, a2] = this.parent[name].split('/'); this.go(r, a2); } else if (this.home && name !== this.home) this.go(this.home);
   },
-  hasUp() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); return !!arg || !!(this.home && name !== this.home) || !!(this.upHas[name] && this.upHas[name]()); },
+  hasUp() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); return this.stack.length > 1 || !!arg || !!(this.home && name !== this.home) || !!(this.upHas[name] && this.upHas[name]()); },
   refreshBack() { const bk = $('hBack'); if (bk) bk.classList.toggle('show', this.hasUp()); },
   start() {
     const run = () => {
