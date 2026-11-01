@@ -726,6 +726,7 @@ function addKitItems(setIt, times) {
 let INFO = null;
 async function loadInfo(acct) {
   try { const i = await Store.storeInfo(acct); if (!O || O.acct !== acct) return; INFO = i; } catch (e) { return; }
+  if (O.view === 'add' && $('eRes') && LAST && LAST.length) paintResults();   // 🕘 지난 주문 · 지난번 가격이 줄 · 카드에 바로 보이게
   const el = $('eStoreBal'); if (el) el.innerHTML = (INFO.asOf ? '미수금 <b class="' + (INFO.bal > 0.005 ? 'warn' : 'ok') + '">' + money(INFO.bal) + '</b>' + (INFO.bk[3] + INFO.bk[4] > 0.005 ? ' · 60일+ <b class="warn">' + money(INFO.bk[3] + INFO.bk[4]) + '</b>' : '') : '') + (INFO.orders.length ? ' · 최근 주문 ' + esc(md(INFO.orders[0].d)) + ' ' + money(INFO.orders[0].amt) : '');
   /* 📋 한 줄 요약 — 최근 인보이스 3장(번호 · 날짜 · 금액) · 마지막 노트. 누르면 가게 창 인보이스 탭 */
   const eh = $('eStoreHist'); if (eh) {
@@ -807,15 +808,16 @@ function paintAdd() {
   if (!('ontouchstart' in window)) q.focus();
 }
 /* ☰ 목록 보기 — 표 (사진 · 아이템 · 가격 · 📦 · 수량). 줄의 이름을 누르면 카드처럼 담김, 사진은 🔍 팝업 */
-const LIST_TH = () => '<thead><tr><th style="width:44px"></th><th>' + bt('아이템', 'Item') + '</th><th style="width:96px">' + bt('가격', 'Price') + '</th><th class="r" style="width:64px">📦</th><th style="width:128px">' + bt('수량', 'Qty') + '</th></tr></thead>';
+const LIST_TH = () => '<thead><tr><th style="width:36px"></th><th>' + bt('아이템', 'Item') + '</th><th style="width:56px">' + bt('가격', 'Price') + '</th><th style="width:104px">' + bt('수량', 'Qty') + '</th></tr></thead>';
 function itemRow(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const t = typeOfItem(S, it), dc = Number((O.disc || {})[t]) || 0, hist = Store.histText(INFO, it.c), lp = Store.lastPrice(INFO, it.c);
   return '<tr class="irow' + (cur ? ' v' : '') + tapCls(IDX[it.c]) + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
     '<td class="pho">' + (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith"></div>') + '</td>' +
-    '<td class="ct wrap"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '</b><div class="desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</div>' + (it.k ? '<small class="sub0">' + esc(kitLine(it)) + '</small>' : '') + (hist ? '<small class="hist">🕘 ' + esc(hist) + '</small>' : '') + '</td>' +
-    '<td class="pc"><span data-pp="' + esc(it.c) + '">' + priceTxt(it, true) + '</span><small class="sub0">' + [dc ? '→ ' + money(it.p * (1 - dc / 100)) : '', lp != null && Math.abs(lp - it.p) > 0.001 ? bt('지난번', 'last') + ' ' + money(lp) : '', it.s ? 'SRP ' + money(it.s) : ''].filter(Boolean).join(' · ') + '</small></td>' +
-    '<td class="r"><span class="stk" data-stk="' + esc(it.c) + '">…</span></td>' +
+    '<td class="ct wrap"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '</b><div class="desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</div>' + (it.k ? '<small class="sub0">' + esc(kitLine(it)) + '</small>' : '') +
+    '<small class="meta"><span class="stk" data-stk="' + esc(it.c) + '">📦 …</span>' + (it.s ? ' · SRP ' + money(it.s) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · ' + bt('지난번', 'last') + ' ' + money(lp) : '') + (dc ? ' · ' + dc + '% → ' + money(it.p * (1 - dc / 100)) : '') + '</small>' +
+    (hist ? '<small class="hist">🕘 ' + esc(hist) + '</small>' : '') + '</td>' +
+    '<td class="pc"><span data-pp="' + esc(it.c) + '">' + priceTxt(it, true) + '</span></td>' +
     '<td class="qc">' + qtyBox(it.c, cur) + '</td></tr>';
 }
 /** 📦 실재고 — 보이는 아이템만 읽어 와서 줄 · 카드에 채움 (0 이면 빨강 "없음", 적으면 주황). 못 읽어도 화면은 그대로 */
@@ -881,7 +883,7 @@ function paintResults() {
   /* 목록 보기에서 줄(이름 · 사진)을 누르면 카드처럼 담김 (프리셋 적용) */
   /* 목록 줄을 길게 누르면 수량 · 가격 창 (카드의 길게 누르기와 같음) */
   root.querySelectorAll('[data-frow] .ct, [data-frow] .pc').forEach(el => { let t = null; el.addEventListener('pointerdown', () => { clearTimeout(t); t = setTimeout(() => { el.dataset.long = '1'; qtyPad(el.closest('[data-frow]').dataset.frow); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(t))); });
-  root.querySelectorAll('[data-frow] .ct, [data-frow] .pc, [data-frow] td.r').forEach(el => el.onclick = () => { if (el.dataset.long) { delete el.dataset.long; return; } const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = tapAdd(c); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
+  root.querySelectorAll('[data-frow] .ct, [data-frow] .pc').forEach(el => el.onclick = () => { if (el.dataset.long) { delete el.dataset.long; return; } const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = tapAdd(c); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
   root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
   root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); sure(c); refreshCard(c); });
   root.querySelectorAll('[data-pe]').forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); qtyPad(b.dataset.pe, true); });
