@@ -41,7 +41,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.149';
+export const VER = 'v0.8.150';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -207,6 +207,19 @@ function userMenu() {
   $('mOut').onclick = () => { close(); S.AUTH.signOut(); };
   $('mReload').onclick = () => location.reload();
 }
+/* 🔁 모드만 고르는 작은 창 — 아래 메뉴 "모드" · 헤더의 이름 누르기 (전체 메뉴는 ☰ 서랍) */
+export function modePicker() {
+  if (!S.user) return;
+  const isAdm = S.me && S.me.role === 'admin', vs = viewsOf(S.me);
+  const ICON = { owner: '🏭', admin: '⚙️', manager: '🧑‍💼', salesman: '🚗' }, SUB = { owner: bt('경영 숫자 · 대시보드', 'business numbers'), admin: bt('관리 · 설정', 'admin · settings'), manager: bt('주문 · 출고 · 수금 처리', 'orders · fulfillment · payments'), salesman: bt('주문 · 수금 입력 · 내 가게', 'orders · payments · my stores') };
+  openModal('<h2>🔁 ' + bi('모드 바꾸기', 'Switch mode') + '</h2><div class="muted">' + bt('지금', 'Now') + ': <b>' + esc(S.role === 'manager' ? jobLabel(jobOf()) : roleLabel(S.role)) + '</b></div>' +
+    '<div class="modes">' + vs.map(r => '<button type="button" class="' + (S.role === r ? 'on' : '') + '" data-r="' + r + '"><span class="i">' + ICON[r] + '</span><span class="t"><b>' + esc(roleLabel(r).split(' ')[0]) + '</b><small>' + SUB[r] + '</small></span></button>').join('') + '</div>' +
+    (isAdm ? '<div class="fg" style="margin-top:10px"><label>🧑‍💼 ' + bt('담당자 모드의 일', 'Staff job') + '</label><div class="seg" style="flex-wrap:wrap">' + JOBS.map(j => '<button type="button" class="' + (S.role === 'manager' && jobOf() === j[0] ? 'on' : '') + '" data-j="' + j[0] + '">' + j[1] + '</button>').join('') + '</div></div>' : '') +
+    '<div class="btns"><button type="button" class="b-ghost" id="mpX">' + bt('닫기', 'Close') + '</button></div>');
+  $('mpX').onclick = closeModal;
+  document.querySelectorAll('#mbox [data-r]').forEach(b => b.onclick = () => { closeModal(); if (b.dataset.r !== S.role) switchRole(b.dataset.r); });
+  document.querySelectorAll('#mbox [data-j]').forEach(b => b.onclick = () => { closeModal(); S.me.job = b.dataset.j; switchRole('manager'); });
+}
 export const closeDrawer = () => { const d = $('drawer'); if (d) d.classList.remove('on'); document.body.classList.remove('drawer-on'); };
 /* 🔍 어디서나 검색 — 거래처 · 아이템 · 인보이스 번호를 한 칸에서 */
 function globalSearch(pre) {
@@ -325,12 +338,12 @@ function paintNav() {
   const items = navFor(S.role);
   Router.home = items.length ? items[0][0] : '';
   $('nav').innerHTML = items.map(x => '<button data-go="' + x[0] + '"><span class="i">' + x[1] + '</span>' + x[2] + '<span class="en">' + (x[3] || '') + '</span></button>').join('');
-  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go, [r, a] = g.split('/'); if (g === 'view/menu') return userMenu(); Router.navTap = r; if (location.hash === '#/' + g) { const f = Router.routes[r]; if (f) f(a || ''); } else if (a) Router.go(r, a); else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
+  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go, [r, a] = g.split('/'); if (g === 'view/menu') return modePicker(); Router.navTap = r; if (location.hash === '#/' + g) { const f = Router.routes[r]; if (f) f(a || ''); } else if (a) Router.go(r, a); else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
   /* 🗂 묶음 안의 화면 — ‹ 뒤로 · 폰 뒤로가기는 그 묶음으로, 아래 메뉴도 그 묶음이 켜짐 */
   Router.parent = {}; items.filter(x => /^hub\//.test(x[0])).forEach(x => Hub.hubItems(x[0].split('/')[1]).forEach(c => { const r = c[0].split('/')[0]; if (!items.some(y => y[0] === c[0] || y[0] === r)) Router.parent[r] = x[0]; }));
   navH();
   $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
-  const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? userMenu : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
+  const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? modePicker : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
 }
 
 /* ⏱ 로딩 시간 기록 — 🔎 연결 · 권한 점검에 보임 (어느 단계가 느린지) */

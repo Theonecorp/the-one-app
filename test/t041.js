@@ -91,12 +91,12 @@ const path = require('path'), fs = require('fs');
   await pg.click('#oSendAll'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(1200);
   log('after send:', (await pg.textContent('#page')).includes('보낼 오더') ? 'card still' : 'card gone', '| sent tags:', await pg.$$eval('#page .tag', els => els.map(e => e.textContent).filter(t => t === '들어옴').length));
   /* v0.6.2: 세일즈맨 홈 · 로고 */
-  await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('.htile'); await pg.waitForTimeout(800); await shot('g13_home');
-  log('nav:', await pg.$$eval('#nav button', els => els.map(e => e.textContent.trim()).join(' | ')), '| tiles:', await pg.$$eval('.htile b', els => els.map(e => e.textContent).join(',')), '| send sub:', await pg.textContent('#hs-order'));
+  await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('.dhead'); await pg.waitForTimeout(800); await shot('g13_home');
+  log('nav:', await pg.$$eval('#nav button', els => els.map(e => e.textContent.trim()).join(' | ')), '| quick:', await pg.$$eval('.qb b', els => els.map(e => e.textContent).join(',')), '| to send:', await pg.textContent('#dkSend'));
   await pg.click('[data-hg="order/new"]'); await pg.waitForSelector('#eStoreQ'); log('new order from home: ok');
   await pg.click('#hMenu'); await pg.waitForSelector('#mOut'); await pg.click('#mOut'); await pg.waitForSelector('#btnLogin'); await shot('g14_login');
   /* v0.6.3: ‹ 뒤로 */
-  await pg.click('#btnLogin'); await pg.waitForSelector('#nav button'); await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('.htile'); await pg.waitForTimeout(300);
+  await pg.click('#btnLogin'); await pg.waitForSelector('#nav button'); await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('.dhead'); await pg.waitForTimeout(300);
   log('back hidden at home:', !(await pg.$eval('#hBack', e => e.classList.contains('show'))));
   await pg.click('[data-hg="order/new"]'); await pg.waitForSelector('#eStoreQ'); log('back shown in editor:', await pg.$eval('#hBack', e => e.classList.contains('show')));
   await pg.click('#hBack'); await pg.waitForTimeout(400); log('after back hash:', await pg.evaluate(() => location.hash));
