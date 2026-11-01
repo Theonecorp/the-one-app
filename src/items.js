@@ -115,7 +115,7 @@ function list() {
     (showList && all.length ? '<label class="tap" style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex:0 0 auto"><input type="checkbox" id="itAll" ' + (all.length && all.every(x => IT.sel.has(x.c)) ? 'checked' : '') + '> ' + bi('모두 선택', 'All') + ' ' + Math.min(all.length, 2000).toLocaleString() + '</label>' : '') + '</div>';
   $('itList').innerHTML = head + (showList ? (res.length ? '<div class="dtw"><table class="dt">' + TH() + '<tbody>' + res.map(row).join('') + '</tbody></table></div>' + (all.length > res.length ? '<button class="b-ghost" id="itMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') :
     '<div class="none">맞는 아이템이 없습니다' + (q ? ' — <a href="#" id="itMk">＋ "' + esc(q.toUpperCase()) + '" 로 새 아이템 등록</a>' : '') + '</div>') : '');
-  $('itList').querySelectorAll('[data-it]').forEach(el => el.onclick = () => form(C.byCode[el.dataset.it]));
+  $('itList').querySelectorAll('[data-it]').forEach(el => el.onclick = async () => { const it = C.byCode[el.dataset.it]; if (!it) return; const M = await import('./catpage.js'); M.itemSheet(it, () => { if ($('itList')) paint(); }); });   // 먼저 보기 → ✏️ 수정
   $('itList').querySelectorAll('[data-ic]').forEach(ck => { ck.onclick = e => e.stopPropagation(); ck.onchange = () => { if (ck.checked) IT.sel.add(ck.dataset.ic); else IT.sel.delete(ck.dataset.ic); bulk(); }; });
   $('itList').querySelectorAll('[data-ih]').forEach(b => b.onclick = e => { e.stopPropagation(); applyHidden([b.dataset.ih], b.dataset.on === '1'); });
   if ($('itAll')) $('itAll').onchange = () => { const on = $('itAll').checked; all.slice(0, 2000).forEach(x => { if (on) IT.sel.add(x.c); else IT.sel.delete(x.c); }); list(); };
@@ -148,7 +148,7 @@ function bulk() {
   if ($('bkHide')) $('bkHide').onclick = () => applyHidden(Array.from(IT.sel), true);
   $('bkLoc').onclick = () => { const codes = Array.from(IT.sel), C = catalog(), now = (C.byCode[codes[0]] || {}).loc || '';
     openModal('<h2>📍 ' + codes.length + '개 창고 위치</h2><div class="muted">통로-선반-칸 처럼 적으세요 (예: <b>A-03-2</b>, <b>12-4</b>). 픽킹 리스트가 이 순서로 정렬됩니다. 비우면 분류 기본 위치(관리 → 🗂 분류 → 📍)를 따릅니다.</div><div class="fg" style="margin-top:8px"><input id="lcIn" value="' + esc(now) + '" autocapitalize="characters" style="text-transform:uppercase;font-size:20px;font-weight:800;text-align:center" placeholder="A-03-2"></div><div class="btns"><button class="b-ghost" id="lcX">취소</button><button class="b-blue" id="lcOk">저장</button></div>');
-    $('lcX').onclick = closeModal; setTimeout(() => $('lcIn') && $('lcIn').focus(), 50);
+    $('lcX').onclick = closeModal; if (!('ontouchstart' in window)) setTimeout(() => $('lcIn') && $('lcIn').focus(), 50);
     $('lcOk').onclick = async () => { const v = $('lcIn').value.trim().toUpperCase(); closeModal(); await save(rows => setLoc(rows, codes, v), n => n + '개 위치 ' + (v || '비움 (분류 기본)')); IT.sel.clear(); }; };
   if ($('bkShow')) $('bkShow').onclick = () => applyHidden(Array.from(IT.sel), false);
   if ($('bkMove')) $('bkMove').onclick = () => moveForm(Array.from(IT.sel));
@@ -291,7 +291,7 @@ function form(it, newCode) {
     }, () => (isNew ? '등록 — ' : '저장 — ') + v.c + (vis ? '' : ' (🙈 숨김)'));
     if (phNew) { busy(true); try { const data = await shrinkImage(phNew); await setItemPhoto(S, v.c, { data, file: phNew }); toast('📷 ' + v.c + ' — ' + bt('사진 저장', 'photo saved'), 'good'); list(); } catch (e) { toast(bt('사진 저장 실패', 'Photo failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); }
   };
-  setTimeout(() => $(isNew && !newCode ? 'fC' : 'fD').focus(), 50);
+  if (!('ontouchstart' in window)) setTimeout(() => { const f = $(isNew && !newCode ? 'fC' : 'fD'); if (f) f.focus(); }, 50);   // 폰에서는 키보드가 바로 올라와 창을 가리므로 포커스 안 함
 }
 
 /* ---- 🗂 이전 시스템 숨김 기록 — LEVEL_1_AND_2 에서 레벨을 비워 둔 코드 (data/sbm-hidden.json) 와 지금 목록을 맞춤 (관리자) ---- */

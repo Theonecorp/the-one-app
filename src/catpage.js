@@ -114,7 +114,7 @@ export function barcodeSvg(value, o) {
 const barOf = (it, useCode) => it.b || (useCode ? it.c : '');
 
 /* ---------- 아이템 한 개 ---------- */
-async function itemSheet(it) {
+export async function itemSheet(it, done) {
   if (!it) return;
   try { await loadJsBarcode(); } catch (e) {}
   const P = levels(it).filter(Boolean).map(cleanName).join(' › '), loc = locOf(it), staff = S.role !== 'salesman';
@@ -130,7 +130,7 @@ async function itemSheet(it) {
   stockOf([it.c]).then(m => { const e = $('isStk'); if (e) { const n = m[it.c] || 0; e.textContent = n.toLocaleString(); e.style.color = n > 0 ? '#15803d' : '#b91c1c'; } }).catch(() => { const e = $('isStk'); if (e) e.textContent = '—'; });
   if ($('isOrd')) $('isOrd').onclick = () => toOrder([it.c]);
   if ($('isLbl')) $('isLbl').onclick = () => { closeModal(); labelPrint([it]); };
-  if ($('isEd')) $('isEd').onclick = () => { closeModal(); Router.go('items', it.c); };
+  if ($('isEd')) $('isEd').onclick = async () => { closeModal(); const M = await import('./items.js'); M.openItem(it.c, done || null); };
   if ($('isStock')) $('isStock').onclick = () => { closeModal(); Router.go('stock', it.c); };
 }
 

@@ -141,7 +141,7 @@ export function unstick() {
   } catch (e) {}
 }
 if (BROWSER && window.visualViewport) window.visualViewport.addEventListener('resize', () => {
-  const vv = window.visualViewport; document.documentElement.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+  const vv = window.visualViewport; document.documentElement.style.setProperty('--vvh', Math.round(vv.height) + 'px'); document.documentElement.style.setProperty('--vvt', Math.round(vv.offsetTop) + 'px');
   const open = vv.height < window.innerHeight * 0.8;   // 키보드(또는 큰 겹침)가 올라와 보이는 높이가 줄었음
   if (KB_OPEN && !open) setTimeout(unstick, 60);
   KB_OPEN = open;
