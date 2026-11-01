@@ -48,7 +48,7 @@ function badge(n) {
   if (btn) { let s = btn.querySelector('.nbadge'); if (n && !s) { s = document.createElement('span'); s.className = 'nbadge'; btn.appendChild(s); } if (s) { if (n) s.textContent = n; else s.remove(); } }
   document.title = (n ? '(' + n + ') ' : '') + 'THE ONE';
 }
-async function phone(title, body, url) {
+export async function phone(title, body, url) {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
     const r = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();

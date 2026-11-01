@@ -4,6 +4,7 @@
 import { connect, MOCK, newId } from './db.js';
 import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt, bi, numPadOn, setNumPad, goHash, debounce, money } from './ui.js';
 import { openScanner } from './scan.js';
+import * as Msg from './msg.js';
 import { searchAccounts } from './accounts.js';
 import { loadCatalog, catalog, exactItem, searchItems, thumb } from './catalog.js';
 import { storeSheet, invDetail } from './store.js';
@@ -41,7 +42,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.150';
+export const VER = 'v0.8.151';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -116,7 +117,7 @@ function navFor(r) {
 function shell() {
   document.head.insertAdjacentHTML('beforeend', '<style>' + CSS + '</style>');
   document.body.innerHTML =
-    '<header><button class="hb" id="hBack" title="뒤로">‹</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hSearch" title="검색 · Search">🔍</button><button class="hb" id="hScan" title="바코드 스캔 · Scan">📷</button><button class="hb hlang" id="hLang" translate="no" title="Language">🌐 ' + LANG.toUpperCase() + '</button><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
+    '<header><button class="hb" id="hBack" title="뒤로">‹</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hSearch" title="검색 · Search">🔍</button><button class="hb" id="hScan" title="바코드 스캔 · Scan">📷</button><button class="hb" id="hBell" title="알림 · 메시지">🔔</button><button class="hb hlang" id="hLang" translate="no" title="Language">🌐 ' + LANG.toUpperCase() + '</button><button class="hb" id="hMenu" title="메뉴">☰</button></div></header>' +
     '<div class="wrap" id="page"><div class="load">불러오는 중…</div></div>' +
     '<nav id="nav"></nav>' +
     '<div id="busy"><div class="spin"></div></div><div id="topbar"></div>' +
@@ -132,7 +133,7 @@ function shell() {
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button.b-blue,button.b-red,button.b-green,button.b-amb,#nav button'); if (!b) return; const t = Date.now(); if (b._tap && t - b._tap < 450) { e.stopImmediatePropagation(); e.preventDefault(); return; } b._tap = t; }, true);
   let tbT = 0; window.addEventListener('dbbusy', e => { const n = e.detail, tb = $('topbar'); if (!tb) return; clearTimeout(tbT); if (n > 0) tbT = setTimeout(() => tb.classList.add('on'), 150); else tb.classList.remove('on'); });
   $('prtClose').onclick = printClose;
-  $('hMenu').onclick = userMenu; $('hSearch').onclick = globalSearch; $('hScan').onclick = headerScan;
+  $('hMenu').onclick = userMenu; $('hSearch').onclick = globalSearch; $('hScan').onclick = headerScan; $('hBell').onclick = () => Msg.openPanel();
   /* 🌐 언어 — 앱 위쪽 버튼으로 바로 (이 폰 · 컴퓨터에 저장, 로그인한 사람과 상관없이) */
   $('hLang').onclick = () => { openModal('<h2 translate="no">🌐 Language · 언어 · Idioma</h2><div class="langpick" translate="no">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'b-blue' : 'b-ghost') + '" data-lang="' + l[0] + '">' + ({ ko: '🇰🇷 ', en: '🇺🇸 ', pt: '🇧🇷 ' })[l[0]] + l[1] + '</button>').join('') + '</div>');
     document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { closeModal(); if (b.dataset.lang !== LANG) setLang(b.dataset.lang); }); };
@@ -320,7 +321,7 @@ function switchRole(r) {
   if (!viewsOf(S.me).includes(r)) return;
   S.role = r; try { localStorage.setItem(VIEW_KEY(), r); } catch (e) {}
   Router.stack = [];   // 새 역할의 첫 화면이 뒤로가기의 끝
-  paintNav(); Notify.start();
+  paintNav(); Notify.start(); Msg.start();
   Router.go(navFor(r)[0][0]);
 }
 /* 아래 메뉴의 실제 높이를 CSS 변수로 — 고정 바(.sticky) 와 본문 여백이 메뉴에 가리지 않게 */
@@ -387,7 +388,7 @@ async function afterLogin(user) {
     busy(false);
   }
   paintNav();
-  setTimeout(() => Notify.start(), snap ? 1500 : 0);   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
+  setTimeout(() => { Notify.start(); Msg.start(); }, snap ? 1500 : 0);   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
   const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) goHash('#/' + navFor(S.role)[0][0]);
   Router.stack = [];
@@ -437,7 +438,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Msg.register(S); Router.on('msg', Msg.page);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
