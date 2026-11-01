@@ -40,7 +40,10 @@ export function setLocs(m) { LOCS = m || {}; }
 /** 아이템(또는 코드)의 위치 — 자기 위치 → L1›L2›L3 → L1›L2 → L1 */
 export function locOf(x) { if (typeof x === 'string') x = CAT && CAT.byCode[x]; if (!x) return ''; if (x.loc) return x.loc; for (let n = 3; n >= 1; n--) { const v = LOCS[locKey([x.l1, x.l2, x.l3].slice(0, n))]; if (v) return v; } return ''; }
 /** 통로 이름 — 'A-03-2' → 'A', '12.4' → '12' */
-export const aisleOf = loc => String(loc || '').split(/[-.\s/]/)[0] || '';
+export const aisleOf = loc => { const a = String(loc || '').split(/[-.\s/]/)[0] || ''; return a.replace(/^(\d)([A-Z]*)$/i, '0$1$2').toUpperCase(); };   // 7A · 07A 를 같은 통로로
+/** 폰 보관(IndexedDB) 을 다른 화면에서도 — 재고 전체 · 지난 달 인보이스 · 경영 숫자 */
+export const kvGet = k => idbGet('kv.' + k);
+export const kvSet = (k, v) => idbSet('kv.' + k, v);
 /** 픽킹 순서: 위치 있는 것 통로 · 선반 순(자연 정렬) → 위치 없는 것 코드 순 */
 export function pickSort(a, b) { const x = locOf(a.c), y = locOf(b.c); if (!x !== !y) return x ? -1 : 1; return COLL.compare(x, y) || COLL.compare(a.c, b.c); }
 export function setPins(p) {

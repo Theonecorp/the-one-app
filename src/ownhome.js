@@ -5,6 +5,13 @@
  *    칸을 누르면 그 화면으로. 기간 칩은 담당자 홈과 같음.
  * ============================================================ */
 import { $, esc, money, k, R2, num, today, ym, md, Router, sortBy, groupBy, sum, daysBetween, addDays, bi, bt, pickDates, pct, snapGet, snapPut } from './ui.js';
+import { kvGet, kvSet } from './catalog.js';
+/** ⚡ 느린 보조 숫자는 폰 보관(ttl) 을 먼저 쓰고 뒤에서 새로 읽어 둠 — 다음에 열 때 반영 */
+async function cached(key, ttl, fn) {
+  let c = null; try { c = await kvGet('own.' + key); } catch (e) {}
+  if (c && Date.now() - c.at < ttl) { if (Date.now() - c.at > ttl / 3) fn().then(v => kvSet('own.' + key, { v, at: Date.now() })).catch(() => {}); return c.v; }
+  const v = await fn(); try { await kvSet('own.' + key, { v, at: Date.now() }); } catch (e) {} return v;
+}
 import { invoicesBetween, invTypes } from './invoicing.js';
 import { PERIODS, periodRange } from './fulfill.js';
 import { stageAge } from './flow.js';
@@ -31,10 +38,10 @@ async function page(arg) {
   const [invNow, invPrev, invYear, ents, cods, arAll, bounces, orders, p99, acc, dist, mg, comm, manual, manualY] = await Promise.all([
     invoicesBetween(S, from, to).catch(() => []), invoicesBetween(S, pf, pt).catch(() => []), invoicesBetween(S, yf, yt).catch(() => []),
     q('entries', { where: [['ym', 'in', yms3.slice(0, 10)]] }), q('cod', { where: [['ym', 'in', yms3.slice(0, 10)]] }), S.DB.get('ar', '_all').catch(() => null), q('bounces'),
-    q('orders', { where: [['ym', 'in', months(addDays(t, -62), t).slice(-3)]] }), q('pay1099'), q('bonusAcc'), q('bonusDist'),
-    import('./mg.js').then(M => M.mgNumbers(Number(t.substring(0, 4)))).catch(() => null), import('./boss.js').then(B => B.commEstimate()).catch(() => null),
+    q('orders', { where: [['ym', 'in', months(addDays(t, -62), t).slice(-3)]] }), cached('p99', 6 * 3600000, () => q('pay1099')), cached('bonusAcc', 6 * 3600000, () => q('bonusAcc')), cached('bonusDist', 6 * 3600000, () => q('bonusDist')),
+    cached('mg.' + t.substring(0, 4), 6 * 3600000, () => import('./mg.js').then(M => M.mgNumbers(Number(t.substring(0, 4)))).catch(() => null)), cached('comm', 3 * 3600000, () => import('./boss.js').then(B => B.commEstimate()).catch(() => null)),
     S.DB.get('sales', from.substring(0, 4)).catch(() => null), S.DB.get('sales', yf.substring(0, 4)).catch(() => null)]);
-  const bank = await import('./bank.js').then(B => B.bankSummary(from, to)).catch(() => null);
+  const bank = await cached('bank.' + from + '.' + to, 6 * 3600000, () => import('./bank.js').then(B => B.bankSummary(from, to)).catch(() => null));
   const live = x => x.st !== 'x' && x.src !== 'credit';
   /* ① 매출 — 앱 인보이스 합. 그 달 앱 인보이스가 없으면 경영 → 매출의 월별 입력(TOTAL SALES) 로 */
   const manualOf = (doc, m) => { const r = doc && (doc.rows || []).find(x => x.label === 'TOTAL SALES'); return r && Array.isArray(r.m) ? R2(num(r.m[Number(m.substring(5, 7)) - 1])) : 0; };

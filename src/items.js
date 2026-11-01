@@ -88,7 +88,7 @@ function paint() {
   document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { IT.mode = b.dataset.im; IT.page = 100; paint(); });
   document.querySelectorAll('[data-iv]').forEach(b => b.onclick = () => { IT.view = b.dataset.iv; if (IT.view !== 'aisle') IT.aisle = ''; if (IT.view !== 'tree') IT.path = []; IT.page = 100; paint(); });
   document.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => { IT.path = IT.path.slice(0, Number(b.dataset.ip)); IT.page = 100; paint(); });
-  document.querySelectorAll('[data-ia]').forEach(b => b.onclick = () => { IT.aisle = b.dataset.ia; IT.page = 100; paint(); });
+  document.querySelectorAll('[data-ia]').forEach(b => b.onclick = () => { IT.aisle = b.dataset.ia; IT.q = ''; IT.page = 100; paint(); });   // 검색어와 겹쳐 0개가 되지 않게 검색은 비움
   if ($('itAisT')) $('itAisT').onclick = () => { IT.showA = !IT.showA; paint(); };
   document.querySelectorAll('[data-ik]').forEach(b => b.onclick = () => { IT.path = IT.path.concat([b.dataset.ik]); IT.page = 100; paint(); });
   $('itQ').oninput = debounce(() => { IT.q = $('itQ').value; IT.page = 100; list(); }, 150);
