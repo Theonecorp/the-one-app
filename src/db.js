@@ -104,16 +104,22 @@ async function makeFirestoreDB() {
   catch (e) { db = fs.getFirestore(app); }
   const auth = au.getAuth(app);
   const strip = d => { const o = {}; Object.keys(d).forEach(k => { if (d[k] !== undefined) o[k] = d[k]; }); return o; };
+  /* 🐢 느린 연결 — 서버 읽기가 SLOW_MS 안에 안 오면(LTE 가 끊길락 말락 할 때 Firestore 는 오프라인 판정 전까지 몇 십 초씩 기다림) 폰에 저장된 것(persistentLocalCache)을 먼저 돌려줌.
+   *   캐시에 없으면 그대로 서버를 기다림. 1분에 한 번 'theone:slow' 로 알림 (main.js 가 토스트) */
+  const SLOW_MS = 8000; let slowAt = 0;
+  const slowNote = () => { const now = Date.now(); if (now - slowAt > 60000) { slowAt = now; try { window.dispatchEvent(new CustomEvent('theone:slow')); } catch (e) {} } };
+  const raceCache = (serverP, cacheFn) => new Promise((res, rej) => { let done = false; const t = setTimeout(async () => { if (done) return; try { const r = await cacheFn(); if (r != null && !done) { done = true; slowNote(); res(r); } } catch (e) {} }, SLOW_MS); serverP.then(v => { if (!done) { done = true; clearTimeout(t); res(v); } }, e => { if (!done) { done = true; clearTimeout(t); rej(e); } }); });
   const DB = {
     kind: 'firestore',
-    async get(c, id) { const s = await fs.getDoc(fs.doc(db, c, id)); return s.exists() ? Object.assign({ id: s.id }, s.data()) : null; },
+    async get(c, id) { const ref = fs.doc(db, c, id); const s = await raceCache(fs.getDoc(ref), async () => { const x = await fs.getDocFromCache(ref); return x.exists() ? x : null; }); return s.exists() ? Object.assign({ id: s.id }, s.data()) : null; },
     async list(c, q) {
       q = q || {};
       const parts = [fs.collection(db, c)];
       (q.where || []).forEach(w => parts.push(fs.where(w[0], w[1], w[2])));
       if (q.order) parts.push(fs.orderBy(q.order[0], q.order[1] || 'asc'));
       if (q.limit) parts.push(fs.limit(q.limit));
-      const snap = await fs.getDocs(fs.query.apply(null, parts));
+      const qq = fs.query.apply(null, parts);
+      const snap = await raceCache(fs.getDocs(qq), async () => { const x = await fs.getDocsFromCache(qq); return x.empty ? null : x; });
       return snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
     },
     /** 개수만 (문서를 받지 않음 — 1,000건에 읽기 1번) */
