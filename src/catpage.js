@@ -22,7 +22,9 @@ export function register(state) {
   Router.up.cat = arg => { if (arg) return false; if (CP.path.length) { CP.path.pop(); CP.lim = 60; paint(); return true; } if (CP.q) { CP.q = ''; paint(); return true; } return false; };
   Router.upHas.cat = () => !!(CP.path.length || CP.q);
 }
-const loadScript = (src, test) => test() ? Promise.resolve() : new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('불러오지 못했습니다 (인터넷 확인)')); document.head.appendChild(s); });
+/* 같은 스크립트를 동시에 두 번 붙이지 않음 (받는 중이면 그 약속을 같이 기다림) · 실패하면 다음에 다시 시도 */
+const LOADING = {};
+const loadScript = (src, test) => test() ? Promise.resolve() : (LOADING[src] = LOADING[src] || new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('불러오지 못했습니다 (인터넷 확인)')); document.head.appendChild(s); }).catch(e => { delete LOADING[src]; throw e; }));
 export const loadJsBarcode = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js', () => !!window.JsBarcode);
 export { loadScanner };
 const loadXlsx = () => loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', () => !!window.XLSX);
@@ -115,9 +117,10 @@ export function barcodeSvg(value, o) {
 const barOf = (it, useCode) => it.b || (useCode ? it.c : '');
 
 /* ---------- 아이템 한 개 ---------- */
+const barHtml = it => (window.JsBarcode ? (barcodeSvg(barOf(it, false), { h: 60, w: 2 }) || '<span class="muted">' + bt('등록된 바코드가 없습니다 — 라벨은 아이템 코드로 뽑습니다', 'No barcode — labels use the item code') + '</span>') : '<span class="muted">' + bt('바코드 준비 중…', 'Loading barcode…') + '</span>');
 export async function itemSheet(it, done) {
   if (!it) return;
-  try { await loadJsBarcode(); } catch (e) {}
+  /* 바코드 그림 스크립트(CDN)는 기다리지 않음 — 창은 바로 열고, 스크립트가 오면 그때 바코드만 채움 (느린 LTE 에서 창이 몇 초씩 안 열리던 원인) */
   const P = levels(it).filter(Boolean).map(cleanName).join(' › '), loc = locOf(it), staff = S.role !== 'salesman';
   openModal('<h2 style="margin:0 36px 0 0">' + esc(it.c) + (it.k ? ' 🧩' : '') + (it.h ? ' <span class="tag t-g">🙈 ' + bt('숨김 · 주문 불가', 'hidden · not orderable') + '</span>' : '') + '</h2>' +
     (it.ph ? '<img src="' + esc(thumb(it.ph, 700)) + '" alt="" style="width:100%;max-height:40vh;object-fit:contain;border-radius:12px;background:#f8fafc;margin-top:8px">' : '') +
@@ -125,8 +128,10 @@ export async function itemSheet(it, done) {
     '<div class="kpi" style="grid-template-columns:1fr 1fr 1fr;margin-top:8px"><div><b>' + money(it.p) + '</b><span>' + bt('도매가', 'Price') + '</span></div><div><b>' + (it.s ? money(it.s) : '—') + '</b><span>SRP</span></div><div><b id="isStk">…</b><span>📦 ' + bt('재고', 'In stock') + '</span></div></div>' +
     '<div class="muted" style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap"><span>📍 ' + bt('위치', 'Location') + ' <b>' + esc(loc || '—') + '</b></span><span>🏷 ' + bt('바코드', 'Barcode') + ' <b>' + esc(it.b || '—') + '</b></span></div>' +
     (it.k ? '<div class="muted" style="margin-top:6px">🧩 ' + bt('세트 구성', 'Set contents') + ': ' + it.k.map(k => esc(k[0]) + ' × ' + k[1]).join(', ') + '</div>' : '') +
-    '<div class="cpbar">' + (barcodeSvg(barOf(it, false), { h: 60, w: 2 }) || '<span class="muted">' + bt('등록된 바코드가 없습니다 — 라벨은 아이템 코드로 뽑습니다', 'No barcode — labels use the item code') + '</span>') + '</div>' +
+    '<div class="cpbar" id="isBar">' + barHtml(it) + '</div>' +
     '<div class="btns" style="flex-wrap:wrap">' + (it.h && !staff ? '' : '<button class="b-blue" id="isOrd">🛒 ' + bi('주문에 담기', 'Add to order') + '</button>') + '' + (canLabel() ? '<button class="b-ghost" id="isLbl">🏷 ' + bi('라벨', 'Label') + '</button>' : '') + '' + (staff ? '<button class="b-ghost" id="isEd">✏️ ' + bi('수정', 'Edit') + '</button><button class="b-ghost" id="isStock">📦 ' + bi('재고 기록', 'Stock log') + '</button>' : '') + '</div>');
+  if ($('isBar')) $('isBar').dataset.c = it.c;
+  if (!window.JsBarcode) loadJsBarcode().then(() => { const e = $('isBar'); if (e && e.dataset.c === it.c) e.innerHTML = barHtml(it); }).catch(() => {});
   /* 📦 지금 재고 — stock/{code} (누구나 읽음) */
   stockOf([it.c]).then(m => { const e = $('isStk'); if (e) { const n = m[it.c] || 0; e.textContent = n.toLocaleString(); e.style.color = n > 0 ? '#15803d' : '#b91c1c'; } }).catch(() => { const e = $('isStk'); if (e) e.textContent = '—'; });
   if ($('isOrd')) $('isOrd').onclick = () => toOrder([it.c]);

@@ -15,7 +15,11 @@ import { acctAccess, requestAccess, untilTxt } from './access.js';
 let S = null;
 export function register(state) { S = state; Notes.register(state); }
 const CACHE = {};   // acct → { at, ar, orders, pays, hist }
-export function dropStoreCache(acct) { if (acct) delete CACHE[acct]; else Object.keys(CACHE).forEach(k => { delete CACHE[k]; }); }   // 인보이스 · 수금을 새로 넣은 뒤
+/* AR 문서는 세일즈맨마다 한 장(그 세일즈맨 가게 전부의 미결) 이라 큼 — 가게마다 다시 읽지 않고 10분 보관. 담당 세일즈맨 AR 에 없는 가게의 "다른 AR 찾기" 도 한 번만 */
+const ARDOC = {}, ARALL = { at: 0, docs: null };
+const arDocOf = sm => { const c = ARDOC[sm]; if (c && Date.now() - c.at < 600000) return c.p; const p = S.DB.get('ar', sm).catch(() => null); ARDOC[sm] = { at: Date.now(), p }; return p; };
+const arAll = () => { if (ARALL.docs && Date.now() - ARALL.at < 600000) return ARALL.docs; ARALL.at = Date.now(); return (ARALL.docs = S.DB.list('ar').catch(() => [])); };
+export function dropStoreCache(acct) { if (acct) delete CACHE[acct]; else Object.keys(CACHE).forEach(k => { delete CACHE[k]; }); Object.keys(ARDOC).forEach(k => { delete ARDOC[k]; }); ARALL.docs = null; }   // 인보이스 · 수금을 새로 넣은 뒤
 const BK = ['기한 전 Current', '1-30', '31-60', '61-90', '90+'];
 const isStaff = () => S.role !== 'salesman';
 const mySm = () => (S.me && S.me.sm ? String(S.me.sm).toUpperCase() : '');
@@ -29,19 +33,28 @@ export async function storeInfo(acct, force) {
   const out = { at: Date.now(), acct, sm, ar: null, invs: [], bk: [0, 0, 0, 0, 0], bal: 0, asOf: '', orders: [], pays: [], hist: {}, invHist: [], err: '' };
   const wh = [['acct', '==', acct]]; if (!isStaff()) wh.push(['sm', '==', mySm()]);
   /* 인보이스는 가게 기준 — 내 담당 가게 · 관리자가 허락한 가게는 다른 세일즈맨이 발행한 것까지 전부 (firestore.rules ownAcct · granted) */
-  const acc = await acctAccess(acct); out.access = acc;
+  /* 왕복을 줄이려고 권한 · AR · 주문 · 수금을 한꺼번에 (권한은 세일즈맨만 읽기가 있음) */
+  const [acc, arDoc, orders, pays] = await Promise.all([
+    acctAccess(acct),
+    sm ? arDocOf(sm) : null,
+    S.DB.list('orders', { where: wh }).catch(() => []),
+    S.DB.list('entries', { where: wh.concat([['ym', 'in', recentYms(6)]]) }).catch(() => [])
+  ]);
+  out.access = acc;
   const whInv = acc.k === 'none' ? wh : [['acct', '==', acct]];
+  /* 인보이스 — 미결 · 최근 12달 기록 · 전체 장수(개수만) 를 같이 읽음. 전체 기록을 다 받지 않음 (오래된 가게는 수백 장 → 폰에서 몇 초) */
+  const yms12 = recentYms(12);
+  const [appInv, recentInv, nAll] = await Promise.all([
+    S.DB.list('invoices', { where: whInv.concat([['st', '==', 'open']]) }).catch(() => null),
+    S.DB.list('invoices', { where: whInv.concat([['ym', 'in', yms12]]) }).catch(() => null),
+    S.DB.count('invoices', { where: whInv }).catch(() => null)
+  ]);
   try {
-    const [arDoc, orders, pays] = await Promise.all([
-      sm ? S.DB.get('ar', sm).catch(() => null) : null,
-      S.DB.list('orders', { where: wh }).catch(() => []),
-      S.DB.list('entries', { where: wh.concat([['ym', 'in', recentYms(6)]]) }).catch(() => [])
-    ]);
     /* AR — 기준일 이후 내가 받은 돈을 빼서 지금 잔액으로 */
     let st = arDoc && arDoc.stores ? arDoc.stores.find(s => s.acct === acct) : null;
     let arUse = arDoc;
     /* 담당자: 거래처의 담당 세일즈맨과 AR 의 세일즈맨이 다르면 다른 AR 문서도 찾아봄 */
-    if (!st && isStaff()) { try { const all = await S.DB.list('ar'); for (const d of all) { const x = (d.stores || []).find(s => s.acct === acct); if (x) { st = x; arUse = d; out.sm = d.id; break; } } } catch (e) {} }
+    if (!st && isStaff()) { try { const all = await arAll(); for (const d of all) { const x = (d.stores || []).find(s => s.acct === acct); if (x) { st = x; arUse = d; out.sm = d.id; break; } } } catch (e) {} }
     if (arUse && arUse.stores) {
       out.asOf = arUse.asOf || '';
       if (st) {
@@ -54,7 +67,7 @@ export async function storeInfo(acct, force) {
     }
     /* 앱에서 확정한 인보이스 — AR 에 아직 없는 것은 미결 목록에 더함 */
     try {
-      const app = await S.DB.list('invoices', { where: whInv.concat([['st', '==', 'open']]) });
+      const app = appInv || [];
       const have = {}; out.invs.forEach(v => { have[v.no] = 1; });
       const paidApp = {}; pays.forEach(e => { if (e.void || e.repl || e.bounced) return; (e.invs || []).forEach(v => { paidApp[v.no] = R2((paidApp[v.no] || 0) + num(v.amt)); }); });
       app.forEach(x => { if (have[x.no] || x.src === 'legacy') return;   // 이전 시스템 인보이스의 잔액은 AR 이 기준 (AR 에 없으면 받은 것)
@@ -62,10 +75,12 @@ export async function storeInfo(acct, force) {
       out.invs.sort((x, y) => x.d < y.d ? 1 : -1);
     } catch (e) {}
     /* 인보이스 기록 — 이전 시스템에서 가져온 것 + 앱 발행, 최근 60장 (받은 것 포함) */
-    try { let allInv = await S.DB.list('invoices', { where: whInv });
+    try { let allInv = recentInv || [];
+      /* 최근 12달에 한 장도 없는데 옛 인보이스는 있는 가게(오래 쉰 가게) — 그때만 전체를 읽음 */
+      if (!allInv.length && nAll) { try { allInv = await S.DB.list('invoices', { where: whInv }); } catch (e) {} }
       /* 계정코드로 하나도 없으면 — 이전 시스템 인보이스가 다른 코드 모양으로 들어왔을 수 있으니 가게 이름으로도 (담당자만: 세일즈맨 규칙은 가게 코드 기준) */
-      if (!allInv.length && isStaff() && a && a.store) { try { const byName = await S.DB.list('invoices', { where: [['store', '==', a.store]] }); if (byName.length) { allInv = byName; out.invByName = true; } } catch (e) {} }
-      out.invHist = sortBy(allInv.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 60); out.invHistN = allInv.length; out.invHistAmt = R2(allInv.filter(x => x.st !== 'x' && x.d >= today().substring(0, 4) + '-01-01').reduce((a, x) => a + (x.total || 0), 0)); } catch (e) {}
+      if (!allInv.length && !nAll && isStaff() && a && a.store) { try { const byName = await S.DB.list('invoices', { where: [['store', '==', a.store]] }); if (byName.length) { allInv = byName; out.invByName = true; } } catch (e) {} }
+      out.invHist = sortBy(allInv.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 60); out.invHistN = out.invByName || nAll == null ? allInv.length : Math.max(nAll, allInv.length); out.whInv = whInv; out.invPartial = !out.invByName && allInv.length < out.invHistN; out.invHistAmt = R2(allInv.filter(x => x.st !== 'x' && x.d >= today().substring(0, 4) + '-01-01').reduce((a, x) => a + (x.total || 0), 0)); } catch (e) {}
     out.orders = sortBy(orders.filter(o => o.st !== 'x'), o => o.d + (o.createdAt || ''), true).slice(0, 30);
     out.pays = sortBy(pays.filter(e => !e.void), e => e.d + (e.createdAt || ''), true).slice(0, 30);
     /* 🕘 아이템별 이 가게 구매 기록 — 주문 화면에 "9/16(3) · 7/20(6)" 로 보임
@@ -188,7 +203,7 @@ function invhHtml(info) {
     if (x.src !== 'legacy' && x.st === 'open') return '<span class="warn">' + bt('미결 (앱)', 'Open (app)') + '</span>';
     if (info.asOf && x.d <= info.asOf) return bt('완납', 'Paid');
     return info.asOf ? bt('AR 기준일 뒤 발행', 'after AR date') : ((x.bal || 0) > 0.005 ? '<span class="warn">' + bt('미결', 'Open') + ' ' + money(x.bal) + '</span>' : bt('완납', 'Paid')); };
-  return '<div class="muted" style="margin:4px 0 6px">' + bt('올해 매출', 'This year') + ' <b>' + money(info.invHistAmt || 0) + '</b> · ' + bt('전체', 'All') + ' ' + (info.invHistN || 0) + bt('장', '') + (info.invHistN > 60 ? ' (' + bt('최근 60장', 'latest 60') + ')' : '') + ' · ' + bt('미결 · 완납은 AR 기준', 'open/paid from A/R') + (info.asOf ? ' ' + esc(info.asOf) : '') + '</div>' +
+  return '<div class="muted" style="margin:4px 0 6px">' + bt('올해 매출', 'This year') + ' <b>' + money(info.invHistAmt || 0) + '</b> · ' + bt('전체', 'All') + ' ' + (info.invHistN || 0) + bt('장', '') + (info.invPartial ? ' (' + bt('최근 12달 · 60장까지', 'last 12 months, up to 60') + ') <button type="button" class="b-ghost b-sm" id="ihAll" style="padding:3px 9px">📜 ' + bt('전체 읽기', 'Load all') + '</button>' : info.invHistN > (info.invHist || []).length ? ' (' + bt('최근 60장', 'latest 60') + ')' : '') + ' · ' + bt('미결 · 완납은 AR 기준', 'open/paid from A/R') + (info.asOf ? ' ' + esc(info.asOf) : '') + '</div>' +
     rows.map(r => { const x = r.x; return '<div class="pr tap" data-si="' + esc(x.no) + '"><div class="ct"><b>' + esc(x.no) + ' <span class="tag t-g">' + esc(x.t || '') + '</span>' + (x.arOnly ? ' <span class="tag t-c">AR</span>' : x.src === 'legacy' ? '' : ' <span class="tag t-b">' + bt('앱', 'App') + '</span>') + '</b><small>' + esc(md(x.d)) + (x.sm ? ' · ' + esc(x.sm) : '') + (x.terms ? ' · ' + esc(x.terms) : '') + (x.order ? ' · ' + esc(x.order) : '') + '</small></div><div class="pa"><b>' + money(x.total) + '</b><small>' + st(r) + '</small></div></div>'; }).join('');
 }
 /** 📄 인보이스 한 장 — 인보이스(앱 · 이전 시스템) + AR 잔액 + 이 인보이스에 넣은 수금, 한 화면에. back 이 있으면 ‹ 로 돌아감 */
@@ -330,6 +345,8 @@ export async function storeSheet(acct, onPick, opt0) {
     };
     $('ssStmt').onclick = () => statementDialog(acct, info, () => { openModal(''); paint(); });
     document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { tab = b.dataset.ss; paint(); });
+    /* 📜 전체 읽기 — 평소엔 최근 12달만 받아 빠르게 열고, 옛 인보이스가 필요할 때만 전부 (한 번 읽으면 10분 보관) */
+    if ($('ihAll')) $('ihAll').onclick = async () => { $('ihAll').disabled = true; $('ihAll').textContent = '…'; try { const all = await S.DB.list('invoices', { where: info.whInv || [['acct', '==', acct]] }); info.invHist = sortBy(all.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 200); info.invHistN = Math.max(info.invHistN || 0, all.length); info.invPartial = false; } catch (e) { toast(bt('읽지 못했습니다', 'Could not load') + ': ' + (e.code || e.message), 'bad'); } paint(); };
     document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); goHash('#/order/' + encodeURIComponent(el.dataset.so)); });
     document.querySelectorAll('[data-si]').forEach(el => el.onclick = () => invDetail(el.dataset.si, acct, paint));
     if ($('ssReq')) $('ssReq').onclick = () => requestAccess({ acct });
