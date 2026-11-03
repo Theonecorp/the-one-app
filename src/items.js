@@ -6,7 +6,7 @@
  *    엑셀(Item Master) 전체 올리기는 관리 → 📦 아이템. 저장하면 카탈로그를 다시 발행해 모든 폰이 새 목록을 받음
  *  행 모양: [code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide]
  * ============================================================ */
-import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, itabs, pageHead } from './ui.js';
+import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, itabs, pageHead , narrow, crow } from './ui.js';
 import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1, setItemPhoto, shrinkImage, photoOv } from './catalog.js';
 import { stockAll } from './stock.js';
 import { typeOfItem, invTypes } from './invoicing.js';
@@ -113,7 +113,7 @@ function list() {
   const showList = true;   // 목록은 늘 바로 보임 (전체 · 코드 순) — 전에는 분류나 검색어가 있어야 나와 "아이템이 안 보인다"고 느껴짐
   const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + all.length.toLocaleString() + (IT.aisle ? '개 (위치 순)' : '개 (코드 순)') + (!q && !IT.path.length && IT.mode === 'all' && !IT.aisle ? ' · ' + bt('전체', 'all') : '') + '</span>' +
     (showList && all.length ? '<label class="tap" style="display:flex;align-items:center;gap:4px;white-space:nowrap;flex:0 0 auto"><input type="checkbox" id="itAll" ' + (all.length && all.every(x => IT.sel.has(x.c)) ? 'checked' : '') + '> ' + bi('모두 선택', 'All') + ' ' + Math.min(all.length, 2000).toLocaleString() + '</label>' : '') + '</div>';
-  $('itList').innerHTML = head + (showList ? (res.length ? '<div class="dtw"><table class="dt">' + TH() + '<tbody>' + res.map(row).join('') + '</tbody></table></div>' + (all.length > res.length ? '<button class="b-ghost" id="itMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') :
+  $('itList').innerHTML = head + (showList ? (res.length ? (narrow() ? '<div class="crows">' + res.map(row).join('') + '</div>' : '<div class="dtw"><table class="dt">' + TH() + '<tbody>' + res.map(row).join('') + '</tbody></table></div>') + (all.length > res.length ? '<button class="b-ghost" id="itMore" style="margin-top:8px">더 보기 (' + (all.length - res.length).toLocaleString() + '개 남음)</button>' : '') :
     '<div class="none">맞는 아이템이 없습니다' + (q ? ' — <a href="#" id="itMk">＋ "' + esc(q.toUpperCase()) + '" 로 새 아이템 등록</a>' : '') + '</div>') : '');
   $('itList').querySelectorAll('[data-it]').forEach(el => el.onclick = async () => { const it = C.byCode[el.dataset.it]; if (!it) return; const M = await import('./catpage.js'); M.itemSheet(it, () => { if ($('itList')) paint(); }); });   // 먼저 보기 → ✏️ 수정
   $('itList').querySelectorAll('[data-ic]').forEach(ck => { ck.onclick = e => e.stopPropagation(); ck.onchange = () => { if (ck.checked) IT.sel.add(ck.dataset.ic); else IT.sel.delete(ck.dataset.ic); bulk(); }; });
@@ -127,6 +127,10 @@ function list() {
 const TH = () => '<thead><tr><th style="width:28px"></th><th style="width:44px">' + bt('사진', 'Photo') + '</th><th>' + bt('코드', 'Code') + '</th><th>' + bt('설명', 'Description') + '</th><th class="hs">' + bt('분류', 'Category') + '</th><th>📍 ' + bt('통로', 'Aisle') + '</th><th class="r">📦 ' + bt('재고', 'Stock') + '</th><th class="hs">' + bt('상태', 'Status') + '</th><th class="r">' + bt('가격', 'Price') + '</th><th class="r hs">SRP</th><th class="hs">🏭 ' + bt('공급', 'Supplier') + '</th><th style="width:40px"></th></tr></thead>';
 function row(it) {
   const n = STK[it.c] || 0, stk = n > 0 ? '<span class="stk' + (n < 12 ? ' slow' : '') + '">' + n.toLocaleString() + '</span>' : '<span class="stk s0">' + bt('없음', 'out') + '</span>';
+  if (narrow()) return crow({ attr: ' data-it="' + esc(it.c) + '"', cls: 'irow tap' + (it.h ? ' hid' : ''), ck: '<input type="checkbox" data-ic="' + esc(it.c) + '" ' + (IT.sel.has(it.c) ? 'checked' : '') + '>',
+    thumb: it.ph ? '<img class="thumb" src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" alt="">' : '<span class="noph" title="' + esc(bt('사진 없음', 'No photo')) + '">📷✕</span>',
+    title: esc(it.c) + (it.k ? ' <span class="tag t-a">🧩</span>' : '') + (it.h ? ' <span class="tag t-x">🙈</span>' : ''), sub: esc(it.d), sub2: '📍 ' + esc(locOf(it) || '—') + ' · 📦 ' + stk + (it.b ? ' · ' + esc(it.b) : ''),
+    num: money(it.p), numLab: it.s ? 'SRP ' + money(it.s) : '', act: it.virt || locOnly() ? '' : '<span class="cact"><button type="button" class="b-ghost b-sm" data-ih="' + esc(it.c) + '" data-on="' + (it.h ? '0' : '1') + '" title="' + esc(it.h ? bt('보이기', 'Show') : bt('숨기기', 'Hide')) + '">' + (it.h ? '👁' : '🙈') + '</button></span>', chev: false });
   return '<tr class="irow tap' + (it.h ? ' hid' : '') + '" data-it="' + esc(it.c) + '"><td><input type="checkbox" data-ic="' + esc(it.c) + '" ' + (IT.sel.has(it.c) ? 'checked' : '') + '></td>' +
     '<td>' + (it.ph ? '<img class="thumb" src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" alt="">' : '<span class="noph" title="' + esc(bt('사진 없음', 'No photo')) + '">📷✕</span>') + '</td>' +
     '<td class="ct"><b>' + esc(it.c) + '</b>' + (it.k ? ' <span class="tag t-a">🧩</span>' : '') + (it.b ? '<div class="sub0">' + esc(it.b) + '</div>' : '') + '</td>' +

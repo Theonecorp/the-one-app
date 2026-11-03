@@ -56,11 +56,27 @@ export function itabs(items, cur, attr, cls) {
 /** 📊 표 — 목록을 엑셀처럼 칸으로 (v0.8.142). cols: [{ h: 머리글, k: 필드, f: row => html, cls: 'r'(오른쪽) | 'c', w: 너비, sm: false(폰에서 숨김), sort: row => 값 }]
  *   머리글을 누르면 그 칸으로 정렬(두 번 = 반대) — 표 id 로 기억. rows 에 _grp(묶음 이름) 가 있으면 묶음 머리줄을 넣고, 정렬은 묶음 안에서만 */
 export const DT_SORT = {};
+/* 📱 좁은 화면(폰)에서는 표 대신 카드 줄 — 옆으로 밀지 않고 다 보이게. 넓은 화면은 표 그대로 */
+export const narrow = () => typeof window !== 'undefined' && window.innerWidth <= 640;
+/** 카드 줄 한 장 — { attr, cls, ck, idx, thumb, title, sub, sub2, badge, num, numLab, act, chev } */
+export function crow(o) {
+  return '<div class="crow ' + (o.cls || '') + '"' + (o.attr || '') + '>' + (o.ck ? '<span class="cck">' + o.ck + '</span>' : '') + (o.idx != null ? '<span class="cidx">' + o.idx + '</span>' : '') + (o.thumb || '') +
+    '<div class="cmain ct"><b>' + (o.title || '') + '</b>' + (o.sub ? '<small>' + o.sub + '</small>' : '') + (o.sub2 ? '<small>' + o.sub2 + '</small>' : '') + '</div>' +
+    (o.badge || o.num || o.numLab ? '<div class="cright">' + (o.badge || '') + (o.num ? '<b class="cnum' + (o.numCls ? ' ' + o.numCls : '') + '">' + o.num + '</b>' : '') + (o.numLab ? '<small>' + o.numLab + '</small>' : '') + '</div>' : '') +
+    (o.act || '') + (o.chev === false ? '' : '<span class="chev">›</span>') + '</div>';
+}
+/** 카드 줄 묶음 머리 (표의 tr.grp 와 같은 자리) */
+export const cgrp = (html, attr, cls) => '<div class="cgrp ' + (cls || '') + '"' + (attr || '') + '>' + html + '</div>';
 export function dtable(id, cols, rows, opt) {
   opt = opt || {}; const st = DT_SORT[id];
   let L = rows.slice();
   if (st) { const c = cols.find(x => (x.k || x.h) === st.k); if (c) { const v = r => c.sort ? c.sort(r) : (c.k ? r[c.k] : ''); const gi = {}; L.forEach((r, i) => { if (!(r._grp in gi)) gi[r._grp] = i; });
     L.sort((a, b) => { const g = (gi[a._grp] || 0) - (gi[b._grp] || 0); if (g) return g; const x = v(a), y = v(b); const n = typeof x === 'number' && typeof y === 'number' ? x - y : String(x == null ? '' : x).localeCompare(String(y == null ? '' : y), 'en', { numeric: true }); return st.d ? -n : n; }); } }
+  if (opt.card && narrow()) {
+    let g = null, out = '';
+    L.forEach(r => { if (r._grp != null && r._grp !== g) { g = r._grp; out += cgrp(r._grp + (r._grpSub ? ' <span>' + r._grpSub + '</span>' : '')); } const c = opt.card(r) || {}; out += crow(Object.assign({ attr: opt.rowAttr ? opt.rowAttr(r) : '', cls: opt.rowCls ? opt.rowCls(r) : '' }, c)); });
+    return '<div class="crows" data-dt="' + esc(id) + '">' + (out || '<div class="none">' + (opt.empty || bt('없음', 'none')) + '</div>') + '</div>';
+  }
   const cell = (c, r) => c.f ? c.f(r) : esc(r[c.k] == null ? '' : r[c.k]);
   const th = cols.map(c => '<th class="' + (c.cls || '') + (c.sm === false ? ' hs' : '') + (st && (c.k || c.h) === st.k ? (st.d ? ' sd' : ' sa') : '') + '"' + (c.w ? ' style="width:' + c.w + '"' : '') + (c.k || c.sort ? ' data-dts="' + esc(c.k || c.h) + '"' : '') + '>' + c.h + '</th>').join('');
   let body = '', g = null;

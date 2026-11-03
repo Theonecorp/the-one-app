@@ -300,7 +300,8 @@ async function pageStores() {
     { h: bt('결제 조건', 'Terms'), k: 'terms', sm: false, f: a => a.terms ? '<span class="tag t-f">' + esc(a.terms) + '</span>' : '' },
     { h: bt('상태', 'Status'), k: 'inactive', sort: a => a.inactive ? 1 : 0, f: a => a.inactive ? '<span class="tag t-g">💤 ' + bt('비활성', 'Inactive') + '</span>' : '<span class="tag t-k">' + bt('활성', 'Active') + '</span>' }
   ].concat(isSales ? [] : [{ h: '', w: '44px', f: a => '<button class="b-ghost b-sm" data-ste="' + esc(a.acct) + '">✏️</button>' }]);
-  const tbl = L => dtable('stores', COLS, L, { rowAttr: a => ' data-st="' + esc(a.acct) + '"', rowCls: a => 'tap' + (a.inactive ? ' dim' : ''), empty: bt('없음', 'none') });
+  const tbl = L => dtable('stores', COLS, L, { rowAttr: a => ' data-st="' + esc(a.acct) + '"', rowCls: a => 'tap' + (a.inactive ? ' dim' : ''), empty: bt('없음', 'none'),
+    card: a => ({ idx: '<span style="font-size:11px">' + esc(a.acct) + '</span>', title: esc(a.store), sub: esc([a.city, a.state].filter(Boolean).join(', ')) + (a.zip ? ' ' + esc(a.zip) : '') + (a.addr ? ' · ' + esc(a.addr) : ''), sub2: a.tel ? '☎ ' + esc(a.tel) : '', badge: (a.sm ? '<span class="tag t-x">' + esc(a.sm) + '</span> ' : '') + (a.terms ? '<span class="tag t-f">' + esc(a.terms) + '</span>' : '') + (a.inactive ? ' <span class="tag t-g">💤</span>' : '') }) });
   const cnt = (list, f) => { const m = {}; list.forEach(a => { const k = f(a) || '—'; m[k] = (m[k] || 0) + 1; }); return m; };
   let body = '', sub = '';
   if (STM.mode === 'q') {
