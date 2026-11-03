@@ -42,7 +42,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.156';
+export const VER = 'v0.8.157';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -147,6 +147,7 @@ function shell() {
     document.body.classList.toggle('isoff', off);
   };
   window.addEventListener('online', net); window.addEventListener('offline', net); window.addEventListener('theone:net', net); net();
+  window.addEventListener('theone:slow', () => toast('🐢 ' + bt('연결이 느려 폰에 저장된 자료를 먼저 보여줍니다', 'Slow connection — showing data saved on this phone first'), 'warn'));
   $('hNet').onclick = () => {
     const off = navigator.onLine === false, n = Orders.outboxList().length, pend = S.DB && S.DB.pending;
     openModal('<h2>' + (off ? '🔴 ' + bt('오프라인', 'Offline') : '🟢 ' + bt('온라인', 'Online')) + '</h2><div class="muted" style="line-height:1.7">' +

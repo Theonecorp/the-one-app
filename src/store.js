@@ -307,10 +307,20 @@ function fixRequest(a, back) {
     busy(false);
   };
 }
+let SHEET_SEQ = 0;
 export async function storeSheet(acct, onPick, opt0) {
-  const a = S.accounts.byCode ? S.accounts.byCode[acct] : null;
-  openModal('<h2>' + esc(a ? a.store : acct) + '</h2><div class="load">읽는 중…</div>');
-  const [info, notes0, ships] = await Promise.all([storeInfo(acct), Notes.loadNotes(acct), shipmentsOf(acct)]);
+  const a = S.accounts.byCode ? S.accounts.byCode[acct] : null, seq = ++SHEET_SEQ;
+  /* 읽는 동안에도 주소 · 전화 · 담당은 바로 보여줌 · 6초 넘게 걸리면 느린 연결 안내 + 다시 시도 · 실패하면 스피너 대신 오류 + 다시 시도 (전에는 영영 "읽는 중") */
+  const head = '<h2>' + esc(a ? a.store : acct) + '</h2>' + (a ? '<div class="muted" style="margin-top:2px">' + esc([a.addr, [a.city, a.state].filter(Boolean).join(', ') + (a.zip ? ' ' + a.zip : '')].filter(Boolean).join(', ')) + (a.tel ? ' · ☎ ' + esc(a.tel) : '') + (a.sm ? ' · <span class="tag t-x">' + esc(a.sm) + '</span>' : '') + '</div>' : '');
+  const retryBtn = '<button type="button" class="b-ghost b-sm" id="ssRetry">↻ ' + bt('다시 시도', 'Retry') + '</button>';
+  const bindRetry = () => { if ($('ssRetry')) $('ssRetry').onclick = () => { dropStoreCache(acct); storeSheet(acct, onPick, opt0); }; };
+  openModal(head + '<div class="load" id="ssLoad">읽는 중…</div>');
+  const slow = setTimeout(() => { const e = $('ssLoad'); if (e && seq === SHEET_SEQ) { e.insertAdjacentHTML('afterend', '<div class="alert a-amb" id="ssSlow">🐢 ' + bt('연결이 느립니다 — 조금 더 기다리거나 다시 시도하세요', 'Slow connection — wait a bit or retry') + ' ' + retryBtn + '</div>'); bindRetry(); } }, 6000);
+  let info, notes0, ships;
+  try { [info, notes0, ships] = await Promise.all([storeInfo(acct), Notes.loadNotes(acct), shipmentsOf(acct)]); }
+  catch (e) { clearTimeout(slow); if (seq !== SHEET_SEQ || !$('ssLoad')) return; $('mbox').innerHTML = head + '<div class="alert a-red" style="margin-top:10px">' + bt('읽지 못했습니다', 'Could not load') + ': ' + esc(e.code || e.message) + ' ' + retryBtn + '</div>'; bindRetry(); return; }
+  clearTimeout(slow);
+  if (seq !== SHEET_SEQ || !$('ssLoad')) return;   // 그새 창을 닫았거나 다른 가게를 열었으면 덮어쓰지 않음
   let notes = notes0;
   const live = info.invs.filter(v => v.bal > 0.005), credits = info.invs.filter(v => v.bal < -0.005);
   const stale = info.asOf ? daysBetween(info.asOf, today()) : 0;

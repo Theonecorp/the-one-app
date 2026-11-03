@@ -83,7 +83,7 @@ nav button.on{color:var(--blue)}
 #busy{position:fixed;inset:0;z-index:95;display:none;align-items:center;justify-content:center;background:rgba(241,245,249,.5)}#busy.on{display:flex}
 .spin{width:34px;height:34px;border:4px solid #cbd5e1;border-top-color:var(--blue);border-radius:50%;animation:sp .8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
 #toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%) translateY(16px);opacity:0;background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;font-size:13.5px;transition:.2s;z-index:99;max-width:90vw;text-align:center;pointer-events:none}
-#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}#toast.bad{background:var(--red)}#toast.good{background:var(--green)}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}#toast.bad{background:var(--red)}#toast.good{background:var(--green)}#toast.warn{background:#b45309}
 #modal{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:90;display:none;align-items:flex-end;justify-content:center}
 #modal.on{display:flex}
 #modal .bwrap{position:relative;width:100%;max-width:min(600px,100%);display:flex;flex-direction:column;max-height:100%}#modal .bwrap.wide{max-width:min(820px,100%)}
