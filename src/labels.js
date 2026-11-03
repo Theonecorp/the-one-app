@@ -113,7 +113,8 @@ const COLS = () => [
 function list() {
   const L = pool(), show = L.slice(0, LB.lim), el = $('lbList'); if (!el) return;
   $('lbN').textContent = L.length.toLocaleString() + bt('개', ' items') + (LB.sel.size ? ' · ✓ ' + LB.sel.size : '');
-  el.innerHTML = dtable('labels', COLS(), show, { rowAttr: r => ' data-lr="' + esc(r.c) + '"', rowCls: r => 'tap' + (LB.sel.has(r.c) ? ' on' : ''), empty: bt('맞는 아이템이 없습니다', 'No matching items') });
+  el.innerHTML = dtable('labels', COLS(), show, { rowAttr: r => ' data-lr="' + esc(r.c) + '"', rowCls: r => 'tap' + (LB.sel.has(r.c) ? ' on' : ''), empty: bt('맞는 아이템이 없습니다', 'No matching items'),
+    card: r => ({ ck: '<input type="checkbox" class="ck-big" data-lc="' + esc(r.c) + '"' + (LB.sel.has(r.c) ? ' checked' : '') + '>', thumb: r.ph ? '<img class="thumb" src="' + esc(thumb(r.ph, 80)) + '" loading="lazy" alt="">' : '<span class="noph">📷</span>', title: esc(r.c) + (r.h ? ' <span class="tag t-g">🙈</span>' : ''), sub: esc(r.d || ''), sub2: '📍 ' + esc(locOf(r) || '—') + (r.b ? ' · ' + esc(r.b) : ''), num: r.s ? money(r.s) : '', numLab: r.s ? 'SRP' : '', chev: false }) });
   $('lbMore').innerHTML = L.length > show.length ? '<button class="b-ghost" id="lbMoreB" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (L.length - show.length).toLocaleString() + ')</button>' : '';
   if ($('lbMoreB')) $('lbMoreB').onclick = () => { LB.lim += 300; list(); };
   bindDtable(el, list);

@@ -43,12 +43,12 @@ const path = require('path');
   pg = await mk('luke@theonefl.com', true);
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(800); await pg.evaluate(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'sent' }))); await pg.waitForTimeout(800);
   if (await pg.$('[data-grp="sm"]')) { await pg.click('[data-grp="sm"]'); await pg.waitForTimeout(500); }
-  const g = await pg.evaluate(() => { const t = [...document.querySelectorAll('#page table.otbl')]; return { tables: t.length, grp: t.length ? t[0].querySelectorAll('tr.grp').length : 0, rows: t.length ? t[0].querySelectorAll('tr[data-oid]').length : 0 }; });
-  log('sm grouping:', g); if (g.tables !== 1 || g.grp < 2 || g.rows !== 3) errs.push('salesman groups should be one table with group rows: ' + JSON.stringify(g));
-  await pg.click('tr[data-smhd="BRANDON"] b'); await pg.waitForTimeout(200);
-  const hid = await pg.$$eval('tr[data-sg="BRANDON"]', r => r.map(x => x.classList.contains('hide'))); log('fold:', hid); if (hid.length !== 2 || !hid.every(Boolean)) errs.push('tapping a group head should fold its rows');
-  await pg.click('tr[data-smhd="BRANDON"] b'); await pg.waitForTimeout(200);
-  if (await pg.$('[data-grp="day"]')) { await pg.click('[data-grp="day"]'); await pg.waitForTimeout(500); const d = await pg.evaluate(() => { const t = [...document.querySelectorAll('#page table.otbl')]; return { tables: t.length, grp: t.length ? t[0].querySelectorAll('tr.grp').length : 0 }; }); log('day grouping:', d); if (d.tables !== 1 || d.grp < 2) errs.push('day groups should be one table'); }
+  const g = await pg.evaluate(() => { const t = [...document.querySelectorAll('#page table.otbl, #page .crows.otbl')]; return { tables: t.length, grp: t.length ? t[0].querySelectorAll('tr.grp, .cgrp').length : 0, rows: t.length ? t[0].querySelectorAll('[data-oid]').length : 0 }; });
+  log('sm grouping:', g); if (g.tables !== 1 || g.grp < 2 || g.rows !== 3) errs.push('salesman groups should be one list with group rows: ' + JSON.stringify(g));
+  await pg.click('[data-smhd="BRANDON"] b'); await pg.waitForTimeout(200);
+  const hid = await pg.$$eval('[data-sg="BRANDON"]', r => r.map(x => x.classList.contains('hide'))); log('fold:', hid); if (hid.length !== 2 || !hid.every(Boolean)) errs.push('tapping a group head should fold its rows');
+  await pg.click('[data-smhd="BRANDON"] b'); await pg.waitForTimeout(200);
+  if (await pg.$('[data-grp="day"]')) { await pg.click('[data-grp="day"]'); await pg.waitForTimeout(500); const d = await pg.evaluate(() => { const t = [...document.querySelectorAll('#page table.otbl, #page .crows.otbl')]; return { tables: t.length, grp: t.length ? t[0].querySelectorAll('tr.grp, .cgrp').length : 0 }; }); log('day grouping:', d); if (d.tables !== 1 || d.grp < 2) errs.push('day groups should be one table'); }
   await pg.screenshot({ path: path.resolve(__dirname, 'out', 'order_groups.png') });
   await pg.close();
 

@@ -124,7 +124,7 @@ function paintEntry() {
     '<div class="hint">위 목록에서 <b>탭해서 고르면 금액은 자동</b>으로 채워집니다. 받은 돈이 모자라면 마지막에 고른 인보이스가 <b>파샬</b>이 됩니다. 크레딧은 금액 앞 <b>＋</b> 를 눌러 <b>－</b> 로.<br><span class="en">Tap invoices from the list — amounts fill in automatically. If short, the last one picked becomes partial.</span></div></div>';
   h += '<div class="fg"><label>메모 <span class="en">Memo</span> <span style="font-weight:400">(선택 · optional)</span></label><textarea id="fMemo" rows="2" placeholder="예: 부분 수금 / e.g. partial payment">' + esc(F.memo) + '</textarea></div>';
   h += '<button class="b-blue" id="btnSave" style="padding:17px;font-size:18px">' + (F.editing ? '수정 저장 · Save changes' : '저장 · SAVE') + '</button></div>';
-  $('hubBody').innerHTML = h;
+  if ($('hubBody')) $('hubBody').innerHTML = h;
   bindEntry();
 }
 function payBlock(p, i) {
@@ -374,7 +374,7 @@ async function paintToday() {
     '<div id="phGrid" class="phgrid"></div><div class="hint" id="phHint"></div>' +
     '<button class="b-blue" id="btnSend" style="background:var(--amber);margin-top:14px;padding:16px" ' + (pend.length ? '' : 'disabled') + '>📧 Daily Report 전송 · Send</button>' +
     '<div class="hint" style="text-align:center;margin-top:10px"><b>아직 안 보낸 건만</b> 전송됩니다 (한 번 보낸 건은 다시 안 감). 전송 후 취소는 담당자를 통해야 합니다.<br><span class="en">Only entries not yet reported are sent. After sending, ask the office to cancel.</span></div></div>';
-  $('hubBody').innerHTML = h;
+  if ($('hubBody')) $('hubBody').innerHTML = h;
   $('rDate').onchange = () => { TODAY_D = $('rDate').value || today(); paintToday(); };
   $('btnPhotoCam').onclick = () => $('rPhotoCam').click(); $('btnPhotoLib').onclick = () => $('rPhotoLib').click();
   $('rPhotoCam').onchange = e => { addPhotos(e.target.files); e.target.value = ''; }; $('rPhotoLib').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
@@ -487,7 +487,7 @@ async function sendPhotosOnly() {
  * ============================================================ */
 async function paintHist() {
   const from = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();
-  $('hubBody').innerHTML = '<div class="card"><label>기록 조회 <span class="en">Collection history</span></label><div class="pdrow"><input id="hQ" autocomplete="off" placeholder="계정코드 / 가게 이름 / 체크번호" value="' + esc(HQ) + '"><button type="button" class="pdclr" id="hGo" style="background:var(--blue);color:#fff;border-color:var(--blue)">검색 Search</button></div>' +
+  if ($('hubBody')) $('hubBody').innerHTML = '<div class="card"><label>기록 조회 <span class="en">Collection history</span></label><div class="pdrow"><input id="hQ" autocomplete="off" placeholder="계정코드 / 가게 이름 / 체크번호" value="' + esc(HQ) + '"><button type="button" class="pdclr" id="hGo" style="background:var(--blue);color:#fff;border-color:var(--blue)">검색 Search</button></div>' +
     '<div class="hint">예) <b>4001</b> (계정코드) · <b>ali fl</b> (가게 이름) · <b>10432</b> (체크번호). 가게 이름은 <b>일부만 쳐도</b> 됩니다. 그 가게의 수금 · COD · ACH · 카드 기록이 모두 나오고, 합계 · 마지막 수금일이 위에 표시됩니다.<br><span class="en">e.g. account #, store name words, or check #</span></div>' +
     '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600"><input type="checkbox" id="hOther" style="width:20px;height:20px" checked> COD · ACH · 카드도 같이 <span class="en">incl. COD / ACH / card</span></label></div>' +
     '<div id="hSum"></div><div id="hList"></div>' +
@@ -595,7 +595,7 @@ const BK = ['기한 전', '1-30일', '31-60일', '61-90일', '90일+'];
 let AR_F = 'all';
 async function paintAR() {
   const ar = await arDocMine();
-  if (!ar || !ar.stores) { $('hubBody').innerHTML = '<div class="card"><div class="none">아직 올라온 AR 이 없습니다. 담당자가 미수금(AR)을 올리면 여기에 보입니다.<br><span class="en">No AR uploaded yet.</span></div></div>'; return; }
+  if (!ar || !ar.stores) { if ($('hubBody')) $('hubBody').innerHTML = '<div class="card"><div class="none">아직 올라온 AR 이 없습니다. 담당자가 미수금(AR)을 올리면 여기에 보입니다.<br><span class="en">No AR uploaded yet.</span></div></div>'; return; }
   const rows = await myEntries(), paid = {};
   rows.forEach(e => { if (e.d <= (ar.asOf || '') || e.repl) return; (e.invs || []).forEach(v => { const k = (v.acct || e.acct) + '|' + v.no; paid[k] = R2((paid[k] || 0) + num(v.amt)); }); });
   const stores = ar.stores.map(s => { let net = 0; const b = [0, 0, 0, 0, 0]; const invs = (s.invs || []).map(v => { const p = v.app ? 0 : (paid[s.acct + '|' + v.inv] || 0); const bal = R2(v.bal - p); return Object.assign({}, v, { paid: p, net: bal }); }); invs.forEach(v => { net += v.net; if (v.net > 0) b[Math.max(0, Math.min(4, v.bk || 0))] += v.net; else b[0] += v.net; }); return Object.assign({}, s, { net: R2(net), b: b.map(R2), invs, done: net <= 0.005, maxPdd: Math.max(0, ...invs.filter(v => v.net > 0.005).map(v => v.pdd || 0)) }); });
@@ -607,7 +607,7 @@ async function paintAR() {
     '<div class="card"><label>오래된 순 <span class="en">Oldest first</span></label><div class="chips">' + [['all', '전체 ' + live.length]].concat([4, 3, 2, 1, 0].filter(i => cnt[i]).map(i => [String(i), BK[i] + ' ' + cnt[i]])).concat(dormant.length ? [['z', '💤 1년+ 거래 없음 ' + dormant.length]] : []).concat(done.length ? [['done', '✅ 받을 것 없음 ' + done.length]] : []).map(c => '<button class="' + (AR_F === c[0] ? 'on' : '') + '" data-arf="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' +
     (filt.length ? sortBy(filt, s => s.maxPdd, true).map(s => { const bkI = s.maxPdd <= 0 ? 0 : s.maxPdd <= 30 ? 1 : s.maxPdd <= 60 ? 2 : s.maxPdd <= 90 ? 3 : 4; return '<div class="pr tap" data-ars="' + esc(s.acct) + '"><div class="ct"><b>' + esc(s.store) + '</b><small>' + esc(s.acct) + ' · ' + s.invs.filter(v => v.net > 0.005).length + '건' + (s.lastPaid ? ' · 마지막 수금 ' + esc(s.lastPaid) : '') + (s.dormant ? ' · <span class="warn">💤 1년+ 수금 없음</span>' : '') + (s.done ? ' · <span class="ok">받을 것 없음</span>' : '') + '</small></div><span class="agebadge a' + bkI + '">' + (s.maxPdd > 0 ? s.maxPdd + '일 연체' : BK[0]) + '</span><div class="pa"><b>' + money(s.net) + '</b></div></div>'; }).join('') : '<div class="none">해당하는 가게가 없습니다</div>') +
     '<div class="hint" style="margin-top:10px">가게를 누르면 인보이스별 내역이 나옵니다. 거기서 바로 수금 입력으로 넘어갈 수 있습니다.</div></div>';
-  $('hubBody').innerHTML = h;
+  if ($('hubBody')) $('hubBody').innerHTML = h;
   document.querySelectorAll('[data-arf]').forEach(b => b.onclick = () => { AR_F = b.dataset.arf; paintAR(); });
   document.querySelectorAll('[data-ars]').forEach(el => el.onclick = () => arStore(stores.find(x => x.acct === el.dataset.ars), ar.asOf));
 }

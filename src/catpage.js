@@ -5,7 +5,7 @@
  *    · 숨김(🙈) 아이템은 안 보임 — 세일즈맨 주문 화면과 같음
  *  바코드 그림: JsBarcode (12자리 UPC-A · 13자리 EAN-13 · 8자리 EAN-8 · 그 외 CODE128, 바코드가 없으면 아이템 코드로)
  * ============================================================ */
-import { $, esc, money, toast, busy, openModal, closeModal, Router, debounce, bi, bt, printOpen, today, itabs } from './ui.js';
+import { $, esc, money, toast, busy, openModal, closeModal, Router, debounce, bi, bt, printOpen, today, itabs , narrow, crow } from './ui.js';
 import { loadCatalog, catalog, searchItems, exactItem, thumb, cleanName, treeFor, levelsOf, catStart, locOf } from './catalog.js';
 import { stockOf } from './stock.js';
 import { addToWip } from './orders.js';
@@ -67,7 +67,7 @@ function list() {
   const all = current(), show = all.slice(0, CP.lim), showList = true;   // 분류를 안 골라도 전체 아이템이 바로 (코드 순) — v0.8.139
   const head = '<div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span>' + (showList ? all.length.toLocaleString() + ' ' + bt('개', 'items') : bt('분류를 고르거나 검색하세요', 'Pick a category or search')) + '</span>' +
     (showList && all.length ? '<label class="tap" style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="cpAll" ' + (all.every(x => CP.sel.has(x.c)) ? 'checked' : '') + '> ' + bi('모두 선택', 'Select all') + ' ' + Math.min(all.length, 1000).toLocaleString() + '</label>' : '') + '</div>';
-  $('cpList').innerHTML = head + (showList ? (show.length ? (CP.view === 'grid' ? '<div class="cpgrid">' + show.map(card).join('') + '</div>' : '<div class="dtw"><table class="dt">' + TH() + '<tbody>' + show.map(row).join('') + '</tbody></table></div>') + (all.length > show.length ? '<button class="b-ghost" id="cpMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (all.length - show.length).toLocaleString() + ')</button>' : '') : '<div class="none">' + bt('맞는 아이템이 없습니다', 'No matching items') + '</div>') : '');
+  $('cpList').innerHTML = head + (showList ? (show.length ? (CP.view === 'grid' ? '<div class="cpgrid">' + show.map(card).join('') + '</div>' : (narrow() ? '<div class="crows">' + show.map(row).join('') + '</div>' : '<div class="dtw"><table class="dt">' + TH() + '<tbody>' + show.map(row).join('') + '</tbody></table></div>')) + (all.length > show.length ? '<button class="b-ghost" id="cpMore" style="margin-top:8px">' + bt('더 보기', 'More') + ' (' + (all.length - show.length).toLocaleString() + ')</button>' : '') : '<div class="none">' + bt('맞는 아이템이 없습니다', 'No matching items') + '</div>') : '');
   $('cpList').querySelectorAll('[data-cpi]').forEach(el => el.onclick = () => itemSheet(catalog().byCode[el.dataset.cpi]));
   $('cpList').querySelectorAll('[data-cpc]').forEach(ck => { ck.onclick = e => e.stopPropagation(); ck.onchange = () => { if (ck.checked) CP.sel.add(ck.dataset.cpc); else CP.sel.delete(ck.dataset.cpc); bulk(); }; });
   if ($('cpAll')) $('cpAll').onchange = () => { const on = $('cpAll').checked; all.slice(0, 1000).forEach(x => { if (on) CP.sel.add(x.c); else CP.sel.delete(x.c); }); list(); };
@@ -81,6 +81,7 @@ function card(it) {
 /* 📊 목록 보기 — 표 (☐ · 사진 · 코드 · 설명 · 가격 · SRP · 바코드) · 줄을 누르면 아이템 창 */
 const TH = () => '<thead><tr><th style="width:28px"></th><th style="width:44px"></th><th>' + bt('코드', 'Code') + '</th><th>' + bt('설명', 'Description') + '</th><th class="r">' + bt('가격', 'Price') + '</th><th class="r hs">SRP</th><th class="hs">' + bt('바코드', 'Barcode') + '</th></tr></thead>';
 function row(it) {
+  if (narrow()) return crow({ attr: ' data-cpi="' + esc(it.c) + '"', cls: 'tap' + (it.h ? ' hid' : ''), ck: ck(it), thumb: it.ph ? '<img class="thumb" src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" alt="">' : '<span class="noph">📦</span>', title: esc(it.c) + (it.k ? ' 🧩' : '') + (it.h ? ' <span class="tag t-g">🙈</span>' : ''), sub: esc(it.d), sub2: it.b ? esc(it.b) : '', num: money(it.p), numLab: it.s ? 'SRP ' + money(it.s) : '' });
   return '<tr class="tap' + (it.h ? ' hid' : '') + '" data-cpi="' + esc(it.c) + '"><td>' + ck(it) + '</td><td>' + (it.ph ? '<img class="thumb" src="' + esc(thumb(it.ph, 80)) + '" loading="lazy" alt="">' : '<span class="noph">📦</span>') + '</td><td class="ct"><b>' + esc(it.c) + '</b>' + (it.k ? ' 🧩' : '') + (it.h ? ' <span class="tag t-g">🙈</span>' : '') + '</td><td class="wrap" style="min-width:150px">' + esc(it.d) + '</td><td class="r"><b>' + money(it.p) + '</b></td><td class="r hs sub0">' + (it.s ? money(it.s) : '') + '</td><td class="hs sub0">' + esc(it.b || '') + '</td></tr>';
 }
 function rowOld(it) {

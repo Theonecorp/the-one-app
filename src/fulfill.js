@@ -8,6 +8,7 @@
  * ============================================================ */
 import { timelineHtml } from './flow.js';
 import { reqText, reqCount } from './reqs.js';
+import { narrow, crow, cgrp } from './ui.js';
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts, itabs } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
@@ -653,7 +654,7 @@ export async function invBrowser(LF, head) {
   if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 ' + bi('가게 창', 'Store') + '</button></div></div>';
   h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스 Invoices</span></div><div><b>' + money(tot) + '</b><span>합계 Total</span></div><div><b>' + money(bal) + '</b><span>미수 Balance</span></div><div><b>' + new Set(rows.map(r => r.d)).size + '</b><span>날짜 Days</span></div></div>' +
     '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : latest ? bt('가장 최근 200장', 'Latest 200') : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#" onclick="return false">⬇️ CSV</a>' : '') + (rows.length > 1 ? ' · <a id="iSort" href="#" onclick="return false">' + (LF.idesc ? bt('오래된 날부터 ↑', 'Oldest day first ↑') : bt('최근 날부터 ↓', 'Newest day first ↓')) + '</a>' : '') + '</div>' +
-    (rows.length ? iTbl(dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); return '<tr class="grp"><td colspan="9"><div class="gline"><b>' + labelOf(d) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div></td></tr>' + L.map(r => invRow(r)).join(''); }).join('')) : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
+    (rows.length ? iTbl(dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); const gl = '<div class="gline"><b>' + labelOf(d) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>'; return (narrow() ? cgrp(gl) : '<tr class="grp"><td colspan="9">' + gl + '</td></tr>') + L.map(r => invRow(r)).join(''); }).join('')) : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
   $('iList').innerHTML = h;
   /* 인보이스를 누르면 인보이스 · AR 잔액 · 수금을 한 화면에 (가게 창 · 미수금과 같은 화면) */
   document.querySelectorAll('#iList [data-go]').forEach(el => el.onclick = () => { const g = el.dataset.go; if (g.indexOf('inv:') === 0) invDetail(g.substring(4)); else Router.go('order', g); });
@@ -707,10 +708,15 @@ function acctList(LF, head, modeSeg) {
 }
 /* 📊 인보이스 표 — 번호 · 종류 · 날짜 · 거래처 · 세일즈맨 · 주문 · 수량 · 합계 · 잔액 · 상태. 줄을 누르면 인보이스 */
 export function iTbl(rowsHtml) {
+  if (narrow()) return '<div class="crows itbl">' + rowsHtml + '</div>';
   return '<div class="dtw"><table class="dt itbl"><thead><tr><th style="width:124px">' + bt('인보이스', 'Invoice') + '</th><th style="width:52px">' + bt('날짜', 'Date') + '</th><th>' + bt('거래처', 'Customer') + '</th><th class="hs" style="width:78px">' + bt('세일즈맨', 'Rep') + '</th><th class="hs" style="width:112px">' + bt('주문', 'Order') + '</th><th class="r hs" style="width:52px">' + bt('수량', 'Qty') + '</th><th class="r" style="width:88px">' + bt('합계', 'Total') + '</th><th class="r" style="width:88px">' + bt('잔액', 'Balance') + '</th><th style="width:60px">' + bt('상태', 'Status') + '</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 }
 function invRow(r) {
   const bal = r.bal != null ? r.bal : r.total, paid = r.st !== 'x' && Math.abs(bal) < 0.005;
+  const stTg = r.st === 'x' ? '<span class="tag t-r">VOID</span>' : paid ? '<span class="tag t-k">' + bt('완납', 'Paid') + '</span>' : bal < r.total - 0.005 ? '<span class="tag t-c">' + bt('부분', 'Partial') + '</span>' : '<span class="tag t-f">' + bt('미결', 'Open') + '</span>';
+  if (narrow()) return crow({ attr: ' data-go="inv:' + esc(r.no) + '"', cls: 'tap' + (r.st === 'x' ? ' dim' : ''), title: esc(r.store) + ' <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.terms ? ' <span class="tag t-f">' + esc(r.terms) + '</span>' : ''),
+    sub: esc(r.no) + ' · ' + esc(md(r.d)) + (r.sm ? ' · ' + esc(r.sm) : '') + (r.acct ? ' · ' + esc(r.acct) : ''), sub2: (r.order ? esc(r.order) + ' · ' : '') + (r.qty || 0) + bt('개', ' pcs') + (r.disc ? ' · ' + r.disc + '%' : ''),
+    badge: stTg, num: money(r.total), numLab: r.st === 'x' ? '' : (bal > 0.005 ? '<span class="warn">' + bt('잔액', 'bal') + ' ' + money(bal) + '</span>' : '') });
   return '<tr class="tap' + (r.st === 'x' ? ' dim' : '') + '" data-go="inv:' + esc(r.no) + '"><td><b>' + esc(r.no) + '</b> <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.src === 'legacy' ? ' <span class="tag t-c">' + bt('이전', 'Legacy') + '</span>' : '') + '</td><td>' + esc(md(r.d)) + '</td><td class="wrap" style="min-width:140px"><b style="font-weight:600">' + esc(r.store) + '</b> <span class="sub0">' + esc(r.acct || '') + '</span>' + (r.terms ? ' <span class="tag t-f">' + esc(r.terms) + '</span>' : '') + '</td><td class="hs">' + (r.sm ? '<span class="tag t-x">' + esc(r.sm) + '</span>' : '') + '</td><td class="hs sub0">' + esc(r.order || '') + (r.disc ? ' · ' + r.disc + '%' : '') + '</td><td class="r hs sub0">' + (r.qty || 0) + '</td><td class="r"><b>' + money(r.total) + '</b></td><td class="r' + (bal > 0.005 ? ' warn' : '') + '">' + (r.st === 'x' ? '' : money(bal)) + '</td><td>' + (r.st === 'x' ? '<span class="tag t-r">VOID</span>' : paid ? '<span class="tag t-k">' + bt('완납', 'Paid') + '</span>' : bal < r.total - 0.005 ? '<span class="tag t-c">' + bt('부분', 'Partial') + '</span>' : '<span class="tag t-f">' + bt('미결', 'Open') + '</span>') + '</td></tr>';
 }
 
