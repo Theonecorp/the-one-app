@@ -11,12 +11,12 @@ import { catalog, kvGet, kvSet } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
  *  comm: 커미션 계산 때 어느 칸으로 셀지 (A 기본 · P · W) */
-/* 이전 시스템과 같은 A · P · W — A 주얼리, P 그 외 제품, W 디스플레이 · 세트 주문.
+/* 이전 시스템과 같은 A · P · W — A 주얼리(세트 · 디스플레이도 기본 A), P 그 외 제품, W 는 사무실이 손으로 바꿀 때만.
  *  번호는 이전 시스템 마지막 번호(2026-10-16: A43106 · P-008748 · W00611) 다음부터 (관리 → 설정에서 바꿀 수 있음) */
 export const INV_DEFAULT = [
   { c: 'A', n: '주얼리 Jewelry', comm: 'A', match: 'Jewelry', start: 43107 },
   { c: 'P', n: '그 외 제품 Other', comm: 'P', match: 'Other, Beauty, Hair', start: 8749 },
-  { c: 'W', n: '주얼리 · 디스플레이/세트 (커미션 제한) Jewelry display & set', comm: 'W', match: 'Set & Display, Set Orders & Displays, 🧩 세트 · 인서트', start: 612 }
+  { c: 'W', n: '주얼리 · 디스플레이/세트 (커미션 제한) Jewelry display & set', comm: 'W', match: '', start: 612 }   // W 는 자동 분류 없음 — 주얼리(세트 · 디스플레이 포함)는 전부 A 로 시작하고, 사무실 · 인보이스 담당이 주문을 보고 W 로 바꿈 (v0.8.162)
 ];
 const OLD_DEFAULT = 'G,J,H,D,R';   // v0.6.x 임시 종류 — 저장돼 있어도 무시
 export const NUM_DIGITS = 6, NUM_MAX = 999999;
