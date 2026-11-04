@@ -87,15 +87,23 @@ export function fmtNo(t, n) {
 }
 /* ---------- 인보이스 읽기 캐시 — 달 단위로 한 번만 읽고 기간은 메모리에서 거름 (읽기 횟수 · 비용 절약) ---------- */
 const INV_M = new Map();   // 'YYYY-MM' → rows (st != 'x' 포함 전부)
-let INV_AT = 0;
-export function dropInvCache() { INV_M.clear(); INV_AT = 0; }
+let INV_AT = 0, INV_VER = null;   // INV_VER: 폰 보관(IDB) 세대 — 번호 통일 · 일괄 수정 뒤 올려서 옛 보관본을 못 쓰게 함
+async function invVer() { if (INV_VER == null) { try { INV_VER = (await kvGet('inv.m.ver')) || 0; } catch (e) { INV_VER = 0; } } return INV_VER; }
+/** 인보이스가 바뀐 뒤 — months('YYYY-MM' 배열)를 주면 그 달의 메모리 · 폰 보관만 비우고, 안 주면 전부 (🔢 번호 통일 · 가져오기처럼 어느 달이든 바뀐 경우)
+ *  폰 보관(6시간)도 같이 비워야 함 — 전에는 메모리만 비워 번호 통일 뒤 지난 달 인보이스가 옛 번호로 보였음 */
+export function dropInvCache(months) {
+  INV_AT = 0;
+  if (months && months.length) { months.forEach(k => { if (!k) return; INV_M.delete(k); kvSet('inv.m.' + k, { rows: [], at: 0 }).catch(() => {}); }); return; }
+  INV_M.clear(); INV_VER = Date.now(); kvSet('inv.m.ver', INV_VER).catch(() => {});
+}
+export const monthsOf = L => Array.from(new Set((L || []).map(x => String((x && (x.d || x.ym)) || '').substring(0, 7)).filter(k => k.length === 7)));
 export async function invoicesBetween(S, from, to) {
   if (Date.now() - INV_AT > 15 * 60000) { INV_M.clear(); INV_AT = Date.now(); }   // 15분마다 새로
   const months = []; let m = from.substring(0, 7); while (m <= to.substring(0, 7)) { months.push(m); const y = Number(m.substring(0, 4)), mm = Number(m.substring(5, 7)); m = (mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0')); }
   let miss = months.filter(k => !INV_M.has(k));
   /* ⚡ 지난 달들은 폰 보관(6시간) 에서 — 이번 달만 늘 새로 읽음 */
-  const cur = new Date().toISOString().substring(0, 7);
-  for (const k of miss.filter(k => k < cur)) { try { const c = await kvGet('inv.m.' + k); if (c && c.rows && Date.now() - c.at < 6 * 3600000) INV_M.set(k, c.rows); } catch (e) {} }
+  const cur = new Date().toISOString().substring(0, 7), ver = await invVer();
+  for (const k of miss.filter(k => k < cur)) { try { const c = await kvGet('inv.m.' + k); if (c && c.rows && c.rows.length && (c.ver || 0) === ver && Date.now() - c.at < 6 * 3600000) INV_M.set(k, c.rows); } catch (e) {} }
   miss = months.filter(k => !INV_M.has(k));
   if (miss.length) {
     /* 연속된 달은 한 번에 */
@@ -103,7 +111,7 @@ export async function invoicesBetween(S, from, to) {
     const rows = await S.DB.list('invoices', { where: [['d', '>=', first + '-01'], ['d', '<=', last + '-31']] });
     miss.forEach(k => INV_M.set(k, []));
     rows.forEach(r => { const k = String(r.d || '').substring(0, 7); if (INV_M.has(k)) INV_M.get(k).push(r); });
-    miss.filter(k => k < cur).forEach(k => kvSet('inv.m.' + k, { rows: INV_M.get(k), at: Date.now() }).catch(() => {}));
+    miss.filter(k => k < cur).forEach(k => kvSet('inv.m.' + k, { rows: INV_M.get(k), at: Date.now(), ver }).catch(() => {}));
   }
   const out = []; months.forEach(k => (INV_M.get(k) || []).forEach(r => { if (r.d >= from && r.d <= to) out.push(r); }));
   return out;

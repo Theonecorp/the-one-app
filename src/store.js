@@ -4,7 +4,7 @@
  *  세일즈맨은 자기 가게(자기 sm 의 AR · 수금)만, 담당자는 가게 담당 세일즈맨 기준으로 봅니다
  * ============================================================ */
 import { $, esc, money, R2, num, md, toast, busy, openModal, closeModal, confirmBox, sortBy, daysBetween, today, bi, bt, printOpen, sortInv, invNo, sel, goHash } from './ui.js';
-import { company, docHead, termDays, getInvoice, dropInvCache, rebuildSalesM } from './invoicing.js';
+import { company, docHead, termDays, getInvoice, dropInvCache, monthsOf, rebuildSalesM } from './invoicing.js';
 import { searchAccounts } from './accounts.js';
 import { can } from './main.js';
 import { recentYms, stTag } from './orders.js';
@@ -251,7 +251,7 @@ export async function invDetail(no, acct, back) {
   if ($('idEdit')) $('idEdit').onclick = () => invEditForm(x, () => invDetail(no, '', back));
   if ($('idDel')) $('idDel').onclick = async () => {
     if (!(await confirmBox('🗑 ' + no + ' · ' + (x.store || acct) + ' · ' + money(x.total) + '\n' + bt('이 인보이스를 지울까요? (이전 시스템 인보이스 — 월별 매출 요약도 다시 계산합니다)', 'Delete this invoice? Monthly sales summary is recalculated.'), bt('지우기', 'Delete')))) return;
-    busy(true); try { await S.DB.del('invoices', x.id || no); dropInvCache(); dropStoreCache(); try { await rebuildSalesM(S, [x.ym || String(x.d || '').substring(0, 7)]); } catch (e) {} toast('🗑 ' + no, 'good'); closeModal(); if (back) back(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(true); try { await S.DB.del('invoices', x.id || no); dropInvCache(monthsOf([x])); dropStoreCache(); try { await rebuildSalesM(S, [x.ym || String(x.d || '').substring(0, 7)]); } catch (e) {} toast('🗑 ' + no, 'good'); closeModal(); if (back) back(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
 }
@@ -275,7 +275,7 @@ export function invEditForm(x, done) {
     const patch = { acct, store: a ? a.store : (x.store || ''), sm: $('ieSm').value, d, ym: d.substring(0, 7), total, memo: $('ieM').value.trim(), editAt: new Date().toISOString(), editBy: S.user.email };
     if (bal != null) { patch.bal = bal; patch.st = bal > 0.005 ? 'open' : 'paid'; }
     busy(true);
-    try { await S.DB.update('invoices', x.id || x.no, patch); dropInvCache(); dropStoreCache(); try { await rebuildSalesM(S, Array.from(new Set([x.ym, patch.ym].filter(Boolean)))); } catch (e) {} toast('💾 ' + x.no, 'good'); closeModal(); if (done) done(); }
+    try { await S.DB.update('invoices', x.id || x.no, patch); dropInvCache(monthsOf([x, patch])); dropStoreCache(); try { await rebuildSalesM(S, Array.from(new Set([x.ym, patch.ym].filter(Boolean)))); } catch (e) {} toast('💾 ' + x.no, 'good'); closeModal(); if (done) done(); }
     catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     busy(false);
   };

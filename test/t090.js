@@ -1,4 +1,4 @@
-/* v0.8.112 시험 — 관리자 메뉴에 📄 인보이스 · 🏬 거래처 · 인보이스 탭 날짜별 묶음 · 인보이스 상세 ✏️ 수정(가게 다시 연결) · 🗑 지우기 · 가져오기 파서(Invoice 열 우선 · customer # 필수) */
+/* v0.8.112 시험 — 관리자 메뉴에 📄 인보이스 · 🏬 거래처 · 인보이스 탭 날짜별 묶음 · 인보이스 상세 ✏️ 수정(가게 다시 연결) · 🗑 지우기 · 가져오기 파서(Invoice 열 우선 · customer # 필수) · (2026-11 맞춤: 씨앗을 지난달 날짜로 — 이번 달 5일이 아직 안 왔으면 기간 밖이라 안 보이던 것) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -8,7 +8,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8827/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
   const txt = async (pg, q) => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
-  const now = new Date(), y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0');
+  const lm = new Date(); lm.setDate(1); lm.setMonth(lm.getMonth() - 1); const y = lm.getFullYear(), m = String(lm.getMonth() + 1).padStart(2, '0');   /* 지난달 — 2 · 3 · 5일이 늘 지난 날이라 📅 지난 달 기간 안에 다 들어옴 */
   /* 잘못 들어간 이전 시스템 인보이스 흉내 — 번호에 글자 없음 · 가게 코드 없음 */
   const seed = "s.invoices = (s.invoices || []).concat(" + JSON.stringify([
     { id: '12071', no: '12071', t: '1', d: y + '-' + m + '-02', ym: y + '-' + m, acct: '', store: '', sm: '', total: 150, bal: 0, st: 'paid', src: 'legacy', lines: [] },
@@ -20,7 +20,8 @@ const path = require('path');
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('nav:', nav.join(' '));
   if (!nav.includes('hub/look')) errs.push('admin nav should have the lookup group');   // v0.8.135: 📚 조회 묶음 (인보이스 · 거래처)
   /* 📄 인보이스 탭 — 날짜별 묶음 */
-  await pg.evaluate(() => { location.hash = '#/invs'; }); await pg.waitForSelector('#iList .kpi', { timeout: 8000 }).catch(() => errs.push('invoice tab missing')); await pg.waitForTimeout(500);
+  await pg.evaluate(() => { location.hash = '#/invs'; }); await pg.waitForSelector('#iList .kpi', { timeout: 8000 }).catch(() => errs.push('invoice tab missing'));
+  await pg.click('[data-ip="lastm"]').catch(() => errs.push('period chip 지난 달 missing')); await pg.waitForSelector('#iList .kpi'); await pg.waitForTimeout(500);
   let t = await txt(pg, '#iList'); log('tab:', t.slice(0, 220));
   const heads = await pg.$$eval('#iList tr.grp .gline b, #iList .cgrp .gline b', e => e.map(x => x.textContent)); log('day heads:', heads);
   if (!heads.length || !heads.every(h => /📅/.test(h))) errs.push('invoice tab should group by date'); if (heads.length !== 3) errs.push('three day groups expected');

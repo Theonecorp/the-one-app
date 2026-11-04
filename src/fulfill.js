@@ -12,7 +12,7 @@ import { narrow, crow, cgrp } from './ui.js';
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts, itabs } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, monthsOf, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
@@ -479,7 +479,7 @@ async function confirmInvoice(o, lines) {
       ops.push({ op: 'set', col: 'orders', id: o.id, data: doc }, { op: 'set', col: 'orderLines', id: o.id, data: { sm: o.sm, lines } });
       const wake = acc && acc.inactive;   // 💤 비활성 거래처에 다시 인보이스 → 자동으로 활성
       if (wake) ops.push({ op: 'update', col: 'accounts', id: acc.acct, data: { inactive: false, reactAt: now, reactBy: 'invoice ' + invs.map(x => x.no).join(' ') } });
-      await S.DB.batch(ops); dropInvCache(); bumpSalesM(S, invs, 1); stockOut(invs);   // 📦 재고에서 빼기 (세트는 구성품으로)
+      await S.DB.batch(ops); dropInvCache(monthsOf(invs)); bumpSalesM(S, invs, 1); stockOut(invs);   // 📦 재고에서 빼기 (세트는 구성품으로)
       if (wake) { try { await bumpAccountsVer(); } catch (e) {} }
       toast('인보이스 ' + invs.map(x => x.no).join(', '), 'good');
       busy(false);
@@ -507,6 +507,7 @@ export async function pageLists(LF, head) {
   bind(); fillStrip();
   function bind() {
     document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') LF.list = false; else LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    document.querySelectorAll('[data-lg]').forEach(b => b.onclick = () => window.dispatchEvent(new CustomEvent('theone:stage', { detail: b.dataset.lg })));   // 위 단계 단추(📥 접수 · 📦 출고 · ✅ 완료 · ⏳ 기타) — bindListHead 와 같게 (백오더 · 인보이스 목록에서 안 눌리던 것)
     if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageLists(LF, head); };
     if ($('oNew')) $('oNew').onclick = () => Router.go('order', 'new');
     document.querySelectorAll('#page [data-go]').forEach(el => el.onclick = () => Router.go('order', el.dataset.go));
@@ -669,6 +670,7 @@ export async function invBrowser(LF, head) {
   };
   function bind() {
     document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') LF.list = false; else LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    document.querySelectorAll('[data-lg]').forEach(b => b.onclick = () => window.dispatchEvent(new CustomEvent('theone:stage', { detail: b.dataset.lg })));   // 위 단계 단추(📥 접수 · 📦 출고 · ✅ 완료 · ⏳ 기타) — bindListHead 와 같게 (백오더 · 인보이스 목록에서 안 눌리던 것)
     if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; invBrowser(LF, head); };
     if ($('oNew')) $('oNew').onclick = () => Router.go('order', 'new');
     const inp = $('iqQ');
@@ -852,7 +854,7 @@ export async function voidModal(invs, done) {
           ops.push({ op: 'update', col: 'orders', id: o.id, data: p });
           if ((act === 'redo' || act === 'cancel') && o.bo) { const b = await S.DB.get('backorders', o.id).catch(() => null); if (b && b.st === 'open') ops.push(act === 'redo' ? { op: 'del', col: 'backorders', id: o.id } : { op: 'update', col: 'backorders', id: o.id, data: { st: 'closed', closedAt: now, closedBy: S.user.email } }); }
         }
-        await S.DB.batch(ops); dropInvCache(); await bumpSalesM(S, L, -1); stockBack(L);   // 📦 재고 되돌리기
+        await S.DB.batch(ops); dropInvCache(monthsOf(L)); await bumpSalesM(S, L, -1); stockBack(L);   // 📦 재고 되돌리기
         toast('🚫 VOID ' + L.map(x => x.no).join(', ') + (act === 'redo' ? ' — 주문이 검수 대기로 돌아갔습니다' : ''), 'good');
         closeModal(); if (done) done(act, o);
       } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }

@@ -7,7 +7,7 @@
  * ============================================================ */
 import { $, esc, money, R2, num, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sortBy, bi, bt, printOpen, debounce } from './ui.js';
 import { loadCatalog, catalog, exactItem, searchItems, thumb } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache, monthsOf } from './invoicing.js';
 import { searchAccounts } from './accounts.js';
 import { mySm } from './access.js';
 import { can } from './main.js';
@@ -131,7 +131,7 @@ async function confirm() {
       lines: CR.lines.map(l => { const it = C && C.byCode[l.c]; return { c: l.c, d: l.d, q: -l.q, p: l.p, lp: l.lp, dc: l.dc, src: l.src, g: it ? (it.l1 || it.g || '') : '', ty: l.t, recent: l.recent ? { no: l.recent.no, d: l.recent.d, p: l.recent.p, disc: l.recent.disc } : null }; }),
       qty: -t.q, sub: -t.sub, list: -t.list, disc: 0, total: -t.sub, bal: -t.sub, discMap: CR.disc, flags: F, terms: (CR.acc && CR.acc.terms) || '', st: 'open', reviewed: false, createdBy: S.user.email, createdAt: now };
     await S.DB.set('invoices', no, doc);
-    dropInvCache();
+    dropInvCache(monthsOf([doc]));
     try { const N = await import('./notify.js'); await N.queue({ kind: 'credit', toStaff: true, chat: true, subject: '[THE ONE] ↩ 크레딧 ' + (F.length ? '⚠️ ' : '') + '— ' + CR.store + ' ' + money(-t.sub), text: '↩ 크레딧 ' + no + ' · ' + CR.sm + ' · ' + CR.store + ' (' + CR.acct + ')\n' + CR.why + (CR.note ? ' — ' + CR.note.trim() : '') + '\n' + CR.lines.map(l => l.c + ' ×' + l.q + ' @' + money(l.p)).join(', ') + '\n크레딧 −' + money(t.sub) + (F.length ? '\n⚠️ ' + F.join(' · ') : ''), url: N.appUrl('credit/' + encodeURIComponent(no)) }); } catch (e) {}
     closeModal(); toast('↩ ' + no + ' — ' + bt('크레딧 확정', 'credit confirmed') + ' −' + money(t.sub), 'good');
     Router.go('credit', encodeURIComponent(no));
@@ -159,7 +159,7 @@ async function detail(no) {
     openModal('<h2 style="color:#991b1b">🚫 ' + esc(x.no) + ' VOID</h2><div class="muted">' + bt('크레딧을 무효로 합니다. 가게 잔액에서 다시 더해지고 세일즈맨에게 사유가 전달됩니다.', 'Voids the credit: the store balance goes back up and the salesman is told why.') + '</div><div class="fg"><label>' + bt('사유 (필수)', 'Reason (required)') + '</label><input id="cvWhy"></div><div class="btns"><button class="b-ghost" id="cvX">' + bt('돌아가기', 'Back') + '</button><button class="b-red" id="cvGo">🚫 VOID</button></div>');
     $('cvX').onclick = closeModal;
     $('cvGo').onclick = async () => { const why = $('cvWhy').value.trim(); if (!why) return toast(bt('사유를 적으세요', 'Type the reason'), 'bad'); busy(true);
-      try { const now = new Date().toISOString(); await S.DB.update('invoices', x.no, { st: 'x', bal: 0, voidAt: now, voidBy: S.user.email, voidReason: why }); dropInvCache();
+      try { const now = new Date().toISOString(); await S.DB.update('invoices', x.no, { st: 'x', bal: 0, voidAt: now, voidBy: S.user.email, voidReason: why }); dropInvCache(monthsOf([x]));
         try { const N = await import('./notify.js'); await N.queue({ kind: 'creditVoid', toSm: x.sm, chat: true, subject: '[THE ONE] 🚫 크레딧 VOID — ' + x.store, text: '🚫 크레딧 ' + x.no + ' VOID → ' + x.sm + ' · ' + x.store + ' ' + money(x.total) + '\n사유: ' + why, url: N.appUrl('credit/' + encodeURIComponent(x.no)) }); } catch (e) {}
         closeModal(); toast('🚫 VOID ' + x.no); detail(no); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
   };
