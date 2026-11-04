@@ -3,6 +3,7 @@
 #   SHARD=1/4 처럼 주면 그 조각만 (CI 가 4개로 나눠 병렬로 돈다) · test/known-fail.txt 에 있는 시험은 실패해도 전체 결과를 깨지 않음(경고만)
 #   PW_CHROME=크롬 경로 를 주면 그 크롬으로, 없으면 playwright 기본 크롬
 cd "$(dirname "$0")/.." || exit 2
+mkdir -p test/out   # 시험이 스크린샷을 여기에 둠 (gitignore 라 CI 에는 없음)
 idx=${SHARD%%/*}; n=${SHARD##*/}; [ -z "$SHARD" ] && idx=1 && n=1
 i=0; fail=0; warn=0; total=0
 for f in test/t*.js; do
