@@ -1064,7 +1064,7 @@ async function setBookFile(file, out, which, after) {
     missN = Object.keys(miss).length;
     const inCat = C2 ? Object.keys(r.sets).filter(k => C2.byCode[k] && !C2.byCode[k].virt).length : 0;
     out.innerHTML = '<div class="alert a-blu">세트 <b>' + Object.keys(r.sets).length + '개</b> · 구성 ' + r.lines.toLocaleString() + '줄 · 이름 있는 세트 ' + r.named + '개 (' + (which === 'old' ? '기존 코드 기준' : '새 세트 코드 기준') + ')<br>아이템 목록에 같은 코드가 있는 세트 ' + inCat + '개 (그 가격 사용) · 나머지는 세트 목록의 리스트 가격 (없으면 구성품 합)</div>' +
-      (missN ? '<div class="alert a-amb">아이템 목록에 없는 구성품 코드 ' + missN + '개 — 주문는 되지만 사진 · 가격이 비어 있습니다: ' + esc(Object.keys(miss).slice(0, 12).join(', ')) + '</div>' : '') +
+      (missN ? '<div class="alert a-amb">아이템 목록에 없는 구성품 코드 ' + missN + '개 — 주문은 되지만 사진 · 가격이 비어 있습니다: ' + esc(Object.keys(miss).slice(0, 12).join(', ')) + '</div>' : '') +
       '<button class="b-blue" id="setGo" style="margin-top:8px">이대로 세트 올리기 (전체 바꿈)</button>';
     $('setGo').onclick = async () => { busy(true); try { await publishSets(S, r.sets); await loadCatalog(S, true); toast('세트 ' + Object.keys(r.sets).length + '개 올림', 'good'); out.innerHTML = '<div class="alert a-grn">세트 ' + Object.keys(r.sets).length + '개 올렸습니다</div>'; (after || setAdmin)(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
