@@ -4,7 +4,7 @@ const { chromium } = pw;
 const path = require('path');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8766', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await chromium.launch({ executablePath: process.env.PW_CHROME || '/opt/pw-browsers/chromium/chrome' });
+  const br = await chromium.launch({ ...(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {}) });
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); const errs = [];
   pg.on('pageerror', e => errs.push(e.message));
   await pg.addInitScript(u => { window.__MOCK_USER__ = u; }, { email: 'luke@theonefl.com', name: 'Luke Hur' });
