@@ -42,7 +42,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.157';
+export const VER = 'v0.8.158';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -356,12 +356,20 @@ const mark = k => { PERF[k] = Math.round(performance.now()); };
 const BOOT_KEY = e => 'theone.boot.' + String(e || '').toLowerCase();
 const bootSave = (email, me, sms, st) => { try { localStorage.setItem(BOOT_KEY(email), JSON.stringify({ me, sms, settings: st, at: Date.now() })); } catch (e) {} };
 const bootLoad = email => { try { const j = JSON.parse(localStorage.getItem(BOOT_KEY(email)) || 'null'); return j && j.me && j.me.active !== false && Array.isArray(j.sms) && j.settings ? j : null; } catch (e) { return null; } };
+/* 관리자 기록 지키기 — 세일즈맨 가져오기 등이 관리자 사용자 문서를 role 'salesman' 으로 덮어썼거나 active 가 빠졋으면 로그인 때 되돌림
+ *   (규칙: 관리자 이메일은 users 쓰기 허용). 빠른 시작(폰 캐시) 경로와 서버 경로 둘 다에서 돈다 — 캐시 경로에서 안 돌아 관리자 모드가 사라지던 문제 */
+export async function healAdmin(email, me) {
+  if (!ADMIN_EMAILS.includes(email) || (me.active === true && me.role === 'admin')) return false;
+  const fix = { active: true, role: 'admin' };
+  try { await S.DB.update('users', email, fix); } catch (e) { try { await S.DB.set('users', email, Object.assign({}, me, fix)); } catch (e2) { return false; } }
+  Object.assign(me, fix); return true;
+}
 function applyBase(sms, st) { S.sms = sms || []; S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; }); S.settings = st || {}; setInvTypeMap(invTypes(S)); }
 async function afterLogin(user) {
   mark('auth'); S.user = user;
   const email = user.email, snap = bootLoad(email);
   const meP = S.DB.get('users', email);
-  let me = null;
+  let me = null, healed = false;
   if (snap) me = snap.me;
   else {
     try { me = await meP; } catch (e) { loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ')'); return; }
@@ -369,15 +377,13 @@ async function afterLogin(user) {
       me = { id: email, email, name: user.name, role: 'admin', active: true, createdAt: today() };
       try { await S.DB.set('users', email, me); } catch (e) { loginScreen('관리자 기록을 만들지 못했습니다: ' + e.message); return; }
     }
+    if (me) healed = await healAdmin(email, me);
     if (!me || me.active === false) { waitScreen(email); return; }
-    /* 옛 버전이 만든 관리자 기록에 active 가 없으면 규칙의 "등록된 사용자" 검사에 걸림 → 채워 둠 */
-    if (ADMIN_EMAILS.includes(email) && (me.active !== true || me.role !== 'admin')) {
-      try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
-    }
   }
   mark('me'); S.me = me; S.role = me.role || 'salesman';
-  /* 여러 화면을 쓰는 사람 (관리자 · 추가 역할) — 이 폰에서 마지막으로 본 화면으로 */
-  try { const v = localStorage.getItem(VIEW_KEY()); if (v && viewsOf(me).includes(v)) S.role = v; } catch (e) {}
+  /* 여러 화면을 쓰는 사람 (관리자 · 추가 역할) — 이 폰에서 마지막으로 본 화면으로 (관리자 역할을 방금 되돌렸으면 관리자 화면으로) */
+  if (healed) { try { localStorage.setItem(VIEW_KEY(), 'admin'); } catch (e) {} }
+  else { try { const v = localStorage.getItem(VIEW_KEY()); if (v && viewsOf(me).includes(v)) S.role = v; } catch (e) {} }
   const baseP = Promise.all([S.DB.list('salesmen', { order: ['code', 'asc'] }), S.DB.get('settings', 'app')]);
   if (snap) {
     applyBase(snap.sms, snap.settings); mark('base');
@@ -397,9 +403,11 @@ async function afterLogin(user) {
   /* 빠른 시작이었으면 — 서버 것과 비교해 바뀐 것만 반영 */
   if (snap) {
     Promise.all([meP, baseP]).then(async ([m2, [sms2, st2]]) => {
+      const healed2 = m2 ? await healAdmin(email, m2) : false;   // 빠른 시작 경로에서도 관리자 역할이 지워졋으면 되돌림
       if (!m2 || m2.active === false) { waitScreen(email); return; }
       bootSave(email, m2, sms2, st2);
-      const roleChg = m2.role !== snap.me.role || (m2.job || '') !== (snap.me.job || '') || (m2.sm || '') !== (snap.me.sm || '') || JSON.stringify(m2.views || m2.extra || null) !== JSON.stringify(snap.me.views || snap.me.extra || null);
+      if (healed2) { S.role = 'admin'; try { localStorage.setItem(VIEW_KEY(), 'admin'); } catch (e) {} }
+      const roleChg = healed2 || m2.role !== snap.me.role || (m2.job || '') !== (snap.me.job || '') || (m2.sm || '') !== (snap.me.sm || '') || JSON.stringify(m2.views || m2.extra || null) !== JSON.stringify(snap.me.views || snap.me.extra || null);
       const accChg = String((st2 || {}).accountsVer || '0') !== String((snap.settings || {}).accountsVer || '0');
       S.me = m2; applyBase(sms2, st2);
       if (accChg) { try { S.accounts = await loadAccounts(S); } catch (e) {} }
