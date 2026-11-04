@@ -42,7 +42,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.160';
+export const VER = 'v0.8.161';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -146,9 +146,14 @@ function shell() {
     d.innerHTML = '<i></i>' + (off ? bt('오프라인', 'Offline') : bt('온라인', 'Online')) + (wait ? ' · 📤' + (n || '') : '');
     document.body.classList.toggle('isoff', off);
   };
-  window.addEventListener('online', net); window.addEventListener('offline', net); window.addEventListener('theone:net', net); net();
+  NET_PAINT = net; window.addEventListener('online', net); window.addEventListener('offline', net); window.addEventListener('theone:net', net); net();
   window.addEventListener('theone:slow', () => toast('🐢 ' + bt('연결이 느려 폰에 저장된 자료를 먼저 보여줍니다', 'Slow connection — showing data saved on this phone first'), 'warn'));
-  $('hNet').onclick = () => {
+  $('hNet').onclick = netSheet;
+}
+/** 📡 연결 · 보낼 함 창 — 위 알약(넓은 화면)과 ☰ 서랍 메뉴(폰에서는 알약이 숨겨짐)에서 염 */
+let NET_PAINT = null;
+export function netSheet() {
+  { const net = () => { if (NET_PAINT) NET_PAINT(); };
     const off = navigator.onLine === false, n = Orders.outboxList().length, pend = S.DB && S.DB.pending;
     openModal('<h2>' + (off ? '🔴 ' + bt('오프라인', 'Offline') : '🟢 ' + bt('온라인', 'Online')) + '</h2><div class="muted" style="line-height:1.7">' +
       (off ? bt('인터넷이 안 됩니다. 주문 · 수금은 그대로 입력하세요 — 폰에 저장했다가 인터넷이 되면 자동으로 회사로 올라갑니다. 다시 입력하지 마세요.', 'No internet. Keep entering orders and payments — they are saved on this phone and upload automatically when online. Don\'t re-enter.') : bt('회사 서버와 연결되어 있습니다.', 'Connected to the company server.')) + '<br>' +
@@ -157,7 +162,7 @@ function shell() {
       '</div><div id="netOff" style="margin-top:8px"></div><div class="btns">' + (n && !off ? '<button class="b-blue" id="netSend">📤 ' + bt('지금 보내기', 'Send now') + '</button>' : '') + '<button class="b-ghost" id="netX">' + bt('닫기', 'Close') + '</button></div>');
     $('netX').onclick = closeModal; Offline.homeCard($('netOff'), false);
     if ($('netSend')) $('netSend').onclick = async () => { busy(true); await Orders.syncOutbox(false); busy(false); closeModal(); net(); };
-  };
+  }
 }
 
 function loginScreen(msg) {
@@ -189,7 +194,7 @@ function userMenu() {
   const settings = '<div class="dsec dset"><small>⚙️ ' + bt('설정', 'Settings') + '</small>' +
     (roles.length ? '<label>' + bt('화면 바꾸기', 'Switch view') + '</label>' + seg(roles.map(r => [r]), 'r', S.role, a => roleLabel(a[0]).split(' ')[0]) + (S.role === 'manager' && isAdm ? seg(JOBS, 'j', jobOf(), a => a[1]) : '') : '') +
     '<label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label>' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', a => a[1]) +
-    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
+    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mNet">📡 ' + bt('연결 · 보낼 함', 'Connection · outbox') + '</button><button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
   const name = S.user.name || S.user.email, ini = String(name).split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase();
   let d = $('drawer'); if (!d) { d = document.createElement('div'); d.id = 'drawer'; document.body.appendChild(d); }
   d.innerHTML = '<div class="dback" id="dBack"></div><aside class="dpanel"><div class="dhead"><img src="logo-96.png" alt=""><b>THE ONE CORP</b><button type="button" class="hb" id="dX">✕</button></div>' +
@@ -201,6 +206,7 @@ function userMenu() {
   $('dBack').onclick = close; $('dX').onclick = close;
   d.querySelectorAll('[data-dgo]').forEach(b => b.onclick = () => { close(); const g = b.dataset.dgo, [r, a] = g.split('/'); if (a) Router.go(r, a); else Router.go(g); });
   $('mDiag').onclick = diag;
+  if ($('mNet')) $('mNet').onclick = () => { close(); netSheet(); };
   d.querySelectorAll('[data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); userMenu(); });
   if ($('mInst')) $('mInst').onclick = () => { close(); doInstall(); };
   d.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
