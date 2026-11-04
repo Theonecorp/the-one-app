@@ -9,6 +9,7 @@ const path = require('path');
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   const seed = s => {
     s.stock = (s.stock || []).concat([{ id: 'AHG100', code: 'AHG100', qty: 20 }, { id: 'AHG101', code: 'AHG101', qty: 5, min: 3 }, { id: 'AHG102', code: 'AHG102', qty: 0 }]);
+    s.factories = [{ id: 'JD', code: 'JD', name: 'ZHEJIANG JUDA SUPPLY CHAIN', alias: 'China 1', active: true }, { id: 'RM', code: 'RM', name: 'QINGDAO RUMINO', alias: 'China 2', active: true }];
     s.settings[0].suppliers = [{ code: 'JD', alias: 'China 1', name: 'ZHEJIANG JUDA SUPPLY CHAIN' }, { code: 'RM', alias: 'China 2', name: 'QINGDAO RUMINO' }];
   };
   await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); }, '(' + seed.toString() + ')(s)');
@@ -45,9 +46,19 @@ const path = require('path');
   ['AHG100', 'AHG101', 'AHG102'].forEach(c => { if (!lowTxt.includes(c)) errs.push('low tab should list ' + c); });
   if (await pg.$('#skLowSend')) { await pg.click('#skLowSend'); await pg.waitForTimeout(800); M = await msgs(); if (M.length !== 3) errs.push('manual notify should send one more office message (got ' + M.length + ')'); }
   /* ⑥ 공급처 별칭: 입고 '어디서' 목록 · 아이템 수정 창 공급업체 목록 */
-  await pg.click('[data-sk="recv"]'); await pg.waitForSelector('#rvFrom'); const opts = await pg.$$eval('#rvFromL option', L => L.map(o => o.value)); log('recv from options:', opts); if (!opts.some(o => /China 1 · ZHEJIANG/.test(o))) errs.push('receive form should list China 1 · ZHEJIANG JUDA');
+  await pg.click('[data-sk="recv"]'); await pg.waitForSelector('#rvFrom'); const opts = await pg.$$eval('#rvFrom option', L => L.map(o => o.value + '=' + o.textContent)); log('recv from options:', opts);
+  if (!opts.some(o => /^JD=.*ZHEJIANG JUDA.*China 1/.test(o))) errs.push('admin should see the factory name with China 1 in brackets');
+  /* 입고 저장 → receipts.fromCode = JD (경영의 공장과 연결) */
+  await pg.selectOption('#rvFrom', 'JD'); await pg.fill('#rvC', 'AHG105'); await pg.press('#rvC', 'Enter'); await pg.fill('#rvQ', '24'); await pg.press('#rvQ', 'Enter'); await pg.waitForTimeout(400);
+  await pg.click('#rvSave'); await pg.waitForSelector('#cfOk', { timeout: 3000 }); await pg.click('#cfOk'); await pg.waitForTimeout(900);
+  const rc = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.receipts || {})[0]); log('receipt:', rc && rc.fromCode, rc && rc.from, rc && rc.qty);
+  if (!rc || rc.fromCode !== 'JD' || !/ZHEJIANG/.test(rc.from || '')) errs.push('receipt should carry fromCode JD and the full label');
+  /* 경영 › 공장 페이지에 그 입고가 보임 */
+  await pg.evaluate(() => { location.hash = '#/mg/fac'; }); await pg.waitForSelector('[data-fc="JD"]', { timeout: 8000 }).catch(() => errs.push('factory page should list JD')); if (await pg.$('[data-fc="JD"]')) { await pg.click('[data-fc="JD"]'); await pg.waitForFunction(() => { const e = document.getElementById('facRcp'); return e && !/…/.test(e.textContent); }, null, { timeout: 8000 }).catch(() => {}); const fr = (await pg.textContent('#facRcp').catch(() => '')).replace(/\s+/g, ' '); log('factory receipts card:', fr.slice(0, 120)); if (!/1건/.test(fr) || !/24/.test(fr)) errs.push('factory page should show the warehouse receipt (1건 · 24)'); const head = (await pg.textContent('#mgBody h2').catch(() => '')); if (!/ZHEJIANG/.test(head)) errs.push('admin factory page should be headed by the factory name'); }
   await pg.evaluate(() => { location.hash = '#/items'; }); await pg.waitForSelector('#itList [data-it]', { timeout: 8000 }); await pg.click('#itList [data-it="AHG100"] .ct'); await pg.waitForSelector('#isEd', { timeout: 5000 }); await pg.click('#isEd'); await pg.waitForSelector('#fSup', { timeout: 5000 });
-  const sup = await pg.$$eval('#fSupL option', L => L.map(o => o.value)); log('supplier options:', sup.slice(0, 3)); if (!sup.some(o => /CHINA 2 · QINGDAO RUMINO/.test(o))) errs.push('item form supplier list should include CHINA 2 · QINGDAO RUMINO');
+  const sup = await pg.$$eval('#fSup option', L => L.map(o => o.value + '=' + o.textContent)); log('supplier options:', sup.slice(0, 4)); if (!sup.some(o => /^RM=.*QINGDAO RUMINO/.test(o))) errs.push('item form supplier select should include RM = QINGDAO RUMINO');
+  await pg.selectOption('#fSup', 'RM'); await pg.click('#fOk'); await pg.waitForTimeout(900);
+  const supSaved = await pg.evaluate(() => { const c = JSON.parse(window.__MOCK_STORE__.catalog.c0.j); const r = c.find(x => x[0] === 'AHG100'); return r && r[12]; }); log('AHG100 sup saved:', supSaved); if (supSaved !== 'RM') errs.push('item supplier should be saved as the factory code RM');
   await br.close(); srv.kill();
   if (errs.length) { console.log('FAIL'); errs.forEach(e => console.log(' -', e)); process.exit(1); }
   console.log('PASS');

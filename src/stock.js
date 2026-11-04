@@ -7,7 +7,7 @@
  *  stock/{code}    = { code, qty, at, by, min }                              ← 지금 재고 · min = 이 아이템의 부족 기준(없으면 설정 stockMin, 기본 12)
  *    · ⚠️ 부족 알림: 움직임으로 재고가 기준 아래로 내려가는 순간 사무실 · 관리자에게 💬 메시지(+ 이메일 · 챗) 한 번 — 다시 기준 위로 올라갔다 내려오면 또
  *  stockLog/{id}   = { code, d, delta, after, kind: recv|adj|count|inv|void, ref, note, by, at }
- *  receipts/{id}   = { id, d, from, file, n, qty, lines:[{c, q, d}], note, by, at }   ← 입고 한 건
+ *  receipts/{id}   = { id, d, from, fromCode, file, n, qty, lines:[{c, q, d}], note, by, at }   ← 입고 한 건 · fromCode = 경영의 공장 코드 (China 1 ↔ 공장 이름)
  * ============================================================ */
 import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy, itabs, pageHead } from './ui.js';
 import { loadCatalog, catalog, searchItems, exactItem, locOf, aisleOf, thumb, editCatalog, setLoc, levelsOf, catStart, cleanName, kvGet, kvSet } from './catalog.js';
@@ -46,6 +46,18 @@ export async function stockAll(force) {
   try { await kvSet('stock.all', { since, m, mn, at: Date.now() }); } catch (e) {}
   return m;
 }
+/* ---------- 🏭 공급처 — 경영의 공장(factories)과 같은 것. 창고 매니저는 별칭(China 1 · China 2 …)으로, 관리자 · 오너는 공장 이름으로 봄
+ *   목록은 settings/app.suppliers (공장 화면이 저장할 때 적어 둠 — 공장 문서는 관리자만 읽을 수 있어서) · 기록에는 공장 코드(fromCode · sup)를 적어 둘을 잇는다 ---------- */
+export const suppliers = () => (S && S.settings && Array.isArray(S.settings.suppliers)) ? S.settings.suppliers : [];
+export const supFind = v => { const u = String(v || '').trim().toUpperCase(); if (!u) return null; return suppliers().find(f => String(f.code || '').toUpperCase() === u || String(f.alias || '').toUpperCase() === u || String(f.name || '').toUpperCase() === u || ((f.alias ? f.alias + ' · ' : '') + (f.name || '')).toUpperCase() === u) || null; };
+/** 보이는 이름 — 관리자 · 오너: 공장 이름 (별칭) · 담당자: 별칭(없으면 이름) · full: 둘 다 */
+export const supLabel = (v, full) => { const f = supFind(v); if (!f) return String(v || ''); if (full) return (f.alias ? f.alias + ' · ' : '') + (f.name || ''); const top = S.role === 'admin' || S.role === 'owner'; return top ? (f.name || f.code) + (f.alias ? ' (' + f.alias + ')' : '') : (f.alias || f.name || f.code); };
+/** 고르는 칸 — 공급처 목록 + 직접 입력 */
+export const supSelect = (id, v) => { const f = supFind(v), L = suppliers(); return '<select id="' + id + '"><option value="">' + bt('— 고르세요 —', '— pick —') + '</option>' + L.map(x => '<option value="' + esc(x.code) + '"' + (f && f.code === x.code ? ' selected' : '') + '>' + esc(supLabel(x.code)) + '</option>').join('') + '<option value="__other"' + (v && !f ? ' selected' : '') + '>✍️ ' + bt('직접 입력', 'Type') + '</option></select><input id="' + id + 'T" value="' + esc(v && !f ? v : '') + '" placeholder="' + esc(bt('공급처 이름', 'Supplier name')) + '" style="margin-top:6px;display:' + (v && !f ? 'block' : 'none') + '">'; };
+/** 고른 값 읽기 — 공장 코드 또는 직접 쓴 글 */
+export const supValue = id => { const sel = $(id); if (!sel) return ''; if (sel.value === '__other') return ($(id + 'T') ? $(id + 'T').value.trim().toUpperCase() : ''); return sel.value; };
+export const supBind = id => { const sel = $(id); if (!sel) return; sel.onchange = () => { const t = $(id + 'T'); if (t) { t.style.display = sel.value === '__other' ? 'block' : 'none'; if (sel.value === '__other') t.focus(); } }; };
+
 /* ---------- ⚠️ 부족 기준 — 아이템마다(stock.min) 없으면 설정(stockMin), 그것도 없으면 12 ---------- */
 let MINS = {};
 export const defMin = () => { const v = S && S.settings ? Number(S.settings.stockMin) : NaN; return isNaN(v) || v < 0 ? 12 : v; };
@@ -269,8 +281,7 @@ export async function itemSheet(code, done) {
 function paintRecv() {
   const box = $('skBody'), L = ST.recv, tot = L.reduce((a, l) => a + l.q, 0), bad = L.filter(l => !l.ok);
   box.innerHTML = '<div class="card"><h2 style="font-size:15px">📥 ' + bi('들어온 물건 — 팩킹 리스트', 'Incoming — packing list') + '</h2><div class="muted">' + bt('중국 공장 팩킹 리스트(엑셀 · CSV)를 올리면 코드 + 수량 두 칸만 읽어 아이템마다 더합니다. 손으로는 아래 코드 · 수량으로 한 줄씩. 다 맞으면 💾 입고 저장.', 'Upload the factory packing list (xlsx · csv); only the code and quantity columns are read. Or add lines by hand below. Then 💾 Save receipt.') + '</div>' +
-    '<div class="two" style="margin-top:8px"><div class="fg"><label>' + bt('날짜', 'Date') + '</label><input type="date" id="rvD" value="' + esc(ST.d || today()) + '"></div><div class="fg"><label>' + bt('어디서 (공장 · 컨테이너)', 'From (factory · container)') + '</label><input id="rvFrom" list="rvFromL" value="' + esc(ST.from) + '" placeholder="e.g. SHENGXING · CNTR 2026-10"></div></div>' +
-    '<datalist id="rvFromL">' + ((S.settings && S.settings.suppliers) || []).map(f => '<option value="' + esc((f.alias ? f.alias + ' · ' : '') + (f.name || '')) + '">').join('') + '</datalist>' +
+    '<div class="two" style="margin-top:8px"><div class="fg"><label>' + bt('날짜', 'Date') + '</label><input type="date" id="rvD" value="' + esc(ST.d || today()) + '"></div><div class="fg"><label>' + bt('어디서 — 공장', 'From — factory') + '</label>' + supSelect('rvFrom', ST.from) + '</div></div>' +
     '<div class="fg"><label>📎 ' + bt('팩킹 리스트 파일', 'Packing list file') + '</label><input type="file" id="rvFile" accept=".xlsx,.xls,.csv,.txt"></div>' +
     '<div class="fg"><label>✍️ ' + bt('손으로 — 코드 (스캔) → 수량 → Enter', 'By hand — code (scan) → qty → Enter') + '</label><div style="display:flex;gap:6px"><input id="rvC" placeholder="' + esc(bt('코드 · 바코드', 'Code · barcode')) + '" autocomplete="off" autocapitalize="characters" style="flex:2"><input id="rvQ" type="number" inputmode="numeric" placeholder="' + esc(bt('수량', 'Qty')) + '" style="flex:1"><button class="b-ghost" id="rvAdd">＋</button></div></div>' +
     '<div id="rvOut"></div></div>' +
@@ -278,8 +289,8 @@ function paintRecv() {
     (bad.length ? '<div class="alert a-amb">⚠️ ' + bt('목록에 없는 코드', 'Unknown codes') + ' ' + bad.length + ': ' + esc(bad.map(l => l.c).slice(0, 10).join(', ')) + ' — ' + bt('저장하면 재고 코드로 그대로 들어갑니다. 틀린 코드는 ✕ 로 빼세요.', 'They are saved under that code as is; remove typos with ✕.') + '</div>' : '') +
     (L.length ? '<table><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th></th></tr>' + L.map((l, i) => '<tr' + (l.ok ? '' : ' style="background:#fef2f2"') + '><td><b>' + esc(l.c) + '</b></td><td class="muted" style="font-size:11.5px">' + esc(l.d || (l.ok ? '' : bt('목록에 없음', 'unknown'))) + '</td><td class="r"><input type="number" inputmode="numeric" class="sm" data-rvq="' + i + '" value="' + l.q + '" style="width:70px;text-align:right"></td><td><button class="b-ghost b-sm" data-rvx="' + i + '">✕</button></td></tr>').join('') + '</table>' : '<div class="none">' + bt('파일을 올리거나 코드를 치세요', 'Upload a file or type a code') + '</div>') +
     (L.length ? '<div class="fg" style="margin-top:8px"><label>' + bt('메모', 'Note') + '</label><input id="rvNote" value="' + esc(ST.note) + '"></div><div class="btns"><button class="b-green" id="rvSave">💾 ' + bt('입고 저장', 'Save receipt') + ' — ' + tot.toLocaleString() + bt('개', ' pcs') + '</button></div>' : '') + '</div>';
-  const keep = () => { ST.d = $('rvD').value; ST.from = $('rvFrom').value; if ($('rvNote')) ST.note = $('rvNote').value; };
-  $('rvD').onchange = keep; $('rvFrom').oninput = keep; if ($('rvNote')) $('rvNote').oninput = keep;
+  const keep = () => { ST.d = $('rvD').value; ST.from = supValue('rvFrom'); if ($('rvNote')) ST.note = $('rvNote').value; };
+  supBind('rvFrom'); $('rvD').onchange = keep; $('rvFrom').addEventListener('change', keep); if ($('rvFromT')) $('rvFromT').oninput = keep; if ($('rvNote')) $('rvNote').oninput = keep;
   $('rvFile').onchange = async () => {
     const f = $('rvFile').files[0]; if (!f) return; const out = $('rvOut'); out.innerHTML = '<div class="muted">' + bt('읽는 중…', 'Reading…') + '</div>'; busy(true);
     try {
@@ -302,11 +313,11 @@ function paintRecv() {
   if ($('rvClr')) $('rvClr').onclick = () => { ST.recv = []; ST.file = ''; paintRecv(); };
   if ($('rvSave')) $('rvSave').onclick = async () => {
     keep(); const Ls = ST.recv.filter(l => l.q > 0); if (!Ls.length) return;
-    if (!(await confirmBox('📥 ' + Ls.length + bt('줄 · ', ' lines · ') + Ls.reduce((a, l) => a + l.q, 0).toLocaleString() + bt('개를 재고에 더할까요?', ' pcs — add to inventory?') + (ST.from ? '\n' + ST.from : ''), bt('입고 저장', 'Save')))) return;
+    if (!(await confirmBox('📥 ' + Ls.length + bt('줄 · ', ' lines · ') + Ls.reduce((a, l) => a + l.q, 0).toLocaleString() + bt('개를 재고에 더할까요?', ' pcs — add to inventory?') + (ST.from ? '\n🏭 ' + supLabel(ST.from) : ''), bt('입고 저장', 'Save')))) return;
     busy(true);
     try {
       const id = newId('R'), now = new Date().toISOString(), d = ST.d || today();
-      await S.DB.set('receipts', id, { id, d, from: ST.from || '', file: ST.file || '', n: Ls.length, qty: Ls.reduce((a, l) => a + l.q, 0), lines: Ls.map(l => ({ c: l.c, q: l.q, d: l.d || '' })), note: ST.note || '', by: S.user.email, byName: who(), at: now });
+      await S.DB.set('receipts', id, { id, d, from: ST.from ? supLabel(ST.from, true) : '', fromCode: supFind(ST.from) ? supFind(ST.from).code : '', file: ST.file || '', n: Ls.length, qty: Ls.reduce((a, l) => a + l.q, 0), lines: Ls.map(l => ({ c: l.c, q: l.q, d: l.d || '' })), note: ST.note || '', by: S.user.email, byName: who(), at: now });
       await applyMoves(Ls.map(l => ({ c: l.c, delta: l.q })), 'recv', id, (ST.from ? ST.from : bt('입고', 'Receipt')) + (ST.file ? ' · ' + ST.file : ''));
       toast('📥 ' + Ls.length + bt('줄 입고 — 재고에 더했습니다', ' lines received'), 'good');
       ST.recv = []; ST.file = ''; ST.from = ''; ST.note = ''; ST.tab = 'log'; page();
@@ -322,10 +333,10 @@ async function paintLog() {
   try { R = sortBy(await S.DB.list('receipts', { order: ['at', 'desc'], limit: 50 }), x => x.at || '', true); } catch (e) { try { R = sortBy(await S.DB.list('receipts'), x => x.at || '', true).slice(0, 50); } catch (x) {} }
   try { L = sortBy(await S.DB.list('stockLog', { order: ['at', 'desc'], limit: 150 }), x => x.at || '', true); } catch (e) { try { L = sortBy(await S.DB.list('stockLog'), x => x.at || '', true).slice(0, 150); } catch (x) {} }
   const K = { recv: '📥', adj: '✏️', count: '🔢', inv: '🧾', void: '↩️' };
-  box.innerHTML = '<div class="card"><h2 style="font-size:15px">📥 ' + bi('입고 기록', 'Receipts') + ' ' + R.length + '</h2>' + (R.length ? R.map(r => '<div class="pr tap" data-rcp="' + esc(r.id) + '"><div class="ct"><b>' + esc(md(r.d)) + ' · ' + esc(r.from || bt('입고', 'Receipt')) + '</b><small>' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + (r.note ? ' · ' + esc(r.note) : '') + '</small></div><div class="pa"><b>' + Number(r.qty || 0).toLocaleString() + '</b><small>' + r.n + bt('줄', ' lines') + '</small></div></div>').join('') : '<div class="none">' + bt('입고 기록 없음', 'No receipts yet') + '</div>') + '</div>' +
+  box.innerHTML = '<div class="card"><h2 style="font-size:15px">📥 ' + bi('입고 기록', 'Receipts') + ' ' + R.length + '</h2>' + (R.length ? R.map(r => '<div class="pr tap" data-rcp="' + esc(r.id) + '"><div class="ct"><b>' + esc(md(r.d)) + ' · ' + esc(r.fromCode ? supLabel(r.fromCode) : (r.from || bt('입고', 'Receipt'))) + '</b><small>' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + (r.note ? ' · ' + esc(r.note) : '') + '</small></div><div class="pa"><b>' + Number(r.qty || 0).toLocaleString() + '</b><small>' + r.n + bt('줄', ' lines') + '</small></div></div>').join('') : '<div class="none">' + bt('입고 기록 없음', 'No receipts yet') + '</div>') + '</div>' +
     '<div class="card"><h2 style="font-size:15px">📋 ' + bi('최근 움직임', 'Recent moves') + '</h2>' + (L.length ? '<table><tr><th>' + bt('날짜', 'Date') + '</th><th>' + bt('코드', 'Code') + '</th><th class="r">±</th><th class="r">' + bt('재고', 'After') + '</th><th>' + bt('메모', 'Note') + '</th></tr>' + L.map(x => '<tr class="tap" data-sti="' + esc(x.code) + '"><td>' + esc(md(x.d)) + '</td><td><b>' + esc(x.code) + '</b></td><td class="r"><b' + (x.delta < 0 ? ' class="warn"' : '') + '>' + (K[x.kind] || '') + ' ' + (x.delta > 0 ? '+' : '') + x.delta + '</b></td><td class="r">' + x.after + '</td><td class="muted" style="font-size:11px">' + esc(x.ref || '') + (x.note ? ' · ' + esc(x.note) : '') + (x.byName ? ' · ' + esc(x.byName) : '') + '</td></tr>').join('') + '</table>' : '<div class="none">' + bt('움직임 없음', 'No moves yet') + '</div>') + '</div>';
   box.querySelectorAll('[data-sti]').forEach(el => el.onclick = () => itemSheet(el.dataset.sti, paintLog));
-  box.querySelectorAll('[data-rcp]').forEach(el => el.onclick = () => { const r = R.find(x => x.id === el.dataset.rcp); if (!r) return; openModal('<h2>📥 ' + esc(md(r.d)) + ' · ' + esc(r.from || '') + '</h2><div class="muted">' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + ' · ' + r.n + bt('줄', ' lines') + ' · ' + Number(r.qty || 0).toLocaleString() + bt('개', ' pcs') + (r.note ? '<br>📝 ' + esc(r.note) : '') + '</div><div style="max-height:50vh;overflow:auto;margin-top:8px"><table><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th class="r">' + bt('수량', 'Qty') + '</th></tr>' + (r.lines || []).map(l => '<tr><td><b>' + esc(l.c) + '</b></td><td class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</td><td class="r">' + l.q + '</td></tr>').join('') + '</table></div><div class="btns"><button class="b-ghost" id="rcX">' + bt('닫기', 'Close') + '</button></div>'); $('rcX').onclick = closeModal; });
+  box.querySelectorAll('[data-rcp]').forEach(el => el.onclick = () => { const r = R.find(x => x.id === el.dataset.rcp); if (!r) return; openModal('<h2>📥 ' + esc(md(r.d)) + ' · ' + esc(r.fromCode ? supLabel(r.fromCode) : (r.from || '')) + '</h2><div class="muted">' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + ' · ' + r.n + bt('줄', ' lines') + ' · ' + Number(r.qty || 0).toLocaleString() + bt('개', ' pcs') + (r.note ? '<br>📝 ' + esc(r.note) : '') + '</div><div style="max-height:50vh;overflow:auto;margin-top:8px"><table><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th class="r">' + bt('수량', 'Qty') + '</th></tr>' + (r.lines || []).map(l => '<tr><td><b>' + esc(l.c) + '</b></td><td class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</td><td class="r">' + l.q + '</td></tr>').join('') + '</table></div><div class="btns"><button class="b-ghost" id="rcX">' + bt('닫기', 'Close') + '</button></div>'); $('rcX').onclick = closeModal; });
 }
 
 /* ⚠️ 부족 — 기준(min) 아래 · 0 이하 — 📤 지금 알리기 */
