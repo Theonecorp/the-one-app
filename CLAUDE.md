@@ -13,7 +13,7 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 
 ## 변경 한 번의 순서
 1. `git fetch origin main && git merge origin/main` — **먼저 최신 main 을 합친다** (다른 세션의 변경을 잃지 않기 위해).
-2. `src/` 수정 → `sh build.sh` (app.js 다시 빌드. src 를 고쳤으면 반드시).
+2. `src/` 수정 → `sh build.sh` (app.js 다시 빌드. src 를 고쳤으면 반드시). build.sh 는 package-lock 에 고정된 esbuild(node_modules)만 쓴다 — `npx esbuild` 를 직접 부르지 않는다 (버전이 다르면 app.js 가 통째로 달라져 CI 가 막는다).
 3. 버전 세 곳을 같이 올린다: `src/main.js` 의 `VER`, `index.html` 의 `app.js?v=`, `sw.js` 의 `CACHE` 이름(`theone-shell-vNNN`). 하나라도 빠지면 폰이 옛 앱을 계속 쓴다.
 4. 새 UI 문구가 있으면 `i18n.json` 에 EN · PT 를 넣는다.
 5. 시험: 새 시험 + 관련 시험 `node test/tNNN.js`. 전부는 `sh test/run-all.sh` (약 40분, CI 는 4조각 병렬).
