@@ -45,4 +45,7 @@ jobs:
       - run: npm ci
       - run: npm i --no-save playwright@1.63.0
       - run: npx playwright install --with-deps chromium
-      - run: SHARD=${{ matrix.shard }}/4 sh test/run-all.sh
+      - name: run tests with the full Chromium (same binary as local, not the headless shell)
+        run: |
+          export PW_CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1); echo "PW_CHROME=$PW_CHROME"
+          SHARD=${{ matrix.shard }}/4 sh test/run-all.sh
