@@ -1,0 +1,51 @@
+# PR · main 푸시마다: ① app.js 가 src 와 같게 빌드돼 있나 · 버전 세 곳이 맞나  ② Playwright 시험 전부 (4조각 병렬)
+#   둘 다 초록이어야 머지 — "있던 기능이 사라지는" 변경을 머지 전에 잡기 위한 장치
+name: check
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  build:
+    name: build in sync · version bump
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: app.js must equal a fresh build of src/
+        run: |
+          sh build.sh
+          if ! git diff --quiet -- app.js; then
+            echo "::error::app.js 가 src 와 다릅니다 — sh build.sh 를 돌려 app.js 를 함께 커밋하세요 (main 머지 뒤에도 다시 빌드)"; git --no-pager diff --stat -- app.js; exit 1; fi
+      - name: VER (src/main.js) · app.js?v= (index.html) · CACHE (sw.js) must match
+        run: |
+          VER=$(grep -o "export const VER = 'v[0-9.]*'" src/main.js | grep -o 'v[0-9.]*')
+          IDX=$(grep -o 'app.js?v=[0-9.]*' index.html | head -1 | sed 's/app.js?v=/v/')
+          echo "main.js $VER · index.html $IDX"
+          [ "$VER" = "$IDX" ] || { echo "::error::버전이 다릅니다: src/main.js $VER · index.html $IDX"; exit 1; }
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            git fetch -q origin "${{ github.base_ref }}" --depth=1
+            if ! git diff --quiet "origin/${{ github.base_ref }}" -- app.js; then
+              git diff --quiet "origin/${{ github.base_ref }}" -- sw.js && { echo "::error::app.js 가 바뀌었는데 sw.js 의 CACHE 이름이 그대로입니다 — 폰이 옛 앱을 계속 씁니다"; exit 1; }
+              [ "$VER" != "$(git show origin/${{ github.base_ref }}:src/main.js | grep -o "export const VER = 'v[0-9.]*'" | grep -o 'v[0-9.]*')" ] || { echo "::error::app.js 가 바뀌었는데 VER 이 그대로입니다"; exit 1; }
+            fi
+          fi
+  tests:
+    name: playwright tests (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: { shard: [1, 2, 3, 4] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm i --no-save playwright@1.63.0
+      - run: npx playwright install --with-deps chromium
+      - name: run tests with the full Chromium (same binary as local, not the headless shell)
+        run: |
+          export PW_CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1); echo "PW_CHROME=$PW_CHROME"
+          SHARD=${{ matrix.shard }}/4 sh test/run-all.sh

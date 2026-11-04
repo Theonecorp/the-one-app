@@ -3,7 +3,7 @@ let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('ch
 const path = require('path');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8808', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8808/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
@@ -32,10 +32,10 @@ const path = require('path');
   const sumL = await txt(pg, '#cSum'); log('sum line:', sumL); if (!/≠/.test(sumL)) errs.push('sum line should flag amount ≠ invoice sum');
   await pg.click('#cSave'); await pg.waitForSelector('#cfOk', { timeout: 3000 }).catch(() => errs.push('amount ≠ sum should ask'));
   const q1 = await txt(pg, '.ovr h2'); log('ask:', q1.slice(0, 80)); if (!/750/.test(q1) || !/800/.test(q1)) errs.push('ask should show both amounts');
-  await pg.click('#cfNo'); await pg.waitForTimeout(300);
+  await pg.click('#cfNo'); await pg.waitForSelector('#cfNo', { state: 'detached', timeout: 5000 }).catch(() => {}); await pg.waitForTimeout(300);   // 확인 창이 닫힌 뒤에 다음 입력 (CI 느린 기계에서 입력이 창에 먹히던 것)
   /* 겹침: A10021 은 E1 (현장 수금) 에 이미 들어가 있음 */
   await pg.fill('#cAmt', '800'); await pg.click('#cMore'); await pg.fill('[data-cno="1"]', 'A10021'); await pg.fill('[data-camt="1"]', '0'); await pg.fill('#cAmt', '800');
-  await pg.click('#cSave'); await pg.waitForSelector('#cfOk', { timeout: 3000 }).catch(() => errs.push('duplicate invoice should ask'));
+  await pg.click('#cSave'); await pg.waitForSelector('#cfOk', { timeout: 10000 }).catch(() => errs.push('duplicate invoice should ask'));
   const q2 = await txt(pg, '.ovr h2'); log('dup ask:', q2.slice(0, 120)); if (!/A10021/.test(q2) || !/현장/.test(q2)) errs.push('dup ask should name the field payment');
   await pg.click('#cfOk'); await pg.waitForTimeout(800);
   const saved = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.cod).filter(x => !x.void && x.method === 'CREDIT CARD')[0]); log('saved:', saved && [saved.sm, saved.acct, saved.ref, saved.amt, (saved.invs || []).map(v => v.no).join(',')]);

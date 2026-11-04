@@ -21,7 +21,7 @@ const path = require('path');
   if (B.parseBankText(['hello', 'world']).how !== 'none') errs.push('no-data detection');
   /* 화면 — bankM 만 있을 때 */
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8823', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   const ym = new Date().toISOString().substring(0, 7);
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { s.bankM = [{ id: o.ym, ym: o.ym, begin: 41250.1, in: 212900.55, out: 190968.57, end: 63182.08, from: o.ym + '-01', to: o.ym + '-31', rows: 0 }]; }; }, { ym });

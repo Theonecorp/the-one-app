@@ -4,7 +4,7 @@ let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('ch
 const path = require('path');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8874', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const seed = s => { const ago = h => new Date(Date.now() - h * 3600000).toISOString(); const mk = (id, sm, store, h) => ({ id, no: id, d: ago(h).substring(0, 10), ym: ago(h).substring(0, 7), sm, acct: '1111', store, st: 'sent', n: 1, qty: 1, amt: 10, createdAt: ago(h), updatedAt: ago(h), sentAt: ago(h) }); s.orders = [mk('O-A1', 'ALEX', 'A SHOP', 1), mk('O-B1', 'BRANDON', 'B SHOP', 2)]; s.orderLines = [];
     const d = new Date().toISOString().substring(0, 10); s.invoices = (s.invoices || []).concat([{ id: 'A-077001', no: 'A-077001', t: 'A', d, ym: d.substring(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 120, bal: 120, st: 'open', lines: [] }]); };
