@@ -2,6 +2,7 @@
 #   둘 다 초록이어야 머지 — "있던 기능이 사라지는" 변경을 머지 전에 잡기 위한 장치
 name: check
 on:
+  workflow_dispatch:   # 손으로 다시 돌리기 (Actions › check › Run workflow)
   pull_request:
   push:
     branches: [main]

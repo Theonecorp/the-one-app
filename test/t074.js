@@ -35,9 +35,15 @@ const path = require('path');
   await pg.click('#cfNo'); await pg.waitForSelector('#cfNo', { state: 'detached', timeout: 5000 }).catch(() => {}); await pg.waitForTimeout(300);   // 확인 창이 닫힌 뒤에 다음 입력 (CI 느린 기계에서 입력이 창에 먹히던 것)
   /* 겹침: A10021 은 E1 (현장 수금) 에 이미 들어가 있음 */
   await pg.fill('#cAmt', '800'); await pg.click('#cMore'); await pg.fill('[data-cno="1"]', 'A10021'); await pg.fill('[data-camt="1"]', '0'); await pg.fill('#cAmt', '800');
-  await pg.click('#cSave'); await pg.waitForSelector('#cfOk', { timeout: 10000 }).catch(() => errs.push('duplicate invoice should ask'));
+  await pg.evaluate(() => { window.__TL = []; const el = document.getElementById('toast'); if (el && !window.__TO) { window.__TO = new MutationObserver(() => { if (el.classList.contains('on')) window.__TL.push(el.className + ': ' + el.textContent); }); window.__TO.observe(el, { attributes: true, childList: true, subtree: true, characterData: true }); } });
+  const before2 = await pg.evaluate(() => ({ rows: Array.from(document.querySelectorAll('[data-cno]')).map(x => x.value + '/' + (document.querySelector('[data-camt="' + x.dataset.cno + '"]') || {}).value), amt: document.getElementById('cAmt').value, sum: (document.getElementById('cSum') || {}).textContent, ovr: !!document.querySelector('.ovr'), busy: document.body.className }));
+  await pg.click('#cSave'); const asked2 = await pg.waitForSelector('#cfOk', { timeout: 10000 }).then(() => true).catch(() => { errs.push('duplicate invoice should ask'); return false; });
+  if (!asked2) {   /* CI 에서만 가끔 — 무슨 일이 있었는지 남김 */
+    const diag = await pg.evaluate(() => ({ toasts: window.__TL, ovr: (document.querySelector('.ovr') || {}).outerHTML || '', modal: !!document.querySelector('#modal.on'), cod: Object.values(window.__MOCK_STORE__.cod).filter(x => x.method === 'CREDIT CARD').map(x => x.ref + ':' + x.amt + ':' + (x.invs || []).map(v => v.no).join(',')), e1: JSON.stringify(Object.values(window.__MOCK_STORE__.entries).filter(e => (e.invs || []).some(v => /10021/.test(v.no))).map(e => ({ id: e.id, d: e.d, acct: e.acct, void: e.void, repl: e.repl, invs: e.invs }))) }));
+    console.log('DIAG before:', JSON.stringify(before2)); console.log('DIAG after:', JSON.stringify(diag).slice(0, 1500));
+  }
   const q2 = await txt(pg, '.ovr h2'); log('dup ask:', q2.slice(0, 120)); if (!/A10021/.test(q2) || !/현장/.test(q2)) errs.push('dup ask should name the field payment');
-  await pg.click('#cfOk'); await pg.waitForTimeout(800);
+  if (asked2) await pg.click('#cfOk'); await pg.waitForTimeout(800);
   const saved = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.cod).filter(x => !x.void && x.method === 'CREDIT CARD')[0]); log('saved:', saved && [saved.sm, saved.acct, saved.ref, saved.amt, (saved.invs || []).map(v => v.no).join(',')]);
   if (!saved || saved.ref !== '884412' || saved.acct !== '1111' || saved.amt !== 800) errs.push('card payment should save after confirm');
   /* 같은 날 · 같은 가게 · 같은 금액 → 경고 */
