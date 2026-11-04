@@ -15,7 +15,7 @@ const path = require('path');
   await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); }, '(' + seed.toString() + ')(s)');
   await pg.goto('http://127.0.0.1:8878/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(400);
   const msgs = () => pg.evaluate(() => Object.values(window.__MOCK_STORE__.msgs || {}).filter(m => m.to === 'g:office' && /기준|minimum|부족|Low/i.test(m.text)).map(m => m.text));
-  const nq = () => pg.evaluate(() => Object.values(window.__MOCK_STORE__.notifyq || {}).filter(n => n.kind === 'msg' && n.toStaff).length);
+  const nq = () => pg.evaluate(() => Object.values(window.__MOCK_STORE__.notifyq || {}).filter(n => n.kind === 'lowstock').length);   // v0.8.162: 이메일 · 챗은 kind lowstock (받는 사람 = 설정 stockAlertTo, 없으면 담당자 알림 이메일)
   /* ① ☰ 서랍에 📡 연결 · 보낼 함 */
   await pg.click('#hMenu'); await pg.waitForSelector('#drawer #mNet', { timeout: 3000 }).catch(() => errs.push('drawer should have the 📡 connection button'));
   if (await pg.$('#drawer #mNet')) { await pg.click('#drawer #mNet'); await pg.waitForSelector('#modal.on #netX', { timeout: 3000 }).catch(() => errs.push('📡 button should open the connection sheet')); await pg.click('#netX').catch(() => {}); }
@@ -27,7 +27,7 @@ const path = require('path');
   await pg.fill('#skWhy', 'damaged'); await pg.click('#skSave'); await pg.waitForTimeout(900);
   let q = await pg.evaluate(() => window.__MOCK_STORE__.stock.AHG100.qty); let M = await msgs(); log('AHG100 qty:', q, '· office msgs:', M.length, (M[0] || '').replace(/\n/g, ' | ').slice(0, 120), '· notifyq:', await nq());
   if (q !== 8) errs.push('qty should be 8 after −12'); if (M.length !== 1) errs.push('dropping below the minimum should send one office message'); if (!/AHG100/.test(M[0] || '')) errs.push('message should name the item');
-  if (!(await nq())) errs.push('message should also be queued for email/chat (notifyq toStaff)');
+  if ((await nq()) !== 1) errs.push('low-stock email/chat should be queued once (notifyq kind lowstock)');
   /* ③ 이미 아래인데 또 내려가면 다시 알리지 않음 · 기준 위로 올라갔다 다시 내려가면 또 */
   await pg.click('[data-sti="AHG100"]'); await pg.waitForSelector('#skSave'); await pg.click('[data-skq="-1"]'); await pg.fill('#skWhy', 'sample'); await pg.click('#skSave'); await pg.waitForTimeout(700);
   M = await msgs(); if (M.length !== 1) errs.push('no second alert while already below the minimum (got ' + M.length + ')');

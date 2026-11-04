@@ -129,7 +129,7 @@ export async function sendMsg(m) {
   /* 닫혀 있는 폰에도 — 이메일 · 구글 챗 (세일즈맨 → toSm · 사무실/창고/모두 → toStaff) */
   const n = { kind: 'msg', subject: '[THE ONE] 💬 ' + myName() + ': ' + m.text.slice(0, 40), text: m.text + (m.ref && m.ref.label ? '\n🔗 ' + m.ref.label : ''), url: Notify.appUrl('msg'), chat: true };
   if (m.to.indexOf('sm:') === 0) n.toSm = m.to.substring(3); else if (m.to === 'g:sales' || m.to === 'g:all') { n.toSm = ''; n.toStaff = m.to === 'g:all'; } else n.toStaff = true;
-  if (m.to.indexOf('u:') !== 0) Notify.queue(n).catch(() => {});
+  if (m.to.indexOf('u:') !== 0 && !m.quiet) Notify.queue(n).catch(() => {});   // quiet: 부르는 쪽이 이메일 · 챗을 따로 보냄 (예: 📦 재고 부족 → stockAlertTo)
   return doc;
 }
 /** 라우트 #/msg — 알림 창 열기 (폰 알림 · 이메일 링크에서) */

@@ -70,8 +70,11 @@ export async function alertLow(list, manual) {
   const head = (manual ? '📦 ' + bt('재고 부족 목록', 'Low stock list') : '⚠️ ' + bt('재고가 기준 아래로 내려갔습니다', 'Stock dropped below minimum')) + ' — ' + list.length + bt('개', ' items') + (manual ? '' : ' (' + who() + ')');
   const body = list.slice(0, 12).map(line).join('\n') + (list.length > 12 ? '\n… ' + bt('외', 'and') + ' ' + (list.length - 12) + bt('개', ' more') : '');
   const text = (head + '\n' + body).slice(0, 990);
-  try { await Msg.sendMsg({ to: 'g:office', toLabel: bt('사무실', 'Office'), text, ref: { id: 'stock/low', label: '📦 ' + bt('재고 › ⚠️ 부족', 'Inventory › Low') } }); return true; }
-  catch (e) { console.warn('lowstock alert', e); return false; }
+  let ok = false;
+  try { await Msg.sendMsg({ to: 'g:office', toLabel: bt('사무실', 'Office'), text, ref: { id: 'stock/low', label: '📦 ' + bt('재고 › ⚠️ 부족', 'Inventory › Low') }, quiet: true }); ok = true; } catch (e) { console.warn('lowstock msg', e); }
+  /* 이메일 · 구글 챗 — 설정의 "재고 부족 알림 이메일"(stockAlertTo) 로. 비어 있으면 담당자 알림 이메일(reportTo) 로 */
+  try { const to = String((S.settings && S.settings.stockAlertTo) || '').split(/[,;\s]+/).filter(x => /@/.test(x)); const Notify = await import('./notify.js'); await Notify.queue(Object.assign({ kind: 'lowstock', subject: '[THE ONE] ⚠️ ' + bt('재고 부족', 'Low stock') + ' ' + list.length + bt('개', ' items'), text, url: Notify.appUrl('stock/low'), chat: true }, to.length ? { to } : { toStaff: true })); ok = true; } catch (e) { console.warn('lowstock notifyq', e); }
+  return ok;
 }
 export function dropStockCache() { ALL = null; Object.keys(STOCK).forEach(k => { delete STOCK[k]; }); kvSet('stock.all', null).catch(() => {}); }
 /** 움직임 적용 — moves: [{ c, delta, note? }] (같은 코드는 합침). kind: recv · adj · count · inv · void. count 면 delta 대신 to(세어 본 수량) */

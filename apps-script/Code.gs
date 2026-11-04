@@ -106,6 +106,7 @@ function notifyRun_() {
       const to = [];
       if (n.toSm) query_('users', 'sm', String(n.toSm), 5).forEach(u => { const e = u.email || u._id; if (isEmail_(e) && to.indexOf(e) < 0) to.push(e); });
       if (n.toStaff) staff.forEach(e => { if (to.indexOf(e) < 0) to.push(e); });
+      if (n.to) (Array.isArray(n.to) ? n.to : String(n.to).split(/[,;\s]+/)).map(e => String(e || '').trim().toLowerCase()).filter(isEmail_).forEach(e => { if (to.indexOf(e) < 0) to.push(e); });   // 받는 사람을 직접 적은 알림 (예: 📦 재고 부족 → 설정의 stockAlertTo)
       const lines = String(n.text || '').split('\n');
       if (to.length) MailApp.sendEmail({ to: to.join(','), subject: n.subject || '[THE ONE] 알림', name: 'THE ONE', replyTo: isEmail_(n.by) ? n.by : REPLY_TO,
         htmlBody: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px">' + lines.map(esc_).join('<br>') + (n.byName || n.by ? '<p style="color:#64748b;font-size:13px">— ' + esc_(n.byName || n.by) + '</p>' : '') +

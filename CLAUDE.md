@@ -16,7 +16,7 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 2. `src/` 수정 → `sh build.sh` (app.js 다시 빌드. src 를 고쳤으면 반드시). build.sh 는 package-lock 에 고정된 esbuild(node_modules)만 쓴다 — `npx esbuild` 를 직접 부르지 않는다 (버전이 다르면 app.js 가 통째로 달라져 CI 가 막는다).
 3. 버전 세 곳을 같이 올린다: `src/main.js` 의 `VER`, `index.html` 의 `app.js?v=`, `sw.js` 의 `CACHE` 이름(`theone-shell-vNNN`). 하나라도 빠지면 폰이 옛 앱을 계속 쓴다.
 4. 새 UI 문구가 있으면 `i18n.json` 에 EN · PT 를 넣는다.
-5. 시험: 새 시험 + 관련 시험 `node test/tNNN.js`. 전부는 `sh test/run-all.sh` (약 40분, CI 는 4조각 병렬).
+5. 시험: 새 시험 + 관련 시험 `node test/tNNN.js`. **푸시 전에는 반드시 `sh test/run-par.sh`(전체 시험 4조각 동시, 약 7분)로 전부 통과를 확인한다.** 하나라도 ❌ 이면 고칠 때까지 푸시하지 않는다 — PR 의 CI 실패는 관리자에게 메일로 간다. 화면을 바꿨으면 그 화면을 쓰는 옛 시험도 같이 고친다.
 6. 커밋 → 푸시 → PR → GitHub Actions `check` 가 ① app.js 가 src 와 같은지 ② 버전 세 곳 ③ 시험 전부를 확인 → 머지.
 7. **머지 뒤 main 을 다시 받아 `sh build.sh` 를 한 번 더** — 두 브랜치의 src 가 합쳐졌으면 app.js 도 다시 빌드돼야 한다 (충돌을 한쪽으로 풀면 상대 기능이 빠진 app.js 가 배포되는 사고의 원인).
 

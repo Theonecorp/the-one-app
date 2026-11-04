@@ -129,7 +129,7 @@ export function manage(o, lines) {
     busy(true); try { await saveLines(); toast('🏷 ' + bt('인보이스 종류 저장', 'Invoice type saved'), 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
   };
   const boLine = () => { const b = lines.filter(l => (l.pq || 0) < l.q), u = lines.filter(l => !l.ok); return (u.length ? '<div class="alert a-amb">○ 아직 두드리지 않은 줄 <b>' + u.length + '</b> / ' + lines.length + ' <span class="en">not yet checked</span></div>' : '') + (b.length ? '<div class="alert a-red">⏳ 백오더 ' + b.length + '줄 · ' + b.reduce((a, l) => a + l.q - (l.pq || 0), 0) + '개</div>' : u.length ? '' : '<div class="alert a-grn">✓ 모두 픽킹됨</div>'); };
-  const types = invTypes(S), office = canInv && S.role !== 'salesman' && (o.st === 'sent' || picking);   // 🏷 인보이스 종류(A · P · W)는 사무실이 접수 ~ 발행 전까지 주문을 보고 판단해서 바꿈
+  const types = invTypes(S), office = canInv && S.role !== 'salesman' && (o.st === 'sent' || o.st === 'mine' || picking);   // 접수 · 배정 · 픽킹 · 픽킹 완료 — 발행 전까지   // 🏷 인보이스 종류(A · P · W)는 사무실이 접수 ~ 발행 전까지 주문을 보고 판단해서 바꿈
   /* 픽킹 입력은 두드려서: 처음 한 번 = ✓ 통과(주문 수량), 다시 = ⏳ 백오더(0), 다시 = ✓ … · ✎ 수량 으로 일부만 담았을 때 숫자 입력 */
   const pkBtn = l => { const pq = l.pq || 0, st = !l.ok ? 'u' : pq >= l.q ? 'ok' : pq === 0 ? 'bo' : 'part'; const ic = st === 'u' ? '○' : st === 'ok' ? '✓' : st === 'bo' ? '⏳' : '◐'; return '<button class="pkb ' + st + '" data-pkt="' + l._i + '">' + ic + ' <b>' + pq + '</b><span>/' + l.q + '</span></button><button class="b-ghost pkq" data-pkq="' + l._i + '">✎ ' + bi('수량', 'Qty') + '</button>'; };
   const paint = () => {
