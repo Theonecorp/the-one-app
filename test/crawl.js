@@ -20,7 +20,7 @@ const SKIP = /로그아웃|Sign out|설치|Install|인쇄|Print|PDF|다운로드
     const errs = [];
     pg.on('pageerror', e => errs.push('pageerror: ' + e.message.slice(0, 180)));
     pg.on('console', m => { if (m.type() === 'error' && !/favicon|Failed to load resource|net::ERR|cdnjs|jsdelivr|googleusercontent|lh3|shopify|gstatic/i.test(m.text())) errs.push('console: ' + m.text().slice(0, 180)); });
-    pg.on('dialog', d => d.accept().catch(() => {})); ctx.on('page', p => p.close().catch(() => {}));
+    pg.on('dialog', d => d.accept().catch(() => {})); ctx.on('page', p => { if (p !== pg) p.close().catch(() => {}); });   // 인쇄 · 새 창만 닫음 (자기 페이지는 그대로)
     await pg.addInitScript(o => { if (o.email) window.__MOCK_USER__ = { email: o.email, name: 'T' }; window.__AFTER_SEED__ = s => { if (o.role === 'owner') s.users.push({ id: o.email, email: o.email, name: 'Owner', role: 'owner', active: true }); s.users.forEach(u => { if (u.email === o.email && o.job) u.job = o.job; }); }; }, { email, role, job });
     await pg.goto('http://127.0.0.1:8890/test/demo.html'); if (!(await pg.waitForSelector('#nav button', { timeout: 10000 }).then(() => true).catch(() => false))) { found.push(who + ': nav never appeared'); await ctx.close(); return; }
     await pg.click('#hMenu'); await pg.waitForSelector('#drawer [data-dgo]', { timeout: 5000 }).catch(() => {});
@@ -28,27 +28,42 @@ const SKIP = /로그아웃|Sign out|설치|Install|인쇄|Print|PDF|다운로드
     await pg.evaluate(() => { const d = document.getElementById('drawer'); if (d) d.classList.remove('on'); document.body.classList.remove('drawer-on'); });
     const closeAll = async () => { for (let k = 0; k < 4; k++) { const open = await pg.$('#modal.on, .ovr'); if (!open) break; const b = await pg.$('#cfNo, #modal.on .mclose, #modal.on button.b-ghost'); if (b) await b.click({ timeout: 800 }).catch(() => {}); else await pg.keyboard.press('Escape').catch(() => {}); await pg.waitForTimeout(150); } await pg.evaluate(() => { const m = document.getElementById('modal'); if (m) m.classList.remove('on'); document.querySelectorAll('.ovr').forEach(x => x.remove()); }).catch(() => {}); };
     const scan = async (where) => {
-      const t = ((await pg.textContent('#page').catch(() => '')) || '') + ' ' + ((await pg.textContent('#modal.on').catch(() => '')) || '');
+      const t = await pg.evaluate(() => { const a = document.getElementById('page'), m = document.querySelector('#modal.on'); return ((a && a.textContent) || '') + ' ' + ((m && m.textContent) || ''); }).catch(() => '');   // 기다리지 않고 지금 화면만
       const m = t.match(/.{0,40}(\bundefined\b|\bNaN\b|\[object Object\]).{0,40}/); if (m) errs.push('text: ' + m[0].replace(/\s+/g, ' '));
-      const toast = ((await pg.$eval('#toast.on.bad', e => e.textContent).catch(() => '')) || ''); if (toast && !/사유|이유|넣으세요|고르세요|적어|Enter|Pick|Give|Type|필수|없습니다|먼저/.test(toast)) errs.push('bad toast: ' + toast.slice(0, 120));
+      const toast = await pg.evaluate(() => { const e = document.querySelector('#toast.on.bad'); return e ? e.textContent : ''; }).catch(() => ''); if (toast && !/사유|이유|넣으세요|고르세요|체크하세요|적어|Enter|Pick|Give|Type|Tick|필수|없습니다|먼저/.test(toast)) errs.push('bad toast: ' + toast.slice(0, 120));
       if (errs.length) { found.push(who + ' ' + where + ' → ' + Array.from(new Set(errs)).join(' || ')); errs.length = 0; }
     };
     const lines = [];
     for (const r of routes) {
       errs.length = 0;
       await pg.evaluate(g => { location.hash = '#/' + g; }, r); await pg.waitForTimeout(1300); await closeAll();
-      const pt = ((await pg.textContent('#page').catch(() => '')) || '').replace(/\s+/g, ' '); if (/읽는 중|Loading/.test(pt) && pt.length < 80) errs.push('stuck loading');
+      const pt = (await pg.evaluate(() => { const a = document.getElementById('page'); return (a && a.textContent) || ''; }).catch(() => '')).replace(/\s+/g, ' '); if (/읽는 중|Loading/.test(pt) && pt.length < 80) errs.push('stuck loading');
       await scan('#/' + r);
       const labels = (await pg.$$eval('#page button:not([disabled])', (B, skip) => { const re = new RegExp(skip, 'i'); const seen = new Set(); return B.map((b, i) => ({ i, vis: b.offsetParent !== null, t: (b.textContent || b.title || '').replace(/\s+/g, ' ').trim().slice(0, 40), k: Object.keys(b.dataset).map(k => k + '=' + b.dataset[k]).join(',') })).filter(x => x.vis && !re.test(x.t) && !seen.has(x.t + x.k) && seen.add(x.t + x.k)); }, SKIP.source)).slice(0, MAX);
       let n = 0;
       for (const L of labels) {
         const h0 = await pg.evaluate(() => location.hash);
         const btns = await pg.$$('#page button:not([disabled])'); const b = btns[L.i]; if (!b) continue;
+        await pg.evaluate(() => { const t = document.getElementById('toast'); if (t) t.className = ''; }).catch(() => {});   // 앞 단추의 토스트가 다음 단추 탓으로 잡히지 않게
         await b.click({ timeout: 1500 }).catch(() => {}); n++;
         await pg.waitForTimeout(450); await scan('#/' + r + ' [' + (L.t || L.k) + ']'); await closeAll();
         if ((await pg.evaluate(() => location.hash)) !== h0) { await pg.evaluate(g => { location.hash = g; }, h0); await pg.waitForTimeout(700); await closeAll(); }
       }
-      lines.push(r + ':' + n);
+      /* 목록 줄 — 가게 · 인보이스 · 주문 · 아이템 · 재고 줄을 앞에서 3개 눌러 상세 창이 열리는지, 그 창 안의 단추도 한 번씩 */
+      const rowSel = '#page [data-st], #page [data-go^="inv:"], #page [data-sti], #page [data-it] .ct, #page tr.tap, #page .crow.tap, #page .pr.tap';
+      const nRows = Math.min(3, await pg.$$eval(rowSel, L => L.filter(x => x.offsetParent !== null).length).catch(() => 0));
+      for (let k = 0; k < nRows; k++) {
+        const h0 = await pg.evaluate(() => location.hash);
+        const el = (await pg.$$(rowSel))[k]; if (!el) break;
+        await pg.evaluate(() => { const t = document.getElementById('toast'); if (t) t.className = ''; }).catch(() => {});
+        await el.click({ timeout: 1500 }).catch(() => {}); n++;
+        await pg.waitForTimeout(700); await scan('#/' + r + ' [row ' + (k + 1) + ']');
+        const mb = await pg.$$eval('#modal.on button:not([disabled])', (B, skip) => { const re = new RegExp(skip + '|닫기|Close|삭제|지우기|Delete|VOID|취소|Cancel|✕', 'i'); return B.map((b, i) => ({ i, vis: b.offsetParent !== null, t: (b.textContent || '').trim().slice(0, 30) })).filter(x => x.vis && !re.test(x.t)).slice(0, 6); }, SKIP.source).catch(() => []);
+        for (const m of mb) { const bs = await pg.$$('#modal.on button:not([disabled])'); if (!bs[m.i]) continue; await bs[m.i].click({ timeout: 1200 }).catch(() => {}); n++; await pg.waitForTimeout(450); await scan('#/' + r + ' [row ' + (k + 1) + ' > ' + m.t + ']'); if (!(await pg.$('#modal.on'))) break; }
+        await closeAll();
+        if ((await pg.evaluate(() => location.hash)) !== h0) { await pg.evaluate(g => { location.hash = g; }, h0); await pg.waitForTimeout(700); await closeAll(); }
+      }
+      lines.push(r + ':' + n); process.stdout.write('  · ' + who + ' #/' + r + ' ' + n + ' buttons\n');
     }
     console.log(who, routes.length + ' screens ·', lines.join(' '));
     await ctx.close();
