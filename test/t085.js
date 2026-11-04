@@ -1,4 +1,4 @@
-/* v0.8.107 시험 — 🏦 은행 명세서: 파서(금액 한 열 · 입금/출금 두 열 · 날짜 형식 · 분류 규칙 · 같은 줄 id) · 경영 → 은행 탭(월 · 분류 · 앱 대조 · 분류 바꾸기) · 오너 홈 현금 흐름 은행 줄 */
+/* v0.8.107 시험 — 🏦 은행 명세서: 파서(금액 한 열 · 입금/출금 두 열 · 날짜 형식 · 분류 규칙 · 같은 줄 id) · 경영 → 은행 탭(월 · 분류 · 앱 대조 · 분류 바꾸기) · 오너 홈 현금 흐름 은행 줄 · (2026-11 화면에 맞춤) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -20,8 +20,8 @@ const path = require('path');
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8822', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
-  const T = new Date().toISOString().substring(0, 10), ym = T.substring(0, 7);
-  await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { s.bank = [{ id: 'BK1', d: o.ym + '-03', ym: o.ym, desc: 'REMOTE ONLINE DEPOSIT', amt: 1500, bal: 9000, cat: 'dep' }, { id: 'BK2', d: o.ym + '-04', ym: o.ym, desc: 'WIRE OUT SHENGXING', amt: -4000, bal: 5000, cat: 'factory' }, { id: 'BK3', d: o.ym + '-05', ym: o.ym, desc: 'MYSTERY VENDOR 8812', amt: -250, bal: 4750, cat: 'other' }]; }; }, { ym });
+  const T = new Date().toISOString().substring(0, 10), ym = T.substring(0, 7), dd = Number(T.substring(8, 10)), dIn = n => ym + '-' + String(Math.max(1, dd - n)).padStart(2, '0');   /* 홈 현금 흐름은 이번 달 1일 ~ 오늘 — 줄 날짜가 오늘을 넘으면 빠짐 (2026-11 화면에 맞춤) */
+  await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { s.bank = [{ id: 'BK1', d: o.d1, ym: o.ym, desc: 'REMOTE ONLINE DEPOSIT', amt: 1500, bal: 9000, cat: 'dep' }, { id: 'BK2', d: o.d2, ym: o.ym, desc: 'WIRE OUT SHENGXING', amt: -4000, bal: 5000, cat: 'factory' }, { id: 'BK3', d: o.d3, ym: o.ym, desc: 'MYSTERY VENDOR 8812', amt: -250, bal: 4750, cat: 'other' }]; }; }, { ym, d1: dIn(2), d2: dIn(1), d3: dIn(0) });
   await pg.goto('http://127.0.0.1:8822/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.waitForSelector('[data-og="now"]', { timeout: 10000 }); const dash = (await pg.textContent('[data-og="now"]')).replace(/\s+/g, ' '); log('dash cash:', dash.slice(-260));
   if (!/은행 실제/.test(dash) || !/\$1,500\.00/.test(dash) || !/\$4,250\.00/.test(dash) || !/잔액 \$4,750\.00/.test(dash) || !/1줄 분류 전/.test(dash)) errs.push('dashboard should show bank in/out/balance/uncategorized');

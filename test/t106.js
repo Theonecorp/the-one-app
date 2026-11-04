@@ -1,5 +1,5 @@
 /* v0.8.138 시험 — 📒 아이템 · 카탈로그: 누구나 검색(숨김 포함) · 아이템 창에 📦 재고 · 📍 위치 · 담당자만 ✏️ 수정
- *   📄 인보이스 묶음: 세일즈맨 📅 최근 · 🏷 종류별 · 🏙 지역별(주 › 도시) · 🏬 가게별 / 담당자 👤 세일즈맨별 · 🏙 지역별 · 🏷 종류별 */
+ *   📄 인보이스 묶음: 세일즈맨 📅 최근 · 🏷 종류별 · 🏙 지역별(주 › 도시) · 🏬 가게별 / 담당자 👤 세일즈맨별 · 🏙 지역별 · 🏷 종류별 · (2026-11 화면에 맞춤: 담당자 기간 칩은 씨앗 날짜가 다 드는 것) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -42,7 +42,10 @@ const path = require('path');
   await pg.click('[data-iv="aisle"]'); await pg.waitForTimeout(400); t = (await pg.textContent('#page')).replace(/\s+/g, ' '); if (!/위치가 입력된 아이템이 없습니다|No item has a location/.test(t)) errs.push('aisle view should explain when no item has a location');
   await pg.click('[data-iv="tree"]'); await pg.waitForTimeout(400); if (!(await pg.$('[data-ik]'))) errs.push('category view should show category chips');
   await pg.evaluate(() => { location.hash = '#/invs'; }); await pg.waitForSelector('[data-im="sm"]', { timeout: 8000 });
-  await pg.click('[data-im="date"]'); await pg.waitForTimeout(600); if (await pg.$('[data-ip="month"]')) await pg.click('[data-ip="month"]'); await pg.waitForTimeout(800);
+  await pg.click('[data-im="date"]'); await pg.waitForTimeout(600);
+  /* 씨앗 인보이스는 오늘-1 ~ 오늘-4 일 — 달이 바뀐 직후에는 '이번 달'에 다 안 들어가므로 전부 드는 기간 칩을 고름 (2026-11 화면에 맞춤) */
+  const ipOf = () => { const t = new Date(), o = new Date(t); o.setDate(o.getDate() - 4); const q = x => Math.floor(x.getMonth() / 3); return o.getFullYear() !== t.getFullYear() ? 'year' : o.getMonth() === t.getMonth() ? 'month' : q(o) === q(t) ? 'quarter' : 'year'; };
+  if (await pg.$('[data-ip="' + ipOf() + '"]')) await pg.click('[data-ip="' + ipOf() + '"]'); await pg.waitForTimeout(800);
   await pg.click('[data-im="sm"]'); await pg.waitForTimeout(900); t = (await pg.textContent('#iList')).replace(/\s+/g, ' '); log('staff by salesman:', t.slice(0, 100)); if (!/👤 BRANDON/.test(t) || !/👤 ALEX/.test(t)) errs.push('staff invoices should group by salesman');
   await pg.click('[data-im="type"]'); await pg.waitForTimeout(900); t = (await pg.textContent('#iList')).replace(/\s+/g, ' '); if (!/🏷 A/.test(t) || !/🏷 W/.test(t)) errs.push('staff invoices should group by type');
   await pg.click('[data-im="geo"]'); await pg.waitForTimeout(900); if (!(await pg.$('#iList [data-ist="FL"]'))) errs.push('staff region mode should offer state chips');

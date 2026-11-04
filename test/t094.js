@@ -1,4 +1,4 @@
-/* v0.8.116 시험 — 🧾 정산 ✓: 줄을 누르면 화면을 다시 읽지 않고 그 줄만 바뀜 · 스크롤 유지 · 저장은 뒤에서 (DB 반영) · 전부 ✓ 도 같은 방식 */
+/* v0.8.116 시험 — 🧾 정산 ✓: 줄을 누르면 화면을 다시 읽지 않고 그 줄만 바뀜 · 스크롤 유지 · 저장은 뒤에서 (DB 반영) · 전부 ✓ 도 같은 방식 · (2026-11 화면에 맞춤: 줄은 ② 수령 ✓ 된 것만) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -7,7 +7,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 700 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   /* BRANDON 에게 정산 줄을 많이 — 스크롤이 생기도록 */
-  await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = s => { const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length); const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); }; for (let i = 0; i < 25; i++) { const e = JSON.parse(JSON.stringify(base)); e.id = 'TT' + i; e.d = day(i % 10); e.ym = e.d.slice(0, 7); e.v = false; e.vbad = false; e.settled = ''; e.sb = true; e.store = 'TEST STORE ' + i; e.pays = [{ m: 'CASH', amt: 100 + i }]; e.invs = [{ no: 'A2' + String(i).padStart(4, '0'), amt: 100 + i, t: 'A' }]; e.total = 100 + i; e.invTotal = 100 + i; s.entries.push(e); } }; });
+  await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = s => { const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length); const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); }; for (let i = 0; i < 25; i++) { const e = JSON.parse(JSON.stringify(base)); e.id = 'TT' + i; e.d = day(i % 10); e.ym = e.d.slice(0, 7); e.v = false; e.vbad = false; e.settled = ''; e.sb = true; e.rc = true; /* 정산 줄은 ① 접수 확인 + ② 체크 수령 ✓ 된 것만 (rc 없으면 '수령 대기') */ e.store = 'TEST STORE ' + i; e.pays = [{ m: 'CASH', amt: 100 + i }]; e.invs = [{ no: 'A2' + String(i).padStart(4, '0'), amt: 100 + i, t: 'A' }]; e.total = 100 + i; e.invTotal = 100 + i; s.entries.push(e); } }; });
   await pg.goto('http://127.0.0.1:8835/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.evaluate(() => { location.hash = '#/pay'; }); await pg.waitForSelector('#pSm', { timeout: 8000 }); await pg.selectOption('#pSm', 'BRANDON'); await pg.waitForSelector('[data-pl]', { timeout: 8000 }).catch(() => errs.push('settlement lines missing'));
   const n0 = await pg.$$eval('[data-pl]', e => e.length); log('lines:', n0); if (n0 < 3) errs.push('expected settlement lines');

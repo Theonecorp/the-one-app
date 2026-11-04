@@ -1,4 +1,4 @@
-/* v0.8.108 시험 — 📄 은행 PDF 명세서: 글자 줄 → 요약(기초 · 입금 · 출금 · 기말) · 거래 줄(구역별 부호 · 발행 체크) · 월 · 월별 요약 표 · 홈 현금 흐름 PDF 요약 */
+/* v0.8.108 시험 — 📄 은행 PDF 명세서: 글자 줄 → 요약(기초 · 입금 · 출금 · 기말) · 거래 줄(구역별 부호 · 발행 체크) · 월 · 월별 요약 표 · 홈 현금 흐름 PDF 요약 · (2026-11 화면에 맞춤: 월 이름은 씨앗 달을 따름) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -27,7 +27,7 @@ const path = require('path');
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { s.bankM = [{ id: o.ym, ym: o.ym, begin: 41250.1, in: 212900.55, out: 190968.57, end: 63182.08, from: o.ym + '-01', to: o.ym + '-31', rows: 0 }]; }; }, { ym });
   await pg.goto('http://127.0.0.1:8823/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.waitForSelector('[data-og="now"]', { timeout: 10000 }); const dash = (await pg.textContent('[data-og="now"]')).replace(/\s+/g, ' ');
-  if (!/은행 실제/.test(dash) || !/\$212,900\.55/.test(dash) || !/\$190,968\.57/.test(dash) || !/월별 요약 10월/.test(dash)) errs.push('dashboard should show PDF monthly summary: ' + dash.slice(-200));
+  if (!/은행 실제/.test(dash) || !/\$212,900\.55/.test(dash) || !/\$190,968\.57/.test(dash) || !new RegExp('월별 요약 ' + Number(ym.substring(5, 7)) + '월').test(dash)) errs.push('dashboard should show PDF monthly summary: ' + dash.slice(-200));
   await pg.evaluate(() => { location.hash = '#/mg/bank'; }); await pg.waitForTimeout(1500); const tab = (await pg.textContent('#mgBody')).replace(/\s+/g, ' ');
   if (!/월별 명세서 요약/.test(tab) || !/\$212,900\.55/.test(tab) || !/\$63,182\.08/.test(tab) || !/월별 요약만/.test(tab)) errs.push('bank tab should show the monthly summary table: ' + tab.slice(0, 200));
   await br.close(); srv.kill();
