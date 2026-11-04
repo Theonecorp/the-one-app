@@ -4,15 +4,17 @@
  *    · 입고: 중국에서 들어온 팩킹 리스트(엑셀 · CSV: 코드 + 수량)를 올리면 아이템마다 자동으로 더해짐 — 손으로도 한 줄씩
  *    · 조정: 실사(세어 본 수량으로 맞춤) · ± 조정(이유)
  *    · 자동: 인보이스 발행 → 그 수량만큼 빠짐(세트는 구성품으로) · VOID → 되돌아옴
- *  stock/{code}    = { code, qty, at, by }                                   ← 지금 재고
+ *  stock/{code}    = { code, qty, at, by, min }                              ← 지금 재고 · min = 이 아이템의 부족 기준(없으면 설정 stockMin, 기본 12)
+ *    · ⚠️ 부족 알림: 움직임으로 재고가 기준 아래로 내려가는 순간 사무실 · 관리자에게 💬 메시지(+ 이메일 · 챗) 한 번 — 다시 기준 위로 올라갔다 내려오면 또
  *  stockLog/{id}   = { code, d, delta, after, kind: recv|adj|count|inv|void, ref, note, by, at }
- *  receipts/{id}   = { id, d, from, file, n, qty, lines:[{c, q, d}], note, by, at }   ← 입고 한 건
+ *  receipts/{id}   = { id, d, from, fromCode, file, n, qty, lines:[{c, q, d}], note, by, at }   ← 입고 한 건 · fromCode = 경영의 공장 코드 (China 1 ↔ 공장 이름)
  * ============================================================ */
 import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy, itabs, pageHead } from './ui.js';
 import { loadCatalog, catalog, searchItems, exactItem, locOf, aisleOf, thumb, editCatalog, setLoc, levelsOf, catStart, cleanName, kvGet, kvSet } from './catalog.js';
 import { can } from './main.js';
 import { openScanner } from './scan.js';
 import { newId } from './db.js';
+import * as Msg from './msg.js';
 
 let S = null;
 const ST = { tab: 'find', q: '', recv: [], from: '', file: '', note: '', aisle: '', amode: 'map', ast: 'all', asort: 'aisle', ist: 'all' };
@@ -36,13 +38,40 @@ export async function stockAll(force) {
   if (!force && ALL && Date.now() - ALL_AT < 300000) return ALL;
   /* ⚡ 폰에 보관해 둔 전체 재고를 쓰고, 그 뒤에 바뀐 것(at 이 더 늦은 문서)만 읽어 합침 — 4천 개를 매번 다시 읽지 않음 */
   let cache = null; try { cache = await kvGet('stock.all'); } catch (e) {}
-  const m = cache && cache.m ? Object.assign({}, cache.m) : {}; let since = cache && cache.since || '';
+  const m = cache && cache.m ? Object.assign({}, cache.m) : {}, mn = cache && cache.mn ? Object.assign({}, cache.mn) : {}; let since = cache && cache.since || '';
   const rows = since ? await S.DB.list('stock', { where: [['at', '>', since]] }) : await S.DB.list('stock');
-  rows.forEach(r => { const c = r.code || r.id; m[c] = Number(r.qty) || 0; STOCK[c] = r; if (r.at && r.at > since) since = r.at; });
+  rows.forEach(r => { const c = r.code || r.id; m[c] = Number(r.qty) || 0; if (r.min != null && r.min !== '') mn[c] = Number(r.min) || 0; else delete mn[c]; STOCK[c] = r; if (r.at && r.at > since) since = r.at; });
   if (!since) since = new Date().toISOString();
-  ALL = m; ALL_AT = Date.now();
-  try { await kvSet('stock.all', { since, m, at: Date.now() }); } catch (e) {}
+  ALL = m; ALL_AT = Date.now(); MINS = mn;
+  try { await kvSet('stock.all', { since, m, mn, at: Date.now() }); } catch (e) {}
   return m;
+}
+/* ---------- 🏭 공급처 — 경영의 공장(factories)과 같은 것. 창고 매니저는 별칭(China 1 · China 2 …)으로, 관리자 · 오너는 공장 이름으로 봄
+ *   목록은 settings/app.suppliers (공장 화면이 저장할 때 적어 둠 — 공장 문서는 관리자만 읽을 수 있어서) · 기록에는 공장 코드(fromCode · sup)를 적어 둘을 잇는다 ---------- */
+export const suppliers = () => (S && S.settings && Array.isArray(S.settings.suppliers)) ? S.settings.suppliers : [];
+export const supFind = v => { const u = String(v || '').trim().toUpperCase(); if (!u) return null; return suppliers().find(f => String(f.code || '').toUpperCase() === u || String(f.alias || '').toUpperCase() === u || String(f.name || '').toUpperCase() === u || ((f.alias ? f.alias + ' · ' : '') + (f.name || '')).toUpperCase() === u) || null; };
+/** 보이는 이름 — 관리자 · 오너: 공장 이름 (별칭) · 담당자: 별칭(없으면 이름) · full: 둘 다 */
+export const supLabel = (v, full) => { const f = supFind(v); if (!f) return String(v || ''); if (full) return (f.alias ? f.alias + ' · ' : '') + (f.name || ''); const top = S.role === 'admin' || S.role === 'owner'; return top ? (f.name || f.code) + (f.alias ? ' (' + f.alias + ')' : '') : (f.alias || f.name || f.code); };
+/** 고르는 칸 — 공급처 목록 + 직접 입력 */
+export const supSelect = (id, v) => { const f = supFind(v), L = suppliers(); return '<select id="' + id + '"><option value="">' + bt('— 고르세요 —', '— pick —') + '</option>' + L.map(x => '<option value="' + esc(x.code) + '"' + (f && f.code === x.code ? ' selected' : '') + '>' + esc(supLabel(x.code)) + '</option>').join('') + '<option value="__other"' + (v && !f ? ' selected' : '') + '>✍️ ' + bt('직접 입력', 'Type') + '</option></select><input id="' + id + 'T" value="' + esc(v && !f ? v : '') + '" placeholder="' + esc(bt('공급처 이름', 'Supplier name')) + '" style="margin-top:6px;display:' + (v && !f ? 'block' : 'none') + '">'; };
+/** 고른 값 읽기 — 공장 코드 또는 직접 쓴 글 */
+export const supValue = id => { const sel = $(id); if (!sel) return ''; if (sel.value === '__other') return ($(id + 'T') ? $(id + 'T').value.trim().toUpperCase() : ''); return sel.value; };
+export const supBind = id => { const sel = $(id); if (!sel) return; sel.onchange = () => { const t = $(id + 'T'); if (t) { t.style.display = sel.value === '__other' ? 'block' : 'none'; if (sel.value === '__other') t.focus(); } }; };
+
+/* ---------- ⚠️ 부족 기준 — 아이템마다(stock.min) 없으면 설정(stockMin), 그것도 없으면 12 ---------- */
+let MINS = {};
+export const defMin = () => { const v = S && S.settings ? Number(S.settings.stockMin) : NaN; return isNaN(v) || v < 0 ? 12 : v; };
+export const minOf = c => { const d = STOCK[c]; if (d && d.min != null && d.min !== '') return Number(d.min) || 0; if (MINS[c] != null) return MINS[c]; return defMin(); };
+/** 재고가 기준 아래로 내려간 아이템들을 사무실 · 관리자에게 — 💬 메시지(앱) + 이메일 · 구글 챗(notifyq, Msg.sendMsg 가 같이 넣음). manual = ⚠️ 부족 탭의 "지금 알리기" */
+export async function alertLow(list, manual) {
+  if (!list || !list.length) return false;
+  const C = (catalog() && catalog().byCode) || {};
+  const line = x => x.c + (C[x.c] && C[x.c].d ? ' ' + String(C[x.c].d).slice(0, 28) : '') + ' — ' + bt('남음', 'left') + ' ' + x.qty + ' (' + bt('기준', 'min') + ' ' + x.min + ')';
+  const head = (manual ? '📦 ' + bt('재고 부족 목록', 'Low stock list') : '⚠️ ' + bt('재고가 기준 아래로 내려갔습니다', 'Stock dropped below minimum')) + ' — ' + list.length + bt('개', ' items') + (manual ? '' : ' (' + who() + ')');
+  const body = list.slice(0, 12).map(line).join('\n') + (list.length > 12 ? '\n… ' + bt('외', 'and') + ' ' + (list.length - 12) + bt('개', ' more') : '');
+  const text = (head + '\n' + body).slice(0, 990);
+  try { await Msg.sendMsg({ to: 'g:office', toLabel: bt('사무실', 'Office'), text, ref: { id: 'stock/low', label: '📦 ' + bt('재고 › ⚠️ 부족', 'Inventory › Low') } }); return true; }
+  catch (e) { console.warn('lowstock alert', e); return false; }
 }
 export function dropStockCache() { ALL = null; Object.keys(STOCK).forEach(k => { delete STOCK[k]; }); kvSet('stock.all', null).catch(() => {}); }
 /** 움직임 적용 — moves: [{ c, delta, note? }] (같은 코드는 합침). kind: recv · adj · count · inv · void. count 면 delta 대신 to(세어 본 수량) */
@@ -51,14 +80,18 @@ export async function applyMoves(moves, kind, ref, note) {
   const codes = Object.keys(by); if (!codes.length) return 0;
   const cur = await stockOf(codes);
   const now = new Date().toISOString(), d = today(), ops = [];
+  const lows = [];
   codes.forEach(c => {
     const m = by[c], before = cur[c], after = m.to != null ? m.to : before + m.delta, delta = after - before;
     if (!delta && m.to == null) return;
-    ops.push({ op: 'set', col: 'stock', id: c, data: { code: c, qty: after, at: now, by: S.user.email } });
+    const mn = minOf(c);
+    ops.push({ op: 'merge', col: 'stock', id: c, data: { code: c, qty: after, at: now, by: S.user.email } });   // merge — 아이템의 부족 기준(min)은 그대로
     ops.push({ op: 'set', col: 'stockLog', id: newId('L'), data: { code: c, d, delta, before, after, kind, ref: ref || '', note: (note || '') + (m.note ? (note ? ' · ' : '') + m.note : ''), by: S.user.email, byName: who(), at: now } });
-    STOCK[c] = { code: c, qty: after, at: now };
+    STOCK[c] = Object.assign({}, STOCK[c] || {}, { code: c, qty: after, at: now }); if (ALL) ALL[c] = after;
+    if (after < mn && before >= mn) lows.push({ c, qty: after, min: mn });   // 기준 아래로 내려가는 순간만 (이미 아래였으면 다시 알리지 않음)
   });
   if (ops.length) await S.DB.batch(ops);
+  if (lows.length) await alertLow(lows, false);
   return ops.length / 2;
 }
 /** 인보이스 줄 → 재고 움직임 (세트는 구성품으로, pq 가 있으면 픽킹 수량) */
@@ -151,15 +184,15 @@ async function paintFind() {
 }
 /* ---------- 재고 상태 · 줄 그리기 (폰: 카드 줄 · 컴퓨터: 표) ---------- */
 /** 재고 상태 — 0 이하 없음 · 12 미만 부족 · 그 외 정상 */
-export const stStatus = n => n <= 0 ? ['out', bt('재고 없음', 'Out of stock')] : n < 12 ? ['low', bt('재고 부족', 'Low stock')] : ['ok', bt('재고 정상', 'In stock')];
-const stBadge = n => { const [k, t] = stStatus(n); return '<span class="sbadge ' + k + '">● ' + t + '</span>'; };
+export const stStatus = (n, mn) => n <= 0 ? ['out', bt('재고 없음', 'Out of stock')] : n < (mn == null ? 12 : mn) ? ['low', bt('재고 부족', 'Low stock')] : ['ok', bt('재고 정상', 'In stock')];
+const stBadge = (n, mn) => { const [k, t] = stStatus(n, mn); return '<span class="sbadge ' + k + '">● ' + t + '</span>'; };
 const catOf = it => { const L = levelsOf(it, catStart(S)).filter(Boolean); return L.length ? cleanName(L[L.length - 1]) : ''; };
 /** 아이템 목록 — 폰에서는 직원 재고 프로그램 모양의 카드 줄(번호 · 코드 · 통로 · 분류 · 상태 · 수량 · ›), 넓은 화면에서는 표 */
 export function stList(items, st, opt) {
   opt = opt || {};
-  if (narrow()) return '<div class="crows">' + items.map((it, i) => { const n = st[it.c] || 0; return '<div class="crow tap' + (it.h ? ' hid' : '') + '" data-sti="' + esc(it.c) + '"><span class="cidx">' + ((opt.from || 0) + i + 1) + '</span><div class="cmain"><b>' + esc(it.c) + (it.h ? ' 🙈' : '') + '</b><small>' + bt('통로', 'Aisle') + ' ' + esc(locOf(it) || '—') + (catOf(it) ? ' · ' + esc(catOf(it)) : '') + '</small></div><div class="cright">' + stBadge(n) + '<b class="cnum' + (n <= 0 ? ' warn' : '') + '">' + n.toLocaleString() + '</b><small>' + bt('개', 'pcs') + '</small></div><span class="chev">›</span></div>'; }).join('') + '</div>';
+  if (narrow()) return '<div class="crows">' + items.map((it, i) => { const n = st[it.c] || 0; return '<div class="crow tap' + (it.h ? ' hid' : '') + '" data-sti="' + esc(it.c) + '"><span class="cidx">' + ((opt.from || 0) + i + 1) + '</span><div class="cmain"><b>' + esc(it.c) + (it.h ? ' 🙈' : '') + '</b><small>' + bt('통로', 'Aisle') + ' ' + esc(locOf(it) || '—') + (catOf(it) ? ' · ' + esc(catOf(it)) : '') + '</small></div><div class="cright">' + stBadge(n, minOf(it.c)) + '<b class="cnum' + (n <= 0 ? ' warn' : '') + '">' + n.toLocaleString() + '</b><small>' + bt('개', 'pcs') + '</small></div><span class="chev">›</span></div>'; }).join('') + '</div>';
   return '<div class="dtw"><table class="dt"><thead><tr><th style="width:36px">#</th><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th style="width:70px">📍 ' + bt('통로', 'Aisle') + '</th><th class="hs">' + bt('분류', 'Category') + '</th><th style="width:96px">' + bt('상태', 'Status') + '</th><th class="r" style="width:80px">📦 ' + bt('재고', 'Stock') + '</th><th class="r hs" style="width:76px">' + bt('가격', 'Price') + '</th></tr></thead><tbody>' +
-    items.map((it, i) => { const n = st[it.c] || 0; return '<tr class="tap' + (it.h ? ' hid' : '') + '" data-sti="' + esc(it.c) + '"><td class="sub0">' + ((opt.from || 0) + i + 1) + '</td><td><b>' + esc(it.c) + '</b>' + (it.h ? ' 🙈' : '') + '</td><td class="wrap" style="min-width:150px">' + esc(it.d || '') + '</td><td>' + (locOf(it) ? '<span class="loc">' + esc(locOf(it)) + '</span>' : '<span class="muted">—</span>') + '</td><td class="hs sub0">' + esc(catOf(it)) + '</td><td>' + stBadge(n) + '</td><td class="r"><b' + (n <= 0 ? ' class="warn"' : '') + '>' + n.toLocaleString() + '</b></td><td class="r hs">' + (it.p ? money(it.p) : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    items.map((it, i) => { const n = st[it.c] || 0; return '<tr class="tap' + (it.h ? ' hid' : '') + '" data-sti="' + esc(it.c) + '"><td class="sub0">' + ((opt.from || 0) + i + 1) + '</td><td><b>' + esc(it.c) + '</b>' + (it.h ? ' 🙈' : '') + '</td><td class="wrap" style="min-width:150px">' + esc(it.d || '') + '</td><td>' + (locOf(it) ? '<span class="loc">' + esc(locOf(it)) + '</span>' : '<span class="muted">—</span>') + '</td><td class="hs sub0">' + esc(catOf(it)) + '</td><td>' + stBadge(n, minOf(it.c)) + '</td><td class="r"><b' + (n <= 0 ? ' class="warn"' : '') + '>' + n.toLocaleString() + '</b></td><td class="r hs">' + (it.p ? money(it.p) : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
 }
 
 /* ---------- 📍 통로별 재고 — 직원 재고 프로그램의 "통로별 재고" 화면 (KPI · 통로 없음 경고 · 지도/목록 · 통로 카드 → 통로 안 아이템) ---------- */
@@ -214,7 +247,9 @@ export async function itemSheet(code, done) {
   $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">' + esc(it.c) + '</h2><div class="muted">' + esc(it.d || '') + (locOf(it) ? ' · 📍 ' + esc(locOf(it)) : '') + (it.p ? ' · ' + money(it.p) : '') + '</div></div><button class="b-ghost b-sm xin" id="skX">✕</button></div>' +
     '<div class="kpi" style="margin-top:10px"><div><b' + (st[code] <= 0 ? ' class="warn"' : '') + '>' + st[code].toLocaleString() + '</b><span>' + bt('지금 재고', 'On hand') + '</span></div><div><b>' + (STOCK[code] && STOCK[code].at ? esc(md(STOCK[code].at.substring(0, 10))) : '—') + '</b><span>' + bt('마지막 변동', 'Last change') + '</span></div></div>' +
     '<div class="two" style="margin-top:10px"><div class="fg"><label>🔢 ' + bt('실사 — 세어 본 수량', 'Count — qty on shelf') + '</label><input type="number" inputmode="numeric" id="skCnt" placeholder="' + st[code] + '"></div><div class="fg"><label>± ' + bt('조정 (예: -3 · 12)', 'Adjust (e.g. -3 · 12)') + '</label><input type="number" inputmode="numeric" id="skAdj" placeholder="0"></div></div>' +
+    '<div class="chips" style="margin:-2px 0 8px">' + [-12, -1, 1, 12].map(n => '<button type="button" data-skq="' + n + '">' + (n > 0 ? '+' : '') + n + '</button>').join('') + '<span class="muted" style="align-self:center;font-size:12px">' + bt('누르면 ± 조정에 더해짐', 'adds to the adjustment') + '</span></div>' +
     '<div class="fg"><label>' + bt('이유 · 메모', 'Reason · note') + '</label><input id="skWhy" placeholder="' + esc(bt('예: 파손 · 분실 · 세어 봄 · 샘플', 'e.g. damaged · lost · counted · sample')) + '"></div>' +
+    '<div class="fg"><label>⚠️ ' + bt('부족 기준 — 이 수량 아래로 내려가면 사무실 · 관리자에게 알림', 'Minimum — office and admin are alerted when stock drops below this') + '</label><input type="number" inputmode="numeric" id="skMin" value="' + esc(STOCK[code] && STOCK[code].min != null && STOCK[code].min !== '' ? STOCK[code].min : '') + '" placeholder="' + bt('기본', 'default') + ' ' + defMin() + '"></div>' +
     '<div class="btns" style="margin-top:4px">' + (can('items') ? '<button class="b-ghost" id="skLoc">📍 ' + bt('통로 변경', 'Change aisle') + '</button>' : '') + '<button class="b-blue" id="skSave">💾 ' + bt('저장', 'Save') + '</button></div>' +
     '<h2 style="font-size:14px;margin-top:12px">📋 ' + bt('최근 움직임', 'Recent moves') + '</h2>' + (log.length ? '<table><tr><th>' + bt('날짜', 'Date') + '</th><th>' + bt('종류', 'Kind') + '</th><th class="r">±</th><th class="r">' + bt('재고', 'After') + '</th><th>' + bt('메모', 'Note') + '</th></tr>' + log.map(x => '<tr><td>' + esc(md(x.d)) + '</td><td>' + (K[x.kind] || esc(x.kind)) + (x.ref ? ' <span class="muted">' + esc(x.ref) + '</span>' : '') + '</td><td class="r"><b' + (x.delta < 0 ? ' class="warn"' : '') + '>' + (x.delta > 0 ? '+' : '') + x.delta + '</b></td><td class="r">' + x.after + '</td><td class="muted" style="font-size:11px">' + esc(x.note || '') + (x.byName ? ' · ' + esc(x.byName) : '') + '</td></tr>').join('') + '</table>' : '<div class="none">' + bt('기록 없음', 'No moves yet') + '</div>');
   $('skX').onclick = closeModal;
@@ -224,12 +259,19 @@ export async function itemSheet(code, done) {
     $('skLocX').onclick = () => itemSheet(code, done); if (!('ontouchstart' in window)) $('skLocIn').focus();
     $('skLocOk').onclick = async () => { const v = $('skLocIn').value.trim().toUpperCase(); closeModal(); busy(true); try { await editCatalog(S, rows => setLoc(rows, [code], v)); toast('📍 ' + code + ' → ' + (v || bt('비움', 'cleared')), 'good'); if (done) done(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
   };
+  document.querySelectorAll('#mbox [data-skq]').forEach(b => b.onclick = () => { const a = $('skAdj'); a.value = (Number(a.value) || 0) + Number(b.dataset.skq); a.dispatchEvent(new Event('input')); });
   $('skSave').onclick = async () => {
     const cnt = $('skCnt').value.trim(), adj = Number($('skAdj').value) || 0, why = $('skWhy').value.trim();
-    if (cnt === '' && !adj) return toast(bt('실사 수량이나 ± 조정을 넣으세요', 'Enter a count or an adjustment'), 'bad');
+    const minV = $('skMin').value.trim(), min0 = STOCK[code] && STOCK[code].min != null && STOCK[code].min !== '' ? String(STOCK[code].min) : '';
+    const minChg = minV !== min0;
+    if (cnt === '' && !adj && !minChg) return toast(bt('실사 수량이나 ± 조정을 넣으세요', 'Enter a count or an adjustment'), 'bad');
     if (!why && adj) return toast(bt('조정 이유를 적어 주세요', 'Give a reason'), 'bad');
     busy(true);
-    try { await applyMoves(cnt !== '' ? [{ c: code, to: Number(cnt) }] : [{ c: code, delta: adj }], cnt !== '' ? 'count' : 'adj', '', why || bt('실사', 'Count')); toast('💾 ' + code + ' → ' + STOCK[code].qty, 'good'); closeModal(); if (done) done(); }
+    try {
+      if (minChg) { const min = minV === '' ? null : Math.max(0, Math.floor(Number(minV) || 0)); await S.DB.batch([{ op: 'merge', col: 'stock', id: code, data: { code, min, qty: st[code], at: new Date().toISOString() } }]); STOCK[code] = Object.assign({}, STOCK[code] || { code, qty: st[code] }, { min }); if (min == null) delete MINS[code]; else MINS[code] = min; kvSet('stock.all', null).catch(() => {}); ALL = null; }
+      if (cnt !== '' || adj) await applyMoves(cnt !== '' ? [{ c: code, to: Number(cnt) }] : [{ c: code, delta: adj }], cnt !== '' ? 'count' : 'adj', '', why || bt('실사', 'Count'));
+      toast('💾 ' + code + ' → ' + (STOCK[code] ? STOCK[code].qty : '') + (minChg ? ' · ' + bt('기준', 'min') + ' ' + minOf(code) : ''), 'good'); closeModal(); if (done) done();
+    }
     catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
@@ -239,7 +281,7 @@ export async function itemSheet(code, done) {
 function paintRecv() {
   const box = $('skBody'), L = ST.recv, tot = L.reduce((a, l) => a + l.q, 0), bad = L.filter(l => !l.ok);
   box.innerHTML = '<div class="card"><h2 style="font-size:15px">📥 ' + bi('들어온 물건 — 팩킹 리스트', 'Incoming — packing list') + '</h2><div class="muted">' + bt('중국 공장 팩킹 리스트(엑셀 · CSV)를 올리면 코드 + 수량 두 칸만 읽어 아이템마다 더합니다. 손으로는 아래 코드 · 수량으로 한 줄씩. 다 맞으면 💾 입고 저장.', 'Upload the factory packing list (xlsx · csv); only the code and quantity columns are read. Or add lines by hand below. Then 💾 Save receipt.') + '</div>' +
-    '<div class="two" style="margin-top:8px"><div class="fg"><label>' + bt('날짜', 'Date') + '</label><input type="date" id="rvD" value="' + esc(ST.d || today()) + '"></div><div class="fg"><label>' + bt('어디서 (공장 · 컨테이너)', 'From (factory · container)') + '</label><input id="rvFrom" value="' + esc(ST.from) + '" placeholder="e.g. SHENGXING · CNTR 2026-10"></div></div>' +
+    '<div class="two" style="margin-top:8px"><div class="fg"><label>' + bt('날짜', 'Date') + '</label><input type="date" id="rvD" value="' + esc(ST.d || today()) + '"></div><div class="fg"><label>' + bt('어디서 — 공장', 'From — factory') + '</label>' + supSelect('rvFrom', ST.from) + '</div></div>' +
     '<div class="fg"><label>📎 ' + bt('팩킹 리스트 파일', 'Packing list file') + '</label><input type="file" id="rvFile" accept=".xlsx,.xls,.csv,.txt"></div>' +
     '<div class="fg"><label>✍️ ' + bt('손으로 — 코드 (스캔) → 수량 → Enter', 'By hand — code (scan) → qty → Enter') + '</label><div style="display:flex;gap:6px"><input id="rvC" placeholder="' + esc(bt('코드 · 바코드', 'Code · barcode')) + '" autocomplete="off" autocapitalize="characters" style="flex:2"><input id="rvQ" type="number" inputmode="numeric" placeholder="' + esc(bt('수량', 'Qty')) + '" style="flex:1"><button class="b-ghost" id="rvAdd">＋</button></div></div>' +
     '<div id="rvOut"></div></div>' +
@@ -247,8 +289,8 @@ function paintRecv() {
     (bad.length ? '<div class="alert a-amb">⚠️ ' + bt('목록에 없는 코드', 'Unknown codes') + ' ' + bad.length + ': ' + esc(bad.map(l => l.c).slice(0, 10).join(', ')) + ' — ' + bt('저장하면 재고 코드로 그대로 들어갑니다. 틀린 코드는 ✕ 로 빼세요.', 'They are saved under that code as is; remove typos with ✕.') + '</div>' : '') +
     (L.length ? '<table><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th></th></tr>' + L.map((l, i) => '<tr' + (l.ok ? '' : ' style="background:#fef2f2"') + '><td><b>' + esc(l.c) + '</b></td><td class="muted" style="font-size:11.5px">' + esc(l.d || (l.ok ? '' : bt('목록에 없음', 'unknown'))) + '</td><td class="r"><input type="number" inputmode="numeric" class="sm" data-rvq="' + i + '" value="' + l.q + '" style="width:70px;text-align:right"></td><td><button class="b-ghost b-sm" data-rvx="' + i + '">✕</button></td></tr>').join('') + '</table>' : '<div class="none">' + bt('파일을 올리거나 코드를 치세요', 'Upload a file or type a code') + '</div>') +
     (L.length ? '<div class="fg" style="margin-top:8px"><label>' + bt('메모', 'Note') + '</label><input id="rvNote" value="' + esc(ST.note) + '"></div><div class="btns"><button class="b-green" id="rvSave">💾 ' + bt('입고 저장', 'Save receipt') + ' — ' + tot.toLocaleString() + bt('개', ' pcs') + '</button></div>' : '') + '</div>';
-  const keep = () => { ST.d = $('rvD').value; ST.from = $('rvFrom').value; if ($('rvNote')) ST.note = $('rvNote').value; };
-  $('rvD').onchange = keep; $('rvFrom').oninput = keep; if ($('rvNote')) $('rvNote').oninput = keep;
+  const keep = () => { ST.d = $('rvD').value; ST.from = supValue('rvFrom'); if ($('rvNote')) ST.note = $('rvNote').value; };
+  supBind('rvFrom'); $('rvD').onchange = keep; $('rvFrom').addEventListener('change', keep); if ($('rvFromT')) $('rvFromT').oninput = keep; if ($('rvNote')) $('rvNote').oninput = keep;
   $('rvFile').onchange = async () => {
     const f = $('rvFile').files[0]; if (!f) return; const out = $('rvOut'); out.innerHTML = '<div class="muted">' + bt('읽는 중…', 'Reading…') + '</div>'; busy(true);
     try {
@@ -271,11 +313,11 @@ function paintRecv() {
   if ($('rvClr')) $('rvClr').onclick = () => { ST.recv = []; ST.file = ''; paintRecv(); };
   if ($('rvSave')) $('rvSave').onclick = async () => {
     keep(); const Ls = ST.recv.filter(l => l.q > 0); if (!Ls.length) return;
-    if (!(await confirmBox('📥 ' + Ls.length + bt('줄 · ', ' lines · ') + Ls.reduce((a, l) => a + l.q, 0).toLocaleString() + bt('개를 재고에 더할까요?', ' pcs — add to inventory?') + (ST.from ? '\n' + ST.from : ''), bt('입고 저장', 'Save')))) return;
+    if (!(await confirmBox('📥 ' + Ls.length + bt('줄 · ', ' lines · ') + Ls.reduce((a, l) => a + l.q, 0).toLocaleString() + bt('개를 재고에 더할까요?', ' pcs — add to inventory?') + (ST.from ? '\n🏭 ' + supLabel(ST.from) : ''), bt('입고 저장', 'Save')))) return;
     busy(true);
     try {
       const id = newId('R'), now = new Date().toISOString(), d = ST.d || today();
-      await S.DB.set('receipts', id, { id, d, from: ST.from || '', file: ST.file || '', n: Ls.length, qty: Ls.reduce((a, l) => a + l.q, 0), lines: Ls.map(l => ({ c: l.c, q: l.q, d: l.d || '' })), note: ST.note || '', by: S.user.email, byName: who(), at: now });
+      await S.DB.set('receipts', id, { id, d, from: ST.from ? supLabel(ST.from, true) : '', fromCode: supFind(ST.from) ? supFind(ST.from).code : '', file: ST.file || '', n: Ls.length, qty: Ls.reduce((a, l) => a + l.q, 0), lines: Ls.map(l => ({ c: l.c, q: l.q, d: l.d || '' })), note: ST.note || '', by: S.user.email, byName: who(), at: now });
       await applyMoves(Ls.map(l => ({ c: l.c, delta: l.q })), 'recv', id, (ST.from ? ST.from : bt('입고', 'Receipt')) + (ST.file ? ' · ' + ST.file : ''));
       toast('📥 ' + Ls.length + bt('줄 입고 — 재고에 더했습니다', ' lines received'), 'good');
       ST.recv = []; ST.file = ''; ST.from = ''; ST.note = ''; ST.tab = 'log'; page();
@@ -291,18 +333,24 @@ async function paintLog() {
   try { R = sortBy(await S.DB.list('receipts', { order: ['at', 'desc'], limit: 50 }), x => x.at || '', true); } catch (e) { try { R = sortBy(await S.DB.list('receipts'), x => x.at || '', true).slice(0, 50); } catch (x) {} }
   try { L = sortBy(await S.DB.list('stockLog', { order: ['at', 'desc'], limit: 150 }), x => x.at || '', true); } catch (e) { try { L = sortBy(await S.DB.list('stockLog'), x => x.at || '', true).slice(0, 150); } catch (x) {} }
   const K = { recv: '📥', adj: '✏️', count: '🔢', inv: '🧾', void: '↩️' };
-  box.innerHTML = '<div class="card"><h2 style="font-size:15px">📥 ' + bi('입고 기록', 'Receipts') + ' ' + R.length + '</h2>' + (R.length ? R.map(r => '<div class="pr tap" data-rcp="' + esc(r.id) + '"><div class="ct"><b>' + esc(md(r.d)) + ' · ' + esc(r.from || bt('입고', 'Receipt')) + '</b><small>' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + (r.note ? ' · ' + esc(r.note) : '') + '</small></div><div class="pa"><b>' + Number(r.qty || 0).toLocaleString() + '</b><small>' + r.n + bt('줄', ' lines') + '</small></div></div>').join('') : '<div class="none">' + bt('입고 기록 없음', 'No receipts yet') + '</div>') + '</div>' +
+  box.innerHTML = '<div class="card"><h2 style="font-size:15px">📥 ' + bi('입고 기록', 'Receipts') + ' ' + R.length + '</h2>' + (R.length ? R.map(r => '<div class="pr tap" data-rcp="' + esc(r.id) + '"><div class="ct"><b>' + esc(md(r.d)) + ' · ' + esc(r.fromCode ? supLabel(r.fromCode) : (r.from || bt('입고', 'Receipt'))) + '</b><small>' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + (r.note ? ' · ' + esc(r.note) : '') + '</small></div><div class="pa"><b>' + Number(r.qty || 0).toLocaleString() + '</b><small>' + r.n + bt('줄', ' lines') + '</small></div></div>').join('') : '<div class="none">' + bt('입고 기록 없음', 'No receipts yet') + '</div>') + '</div>' +
     '<div class="card"><h2 style="font-size:15px">📋 ' + bi('최근 움직임', 'Recent moves') + '</h2>' + (L.length ? '<table><tr><th>' + bt('날짜', 'Date') + '</th><th>' + bt('코드', 'Code') + '</th><th class="r">±</th><th class="r">' + bt('재고', 'After') + '</th><th>' + bt('메모', 'Note') + '</th></tr>' + L.map(x => '<tr class="tap" data-sti="' + esc(x.code) + '"><td>' + esc(md(x.d)) + '</td><td><b>' + esc(x.code) + '</b></td><td class="r"><b' + (x.delta < 0 ? ' class="warn"' : '') + '>' + (K[x.kind] || '') + ' ' + (x.delta > 0 ? '+' : '') + x.delta + '</b></td><td class="r">' + x.after + '</td><td class="muted" style="font-size:11px">' + esc(x.ref || '') + (x.note ? ' · ' + esc(x.note) : '') + (x.byName ? ' · ' + esc(x.byName) : '') + '</td></tr>').join('') + '</table>' : '<div class="none">' + bt('움직임 없음', 'No moves yet') + '</div>') + '</div>';
   box.querySelectorAll('[data-sti]').forEach(el => el.onclick = () => itemSheet(el.dataset.sti, paintLog));
-  box.querySelectorAll('[data-rcp]').forEach(el => el.onclick = () => { const r = R.find(x => x.id === el.dataset.rcp); if (!r) return; openModal('<h2>📥 ' + esc(md(r.d)) + ' · ' + esc(r.from || '') + '</h2><div class="muted">' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + ' · ' + r.n + bt('줄', ' lines') + ' · ' + Number(r.qty || 0).toLocaleString() + bt('개', ' pcs') + (r.note ? '<br>📝 ' + esc(r.note) : '') + '</div><div style="max-height:50vh;overflow:auto;margin-top:8px"><table><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th class="r">' + bt('수량', 'Qty') + '</th></tr>' + (r.lines || []).map(l => '<tr><td><b>' + esc(l.c) + '</b></td><td class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</td><td class="r">' + l.q + '</td></tr>').join('') + '</table></div><div class="btns"><button class="b-ghost" id="rcX">' + bt('닫기', 'Close') + '</button></div>'); $('rcX').onclick = closeModal; });
+  box.querySelectorAll('[data-rcp]').forEach(el => el.onclick = () => { const r = R.find(x => x.id === el.dataset.rcp); if (!r) return; openModal('<h2>📥 ' + esc(md(r.d)) + ' · ' + esc(r.fromCode ? supLabel(r.fromCode) : (r.from || '')) + '</h2><div class="muted">' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + ' · ' + r.n + bt('줄', ' lines') + ' · ' + Number(r.qty || 0).toLocaleString() + bt('개', ' pcs') + (r.note ? '<br>📝 ' + esc(r.note) : '') + '</div><div style="max-height:50vh;overflow:auto;margin-top:8px"><table><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th class="r">' + bt('수량', 'Qty') + '</th></tr>' + (r.lines || []).map(l => '<tr><td><b>' + esc(l.c) + '</b></td><td class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</td><td class="r">' + l.q + '</td></tr>').join('') + '</table></div><div class="btns"><button class="b-ghost" id="rcX">' + bt('닫기', 'Close') + '</button></div>'); $('rcX').onclick = closeModal; });
 }
 
-/* ⚠️ 부족 — 재고 0 이하 */
+/* ⚠️ 부족 — 기준(min) 아래 · 0 이하 — 📤 지금 알리기 */
 async function paintLow() {
   const box = $('skBody'); box.innerHTML = '<div class="load">…</div>';
-  let L = []; try { L = (await S.DB.list('stock')).filter(x => Number(x.qty) <= 0); } catch (e) {}
-  L = sortBy(L, x => Number(x.qty) || 0);
+  let m = {}; try { m = await stockAll(true); } catch (e) {}
   const C = catalog().byCode;
-  box.innerHTML = '<div class="card"><h2 style="font-size:15px">⚠️ ' + bi('재고 0 이하', 'Out of stock or negative') + ' ' + L.length + '</h2><div class="muted">' + bt('인보이스로 나간 수량이 입고보다 많으면 마이너스가 됩니다 — 실사해서 맞추세요.', 'Negative means more was invoiced than received — count and fix.') + '</div>' + (L.length ? L.slice(0, 300).map(x => itemRow(C[x.code] || { c: x.code, d: '' }, Number(x.qty) || 0)).join('') : '<div class="none">' + bt('없음', 'None') + '</div>') + '</div>';
+  const L = Object.keys(m).map(c => ({ c, qty: Number(m[c]) || 0, min: minOf(c) })).filter(x => x.qty < x.min || x.qty <= 0 || Number.isNaN(x.qty));
+  const out = sortBy(L.filter(x => x.qty <= 0), x => x.qty), low = sortBy(L.filter(x => x.qty > 0), x => x.qty / Math.max(1, x.min));
+  const row = x => itemRow(C[x.c] || { c: x.c, d: '' }, x.qty, bt('기준', 'min') + ' ' + x.min);
+  box.innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="font-size:15px;margin:0">⚠️ ' + bi('재고 부족', 'Low stock') + ' ' + L.length + '</h2>' + (L.length ? '<button class="b-blue b-sm" id="skLowSend">📤 ' + bt('사무실 · 관리자에게 알리기', 'Notify office & admin') + '</button>' : '') + '</div>' +
+    '<div class="muted">' + bt('기준은 아이템 창의 ⚠️ 부족 기준(없으면 설정의 기본', 'Minimum comes from the item sheet (default from settings') + ' ' + defMin() + bt('개). 움직임으로 기준 아래로 내려가면 그때 자동으로 알립니다.', '). When a move drops an item below it, the alert goes out automatically.') + '</div></div>' +
+    '<div class="card"><h2 style="font-size:14px">● ' + bt('재고 없음 · 마이너스', 'Out of stock · negative') + ' ' + out.length + '</h2><div class="muted">' + bt('인보이스로 나간 수량이 입고보다 많으면 마이너스가 됩니다 — 실사해서 맞추세요.', 'Negative means more was invoiced than received — count and fix.') + '</div>' + (out.length ? out.slice(0, 300).map(row).join('') : '<div class="none">' + bt('없음', 'None') + '</div>') + '</div>' +
+    '<div class="card"><h2 style="font-size:14px">● ' + bt('기준 아래', 'Below minimum') + ' ' + low.length + '</h2>' + (low.length ? low.slice(0, 300).map(row).join('') : '<div class="none">' + bt('없음', 'None') + '</div>') + '</div>';
   box.querySelectorAll('[data-sti]').forEach(el => el.onclick = () => itemSheet(el.dataset.sti, paintLow));
+  if ($('skLowSend')) $('skLowSend').onclick = async () => { busy(true); const ok = await alertLow(out.concat(low), true); busy(false); toast(ok ? '📤 ' + bt('보냈습니다', 'Sent') : bt('실패', 'Failed'), ok ? 'good' : 'bad'); };
 }

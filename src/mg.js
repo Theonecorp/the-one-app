@@ -92,7 +92,7 @@ const kindTag = p => p.kind === '커미션' ? '<span class="tag t-a">커미션</
  * ============================================================ */
 async function paintHome() {
   await salesDoc(YEAR);
-  const facs = D.fac.map(f => Object.assign({ code: f.code, name: f.name }, facStat(f.code, YEAR)));
+  const facs = D.fac.map(f => Object.assign({ code: f.code, name: facLabel(f) }, facStat(f.code, YEAR)));
   const tot = { bal: sum(facs, f => f.balance), buy: sum(facs, f => f.buy), paid: sum(facs, f => f.paid), item: sum(facs, f => f.item), frt: sum(facs, f => f.frt) };
   const p99 = p99Stat(YEAR), bo = bonusStat(), sl = D.sales[YEAR];
   let h = '<div class="card tap" data-go="fac"><h2>🏭 중국 공장 — 미지급 잔액</h2><div class="hero">' + money(tot.bal) + '</div><div class="heroSub">' + YEAR + ' 구매 ' + k(tot.buy) + ' · 송금 ' + k(tot.paid) + ' · 운임 비율 ' + pct2(tot.item ? tot.frt / tot.item * 100 : 0) + '</div>' +
@@ -130,7 +130,7 @@ function seedOps(o) {
   return { ops, cnt };
 }
 /** 🏠 오너 홈이 쓰는 숫자 — 공장별 잔액 · 올해 구매 · 송금 · 운임% (+ 파일 BALANCE 대조용 stmt) · 1099 · 보너스 */
-export async function mgNumbers(year) { await load(); return { facs: D.fac.map(f => Object.assign({ code: f.code, name: f.name, stmt: f.stmt || null }, facStat(f.code, year))), p99: p99Stat(year), bonus: bonusStat() }; }
+export async function mgNumbers(year) { await load(); return { facs: D.fac.map(f => Object.assign({ code: f.code, name: facLabel(f), stmt: f.stmt || null }, facStat(f.code, year))), p99: p99Stat(year), bonus: bonusStat() }; }
 /** 관리 → 가져오기에서 부름 — 경영 자료를 읽은 뒤 미리보기 */
 export async function seedImport(txt) { await load(); seedPreview(txt); }
 /** 관리 → 가져오기(공장 명세서 등)가 자료를 바꾼 뒤 — 다음에 경영 탭을 열 때 다시 읽게 */
@@ -153,11 +153,11 @@ function seedPreview(txt) {
  * ============================================================ */
 function paintFac() {
   const box = $('mgBody');
-  let h = '<div class="chips">' + D.fac.map(f => '<button class="' + (f.code === FAC ? 'on' : '') + '" data-fc="' + esc(f.code) + '">' + esc(f.name) + '</button>').join('') + '<button id="facNew">＋ 공장</button></div>';
+  let h = '<div class="chips">' + D.fac.map(f => '<button class="' + (f.code === FAC ? 'on' : '') + '" data-fc="' + esc(f.code) + '">' + esc(facLabel(f)) + '</button>').join('') + '<button id="facNew">＋ 공장</button><button id="facEdit" class="b-ghost b-sm" style="margin-left:4px">✏️ 별칭 · 이름</button></div>';
   const f = D.fac.find(x => x.code === FAC);
   if (!f) { box.innerHTML = h + '<div class="card"><div class="none">공장을 등록하세요</div></div>'; bindFacHead(); return; }
   const d = facStat(FAC, YEAR), s = d, y = YEAR, TT = { '인보이스': 't-f', '이월': 't-c', '크레딧': 't-k', '운임만': 't-a' };
-  h += '<div class="card"><h2>' + esc(f.name) + ' — 미지급 잔액</h2><div class="hero">' + money(d.balance) + '</div><div class="heroSub">연초 이월 ' + money(d.openBal) + ' + ' + y + ' 구매 ' + money(s.buy) + ' − 송금 ' + money(s.paid) + (s.monthsOwed ? ' · 잔액 ≈ 월평균 구매의 ' + s.monthsOwed.toFixed(1) + '배' : '') + '</div>' +
+  h += '<div class="card"><h2>' + esc(facLabel(f)) + ' — 미지급 잔액</h2><div class="hero">' + money(d.balance) + '</div><div class="heroSub">연초 이월 ' + money(d.openBal) + ' + ' + y + ' 구매 ' + money(s.buy) + ' − 송금 ' + money(s.paid) + (s.monthsOwed ? ' · 잔액 ≈ 월평균 구매의 ' + s.monthsOwed.toFixed(1) + '배' : '') + '</div>' +
     '<div class="kpi"><div><b>' + k(s.item) + '</b><span>물품 (인보이스)</span></div><div><b>' + k(s.frt) + '</b><span>운임 (쉬핑)</span></div><div><b>' + pct2(s.frtPct) + '</b><span>운임 ÷ 물품</span></div><div><b>' + s.n + '건</b><span>' + y + ' 인보이스</span></div></div>' +
     '<div class="btns"><button class="b-blue" id="facInv">＋ 인보이스 (물품+운임)</button><button class="b-green" id="facPay">＋ 송금</button><button class="b-ghost" id="facPrint">🖨 명세</button><button class="b-ghost" id="facClean">🧹 중복 정리 · 합치기</button></div>' + dupWarn(FAC) + '</div>';
   const max = Math.max(1, ...d.mon.map(m => Math.max(m.buy, m.paid)));
@@ -184,7 +184,12 @@ function paintFac() {
     '<div class="muted" style="margin-bottom:6px">송금은 오래된 인보이스부터 차례로 메운 것으로 봅니다 (보통 인보이스 단위로 보내므로). 줄을 누르면 수정. <span class="en">Payments are applied to the oldest invoices first.</span></div>' +
     (d.rows.length ? (LV === 'grid' ? '<div class="xwrap"><table class="ledg"><tr><th>날짜</th><th>내용</th><th class="r">인보이스 $</th><th class="r">송금 $</th><th class="r">잔액</th></tr>' + ledRows.join('') + '<tr class="tot"><td></td><td>' + y + ' 합계</td><td class="r"><b>' + money(d.buy) + '</b></td><td class="r" style="color:#15803d"><b>' + money(d.paid) + '</b></td><td class="r"><b>' + money(d.balance) + '</b></td></tr></table></div>' :
       d.rows.map(x => { const inv = x.k === 'inv'; return '<div class="pr tap" data-fe="' + x.k + '|' + x.id + '"><div class="ct"><b>' + md(x.d) + ' ' + (inv ? '<span class="tag ' + (TT[x.type] || 't-f') + '">' + esc(x.type) + '</span>' : '<span class="tag t-k">송금</span>') + (inv && x.type === '인보이스' ? ' <span style="font-weight:500;color:#64748b;font-size:12px">물품 ' + k(x.item) + ' + 운임 ' + k(x.frt) + (x.item > 0 ? ' (' + pct2(x.frt / x.item * 100) + ')' : '') + '</span>' : '') + (inv && x.amt > 0 ? ' ' + stTag(x) : '') + '</b>' + (x.note ? '<small>' + esc(x.note) + '</small>' : '') + '</div><div class="pa"><b style="color:' + (inv ? (x.amt < 0 ? '#15803d' : '#0f172a') : '#15803d') + '">' + (inv ? signed(x.amt) : '− ' + money(x.amt)) + '</b><small>잔액 ' + money(x.run) + '</small></div></div>'; }).join('')) : '<div class="none">이 해 기록이 없습니다</div>') + '</div>';
+  h += '<div class="card" id="facRcp"><h2>📥 입고 기록 <span class="en">Receipts</span> <span class="muted" style="font-weight:400;font-size:12px">— 창고에서 "' + esc(f.alias || f.name) + '" 로 받은 팩킹 리스트</span></h2><div class="load">…</div></div>';
   box.innerHTML = h; bindFacHead();
+  (async () => { const el = $('facRcp'); if (!el) return; let R = []; try { R = sortBy(await S.DB.list('receipts', { where: [['fromCode', '==', f.code]] }), x => x.at || '', true); } catch (e) {}
+    const tot = R.reduce((a, r) => a + (Number(r.qty) || 0), 0);
+    el.innerHTML = '<h2>📥 입고 기록 <span class="en">Receipts</span> ' + R.length + '건 · ' + tot.toLocaleString() + '개 <span class="muted" style="font-weight:400;font-size:12px">— 창고에서 "' + esc(f.alias || f.name) + '" 로 받은 팩킹 리스트</span></h2>' +
+      (R.length ? '<table><tr><th>날짜</th><th>파일 · 메모</th><th class="r">줄</th><th class="r">수량</th><th>받은 사람</th></tr>' + R.slice(0, 12).map(r => '<tr><td>' + esc(md(r.d)) + '</td><td class="muted" style="font-size:11.5px">' + esc(r.file || '') + (r.note ? ' · ' + esc(r.note) : '') + '</td><td class="r">' + (r.n || 0) + '</td><td class="r"><b>' + Number(r.qty || 0).toLocaleString() + '</b></td><td>' + esc(r.byName || '') + '</td></tr>').join('') + '</table>' + (R.length > 12 ? '<div class="muted">… 외 ' + (R.length - 12) + '건 (📦 재고 › 기록에서 전부)</div>' : '') : '<div class="none">아직 없음 — 창고가 📦 재고 › 📥 입고에서 공장을 고르고 저장하면 여기에 쌓입니다</div>'); })();
   box.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { LV = b.dataset.lv; paintFac(); });
   $('facInv').onclick = () => invForm(); $('facPay').onclick = () => payForm(); $('facClean').onclick = () => cleanupModal(FAC);
   $('facPrint').onclick = () => printOpen('<h1>' + esc(f.name) + ' — ' + y + ' Statement</h1><div class="meta">THE ONE CORP · 출력 ' + today() + ' · 연초 이월 ' + money(d.openBal) + ' · 현재 잔액 <b>' + money(d.balance) + '</b></div><table class="box"><tr><td>' + y + ' 구매 (물품 ' + money(d.item) + ' + 운임 ' + money(d.frt) + ')</td><td class="r">' + money(d.buy) + '</td></tr><tr><td>' + y + ' 송금</td><td class="r">' + money(d.paid) + '</td></tr><tr class="fin"><td>잔액 BALANCE</td><td class="r">' + money(d.balance) + '</td></tr></table><table><tr><th>Date</th><th>구분</th><th class="r">Item</th><th class="r">Freight</th><th class="r">Amount</th><th class="r">Paid</th><th class="r">Balance</th><th>Status</th><th>Note</th></tr>' + d.rows.slice().reverse().map(x => { const inv = x.k === 'inv', a = inv ? al.inv[x.id] : null; return '<tr><td>' + x.d + '</td><td>' + (inv ? esc(x.type) : '송금') + '</td><td class="r">' + (inv && x.type === '인보이스' ? money(x.item) : '') + '</td><td class="r">' + (inv && x.frt ? money(x.frt) : '') + '</td><td class="r">' + (inv ? signed(x.amt) : '') + '</td><td class="r">' + (inv ? '' : money(x.amt)) + '</td><td class="r">' + money(x.run) + '</td><td>' + (a ? (a.st === 'ok' ? 'PAID' : a.st === 'part' ? 'PARTIAL (' + money(a.left) + ' due)' : 'OPEN') : '') + '</td><td>' + esc(x.note || '') + '</td></tr>'; }).join('') + '</table>');
@@ -249,9 +254,19 @@ function cleanupModal(code) {
 }
 function bindFacHead() {
   document.querySelectorAll('[data-fc]').forEach(b => b.onclick = () => { FAC = b.dataset.fc; page(); });
-  $('facNew').onclick = () => { openModal('<h2>＋ 공장 추가</h2><div class="two"><div class="fg"><label>코드 (영문 2~4자, 예: SX)</label><input id="ncC" maxlength="4" style="text-transform:uppercase"></div><div class="fg"><label>이름</label><input id="ncN"></div></div><div class="btns"><button class="b-ghost" id="mX">취소</button><button class="b-blue" id="mOk">저장</button></div>'); $('mX').onclick = closeModal; $('mOk').onclick = async () => { const code = $('ncC').value.trim().toUpperCase(), name = $('ncN').value.trim(); if (!code || !name) return toast('코드와 이름을 넣어 주세요', 'bad'); await S.DB.set('factories', code, { id: code, code, name, active: true, createdAt: new Date().toISOString() }); closeModal(); FAC = code; refresh(); }; };
+  $('facNew').onclick = () => { openModal('<h2>＋ 공장 추가</h2><div class="two"><div class="fg"><label>코드 (영문 2~4자, 예: SX)</label><input id="ncC" maxlength="4" style="text-transform:uppercase"></div><div class="fg"><label>이름</label><input id="ncN"></div></div><div class="fg"><label>별칭 — 매니저들이 부르는 이름 (예: China 1)</label><input id="ncA" placeholder="China 5"></div><div class="btns"><button class="b-ghost" id="mX">취소</button><button class="b-blue" id="mOk">저장</button></div>'); $('mX').onclick = closeModal; $('mOk').onclick = async () => { const code = $('ncC').value.trim().toUpperCase(), name = $('ncN').value.trim(), alias = $('ncA').value.trim(); if (!code || !name) return toast('코드와 이름을 넣어 주세요', 'bad'); await S.DB.set('factories', code, { id: code, code, name, alias, active: true, createdAt: new Date().toISOString() }); await syncSuppliers(); closeModal(); FAC = code; refresh(); }; };
+  /* ✏️ 공장 별칭 · 이름 고치기 (선택된 공장) */
+  if ($('facEdit')) $('facEdit').onclick = () => { const f = D.fac.find(x => x.code === FAC); if (!f) return; openModal('<h2>✏️ 공장 — ' + esc(f.code) + '</h2><div class="fg"><label>이름</label><input id="feN" value="' + esc(f.name || '') + '"></div><div class="fg"><label>별칭 — 매니저들이 부르는 이름 (예: China 1)</label><input id="feA" value="' + esc(f.alias || '') + '"></div><div class="btns"><button class="b-ghost" id="mX">취소</button><button class="b-blue" id="mOk">저장</button></div>'); $('mX').onclick = closeModal; $('mOk').onclick = async () => { const name = $('feN').value.trim(), alias = $('feA').value.trim(); if (!name) return toast('이름을 넣어 주세요', 'bad'); await S.DB.update('factories', f.code, { name, alias, updatedAt: new Date().toISOString() }); f.name = name; f.alias = alias; await syncSuppliers(); closeModal(); refresh(); }; };
 }
-const facSel = (id, v) => sel(id, D.fac.map(f => [f.code, f.name]), v || FAC);
+/** 공장 표시 이름 — 매니저들이 부르는 별칭(China 1 · China 2 …)이 있으면 앞에 (예: "China 1 · ZHEJIANG JUDA SUPPLY CHAIN") */
+export const facLabel = f => f ? ((f.name || f.code || '') + (f.alias ? ' (' + f.alias + ')' : '')) : '';   // 경영 화면은 관리자 · 오너용 → 공장 이름 먼저, 창고가 부르는 별칭은 괄호
+const facSel = (id, v) => sel(id, D.fac.map(f => [f.code, facLabel(f)]), v || FAC);
+/** 공급처 목록을 설정(settings/app.suppliers)에도 적어 둠 — 공장 문서는 관리자만 읽을 수 있어, 담당자의 아이템 · 입고 화면 공급처 고르기용 */
+async function syncSuppliers() {
+  try { const L = (await S.DB.list('factories')).filter(f => f.active !== false).map(f => ({ code: f.code, alias: f.alias || '', name: f.name || '' })); L.sort((a, b) => String(a.alias || 'zz' + a.name).localeCompare(String(b.alias || 'zz' + b.name), 'en', { numeric: true }));
+    await S.DB.batch([{ op: 'merge', col: 'settings', id: 'app', data: { suppliers: L, updatedAt: new Date().toISOString() } }]); S.settings.suppliers = L; } catch (e) { console.warn('suppliers', e); }
+}
+
 function invForm(x) {
   x = x || {};
   openModal('<h2>' + (x.id ? '인보이스 수정' : '＋ 인보이스 입력') + '</h2><div class="two"><div class="fg"><label>공장</label>' + facSel('fF', x.f) + '</div><div class="fg"><label>날짜</label>' + inputDate('fD', x.d) + '</div></div>' +
