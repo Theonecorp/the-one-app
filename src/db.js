@@ -2,7 +2,7 @@
  *  데이터 계층 — Firestore (실제) / 메모리 (테스트·데모)
  *  앱의 나머지는 이 파일의 DB 객체만 씁니다.
  *    DB.get(col, id) · DB.list(col, {where:[[f,op,v]], order:[f,dir], limit}) · DB.set(col, id, data)
- *    DB.update(col, id, patch) · DB.del(col, id) · DB.batch([{op,col,id,data}]) · DB.newId(prefix)
+ *    DB.update(col, id, patch) · DB.del(col, id) · DB.batch([{op:'set'|'merge'|'update'|'del',col,id,data}])  (merge = 있으면 칸만 덧씀) · DB.newId(prefix)
  *  AUTH.signIn() · AUTH.signOut() · AUTH.onChange(fn) → {email, name}
  * ============================================================ */
 export const firebaseConfig = {
@@ -59,7 +59,7 @@ function makeMemoryDB(seed) {
     async update(c, id, patch) { if (!col(c)[id]) throw new Error('not found: ' + c + '/' + id); Object.assign(col(c)[id], clone(patch)); },
     async del(c, id) { delete col(c)[id]; },
     async seq(id, key, start) { const d = col('counters')[id] = col('counters')[id] || { id }; const cur = d[key] != null ? Number(d[key]) : Number(start || 1); d[key] = cur + 1; return cur; },
-    async batch(ops) { for (const o of ops) { if (o.op === 'set') await this.set(o.col, o.id, o.data); else if (o.op === 'update') await this.update(o.col, o.id, o.data); else if (o.op === 'del') await this.del(o.col, o.id); } },
+    async batch(ops) { for (const o of ops) { if (o.op === 'set') await this.set(o.col, o.id, o.data); else if (o.op === 'merge') await this.set(o.col, o.id, Object.assign({}, col(o.col)[o.id] || {}, o.data)); else if (o.op === 'update') await this.update(o.col, o.id, o.data); else if (o.op === 'del') await this.del(o.col, o.id); } },
     /** 실시간 보기 (시험용 메모리 DB 는 1.5초마다 비교) — 바뀔 때마다 cb(rows), 돌려준 함수를 부르면 멈춤 */
     watch(c, q, cb) { let last = null; const tick = () => this.list(c, q).then(r => { const j = JSON.stringify(r); if (j !== last) { last = j; cb(r); } }); tick(); const t = setInterval(tick, 1500); return () => clearInterval(t); },
     _dump() { return clone(store); }
@@ -154,6 +154,7 @@ async function makeFirestoreDB() {
         ops.slice(i, i + 400).forEach(o => {
           const ref = fs.doc(db, o.col, o.id);
           if (o.op === 'set') b.set(ref, strip(Object.assign({}, o.data, { id: o.id })));
+          else if (o.op === 'merge') b.set(ref, strip(Object.assign({}, o.data, { id: o.id })), { merge: true });   // 있는 문서는 적은 칸만 바꾸고 나머지는 그대로 (가져오기용)
           else if (o.op === 'update') b.update(ref, strip(o.data));
           else if (o.op === 'del') b.delete(ref);
         });

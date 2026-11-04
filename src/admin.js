@@ -524,7 +524,7 @@ async function importMain(file) {
     const acc = aoa(XLSX, wb, '_ACCOUNTS'), smv = aoa(XLSX, wb, '_SALESMEN'), ent = aoa(XLSX, wb, '_ENTRIES');
     const arName = wb.SheetNames.find(n => /^_?AR\b/i.test(n.trim())), ar = arName ? aoa(XLSX, wb, arName) : null;
     const ops = [];
-    if (acc) { for (let i = 1; i < acc.length; i++) { const r = acc[i]; const code = pad4(r[0]); if (!code || !r[1]) continue; ops.push({ op: 'set', col: 'accounts', id: code, data: { acct: code, store: String(r[1]).trim(), addr: String(r[2] || '').trim(), city: String(r[3] || '').trim(), state: String(r[4] || '').trim(), zip: String(r[5] || '').trim(), tel: String(r[6] || '').trim(), sm: String(r[7] || '').trim().toUpperCase(), note: String(r[8] || '').trim() } }); } say('거래처 ' + ops.length + '곳'); }
+    if (acc) { for (let i = 1; i < acc.length; i++) { const r = acc[i]; const code = pad4(r[0]); if (!code || !r[1]) continue; ops.push({ op: 'merge', col: 'accounts', id: code, data: { acct: code, store: String(r[1]).trim(), addr: String(r[2] || '').trim(), city: String(r[3] || '').trim(), state: String(r[4] || '').trim(), zip: String(r[5] || '').trim(), tel: String(r[6] || '').trim(), sm: String(r[7] || '').trim().toUpperCase(), note: String(r[8] || '').trim() } }); } say('거래처 ' + ops.length + '곳'); }
     let nS = 0, nKeep = 0;
     /* 이미 등록된 사용자는 덮어쓰지 않음 — 관리자 · 담당자가 세일즈맨 코드도 갖고 있으면 역할이 'salesman' 으로 바뀌어 관리자 모드가 사라지던 문제 */
     const users0 = {}; if (smv) { try { (await S.DB.list('users')).forEach(u => { users0[String(u.email || u.id || '').toLowerCase()] = u; }); } catch (e) {} }
@@ -722,13 +722,13 @@ async function importBoss(file, outBox) {
       busy(true);
       try {
         const now = new Date().toISOString(), ops = [];
-        P.fac.forEach(f => ops.push({ op: 'set', col: 'factories', id: f.code, data: { id: f.code, code: f.code, name: f.name, note: f.note, active: true, createdAt: now } }));
+        P.fac.forEach(f => ops.push({ op: 'merge', col: 'factories', id: f.code, data: { id: f.code, code: f.code, name: f.name, note: f.note, active: true, createdAt: now } }));   // 이미 있는 공장은 칸만 덧씀
         P.inv.forEach(x => ops.push({ op: 'set', col: 'factoryInvoices', id: x.id, data: Object.assign({}, x, { seed: true, createdAt: now, updatedAt: now }) }));
         P.pay.forEach(x => ops.push({ op: 'set', col: 'factoryPayments', id: x.id, data: Object.assign({}, x, { seed: true, createdAt: now }) }));
         P.acc.forEach(x => ops.push({ op: 'set', col: 'bonusAcc', id: x.id, data: Object.assign({}, x, { ref: '', seed: true }) }));
         P.dist.forEach(x => ops.push({ op: 'set', col: 'bonusDist', id: x.id, data: Object.assign({}, x, { seed: true, createdBy: S.user.email, createdAt: now }) }));
         if (P.split.length) ops.push({ op: 'set', col: 'bonusSplit', id: 'main', data: { id: 'main', rows: P.split, updatedAt: now } });
-        P.payees.forEach(p => ops.push({ op: 'set', col: 'payees', id: p.who, data: Object.assign({ id: p.who }, p) }));
+        P.payees.forEach(p => ops.push({ op: 'merge', col: 'payees', id: p.who, data: Object.assign({ id: p.who }, p) }));
         (P.inv99 || []).forEach(x => ops.push({ op: 'set', col: 'pay1099', id: x.id, data: Object.assign({}, x, { gross: x.amt, acc: 0, ref: '', seed: true, createdAt: now }) }));
         const hist = {}; P.dedHist.forEach(h => { (hist[h.id] = hist[h.id] || []).push({ d: h.d, amt: h.amt, ref: h.ref }); });
         P.ded.forEach(d => { const h = hist[d.id] || [], used = R2(h.reduce((a, x) => a + x.amt, 0)); ops.push({ op: 'set', col: 'deductions', id: d.id, data: Object.assign({}, d, { used, hist: h, st: d.st || (used >= d.total - 0.005 ? '완료' : ''), seed: true, createdBy: S.user.email, createdAt: now, updatedAt: now }) }); });
