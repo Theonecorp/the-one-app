@@ -37,6 +37,7 @@ const path = require('path');
   await pg.fill('#cAmt', '800'); await pg.click('#cMore'); await pg.fill('[data-cno="1"]', 'A10021'); await pg.fill('[data-camt="1"]', '0'); await pg.fill('#cAmt', '800');
   await pg.evaluate(() => { window.__TL = []; const el = document.getElementById('toast'); if (el && !window.__TO) { window.__TO = new MutationObserver(() => { if (el.classList.contains('on')) window.__TL.push(el.className + ': ' + el.textContent); }); window.__TO.observe(el, { attributes: true, childList: true, subtree: true, characterData: true }); } });
   const before2 = await pg.evaluate(() => ({ rows: Array.from(document.querySelectorAll('[data-cno]')).map(x => x.value + '/' + (document.querySelector('[data-camt="' + x.dataset.cno + '"]') || {}).value), amt: document.getElementById('cAmt').value, sum: (document.getElementById('cSum') || {}).textContent, ovr: !!document.querySelector('.ovr'), busy: document.body.className }));
+  await pg.waitForTimeout(500);   // 같은 파란 버튼을 0.45초 안에 다시 누르면 앱이 두 번 누름으로 보고 버림 (main.js) — 빠른 CI 에서 두 번째 저장이 사라지던 원인
   const ts = Date.now(); await pg.click('#cSave'); const asked2 = await pg.waitForSelector('#cfOk', { timeout: 10000 }).then(() => true).catch(() => { errs.push('duplicate invoice should ask'); return false; });
   log('TIMING dup ask', asked2 ? 'shown after ' + (Date.now() - ts) + ' ms' : 'NOT shown in 10 s');
   if (!asked2) {   /* CI 에서만 가끔 — 무슨 일이 있었는지 남김 */
