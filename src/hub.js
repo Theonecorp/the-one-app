@@ -16,7 +16,7 @@ export const HUBS = {
     ['cod', '💳', 'COD · 카드', 'COD · Card', 'COD · 카드 입력 · 승인번호', 'COD · card entry', () => can('cod')],
     ['ach', '🏦', 'ACH', 'ACH', 'ACH 셋업 · 인출 · NSF', 'ACH setup · draws', () => can('ach')],
     ['bounce', '↩️', '체크 관리', 'Checks', '바운스 · 날짜 변경 · 홀드', 'bounced · date change · hold', () => can('verify') || can('cod')],
-    ['credit', '↩', '크레딧 확인', 'Credits', '세일즈맨이 준 크레딧 확인 · VOID', 'credits given by salesmen', () => can('invoice') || can('verify')]
+    ['credit', '↩', '크레딧 · 리턴', 'Credits', '크레딧 주기 · 세일즈맨 크레딧 확인 · VOID', 'give credit · review · void', () => can('invoice') || can('verify')]
   ] },
   look: { icon: '📚', ko: '조회', en: 'Lookup', items: [
     ['invs', '📄', '인보이스', 'Invoices', '날짜별 · 가게별 · 번호', 'by date · store · number', () => true],
@@ -27,7 +27,8 @@ export const HUBS = {
   wh: { icon: '📦', ko: '재고', en: 'Inventory', items: [
     ['stock', '📦', '재고', 'Inventory', '조회 · 입고(팩킹 리스트) · 실사', 'find · receive · count', () => can('items')],
     ['items', '🏷', '아이템 · 위치', 'Items · Locations', '찾기 · 📍 통로 · 등록', 'find · aisle · add', () => can('items')],
-    ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹', 'boxes · tracking', () => can('ship')]
+    ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹', 'boxes · tracking', () => can('ship')],
+    ['displays', '🖼', 'Notes Display', 'Notes Display', 'Empty Display 요청 · 준비 · UPS 박스', 'empty displays · prepare · UPS boxes', () => can('ship') || can('invoice') || can('newOrder')]
   ] },
   /* 🧑‍💼 세일즈맨 (v0.8.135) */
   smoney: { icon: '💵', ko: '수금', en: 'Collections', items: [

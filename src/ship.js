@@ -22,6 +22,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /** 출고 창 — after() 가 있으면 끝난 뒤 그것을, 없으면 주문 화면으로 */
 export async function shipModal(o, after) {
+  const COL = o.col || 'orders', isOrder = COL === 'orders';   // 🖼 디스플레이 출고는 displays 문서에 트래킹을 붙이고 주문은 건드리지 않음
   const fin = () => { if (after) after(); else goOrder(o.id); };
   let q = null; try { q = await S.DB.get('shipq', o.id); } catch (e) {}
   const U = (S.settings && S.settings.ups) || {}, defW = Number(U.defW) || 5, acc = acctOf(o.acct) || {};
@@ -32,6 +33,8 @@ export async function shipModal(o, after) {
     to: Object.assign({ email: acc.email || '', addr3: '', res: false }, base),
     fromX: null, svc: U.svc || '03', opt: { sat: false, sig: '', notify: false }, bill: { type: 'ship', acct: '', zip: '' }, boxes: [], desc: 'JEWELRY & ACCESSORIES'
   };
+  if (!F.boxes.length && o.boxSpec && o.boxSpec.length) o.boxSpec.forEach(b => F.boxes.push({ w: b.w || defW, l: b.l || '', wd: b.wd || '', h: b.h || '', pkg: '02', val: '', ref2: b.ref2 || '', invs: [] }));   // 🖼 Notes Display: 단위마다 박스 (상품 무게 · 크기)
+  if (o.desc && !(q && q.to)) F.desc = o.desc;
   if (!F.boxes.length) { const n = Math.max(1, o.boxes || invs.length || 1); for (let i = 0; i < n; i++) F.boxes.push({ w: defW, l: '', wd: '', h: '', pkg: '02', val: '', ref2: '', invs: n === invs.length ? [invs[i]] : invs.slice() }); }
   let saveAcct = false, showFrom = false, rates = null, rateBusy = false, av = null, stop = false;
   const from = Object.assign({ name: 'THE ONE CORP', attn: 'SHIPPING', phone: '', addr1: '', addr2: '', city: '', state: '', zip: '' }, U.from || {}, F.fromX || {});
@@ -162,9 +165,10 @@ export async function shipModal(o, after) {
       const d = via === 'UPS' ? { st: 'packed', packAt: now, packBy: S.user.email, shipVia: via, boxes: nBox, track, updatedAt: now } : { st: 'shipped', shipAt: now, shipBy: S.user.email, shipVia: via, boxes: nBox, track, updatedAt: now }; if (q && q.st === 'done' && q.charge) d.shipCost = q.charge;
       stop = true; closeModal(); busy(true);
       try {
-        await S.DB.update('orders', o.id, d);
+        if (!isOrder) Object.assign(d, { st: 'shipped', shippedAt: now, shippedBy: S.user.email });
+        await S.DB.update(COL, o.id, d);
         /* 직접 넣은 UPS 트래킹 — 배송 조회 기록도 (라벨을 앱에서 안 만든 경우) */
-        if (via === 'UPS' && !(q && q.st === 'done')) { const T = track.split(/[\s,]+/).filter(x => /^1Z[0-9A-Z]{16}$/i.test(x)); if (T.length) await S.DB.batch(T.map((t, i) => ({ op: 'set', col: 'shipments', id: t.toUpperCase(), data: { trk: t.toUpperCase(), orderId: o.id, no: o.no, acct: o.acct || '', store: o.store, sm: o.sm, invs, box: i + 1, boxes: T.length, shipDate: today(), src: 'manual', by: S.user.email, status: 'Shipped', trkSt: 'open', delivered: false, at: now } }))); }
+        if (via === 'UPS' && !(q && q.st === 'done')) { const T = track.split(/[\s,]+/).filter(x => /^1Z[0-9A-Z]{16}$/i.test(x)); if (T.length) await S.DB.batch(T.map((t, i) => ({ op: 'set', col: 'shipments', id: t.toUpperCase(), data: { trk: t.toUpperCase(), orderId: isOrder ? o.id : '', dispId: isOrder ? '' : o.id, no: o.no, acct: o.acct || '', store: o.store, sm: o.sm, invs, box: i + 1, boxes: T.length, shipDate: today(), src: 'manual', by: S.user.email, status: 'Shipped', trkSt: 'open', delivered: false, at: now } }))); }
         toast(via === 'UPS' ? '📮 ' + bt('픽업 대기로', 'Awaiting pickup') : '🚚 ' + bt('출고 완료', 'Shipped'), 'good'); fin();
       } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
       busy(false);
@@ -180,7 +184,7 @@ export async function shipModal(o, after) {
     return '';
   };
   const payload = () => ({
-    orderId: o.id, no: o.no, acct: o.acct || '', store: o.store, sm: o.sm, invs, by: S.user.email,
+    orderId: isOrder ? o.id : '', dispId: isOrder ? '' : o.id, no: o.no, acct: o.acct || '', store: o.store, sm: o.sm, invs, by: S.user.email,
     svc: F.svc, to: F.to, fromX: showFrom ? { name: from.name, attn: from.attn, phone: from.phone, addr1: from.addr1, addr2: from.addr2, city: from.city, state: from.state, zip: from.zip } : null,
     opt: F.opt, bill: F.bill, desc: F.desc,
     boxes: F.boxes.map(b => ({ w: Number(b.w) || defW, l: Number(b.l) || '', wd: Number(b.wd) || '', h: Number(b.h) || '', pkg: b.pkg || '02', val: Number(b.val) || '', ref2: b.ref2 || '', invs: b.invs || [] })),
@@ -193,7 +197,7 @@ export async function shipModal(o, after) {
       let x = null; try { x = await S.DB.get('shipq', o.id); } catch (e) {}
       if (x && x.st !== q.st) {
         q = x; reopen();
-        if (x.st === 'done') { try { await S.DB.update('orders', o.id, { track: x.track, shipVia: 'UPS', boxes: (x.labels || []).length, shipCost: x.charge || 0, updatedAt: new Date().toISOString() }); } catch (e) {} toast('✅ UPS ' + bt('라벨', 'labels') + ' ' + (x.labels || []).length, 'good'); printLabels(x); }
+        if (x.st === 'done') { try { await S.DB.update(COL, o.id, Object.assign({ track: x.track, shipVia: 'UPS', boxes: (x.labels || []).length, shipCost: x.charge || 0, updatedAt: new Date().toISOString() }, isOrder ? {} : { st: 'shipped', shippedAt: new Date().toISOString(), shippedBy: S.user.email })); } catch (e) {} toast('✅ UPS ' + bt('라벨', 'labels') + ' ' + (x.labels || []).length, 'good'); printLabels(x); }
         if (x.st !== 'wait' && x.st !== 'working' && x.st !== 'void') return;
       }
     }

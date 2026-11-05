@@ -20,7 +20,12 @@
  *    기본은 꺼짐(앱에서 직접 입력이 기준) — 시트를 계속 쓸 때만 스크립트 속성 COD_SYNC=on. COD_SHEET_ID(기본: 지금 쓰는 시트) · COD_TAB(기본 COD 입력). 시트 ID 칸이 비면 ID 를 만들어 시트에 써 둠(중복 없음). testCodSync 로 바로 실행.
  *    (appsscript.json 에 spreadsheets 권한 — setup 을 다시 ▶ 실행해 권한 허용)
  *
- * 🔔 앱 알림(notifyq): 주문 확인 요청 · 주문 문제 · 문의를 이메일로, 스크립트 속성 CHAT_WEBHOOK 이 있으면 구글 챗 스페이스에도 (5분마다 같이)
+ * 🔔 앱 알림(notifyq): 1분마다 (notifyFast) — 받는 사람마다 ① 📱💻 팝업(웹 푸시: 앱을 닫아도 컴퓨터 · 폰에 뜸) ② 구글 챗 ③ 이메일
+ *    · 세일즈맨에게 가는 것 → 그 세일즈맨 개인 방(CHAT_WEBHOOK_코드)에만. 개인 방이 없으면 챗은 보내지 않음 (단톡방으로 가지 않음)
+ *    · 사무실 · 담당자에게 가는 것 → 사무실 방(CHAT_WEBHOOK_OFFICE, 없으면 CHAT_WEBHOOK)
+ *    · 사람 한 명에게(💬 메시지) → 그 사람 개인 방(세일즈맨이면 CHAT_WEBHOOK_코드, 아니면 CHAT_WEBHOOK_U_아이디) + 팝업 (메일 없음)
+ *    · 팝업은 앱에서 🔔 알림 켜기를 한 기기에 (pushTokens) — appsscript.json 의 firebase.messaging 권한 · setup 다시 ▶ 필요. testPush 로 내 기기에 시험
+ *    (예전 설명) 앱 알림(notifyq): 주문 확인 요청 · 주문 문제 · 문의를 이메일로, 스크립트 속성 CHAT_WEBHOOK 이 있으면 구글 챗 스페이스에도 (5분마다 같이)
  *    세일즈맨에게 가는 것은 그 세일즈맨 전용 방(스크립트 속성 CHAT_WEBHOOK_BRANDON 처럼 코드별 웹훅)으로 — 다른 세일즈맨은 못 봄. 전용 방이 없으면 공용 방.
  *    방에서는 그 사람을 @멘션 → 구글 챗이 폰 알림을 보냄. 멘션에 쓰는 사용자 ID 는 Admin Directory 로 찾음
  *    (appsscript.json 에 AdminDirectory 서비스 · 권한 포함 — setup 을 다시 ▶ 실행해 권한 허용, testChat 으로 확인)
@@ -38,8 +43,16 @@ const DEFAULT_TO = 'check@theonefl.com';
 function setup() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('run').timeBased().everyMinutes(5).create();
+  ScriptApp.newTrigger('notifyFast').timeBased().everyMinutes(1).create();   // 🔔 알림 · 팝업은 1분마다
   run();
-  Logger.log('설치 완료 — 5분마다 Daily Report 를 보냅니다');
+  Logger.log('설치 완료 — 5분마다 Daily Report · 1분마다 알림 · 팝업');
+}
+/** 🔔 1분마다 — 알림 대기열만 (Daily Report · 사진 등은 5분마다 run) */
+function notifyFast() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(3000)) return;
+  try { notifyRun_(); } catch (e) { Logger.log('알림 보내기 실패: ' + e.message); }
+  finally { lock.releaseLock(); }
 }
 
 /** 시험 메일 — 나에게만 */
@@ -100,30 +113,82 @@ function notifyRun_() {
   const settings = getDoc_('settings', 'app') || {};
   const staff = String(settings.reportTo || DEFAULT_TO).split(/[,;\s]+/).filter(isEmail_);
   const props = PropertiesService.getScriptProperties();
-  const hookOf = sm => (sm && props.getProperty('CHAT_WEBHOOK_' + String(sm).toUpperCase().replace(/[^A-Z0-9]/g, '_'))) || props.getProperty('CHAT_WEBHOOK');   // 세일즈맨 전용 방이 있으면 거기로, 없으면 공용 방
+  const hookKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  const personal = sm => (sm && props.getProperty('CHAT_WEBHOOK_' + hookKey(sm))) || '';                       // 세일즈맨 개인 방 — 없으면 '' (단톡방으로 보내지 않음)
+  const userRoom = u => (u && u.sm && personal(u.sm)) || (u && props.getProperty('CHAT_WEBHOOK_U_' + hookKey(String(u.email || u._id || '').split('@')[0]))) || '';
+  const officeRoom = () => props.getProperty('CHAT_WEBHOOK_OFFICE') || props.getProperty('CHAT_WEBHOOK') || '';
+  let USERS = null; const users = () => USERS || (USERS = listAll_('users').filter(u => u.active !== false));
+  const emailOf = u => String(u.email || u._id || '').toLowerCase();
+  const group = g => users().filter(u => { const r = u.role, j = u.job || 'office';
+    if (g === 'g:all') return true; if (g === 'g:sales') return r === 'salesman';
+    if (g === 'g:wh') return r === 'manager' && (j === 'whmgr' || j === 'pick' || j === 'pickinv');
+    return r === 'admin' || r === 'owner' || (r === 'manager' && j !== 'whmgr' && j !== 'pick' && j !== 'catalog'); }).map(emailOf);   // g:office · g:staff
   list.forEach(n => {
     try {
-      const to = [];
-      if (n.toSm) query_('users', 'sm', String(n.toSm), 5).forEach(u => { const e = u.email || u._id; if (isEmail_(e) && to.indexOf(e) < 0) to.push(e); });
-      if (n.toStaff) staff.forEach(e => { if (to.indexOf(e) < 0) to.push(e); });
-      if (n.to) (Array.isArray(n.to) ? n.to : String(n.to).split(/[,;\s]+/)).map(e => String(e || '').trim().toLowerCase()).filter(isEmail_).forEach(e => { if (to.indexOf(e) < 0) to.push(e); });   // 받는 사람을 직접 적은 알림 (예: 📦 재고 부족 → 설정의 stockAlertTo)
+      const by = String(n.by || '').toLowerCase(), add = (L, e) => { e = String(e || '').trim().toLowerCase(); if (isEmail_(e) && L.indexOf(e) < 0) L.push(e); };
+      /* 받는 사람 */
+      const smUsers = n.toSm ? query_('users', 'sm', String(n.toSm), 5) : [];
+      const toUser = n.toUser ? (users().find(u => emailOf(u) === String(n.toUser).toLowerCase()) || { email: n.toUser }) : null;
+      const mail = [];
+      if (!n.pushOnly && !n.noMail) {
+        smUsers.forEach(u => add(mail, u.email || u._id));
+        if (n.toStaff) staff.forEach(e => add(mail, e));
+        if (n.to) (Array.isArray(n.to) ? n.to : String(n.to).split(/[,;\s]+/)).forEach(e => add(mail, e));
+      }
+      const push = [];
+      smUsers.forEach(u => add(push, u.email || u._id)); if (toUser) add(push, toUser.email || toUser._id);
+      if (n.to) (Array.isArray(n.to) ? n.to : String(n.to).split(/[,;\s]+/)).forEach(e => add(push, e));
+      if (n.toGroup) group(n.toGroup).forEach(e => add(push, e)); else if (n.toStaff) group('g:office').forEach(e => add(push, e));
+      const pushTo = push.filter(e => e !== by);   // 보낸 사람 자신에게는 팝업 안 함
       const lines = String(n.text || '').split('\n');
-      if (to.length) MailApp.sendEmail({ to: to.join(','), subject: n.subject || '[THE ONE] 알림', name: 'THE ONE', replyTo: isEmail_(n.by) ? n.by : REPLY_TO,
+      if (mail.length) MailApp.sendEmail({ to: mail.join(','), subject: n.subject || '[THE ONE] 알림', name: 'THE ONE', replyTo: isEmail_(n.by) ? n.by : REPLY_TO,
         htmlBody: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px">' + lines.map(esc_).join('<br>') + (n.byName || n.by ? '<p style="color:#64748b;font-size:13px">— ' + esc_(n.byName || n.by) + '</p>' : '') +
           (n.url ? '<p><a href="' + esc_(n.url) + '" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:bold">앱에서 열기 · Open in app</a></p>' : '') + '</div>' });
+      /* 구글 챗 — 세일즈맨: 개인 방만 · 한 사람: 그 사람 방 · 그 밖(사무실): 사무실 방 */
       let chat = '';
-      const hook = hookOf(n.toSm);
-      if (n.chat && hook) {
-        /* 받는 세일즈맨을 @멘션 — 구글 챗이 그 사람 폰에 알림을 보냄 (앱이 닫혀 있어도) */
-        const mention = to.filter(e => n.toSm).map(chatId_).filter(Boolean).map(id => '<users/' + id + '>').join(' ');
-        const r = UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: (mention ? mention + ' ' : '') + String(n.text || '') + (n.byName ? '\n— ' + n.byName : '') + (n.url ? '\n' + n.url : '') }), muteHttpExceptions: true });
-        chat = r.getResponseCode() === 200 ? 'ok' : 'error ' + r.getResponseCode();
+      if (n.chat && !n.pushOnly) {
+        /* 방 고르기 — 창고(g:wh): CHAT_WEBHOOK_WH (없으면 사무실 방) · 세일즈맨 전체(g:sales): 세일즈맨마다 개인 방 · 모두(g:all): 개인 방들 + 사무실 방 */
+        const salesRooms = () => users().filter(u => u.role === 'salesman' && u.sm).map(u => personal(u.sm)).filter(Boolean);
+        const hooks = n.toSm ? [personal(n.toSm)] : toUser ? [userRoom(toUser)] : n.toGroup === 'g:wh' ? [props.getProperty('CHAT_WEBHOOK_WH') || officeRoom()] : n.toGroup === 'g:sales' ? salesRooms() : n.toGroup === 'g:all' ? salesRooms().concat([officeRoom()]) : [officeRoom()];
+        const list2 = Array.from(new Set(hooks.filter(Boolean)));
+        list2.forEach(hook => {
+          const ids = (n.toSm ? smUsers.map(u => u.email || u._id) : toUser ? [toUser.email || toUser._id] : []).map(chatId_).filter(Boolean);
+          const mention = ids.map(id => '<users/' + id + '>').join(' ');
+          const r = UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: (mention ? mention + ' ' : '') + String(n.text || '') + (n.byName ? '\n— ' + n.byName : '') + (n.url ? '\n' + n.url : '') }), muteHttpExceptions: true });
+          chat = (chat ? chat + ' · ' : '') + (r.getResponseCode() === 200 ? 'ok' : 'error ' + r.getResponseCode());
+        });
+        if (!list2.length) chat = n.toSm || toUser ? 'no personal room' : 'no room';
       }
-      patch_('notifyq', n._id, { st: 'sent', sentAt: new Date().toISOString(), mailTo: to.join(', '), chat: chat || (n.chat ? 'no webhook' : '') });
+      /* 📱💻 팝업 (웹 푸시) */
+      let pushed = 0;
+      try { pushed = pushTo_(pushTo, (n.subject || '').replace(/^\[THE ONE\]\s*/, '') || 'THE ONE', String(n.text || '').slice(0, 240), n.url || '', n.kind || 'msg'); } catch (e) { Logger.log('팝업 실패: ' + e.message); }
+      patch_('notifyq', n._id, { st: 'sent', sentAt: new Date().toISOString(), mailTo: mail.join(', '), chat: chat || (n.chat && !n.pushOnly ? 'no webhook' : ''), push: pushed, pushTo: pushTo.join(', ') });
     } catch (e) {
       patch_('notifyq', n._id, { st: 'error', err: String(e && e.message || e).substring(0, 300), sentAt: new Date().toISOString() });
     }
   });
+}
+/** 📱💻 웹 푸시 — 그 사람들이 🔔 알림을 켠 기기(pushTokens) 마다 FCM 으로. 없어진 기기는 지움. 보낸 기기 수 */
+function pushTo_(emails, title, body, url, tag) {
+  if (!emails || !emails.length) return 0;
+  let n = 0;
+  emails.forEach(e => {
+    query_('pushTokens', 'email', e, 10).forEach(t => {
+      const r = UrlFetchApp.fetch('https://fcm.googleapis.com/v1/projects/' + PROJECT + '/messages:send', { method: 'post', contentType: 'application/json', headers: headers_(), muteHttpExceptions: true,
+        payload: JSON.stringify({ message: { token: t.token, webpush: { headers: { Urgency: 'high', TTL: '86400' }, data: { title: String(title), body: String(body), url: String(url || ''), tag: 'theone-' + String(tag || 'msg') } } } }) });
+      const c = r.getResponseCode(), txt = r.getContentText();
+      if (c === 200) n++;
+      else if (c === 404 || /UNREGISTERED|registration token is not a valid|NOT_FOUND/.test(txt)) delDoc_('pushTokens', t._id);   // 앱을 지웠거나 알림을 끈 기기
+      else Logger.log('푸시 ' + c + ' ' + e + ': ' + txt.substring(0, 200));
+    });
+  });
+  return n;
+}
+/** 시험 — 내 기기(앱에서 🔔 알림 켜기를 한 곳)에 팝업 하나 */
+function testPush() {
+  const me = Session.getActiveUser().getEmail();
+  const n = pushTo_([me], 'THE ONE 알림 시험', '이 팝업이 보이면 웹 푸시가 됩니다 — ' + new Date().toLocaleTimeString(), '', 'test');
+  Logger.log('팝업 보냄: ' + n + '대 (0 이면 앱에서 🔔 알림 켜기를 먼저 · appsscript.json 권한 · setup 다시 실행)');
 }
 
 /* ---------- 📦 체크 봉투 미도착 — 보낸 지 LATE_DAYS 지나도 도착 확인이 안 된 봉투는 세일즈맨 · 담당자에게 한 번 알림 (봉투에 lateAt 기록) ---------- */
@@ -253,6 +318,8 @@ function patch_(col, id, data) {
   const fields = {}; Object.keys(data).forEach(k => { fields[k] = toVal_(data[k]); });
   UrlFetchApp.fetch(BASE + '/' + col + '/' + encodeURIComponent(id) + '?' + mask, { method: 'patch', contentType: 'application/json', payload: JSON.stringify({ fields }), headers: headers_(), muteHttpExceptions: true });
 }
+function listAll_(col) { let out = [], t = ''; do { const res = UrlFetchApp.fetch(BASE + '/' + col + '?pageSize=300' + (t ? '&pageToken=' + encodeURIComponent(t) : ''), { headers: headers_(), muteHttpExceptions: true }); if (res.getResponseCode() !== 200) break; const j = JSON.parse(res.getContentText()); (j.documents || []).forEach(d => out.push(fromDoc_(d))); t = j.nextPageToken || ''; } while (t); return out; }
+function delDoc_(col, id) { UrlFetchApp.fetch(BASE + '/' + col + '/' + encodeURIComponent(id), { method: 'delete', headers: headers_(), muteHttpExceptions: true }); }
 function fromDoc_(d) { const o = fromFields_(d.fields || {}); o._id = String(d.name || '').split('/').pop(); return o; }
 function fromFields_(f) { const o = {}; Object.keys(f).forEach(k => { o[k] = fromVal_(f[k]); }); return o; }
 function fromVal_(v) {

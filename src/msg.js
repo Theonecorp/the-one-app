@@ -43,7 +43,7 @@ export function start() {
     const old = new Set(INBOX.map(m => m.id)); INBOX = rows.slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
     const fresh = FIRST ? [] : INBOX.filter(m => !old.has(m.id) && m.from !== me());
     FIRST = false; paintBadge();
-    if (fresh.length) { Notify.beep(); const m = fresh[0]; toast('💬 ' + esc(m.fromName || m.from) + ': ' + esc(String(m.text || '').slice(0, 60)), 'good'); Notify.phone('💬 ' + (m.fromName || m.from), String(m.text || '').slice(0, 120), Notify.appUrl('msg')); if (OPEN) paintPanel(); }
+    if (fresh.length) { Notify.beep(); const m = fresh[0]; toast('💬 ' + esc(m.fromName || m.from) + ': ' + esc(String(m.text || '').slice(0, 60)), 'good'); Notify.phone('💬 ' + (m.fromName || m.from), String(m.text || '').slice(0, 120), Notify.appUrl('msg'), 'theone-msg'); if (OPEN) paintPanel(); }
   }));
   STOP.push(S.DB.watch('msgs', { where: [['from', '==', me()], ['at', '>=', since]] }, rows => { SENT = rows.slice().sort((a, b) => String(b.at).localeCompare(String(a.at))); if (OPEN) paintPanel(); }));
 }
@@ -88,6 +88,9 @@ async function markRead() {
 
 /* ---------- 💬 보내기 ---------- */
 /** 받을 수 있는 곳 — 역할에 따라 */
+/* 👤 사람 한 명에게 — 담당자 · 관리자는 다른 직원(세일즈맨 제외)을 골라 보냄 (그 사람 기기 팝업 + 개인 방). 세일즈맨은 사용자 목록을 못 읽어 묶음만 */
+let PEOPLE = null;
+async function loadPeople() { if (PEOPLE || !S.me || S.me.role === 'salesman') return; try { PEOPLE = (await S.DB.list('users')).filter(u => u.active !== false && u.role !== 'salesman' && String(u.email || u.id || '').toLowerCase() !== me()).map(u => { const e = String(u.email || u.id).toLowerCase(); return ['u:' + e, '👤 ' + (u.name || e.split('@')[0])]; }).sort((a, b) => a[1].localeCompare(b[1])); } catch (e) { PEOPLE = []; } }
 function targets() {
   const r = S.me && S.me.role, L = [];
   if (r === 'salesman') { L.push(['g:office', '🏢 ' + bt('사무실', 'Office')], ['g:wh', '📦 ' + bt('창고', 'Warehouse')]); }
@@ -95,11 +98,13 @@ function targets() {
     L.push(['g:office', '🏢 ' + bt('사무실', 'Office')], ['g:wh', '📦 ' + bt('창고', 'Warehouse')], ['g:sales', '🚗 ' + bt('세일즈맨 전체', 'All salesmen')]);
     (S.sms || []).filter(x => x.active !== false).forEach(x => L.push(['sm:' + x.code, '🧑‍💼 ' + (x.name ? x.name + ' (' + x.code + ')' : x.code)]));
     if (isTop()) L.push(['g:all', '📣 ' + bt('모두', 'Everyone')]);
+    (PEOPLE || []).forEach(p => L.push(p));
   }
   return L;
 }
 /** opt: { to, toLabel, ref:{kind,id,label}, quote, text } */
-export function compose(opt) {
+export async function compose(opt) {
+  await loadPeople();
   opt = opt || {}; const T = targets(); let to = opt.to || (T[0] && T[0][0]) || '';
   if (to && !T.some(x => x[0] === to)) T.unshift([to, opt.toLabel ? '👤 ' + opt.toLabel : labelOf(to)]);
   openModal('<h2>💬 ' + bi('메시지 보내기', 'Send a message') + '</h2>' +
@@ -128,8 +133,11 @@ export async function sendMsg(m) {
   await S.DB.set('msgs', id, doc);
   /* 닫혀 있는 폰에도 — 이메일 · 구글 챗 (세일즈맨 → toSm · 사무실/창고/모두 → toStaff) */
   const n = { kind: 'msg', subject: '[THE ONE] 💬 ' + myName() + ': ' + m.text.slice(0, 40), text: m.text + (m.ref && m.ref.label ? '\n🔗 ' + m.ref.label : ''), url: Notify.appUrl('msg'), chat: true };
-  if (m.to.indexOf('sm:') === 0) n.toSm = m.to.substring(3); else if (m.to === 'g:sales' || m.to === 'g:all') { n.toSm = ''; n.toStaff = m.to === 'g:all'; } else n.toStaff = true;
-  if (m.to.indexOf('u:') !== 0 && !m.quiet) Notify.queue(n).catch(() => {});   // quiet: 부르는 쪽이 이메일 · 챗을 따로 보냄 (예: 📦 재고 부족 → stockAlertTo)
+  if (m.to.indexOf('sm:') === 0) n.toSm = m.to.substring(3);
+  else if (m.to.indexOf('u:') === 0) { n.toUser = m.to.substring(2); n.noMail = true; }   // 한 사람에게: 그 사람 기기 팝업 + 개인 방 (메일 없음)
+  else { n.toGroup = m.to; n.toStaff = m.to !== 'g:sales' && m.to !== 'g:wh'; }   // 그룹: 그 그룹 사람들 기기 팝업 · 사무실 방 · (사무실이면) 담당자 메일
+  if (m.quiet) { n.pushOnly = true; delete n.toStaff; }   // quiet: 팝업만 — 메일 · 챗은 부르는 쪽이 따로 (예: 📦 재고 부족 → stockAlertTo)
+  Notify.queue(n).catch(() => {});
   return doc;
 }
 /** 라우트 #/msg — 알림 창 열기 (폰 알림 · 이메일 링크에서) */
