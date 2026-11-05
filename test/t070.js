@@ -1,5 +1,5 @@
 /* v0.8.81 시험 — ① 프리셋으로 같은 아이템을 여러 번 누르면 주황색 + ×2 (카드 · 주문 확인 줄 · 저장 확인창), 직접 고치면 지워짐
- *   ② 창고 매니저 홈: 재고 · UPS 출고 · 픽업 · 백오더가 먼저, 주문 처리는 아래 작은 칸 · (2026-11 화면에 맞춤: v0.8.125 부터 홈은 큰 묶음 4개 — 창고 매니저는 📦 출고 묶음이 기본으로 펼쳐지고 📥 주문 접수 묶음은 접혀 있음) */
+ *   ② 창고 매니저 홈: 재고 · UPS 출고 · 픽업 · 백오더가 먼저, 주문 처리는 아래 작은 칸 · (2026-11 화면에 맞춤: v0.8.125 부터 홈은 큰 묶음 4개 · v0.8.166 부터 🛒 세일 / 🚚 배송 — 창고 매니저는 📦 출고 묶음이 기본으로 펼쳐지고 📥 주문 접수 묶음은 접혀 있음) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -45,7 +45,7 @@ const path = require('path');
   log('groups:', grps, 'nav:', nav);
   const open = grps.filter(g => /\*:/.test(g));
   if (open.length !== 1 || !/^ship\*:/.test(open[0]) || !/ups/.test(open[0]) || !/packed/.test(open[0]) || !/done/.test(open[0]) || !/bo\b/.test(open[0]) || !/shipped/.test(open[0])) errs.push('warehouse tiles should come first (출고 묶음만 기본으로 펼쳐짐: ' + open.join(' ') + ')');
-  if (!grps.some(g => /^recv:/.test(g) && /flow|sent/.test(g))) errs.push('order tiles should be below (주문 접수 묶음은 접힌 채)');
+  if (!grps.some(g => /^sale:/.test(g) && /flow|sent/.test(g))) errs.push('order tiles should be below (🛒 세일 묶음은 접힌 채 — v0.8.166: 📥 주문 접수 → 🛒 세일)');
   if (!grps.some(g => /\bitems\b/.test(g)) || !grps.some(g => /\btrack\b/.test(g))) errs.push('items · tracking tiles should be on the whmgr home');
   await pg.screenshot({ path: path.resolve(__dirname, 'out', 'whmgr_home.png'), fullPage: true });
   await pg.click('[data-hg="ups"]'); await pg.waitForTimeout(1000); log('ups tile →', (await pg.textContent('#page')).replace(/\s+/g, ' ').slice(0, 80));
