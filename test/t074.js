@@ -16,7 +16,7 @@ const path = require('path');
   await pg.click('#cM [data-m="CREDIT CARD"]'); await pg.waitForTimeout(200);
   const refL = await txt(pg, '#cRefL'); log('ref label (card):', refL); if (!/승인번호|Auth/.test(refL)) errs.push('card ref label should say auth #');
   await pg.selectOption('#cSm', 'BRANDON'); await pg.fill('#cStore', 'ALI B'); await pg.waitForSelector('#cHits [data-a="1111"]'); await pg.click('#cHits [data-a="1111"]');
-  await pg.waitForSelector('#cOpen [data-oi]', { timeout: 8000 }).catch(() => errs.push('open invoice chips should appear after picking the store'));
+  const tc = Date.now(); await pg.waitForSelector('#cOpen [data-oi]', { timeout: 8000 }).catch(() => errs.push('open invoice chips should appear after picking the store')); log('TIMING chips appeared after', Date.now() - tc, 'ms');
   const chips = await pg.$$eval('#cOpen [data-oi]', b => b.map(x => x.dataset.oi + '=' + x.textContent.replace(/\s+/g, ' ').trim())); log('chips:', chips);
   if (!chips.some(c => /A10055/.test(c) && /800/.test(c))) errs.push('A10055 with $800 balance should be offered');
   if (chips.some(c => /A10021/.test(c))) errs.push('A10021 is paid by E1 — should not be offered');
@@ -37,7 +37,9 @@ const path = require('path');
   await pg.fill('#cAmt', '800'); await pg.click('#cMore'); await pg.fill('[data-cno="1"]', 'A10021'); await pg.fill('[data-camt="1"]', '0'); await pg.fill('#cAmt', '800');
   await pg.evaluate(() => { window.__TL = []; const el = document.getElementById('toast'); if (el && !window.__TO) { window.__TO = new MutationObserver(() => { if (el.classList.contains('on')) window.__TL.push(el.className + ': ' + el.textContent); }); window.__TO.observe(el, { attributes: true, childList: true, subtree: true, characterData: true }); } });
   const before2 = await pg.evaluate(() => ({ rows: Array.from(document.querySelectorAll('[data-cno]')).map(x => x.value + '/' + (document.querySelector('[data-camt="' + x.dataset.cno + '"]') || {}).value), amt: document.getElementById('cAmt').value, sum: (document.getElementById('cSum') || {}).textContent, ovr: !!document.querySelector('.ovr'), busy: document.body.className }));
-  await pg.click('#cSave'); const asked2 = await pg.waitForSelector('#cfOk', { timeout: 10000 }).then(() => true).catch(() => { errs.push('duplicate invoice should ask'); return false; });
+  await pg.waitForTimeout(500);   // 같은 파란 버튼을 0.45초 안에 다시 누르면 앱이 두 번 누름으로 보고 버림 (main.js) — 빠른 CI 에서 두 번째 저장이 사라지던 원인
+  const ts = Date.now(); await pg.click('#cSave'); const asked2 = await pg.waitForSelector('#cfOk', { timeout: 10000 }).then(() => true).catch(() => { errs.push('duplicate invoice should ask'); return false; });
+  log('TIMING dup ask', asked2 ? 'shown after ' + (Date.now() - ts) + ' ms' : 'NOT shown in 10 s');
   if (!asked2) {   /* CI 에서만 가끔 — 무슨 일이 있었는지 남김 */
     const diag = await pg.evaluate(() => ({ toasts: window.__TL, ovr: (document.querySelector('.ovr') || {}).outerHTML || '', modal: !!document.querySelector('#modal.on'), cod: Object.values(window.__MOCK_STORE__.cod).filter(x => x.method === 'CREDIT CARD').map(x => x.ref + ':' + x.amt + ':' + (x.invs || []).map(v => v.no).join(',')), e1: JSON.stringify(Object.values(window.__MOCK_STORE__.entries).filter(e => (e.invs || []).some(v => /10021/.test(v.no))).map(e => ({ id: e.id, d: e.d, acct: e.acct, void: e.void, repl: e.repl, invs: e.invs }))) }));
     console.log('DIAG before:', JSON.stringify(before2)); console.log('DIAG after:', JSON.stringify(diag).slice(0, 1500));
