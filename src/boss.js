@@ -156,7 +156,7 @@ export async function commEstimate() { await loadAll(); const pr = presets(), cu
 function paintEstimate() {
   const box = $('estBox'); if (!box) return;
   const pr = presets(), cur = pr.list.find(x => x.k === pr.cur), o = overview(cur.from, cur.to);
-  box.innerHTML = '<div class="hero" style="font-size:26px">' + money(o.tot.pay) + '</div><div class="heroSub">' + cur.label + ' (' + o.from + ' ~ ' + o.to + ') · 수금 ' + money(o.tot.total) + ' · 미확인 ' + o.tot.pend + '건 · 수령 대기 ' + o.tot.wait + '건</div>' +
+  box.innerHTML = '<div class="hero" style="font-size:26px">' + money(o.tot.pay) + '</div><div class="heroSub">' + cur.label + ' (' + rangeLbl() + ') · 수금 ' + money(o.tot.total) + ' · 미확인 ' + o.tot.pend + '건 · 수령 대기 ' + o.tot.wait + '건</div>' +
     (o.list.length ? '<table style="margin-top:8px">' + o.list.map(x => '<tr class="tap" data-est="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b></td><td class="r muted">' + (x.pend ? x.pend + ' 미확인' : '') + '</td><td class="r"><b>' + money(x.pay) + '</b></td></tr>').join('') + '</table><div class="hint" style="text-align:center">✓ 확인된 줄 기준 · 이름을 누르면 정산으로</div>' : '<div class="none">이 기간에 정산할 줄이 없습니다</div>');
   box.querySelectorAll('[data-est]').forEach(el => el.onclick = () => { P.sm = el.dataset.est; P.from = cur.from; P.to = cur.to; Router.go('pay'); });
 }
@@ -174,19 +174,26 @@ function smDetail(sm) {
 /* ============================================================
  *  ② 정산
  * ============================================================ */
-let P = { sm: '', from: '', to: '', sbOnly: true, waitOpen: false, hist: false }, DED = null, DOVER = {}, LAST_C = null;
+/* 📋 기본은 "미정산 전체" — 세일즈맨을 고르면 담당자 확인을 거쳐 넘어온 미정산 기록이 기간과 상관없이 전부 나오고, 확정하면 📁 보관함으로 빠짐. 기간 칩 · 날짜는 좁혀 볼 때만 */
+let P = { sm: '', from: '', to: '', all: true, sbOnly: true, waitOpen: false, hist: false }, DED = null, DOVER = {}, LAST_C = null;
+const ALL_FROM = '0000-01-01', ALL_TO = '9999-12-31';
+const rangeFrom = () => P.all ? ALL_FROM : P.from, rangeTo = () => P.all ? ALL_TO : P.to, rangeLbl = () => P.all ? '미정산 전체' : P.from + ' ~ ' + P.to;
+/* 정산서 · 보관에 적는 기간 — 미정산 전체로 봤으면 실제 줄의 첫 날 ~ 끝 날 */
+const stmtRange = c => { if (!P.all) return [P.from, P.to]; const ds = ((c && c.lines) || []).map(L => L.d).filter(Boolean).sort(); return [ds[0] || today(), ds[ds.length - 1] || today()]; };
 async function pagePay() {
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
   await loadAll(true);
   const pr = presets(); if (!P.from) { const c = pr.list.find(x => x.k === pr.cur); P.from = c.from; P.to = c.to; }
-  const o = overview(P.from, P.to);
-  let h = '<div class="card"><h2>🧾 정산 — 확인 후 커미션 확정</h2><div class="chips">' + pr.list.map(x => '<button class="' + (P.from === x.from && P.to === x.to ? 'on' : '') + '" data-pp="' + x.from + '|' + x.to + '">' + x.label + '</button>').join('') + '</div>' +
+  const o = overview(rangeFrom(), rangeTo());
+  let h = '<div class="card"><h2>🧾 정산 — 확인 후 커미션 확정</h2><div class="chips"><button class="' + (P.all ? 'on' : '') + '" data-pall>📋 미정산 전체</button>' + pr.list.map(x => '<button class="' + (!P.all && P.from === x.from && P.to === x.to ? 'on' : '') + '" data-pp="' + x.from + '|' + x.to + '">' + x.label + '</button>').join('') + '</div>' +
     '<div class="payhd">' + sel('pSm', [['', '— 세일즈맨 전체 —']].concat(S.sms.filter(s => s.active !== false).map(s => [s.code, s.code])), P.sm) + inputDate('pFrom', P.from) + '<span class="muted">~</span>' + inputDate('pTo', P.to) + '</div>' +
-    '<div class="payopt"><label><input type="checkbox" id="pSb" ' + (P.sbOnly ? 'checked' : '') + '> 담당자 접수 확인(①)된 것만 — 커미션 대상</label><button class="b-ghost b-sm" id="pHist">📁 정산 완료</button><button class="b-ghost b-sm" id="pRates">% 요율표</button></div></div><div id="pOut"></div>';
+    '<div class="payopt"><label><input type="checkbox" id="pSb" ' + (P.sbOnly ? 'checked' : '') + '> 담당자 접수 확인(①)된 것만 — 커미션 대상</label><button class="b-ghost b-sm" id="pHist">📁 보관함 (정산 완료)</button><button class="b-ghost b-sm" id="pRates">% 요율표</button></div>' +
+    (P.all ? '<div class="hint" style="text-align:left">📋 담당자 확인을 거쳐 넘어온 <b>미정산 기록 전부</b>입니다 (기간 상관없음). 확정하면 이 목록에서 빠져 📁 보관함으로 갑니다 — 기간을 좁히려면 위 칩이나 날짜를 고르세요.</div>' : '') + '</div><div id="pOut"></div>';
   $('page').innerHTML = h;
-  document.querySelectorAll('[data-pp]').forEach(b => b.onclick = () => { const [f, t] = b.dataset.pp.split('|'); P.from = f; P.to = t; P.hist = false; pagePay(); });
+  document.querySelector('[data-pall]').onclick = () => { P.all = true; P.hist = false; pagePay(); };
+  document.querySelectorAll('[data-pp]').forEach(b => b.onclick = () => { const [f, t] = b.dataset.pp.split('|'); P.from = f; P.to = t; P.all = false; P.hist = false; pagePay(); });
   $('pSm').onchange = () => { P.sm = $('pSm').value; P.hist = false; DED = null; DOVER = {}; pagePay(); };
-  $('pFrom').onchange = () => { P.from = $('pFrom').value; pagePay(); }; $('pTo').onchange = () => { P.to = $('pTo').value; pagePay(); };
+  $('pFrom').onchange = () => { P.from = $('pFrom').value; P.all = false; pagePay(); }; $('pTo').onchange = () => { P.to = $('pTo').value; P.all = false; pagePay(); };
   $('pSb').onchange = () => { P.sbOnly = $('pSb').checked; pagePay(); };
   $('pHist').onclick = () => { P.hist = true; P.sm = ''; pagePay(); }; $('pRates').onclick = ratesOpen;
   if (P.hist) return paintHistory();
@@ -195,17 +202,17 @@ async function pagePay() {
 }
 function paintCards(o) {
   const box = $('pOut');
-  if (!o.list.length) { box.innerHTML = '<div class="card"><div class="none">이 기간에 정산할 게 없습니다</div></div>'; return; }
-  box.innerHTML = '<div class="card"><h2>💵 전원 지급액 · ' + o.from + ' ~ ' + o.to + '</h2><div class="hero" style="font-size:26px">' + money(o.tot.pay) + '</div><div class="heroSub">수금 ' + money(o.tot.total) + ' · 미확인 ' + o.tot.pend + '건 · 수령 대기 ' + o.tot.wait + '건' + (o.tot.bad ? ' · <b class="warn">금액 오류 ' + o.tot.bad + '건</b>' : '') + '</div>' +
+  if (!o.list.length) { box.innerHTML = '<div class="card"><div class="none">' + (P.all ? '정산할 미정산 기록이 없습니다 — 확정한 것은 📁 보관함에' : '이 기간에 정산할 게 없습니다') + '</div></div>'; return; }
+  box.innerHTML = '<div class="card"><h2>💵 전원 지급액 · ' + rangeLbl() + '</h2><div class="hero" style="font-size:26px">' + money(o.tot.pay) + '</div><div class="heroSub">수금 ' + money(o.tot.total) + ' · 미확인 ' + o.tot.pend + '건 · 수령 대기 ' + o.tot.wait + '건' + (o.tot.bad ? ' · <b class="warn">금액 오류 ' + o.tot.bad + '건</b>' : '') + '</div>' +
     '<table style="margin-top:8px"><tr><th>이름</th><th class="r">수금 ✓</th><th class="r">지급액</th><th class="r">남음</th></tr>' + o.list.map(x => '<tr class="tap" data-pgo="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b>' + (x.sal ? ' <span class="tag" style="background:#ede9fe;color:#4c1d95">💼 급여제</span>' : '') + '</td><td class="r muted">' + money(x.total) + '</td><td class="r"><b>' + (x.sal ? '<span class="muted">급여</span>' : money(x.pay)) + '</b></td><td class="r">' + (x.pend ? '<span class="warn">' + x.pend + '</span>' : x.wait ? '<span style="color:#1e40af">' + x.wait + '📥</span>' : '✓') + '</td></tr>').join('') + '</table>' +
     '<div class="btns"><button class="b-navy" id="pAllPrint">🖨 전원 정산서 한 번에</button></div><div class="hint" style="text-align:center">✓ 확인된 줄만 계산 · 이름을 누르면 그 사람 정산으로</div></div>' +
     '<div class="card"><h2>세일즈맨별 확인 현황</h2>' + o.list.map(c => { const left = Math.max(0, c.n - c.done - c.bad); return '<div class="pr tap" data-pgo="' + esc(c.sm) + '"><div class="mk" style="background:' + (left ? '#fef3c7' : '#dcfce7') + ';color:' + (left ? '#92400e' : '#166534') + '">' + (left || '✓') + '</div><div class="ct"><b>' + esc(c.sm) + '</b><small>' + c.n + '건 · 확인 ' + c.done + (c.bad ? ' · 문제 ' + c.bad : '') + (c.wait ? ' · <span style="color:#1e40af">수령 대기 ' + c.wait + '</span>' : '') + '</small></div><div class="pa"><b>' + money(c.amt) + '</b><small>' + (left ? left + '건 남음' : '확인 끝') + '</small></div></div>'; }).join('') + '</div>';
   box.querySelectorAll('[data-pgo]').forEach(el => el.onclick = () => { P.sm = el.dataset.pgo; DED = null; DOVER = {}; pagePay(); });
-  $('pAllPrint').onclick = () => { const names = o.list.filter(x => x.c.lines.length); if (!names.length) return toast('✓ 된 줄이 있는 세일즈맨이 없습니다', 'bad'); printOpen('<div class="muted" style="font-size:12px;margin-bottom:10px">전원 정산서 · ' + names.length + '명 · ' + o.from + ' ~ ' + o.to + ' · 지급액 합계 ' + money(o.tot.pay) + '</div>' + names.map((x, i) => '<div class="' + (i < names.length - 1 ? 'pgbrk' : '') + '">' + settlementHtml({ sm: x.sm, day: today(), from: o.from, to: o.to, comm: stmtComm(x.c) }) + '</div>').join('')); };
+  $('pAllPrint').onclick = () => { const names = o.list.filter(x => x.c.lines.length); if (!names.length) return toast('✓ 된 줄이 있는 세일즈맨이 없습니다', 'bad'); printOpen('<div class="muted" style="font-size:12px;margin-bottom:10px">전원 정산서 · ' + names.length + '명 · ' + rangeLbl() + ' · 지급액 합계 ' + money(o.tot.pay) + '</div>' + names.map((x, i) => '<div class="' + (i < names.length - 1 ? 'pgbrk' : '') + '">' + settlementHtml({ sm: x.sm, day: today(), from: stmtRange(x.c)[0], to: stmtRange(x.c)[1], comm: stmtComm(x.c) }) + '</div>').join('')); };
 }
 /* ---- 세일즈맨 한 명 ---- */
 function smRows() {
-  const inR = r => r.d >= P.from && r.d <= P.to, carried = r => !!r.deferred && r.d < P.from && r.d <= P.to;   /* 지난 정산에서 ✓ 안 돼 넘어온 줄 */
+  const inR = r => P.all || (r.d >= P.from && r.d <= P.to), carried = r => !P.all && !!r.deferred && r.d < P.from && r.d <= P.to;   /* 지난 정산에서 ✓ 안 돼 넘어온 줄 */
   const mine = C.ents.filter(e => smOf(e) === P.sm && !e.settled && !e.repl && !e.bounced && (inR(e) || carried(e))), cods = C.cod.filter(c => smOf(c) === P.sm && !c.settled && (inR(c) || carried(c)));
   /* 💳 COD · ACH · 카드가 왜 안 보이는지 — 이 세일즈맨 것 전체(13개월) 중 정산 완료 · 다른 기간 · 세일즈맨 코드 없음 */
   const codAll = C.cod.filter(c => smOf(c) === P.sm), codDiag = { n: cods.length, settled: codAll.filter(c => c.settled && inR(c)).length, other: codAll.filter(c => !c.settled && !inR(c) && !carried(c)).length, noSm: C.cod.filter(c => !String(c.sm || '').trim() && !c.settled && inR(c) && smOf(c) !== P.sm).length };
@@ -240,7 +247,7 @@ const isSal = sm => !!((S.smByCode[sm] || {}).salaried);
 /* ---- 🧮 정산 대조 (수금 흐름 ⑤) — 담당자가 건넨 기록 vs 시스템 "수금 완료" · 걸리는 것(미도착 · 미발송 · 미확인) 목록 ---- */
 const BLK_LABEL = { miss: ['📭 미도착 신고 체크', '#b91c1c'], transit: ['📦 봉투로 보냈지만 아직 도착 전', '#1e40af'], notsent: ['✉️ 아직 회사로 안 보낸 체크', '#b45309'], codpend: ['💳 확인 안 된 COD · ACH · 카드', '#b45309'], noauth: ['💳 카드 승인번호 없음', '#b91c1c'], repl: ['🔁 대체 체크 수금 (원래 수금이 셈)', '#6d28d9'], bounce: ['↩️ 바운스 — 미해결 (잔액 · 커미션에서 빠짐)', '#b91c1c'] };
 function blockersOf(rows) {
-  const B = [], inR = r => r.d >= P.from && r.d <= P.to;
+  const B = [], inR = r => P.all || (r.d >= P.from && r.d <= P.to);
   rows.mine.filter(e => e.envMiss && !e.rc).forEach(e => B.push({ k: 'miss', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
   /* 도착 전 체크는 ① 접수 확인 여부와 상관없이 모두 — 세일즈맨이 적었는데 회사에 아직 없는 돈 */
   const notIn = rows.mine.filter(e => !e.rc && !e.envMiss);
@@ -308,7 +315,7 @@ async function paintSm(o) {
   const allBad = L.map(r => secOfRow(r).bad).filter(Boolean), blocked = allBad.filter(b => b.blocked), warnN = allBad.filter(b => b.derived).length, tolN = allBad.filter(b => b.tol).length, tolSum = R2(sum(allBad.filter(b => b.tol), b => Math.abs(b.diff)));
   const fixes = blocked.length ? '<div class="whybox bad">🔴 <b>인보이스 금액이 받은 돈과 안 맞는 줄 ' + blocked.length + '건</b> (차이 ' + money(sum(blocked, b => Math.abs(b.got - b.alloc))) + ')<br>이 줄들은 <b>이번 정산에서 빠지고</b> 나머지는 확정됩니다. 아래에서 금액을 맞춰 저장하면 바로 들어갑니다.' + blocked.map(b => fixBox(b, rows)).join('') + '</div>' : '';
   const hist = (HIST || []).filter(s => s.sm === P.sm).slice(0, 6);
-  box.innerHTML = '<div class="card"><h2>' + esc(P.sm) + ' · ' + P.from + ' ~ ' + P.to + '</h2><div class="hero" style="font-size:28px">' + money(tot) + '</div><div class="heroSub">' + L.length + '건 (현장 ' + rows.field.length + ' · COD/ACH/카드 ' + rows.cods.length + ')' + (rows.why.closed ? ' · <span class="muted">마감 ' + rows.why.closed + '건 제외</span>' : '') + '</div>' +
+  box.innerHTML = '<div class="card"><h2>' + esc(P.sm) + ' · ' + rangeLbl() + '</h2><div class="hero" style="font-size:28px">' + money(tot) + '</div><div class="heroSub">' + L.length + '건 (현장 ' + rows.field.length + ' · COD/ACH/카드 ' + rows.cods.length + ')' + (rows.why.closed ? ' · <span class="muted">마감 ' + rows.why.closed + '건 제외</span>' : '') + '</div>' +
     (rows.codDiag && !rows.codDiag.n && (rows.codDiag.settled || rows.codDiag.other || rows.codDiag.noSm) ? '<div class="whybox">💳 COD · ACH · 카드가 이 기간에 없습니다 — ' + [rows.codDiag.settled ? '이미 정산 완료 ' + rows.codDiag.settled + '건' : '', rows.codDiag.other ? '다른 기간(날짜) ' + rows.codDiag.other + '건' : '', rows.codDiag.noSm ? '세일즈맨 코드 없는 줄 ' + rows.codDiag.noSm + '건 (수금 확인 → COD·카드에서 세일즈맨을 넣어 주세요)' : ''].filter(Boolean).join(' · ') + '</div>' : '') +
     '<div class="paybar"><i style="width:' + Math.round(done / L.length * 100) + '%;background:#15803d"></i><i style="width:' + Math.round(bad / L.length * 100) + '%;background:#b91c1c"></i></div><div class="heroSub" style="margin-top:6px">확인 <b class="ok">' + done + '</b> · 문제 <b class="warn">' + bad + '</b> · 남음 <b>' + pend + '</b>' + (c.salaried ? '' : ' · 지급액 <b>' + money(c.pay) + '</b>' + (c.ded.amt ? ' (공제 ' + money(c.ded.amt) + ')' : '')) + '</div>' +
     (c.salaried ? '<div class="whybox vio">💼 <b>급여제</b> — 커미션을 계산하지 않습니다. 수금 기록만 맞춰 보고 마감합니다. (커미션 세일즈맨은 관리 → 세일즈맨에서 급여제를 끈 사람)</div>' : '') +
@@ -324,8 +331,8 @@ async function paintSm(o) {
   box.querySelectorAll('[data-dayall]').forEach(b => b.onclick = e => { e.stopPropagation(); setAll({ field: rows.field.filter(x => x.d === b.dataset.dayall), cods: rows.cods.filter(x => x.d === b.dataset.dayall) }, true); });
   box.querySelectorAll('[data-sid]').forEach(el => el.onclick = async () => { const s = await S.DB.get('settlements', el.dataset.sid); if (s) printOpen(settlementHtml(s)); });
   $('pAll').onclick = () => setAll(rows, true); $('pNone').onclick = () => setAll(rows, false);
-  $('pPrint').onclick = () => printOpen(settlementHtml({ sm: P.sm, day: today(), from: P.from, to: P.to, comm: stmtComm(c) }));
-  $('pXlsx').onclick = () => xlsxSave(Object.assign({ sm: P.sm, day: today(), from: P.from, to: P.to }, stmtComm(c)));
+  $('pPrint').onclick = () => printOpen(settlementHtml({ sm: P.sm, day: today(), from: stmtRange(c)[0], to: stmtRange(c)[1], comm: stmtComm(c) }));
+  $('pXlsx').onclick = () => xlsxSave(Object.assign({ sm: P.sm, day: today(), from: stmtRange(c)[0], to: stmtRange(c)[1] }, stmtComm(c)));
   $('pConfirm').onclick = () => confirmAsk(rows);
   box.querySelectorAll('[data-fxsave]').forEach(b => b.onclick = () => fixSave(b.dataset.fxsave, rows));
   box.querySelectorAll('[data-fxin]').forEach(inp => inp.oninput = () => fixSum(inp.dataset.fxin));
@@ -358,7 +365,7 @@ function repaintSm() {
   if (!P.sm || P.hist) return pagePay();
   const y = window.scrollY, box = $('pOut'); if (!box) return pagePay();
   const h = box.offsetHeight; box.style.minHeight = h + 'px';   // 다시 그리는 동안 높이가 줄어 스크롤이 튀지 않게
-  paintSm(overview(P.from, P.to));
+  paintSm(overview(rangeFrom(), rangeTo()));
   requestAnimationFrame(() => { window.scrollTo(0, y); requestAnimationFrame(() => { box.style.minHeight = ''; window.scrollTo(0, y); }); });
 }
 function askNote(title, ph, v) { return new Promise(res => { openModal('<h2>' + esc(title) + '</h2><div class="fg"><input id="nq" value="' + esc(v) + '" placeholder="' + esc(ph) + '"></div><div class="btns"><button class="b-ghost" id="nqX">취소</button><button class="b-red" id="nqOk">! 문제 표시</button></div>'); $('nqX').onclick = () => { closeModal(); res(null); }; $('nqOk').onclick = () => { const t = $('nq').value.trim(); closeModal(); res(t || '문제 있음'); }; setTimeout(() => $('nq').focus(), 50); }); }
@@ -400,7 +407,7 @@ async function confirmAsk(rows) {
   const c = calc(rows); const okLines = c.lines.length; if (!okLines) return toast('✓ 한 줄이 없습니다', 'bad');
   const defer = rows.merged.filter(r => lineState(r.x) !== 'ok').map(r => ({ d: r.x.d, store: r.x.store, amt: r.k === 'f' ? r.x.total : r.x.amt, why: lineState(r.x) === 'bad' ? '문제 표시' : '미확인' }));
   const B = c.blockers || [], G = groupBy(B, b => b.k), r = c.rec;
-  openModal('<h2>' + (c.salaried ? '마감하시겠습니까? <span class="tag" style="background:#ede9fe;color:#4c1d95">💼 급여제</span>' : '확정하시겠습니까?') + '</h2><div class="muted">' + esc(P.sm) + ' · ' + P.from + ' ~ ' + P.to + '</div>' +
+  openModal('<h2>' + (c.salaried ? '마감하시겠습니까? <span class="tag" style="background:#ede9fe;color:#4c1d95">💼 급여제</span>' : '확정하시겠습니까?') + '</h2><div class="muted">' + esc(P.sm) + ' · ' + rangeLbl() + '</div>' +
     '<table style="margin-top:10px"><tr><td>포함되는 줄</td><td class="r"><b>' + new Set(c.lines.map(L => L.key)).size + '건</b></td></tr><tr><td>수금 합계</td><td class="r"><b>' + money(c.totals.total) + '</b></td></tr>' + (c.salaried ? '<tr><td colspan="2" class="muted" style="font-size:12px">급여제 — 커미션 · 지급액은 계산하지 않고 수금 기록만 보관합니다</td></tr>' : '<tr><td>커미션 NET</td><td class="r">' + money(c.net) + '</td></tr>' +
     (c.ded.amt ? '<tr><td>공제 (' + c.ded.list.filter(d => d.apply > 0).map(d => esc(d.store)).join(', ') + ')</td><td class="r warn">− ' + money(c.ded.amt) + '</td></tr>' : '') + '<tr><td>DP · OFFICE</td><td class="r">− ' + money(R2(c.dp.amt + c.office.amt)) + '</td></tr><tr><td>TOTAL</td><td class="r"><b>' + money(c.pay) + '</b></td></tr>' +
     (c.cashKeep ? '<tr><td>CASH (세일즈맨 보관)</td><td class="r warn">− ' + money(c.cashKeep) + '</td></tr>' : '') + '<tr><td>송금할 금액</td><td class="r"><b style="font-size:17px">' + money(c.finalPay) + '</b></td></tr>') + '</table>' +
@@ -416,10 +423,10 @@ async function confirmGo(rows, c, deferred) {
   busy(true);
   try {
     const id = newId('S'), day = today(), now = new Date().toISOString();
-    const keys = new Set(c.lines.map(L => L.key));
+    const keys = new Set(c.lines.map(L => L.key)), [from, to] = stmtRange(c);
     const ents = rows.field.filter(e => keys.has(e.id)), cods = rows.cods.filter(x => keys.has(x.id));
     const comm = stmtComm(c);
-    const ops = [{ op: 'set', col: 'settlements', id, data: { id, sm: P.sm, day, from: P.from, to: P.to, n: keys.size, pay: c.pay, finalPay: c.finalPay, cashKeep: c.cashKeep, ded: c.ded.amt, net: c.net, office: c.office.amt, dp: c.dp.amt, total: c.totals.total, deferred, skipped: c.skipped.length, kind: c.salaried ? 'salary' : 'comm', rec: comm.rec, blockers: (c.blockers || []).length, comm, createdBy: S.user.email, createdAt: now } }];
+    const ops = [{ op: 'set', col: 'settlements', id, data: { id, sm: P.sm, day, from, to, n: keys.size, pay: c.pay, finalPay: c.finalPay, cashKeep: c.cashKeep, ded: c.ded.amt, net: c.net, office: c.office.amt, dp: c.dp.amt, total: c.totals.total, deferred, skipped: c.skipped.length, kind: c.salaried ? 'salary' : 'comm', rec: comm.rec, blockers: (c.blockers || []).length, comm, createdBy: S.user.email, createdAt: now } }];
     ents.forEach(e => ops.push({ op: 'update', col: 'entries', id: e.id, data: { settled: id, settledAt: day } }));
     cods.forEach(x => ops.push({ op: 'update', col: 'cod', id: x.id, data: { settled: id, settledAt: day } }));
     /* ✓ 안 된 줄은 다음 정산으로 넘김 — 표시만 남겨 다음 기간에서도 보이게 (옛 대시보드 '정산 미룸') */
@@ -431,7 +438,7 @@ async function confirmGo(rows, c, deferred) {
     await S.DB.batch(ops);
     toast('확정 완료 — ' + keys.size + '건' + (deferred ? ' · 다음 정산으로 ' + deferred + '건' : '') + (c.skipped.length ? ' (금액 오류 ' + c.skipped.length + '건 제외)' : ''), 'good');
     HIST = null; C.at = 0; DED = null; DOVER = {};
-    printOpen(settlementHtml({ sm: P.sm, day, from: P.from, to: P.to, comm, conf: { day, id } }));
+    printOpen(settlementHtml({ sm: P.sm, day, from, to, comm, conf: { day, id } }));
     P.sm = ''; await loadAll(true); pagePay();
   } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
   busy(false);
