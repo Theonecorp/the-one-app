@@ -596,8 +596,8 @@ async function invStat() {
 /* ⑤ 이전 시스템 인보이스 목록 — 머리글 이름으로 열을 찾음 */
 export function parseInvoiceList(aoa, fromD) {
   let hi = -1, ix = {};
-  /* 이전 시스템 내보내기마다 머리글이 조금씩 다름 — sales_invoice(invoice · customer# · customer name) · invoice_list(trans # → "trans 3", cusomer # → "cusomer 3", name, slaes order) */
-  const want = { no: /^(invoice|trans)\s*(#|no|3)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /^cus\w*mer\s*(#|3|no)?$|acct|account/i, store: /customer\s*name|store|^name$/i, sm: /sales?\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /s[a-z]*\s*order|^s\.?o\.?$/i };
+  /* 이전 시스템 내보내기마다 머리글이 조금씩 다름 — sales_invoice(invoice · customer# · customer name) · invoice_list(trans # → "trans 3", cusomer # → "cusomer 3", name, slaes order) · 2026-11 sales_invoice("CUSOMTER #") → 고객 번호 열은 cus… 로 시작하고 # · 3 · no 로 끝나면 됨 */
+  const want = { no: /^(invoice|trans)\s*(#|no|3)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /^cus\w*\s*(#|3|no)?$|acct|account/i, store: /customer\s*name|store|^name$/i, sm: /sales?\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /s[a-z]*\s*order|^s\.?o\.?$/i };
   for (let r = 0; r < Math.min(aoa.length, 8) && hi < 0; r++) {
     const row = aoa[r].map(x => String(x == null ? '' : x).trim()); const m = {};
     Object.keys(want).forEach(k => { const c = row.findIndex(h => h && want[k].test(h)); if (c >= 0) m[k] = c; });
