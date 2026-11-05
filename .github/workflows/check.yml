@@ -20,6 +20,8 @@ jobs:
           sh build.sh
           if ! git diff --quiet -- app.js; then
             echo "::error::app.js 가 src 와 다릅니다 — sh build.sh 를 돌려 app.js 를 함께 커밋하세요 (main 머지 뒤에도 다시 빌드)"; git --no-pager diff --stat -- app.js; exit 1; fi
+      - name: i18n.json one entry per line (sorted) — keeps parallel PRs from conflicting
+        run: node tools/i18n.js check
       - name: VER (src/main.js) · app.js?v= (index.html) · CACHE (sw.js) must match
         run: |
           VER=$(grep -o "export const VER = 'v[0-9.]*'" src/main.js | grep -o 'v[0-9.]*')
