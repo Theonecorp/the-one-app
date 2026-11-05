@@ -2,6 +2,7 @@
  *   ① COD 입력 탭: 정산된 건(settled)은 파일 내용이 달라도 건드리지 않음 · 있는 건은 통째로 바꾸지 않고 적은 칸만(createdAt · 취소 표시 유지) · 앱에서 한 ✓ 를 파일의 빈칸이 되돌리지 않음 · 새 줄은 들어옴
  *   ② 세일즈맨 탭: 정산된 수금은 그대로 · ① 접수 확인 · ② 수령 · ✓ 는 파일로 올리기만(TRUE → 반영, 빈칸 → 그대로)
  *   ③ ① 수금 입력(_ENTRIES) 파일: 정산된 수금은 그대로 · 있는 수금은 적은 칸만(① ② ✓ 유지) · 새 수금은 들어옴
+ *   ④ 📌 정산 마감일을 주고 다시 올리면 그 날짜까지의 수금 · COD 는 정산 완료(sheet:날짜)로, 그 뒤 것은 그대로 미정산 · 이미 정산한 것은 그대로
  *   (XLSX 라이브러리는 CDN 이라 시험에서는 window.XLSX 를 가짜로 — 시트 → 표 변환만 흉내) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
@@ -21,7 +22,7 @@ const path = require('path');
       s.cod = (s.cod || []).concat([Object.assign({}, base, { id: 'CS1', amt: 100, v: true, vn: 'ok', settled: 'SET1', settledAt: '2026-10-25', void: false }), Object.assign({}, base, { id: 'CS2', amt: 100, v: true, vn: 'app ok', settled: '', void: false }), Object.assign({}, base, { id: 'CS3', amt: 100, v: false, vn: '', settled: '', void: true })]);
       const eb = s.entries.find(e => e.sm === 'BRANDON') || s.entries[0];
       const mk = (id, o) => Object.assign(JSON.parse(JSON.stringify(eb)), { id, imported: true, void: false }, o);
-      s.entries.push(mk('ES1', { sb: true, rc: true, v: true, settled: 'SET1' }), mk('ES2', { sb: true, rc: true, v: true, settled: '' }), mk('ES3', { sb: false, rc: false, v: false, settled: '' }));
+      s.entries.push(mk('ES1', { sb: true, rc: true, v: true, settled: 'SET1' }), mk('ES2', { sb: true, rc: true, v: true, settled: '' }), mk('ES3', { sb: false, rc: false, v: false, settled: '', d: '2026-10-20', ym: '2026-10' }));   /* ④ 마감일(10-21) 전 날짜 */
     };
     /* 가짜 XLSX — read() 는 위 표를, sheet_to_json(header:1) 은 그 표 그대로 */
     window.__SHEETS = sh;
@@ -57,6 +58,27 @@ const path = require('path');
   if (!E.ES1 || E.ES1.settled !== 'SET1' || E.ES1.total === 999 || E.ES1.memo === 'file 999') errs.push('③ settled entry must stay exactly as it was');
   if (!E.ES2 || E.ES2.total !== 123 || E.ES2.memo !== 'memo from file' || !E.ES2.sb || !E.ES2.rc || !E.ES2.v || E.ES2.settled) errs.push('③ open entry: amount · memo from the file, app ① ② ✓ kept, still unsettled');
   if (!E.ES4 || E.ES4.total !== 55 || E.ES4.sb || E.ES4.v) errs.push('③ new entry comes in fresh');
+  /* ---------- ④ 📌 정산 마감일 ---------- */
+  await pg.fill('#allSettle', '2026-10-21');
+  const codRowD = (id, d, amt) => ['BRANDON', d, '1111', 'ALI B/S # 1', 'COD', '', amt, 'A10055', amt, '', '', '', '', '', '', '', '', id, false, ''];
+  await pg.evaluate(sh => { window.__SHEETS = sh; document.getElementById('impOut').innerHTML = ''; }, { 'COD 입력': [COD_H, codRowD('CS1', '2026-10-20', 100), codRowD('CS2', '2026-10-20', 100), codRowD('CS5', '2026-10-25', 70)], 'BRANDON': [SM_H, ['ES1', false, false, false, '', '', '', ''], ['ES3', false, false, false, '', '', '', '']] });
+  await pg.setInputFiles('#f2', { name: 'THE ONE 수금 (SALES).xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('fake') });
+  await pg.waitForFunction(() => document.querySelectorAll('#impOut .alert').length >= 1 && !document.getElementById('busy').classList.contains('on'), null, { timeout: 30000 }).catch(() => errs.push('④ import should finish'));
+  const msg4 = await pg.$$eval('#impOut .alert', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim()).join(' | ')); log('④ msg:', msg4.slice(0, 240));
+  if (!/📌 2026-10-21 까지 .*건 정산 완료로/.test(msg4)) errs.push('④ message should say rows up to the cutoff were settled');
+  const C4 = await pg.evaluate(() => { const M = window.__MOCK_STORE__; const c = id => M.cod[id] && { settled: M.cod[id].settled, v: M.cod[id].v, amt: M.cod[id].amt }; const e = id => M.entries[id] && { settled: M.entries[id].settled, sb: M.entries[id].sb, rc: M.entries[id].rc, v: M.entries[id].v }; return { CS1: c('CS1'), CS2: c('CS2'), CS5: c('CS5'), ES1: e('ES1'), ES3: e('ES3') }; }); log('④:', JSON.stringify(C4));
+  if (!C4.CS1 || C4.CS1.settled !== 'SET1') errs.push('④ app-settled COD stays SET1');
+  if (!C4.CS2 || C4.CS2.settled !== 'sheet:2026-10-21' || !C4.CS2.v) errs.push('④ COD on/before the cutoff → settled sheet:cutoff');
+  if (!C4.CS5 || C4.CS5.settled || C4.CS5.amt !== 70) errs.push('④ COD after the cutoff stays open');
+  if (!C4.ES1 || C4.ES1.settled !== 'SET1') errs.push('④ app-settled entry stays SET1');
+  if (!C4.ES3 || C4.ES3.settled !== 'sheet:2026-10-21' || !C4.ES3.sb || !C4.ES3.rc || !C4.ES3.v) errs.push('④ entry on/before the cutoff → settled, ① ② ✓ done');
+  /* ① 수금 입력 파일에도 같은 마감일 */
+  await pg.evaluate(sh => { window.__SHEETS = sh; document.getElementById('impOut').innerHTML = ''; }, { _ENTRIES: [EH, er('ES4', 55, 'brand new'), Object.assign(er('ES5', 60, 'after cutoff'), { 1: '2026-10-25', 17: '2026-10-25' })] });
+  await pg.setInputFiles('#f1', { name: 'THE ONE 수금 입력.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('fake') });
+  await pg.waitForFunction(() => document.querySelectorAll('#impOut .alert').length >= 1 && !document.getElementById('busy').classList.contains('on'), null, { timeout: 30000 }).catch(() => errs.push('④ main import should finish'));
+  const E4 = await pg.evaluate(() => { const M = window.__MOCK_STORE__; const e = id => M.entries[id] && { d: M.entries[id].d, settled: M.entries[id].settled, v: M.entries[id].v }; return { ES4: e('ES4'), ES5: e('ES5') }; }); log('④ main:', JSON.stringify(E4));
+  if (!E4.ES4 || E4.ES4.settled !== 'sheet:2026-10-21' || !E4.ES4.v) errs.push('④ _ENTRIES on/before the cutoff → settled');
+  if (!E4.ES5 || E4.ES5.settled || E4.ES5.d !== '2026-10-25') errs.push('④ _ENTRIES after the cutoff stays open');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();
