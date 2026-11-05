@@ -2,6 +2,7 @@
 #   아래쪽 줄이 위쪽 줄보다 우선합니다. 한 줄에 여러 명이면 그중 한 명의 승인으로 충분합니다.
 #   관리자(@Theonecorp)는 모든 파일의 담당 = 최종 승인.
 #   디자인 담당 · 창고 매니저는 저장소 협업자 초대를 수락한 뒤 GitHub 아이디(@아이디)를 해당 줄 끝에 더합니다.
+#   창고 매니저: @pzrk2rcdpm-cmyk · 디자인 담당: (초대 수락 뒤 추가)
 #   공개 저장소라 이메일 주소는 넣지 않습니다.
 
 *                           @Theonecorp
@@ -15,13 +16,13 @@
 /data/photo-index.json      @Theonecorp
 
 # 📦 창고 매니저 — 재고 · UPS · 픽업 · 배송 · 아이템 · 출고 흐름
-/src/stock.js               @Theonecorp
-/src/ship.js                @Theonecorp
-/src/pickup.js              @Theonecorp
-/src/track.js               @Theonecorp
-/src/items.js               @Theonecorp
-/src/catalog.js             @Theonecorp
-/src/scan.js                @Theonecorp
-/src/fulfill.js             @Theonecorp
-/src/flow.js                @Theonecorp
-/apps-script/UPS.gs         @Theonecorp
+/src/stock.js               @Theonecorp @pzrk2rcdpm-cmyk
+/src/ship.js                @Theonecorp @pzrk2rcdpm-cmyk
+/src/pickup.js              @Theonecorp @pzrk2rcdpm-cmyk
+/src/track.js               @Theonecorp @pzrk2rcdpm-cmyk
+/src/items.js               @Theonecorp @pzrk2rcdpm-cmyk
+/src/catalog.js             @Theonecorp @pzrk2rcdpm-cmyk
+/src/scan.js                @Theonecorp @pzrk2rcdpm-cmyk
+/src/fulfill.js             @Theonecorp @pzrk2rcdpm-cmyk
+/src/flow.js                @Theonecorp @pzrk2rcdpm-cmyk
+/apps-script/UPS.gs         @Theonecorp @pzrk2rcdpm-cmyk
