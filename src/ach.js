@@ -82,7 +82,21 @@ function achTag(a) { return !a || !a.ach ? '<span class="tag t-k">신규 · Appl
  *  ① 입력
  * ============================================================ */
 const F = { acct: '', store: '', sm: '', invDate: today(), terms: 'ACH 30', drawOn: '', touched: false, lines: [{ no: '', amt: '' }], note: '' };
-function resetF() { Object.assign(F, { acct: '', store: '', sm: '', invDate: today(), terms: 'ACH 30', drawOn: '', touched: false, lines: [{ no: '', amt: '' }], note: '' }); }
+function resetF() { Object.assign(F, { acct: '', store: '', sm: '', invDate: today(), terms: 'ACH 30', drawOn: '', touched: false, lines: [{ no: '', amt: '' }], note: '' }); AOPEN = []; AOPEN_ACCT = ''; }
+/* 🛡 미결 인보이스를 읽어 칩으로 — 탭하면 번호 · 잔액이 줄에 그대로 들어감 (손으로 치다 번호 · 금액이 어긋나는 일 방지, COD · 카드 입력과 같음) */
+let AOPEN = [], AOPEN_ACCT = '', AOPEN_P = null, AOPEN_LOADING = false;
+async function loadOpenA(acct) { AOPEN = []; AOPEN_ACCT = acct; AOPEN_LOADING = true; paintOpenA(true); const p = (async () => { try { const { storeInfo } = await import('./store.js'); const info = await storeInfo(acct); if (F.acct !== acct) return; AOPEN = (info.invs || []).filter(v => v.bal > 0.005).map(v => ({ no: invNo(v.no), d: v.d, bal: R2(v.bal) })); AOPEN.sort((x, y) => x.no < y.no ? -1 : 1); } catch (e) {} if (AOPEN_ACCT === acct) AOPEN_LOADING = false; paintOpenA(); paintChkA(); })(); AOPEN_P = p; return p; }
+function paintOpenA(loading) {
+  const box = $('aOpen'); if (!box) return;
+  if (!F.acct || AOPEN_ACCT !== F.acct) { box.innerHTML = ''; return; }
+  if (loading) { box.textContent = '미결 인보이스 읽는 중…'; return; }
+  const used = new Set(F.lines.map(v => invNo(v.no)).filter(Boolean)), L = AOPEN.filter(v => !used.has(v.no));
+  box.innerHTML = AOPEN.length ? '📄 미결 인보이스 <span class="en">Open invoices</span> — 탭하면 줄에 들어갑니다 <span class="en">tap to add</span><div class="chips" style="margin-top:4px">' + L.map(v => '<button type="button" data-ao="' + esc(v.no) + '" title="' + esc(v.d || '') + '">' + esc(v.no) + ' <span class="en">' + money(v.bal) + '</span></button>').join('') + (L.length ? '' : '<span class="muted">모두 들어갔습니다 · all added</span>') + '</div>' : '<span class="muted">이 가게에 미결 인보이스가 없습니다 · no open invoices</span>';
+  box.querySelectorAll('[data-ao]').forEach(b => b.onclick = () => { const v = AOPEN.find(x => x.no === b.dataset.ao); if (!v) return; collectNew(); let R = F.lines.find(x => !x.no && !num(x.amt)); if (!R) { R = { no: '', amt: '' }; F.lines.push(R); } R.no = v.no; R.amt = v.bal.toFixed(2); paintNew(); });
+}
+/* 줄마다 미결 인보이스와 맞춰 봄 — 번호가 미결 목록에 없거나(오타 · 이미 결제됨) 금액이 잔액과 다르면(부분 결제 · 오타) 표시 · 저장 확인 창에도 같이 적음 */
+function lineIssues() { if (!AOPEN.length || AOPEN_ACCT !== F.acct) return []; const out = []; F.lines.forEach(x => { const no = invNo(x.no); if (!no) return; const v = AOPEN.find(o => o.no === no); if (!v) out.push('⚠️ ' + no + ' — 이 가게 미결 인보이스에 없음 (번호 확인)'); else if (Math.abs(R2(num(x.amt)) - v.bal) > 0.009) out.push('⚠️ ' + no + ' — 입력 ' + money(num(x.amt)) + ' ≠ 잔액 ' + money(v.bal)); }); return out; }
+function paintChkA() { const el = $('aChk'); if (!el) return; const L = lineIssues(); el.innerHTML = L.map(t => '<div class="warn">' + esc(t) + '</div>').join(''); }
 function calcDraw() { if (F.touched) return; const days = Number(String(F.terms).replace(/[^0-9]/g, '')); if (!F.invDate || !days) { F.drawOn = ''; F.moved = false; return; } const raw = addDays(F.invDate, days); F.drawOn = nextBiz(raw); F.moved = F.drawOn !== raw; }
 async function paintNew() {
   calcDraw();
@@ -97,13 +111,14 @@ async function paintNew() {
   }
   h += '<div class="two" style="margin-top:10px"><div class="fg"><label>인보이스 날짜 <span class="en">Invoice date</span></label><input id="aInvD" type="date" value="' + esc(F.invDate) + '"></div><div class="fg"><label>조건 <span class="en">Terms</span></label>' + sel('aTerms', TERMS().concat(TERMS().includes(F.terms) ? [] : [F.terms]), F.terms) + '</div></div>' +
     '<div class="fg"><label>인출 예정일 <span class="en">Draw date</span> <span style="font-weight:400">— 자동 계산 (고치면 그대로 씁니다)</span></label><div class="pdrow"><input id="aDraw" type="date" value="' + esc(F.drawOn) + '"><button type="button" class="pdclr" id="aDrawAuto">자동 Auto</button></div><div class="hint" style="margin:4px 0 0">' + (F.touched ? '직접 고친 날짜입니다' : F.moved ? '주말·휴일이라 다음 영업일로 옮겼습니다' : '') + '</div></div>' +
-    '<label>인보이스 <span class="en">Invoices</span></label><div id="aLines">' + F.lines.map((v, i) => lineRow(v, i)).join('') + '</div><button type="button" class="b-ghost b-sm" id="aMore">＋ 인보이스 추가</button>' +
+    '<label>인보이스 <span class="en">Invoices</span></label><div id="aOpen" class="muted" style="font-size:12px;margin:0 0 6px"></div><div id="aLines">' + F.lines.map((v, i) => lineRow(v, i)).join('') + '</div><div id="aChk" class="muted" style="font-size:12px"></div><button type="button" class="b-ghost b-sm" id="aMore">＋ 인보이스 추가</button>' +
     '<div class="paytot" style="margin-top:10px">합계 Total <b id="aTot">' + money(lineTotal()) + '</b></div>' +
     '<div class="fg"><label>메모 <span class="en">Note</span> (선택)</label><input id="aNote" value="' + esc(F.note) + '" placeholder="예: 부분 결제 · 손님 요청"></div>' +
     '<button class="b-blue" id="aSave" style="padding:16px;font-size:17px">저장 · SAVE</button></div>';
   h += '<div class="card"><h2>오늘 넣은 건 <span class="en">Entered today</span></h2><div id="aMine" class="load">읽는 중…</div></div>';
   $('achBody').innerHTML = h;
   bindNew();
+  paintOpenA(AOPEN_LOADING); paintChkA();
   loadMine();
 }
 function lineRow(v, i) { const t = v.no ? invType(v.no) : '?'; return '<div class="ivr" data-li="' + i + '"><span class="ity ' + (t === '?' ? '' : t) + '">' + t + '</span><input class="ino" data-lno="' + i + '" value="' + esc(v.no) + '" placeholder="A00001 / CM0001" autocomplete="off" autocapitalize="characters"><input class="iam" data-lamt="' + i + '" inputmode="decimal" value="' + esc(v.amt) + '" placeholder="0.00"><button type="button" class="idel" data-ldel="' + i + '">✕</button></div>'; }
@@ -128,11 +143,11 @@ function bindNew() {
   $('aDrawAuto').onclick = () => { collectNew(); F.touched = false; paintNew(); };
   $('aMore').onclick = () => { collectNew(); F.lines.push({ no: '', amt: '' }); paintNew(); setTimeout(() => { const L = document.querySelectorAll('[data-lno]'); L[L.length - 1].focus(); }, 0); };
   document.querySelectorAll('[data-ldel]').forEach(b => b.onclick = () => { collectNew(); F.lines.splice(+b.dataset.ldel, 1); if (!F.lines.length) F.lines.push({ no: '', amt: '' }); paintNew(); });
-  document.querySelectorAll('[data-lno]').forEach(el => { el.oninput = () => { el.value = el.value.toUpperCase(); const t = el.value ? invType(el.value) : '?'; const b = el.parentNode.querySelector('.ity'); b.textContent = t; b.className = 'ity ' + (t === '?' ? '' : t); }; el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); document.querySelector('[data-lamt="' + el.dataset.lno + '"]').focus(); } }; });
-  document.querySelectorAll('[data-lamt]').forEach(el => { el.oninput = () => { el.value = el.value.replace(/[^0-9.]/g, ''); collectNew(); $('aTot').textContent = money(lineTotal()); }; el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); if (e.ctrlKey || e.metaKey) return saveNew(false); $('aMore').click(); } }; });
+  document.querySelectorAll('[data-lno]').forEach(el => { el.oninput = () => { el.value = el.value.toUpperCase(); const t = el.value ? invType(el.value) : '?'; const b = el.parentNode.querySelector('.ity'); b.textContent = t; b.className = 'ity ' + (t === '?' ? '' : t); collectNew(); paintChkA(); paintOpenA(); }; el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); document.querySelector('[data-lamt="' + el.dataset.lno + '"]').focus(); } }; });
+  document.querySelectorAll('[data-lamt]').forEach(el => { el.oninput = () => { el.value = el.value.replace(/[^0-9.]/g, ''); collectNew(); $('aTot').textContent = money(lineTotal()); paintChkA(); }; el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); if (e.ctrlKey || e.metaKey) return saveNew(false); $('aMore').click(); } }; });
   $('aSave').onclick = () => saveNew();
 }
-function pickAcct(code) { const a = acctInfo(code); if (!a) return; F.acct = a.acct; F.store = a.store; F.sm = a.sm || ''; if (a.terms && /ACH/i.test(a.terms)) { const t = a.terms.toUpperCase().replace(/ACH\s*/, 'ACH '); F.terms = t; } F.touched = false; paintNew(); setTimeout(() => { const f = document.querySelector('[data-lno]'); if (f) f.focus(); }, 0); }
+function pickAcct(code) { const a = acctInfo(code); if (!a) return; F.acct = a.acct; F.store = a.store; F.sm = a.sm || ''; if (a.terms && /ACH/i.test(a.terms)) { const t = a.terms.toUpperCase().replace(/ACH\s*/, 'ACH '); F.terms = t; } F.touched = false; paintNew(); loadOpenA(a.acct); setTimeout(() => { const f = document.querySelector('[data-lno]'); if (f) f.focus(); }, 0); }
 async function saveNew(force) {
   collectNew();
   if (!F.acct) return toast('가게를 골라 주세요', 'bad');
@@ -145,10 +160,12 @@ async function saveNew(force) {
   const amt = sum(lines, v => num(v.amt));
   /* 중복: 같은 가게 · 같은 인보이스 번호가 미완료 건에 있으면 */
   if (!force) {
+    if (AOPEN_P) { try { await AOPEN_P; } catch (e) {} }   // 미결 인보이스를 다 읽은 뒤에 맞춰 봄
+    const warn = lineIssues(), warnTxt = warn.length ? '\n' + warn.join('\n') + '\n(미결 인보이스 칩을 탭해서 넣으면 번호 · 잔액이 그대로 들어갑니다 · 부분 결제가 맞으면 그대로 저장)' : '';
     const open = await openRows(); const nos = lines.map(v => v.no);
     const dup = open.filter(o => o.acct === F.acct && (o.lines || []).some(l => nos.includes(l.no)));
-    if (dup.length) { if (!(await confirmBox('이미 들어 있는 인보이스입니다:\n' + dup.map(o => o.inv + ' · ' + money(o.amt) + ' · 인출 ' + o.drawOn).join('\n') + '\n\n그래도 저장할까요?', '그래도 저장'))) return; }
-    else if (!(await confirmBox(F.store + ' · ' + money(amt) + ' · 인출 ' + F.drawOn + '\n' + nos.join(', ') + '\n저장할까요? · Save?', '저장 Save'))) return;
+    if (dup.length) { if (!(await confirmBox('이미 들어 있는 인보이스입니다:\n' + dup.map(o => o.inv + ' · ' + money(o.amt) + ' · 인출 ' + o.drawOn).join('\n') + warnTxt + '\n\n그래도 저장할까요?', '그래도 저장'))) return; }
+    else if (!(await confirmBox(F.store + ' · ' + money(amt) + ' · 인출 ' + F.drawOn + '\n' + nos.join(', ') + warnTxt + '\n저장할까요? · Save?', warn.length ? '그대로 저장' : '저장 Save'))) return;
   }
   const id = newId('H'), now = new Date().toISOString();
   const doc = { id, acct: F.acct, store: F.store, sm: F.sm || '', lines: lines.map(v => ({ no: v.no, t: invType(v.no), amt: R2(num(v.amt)) })), inv: lines.map(v => v.no).join(', '), amt, invDate: F.invDate, terms: F.terms, drawOn: F.drawOn, drawYm: ym(F.drawOn), moved: !!F.moved && !F.touched, fixed: !!F.touched,
