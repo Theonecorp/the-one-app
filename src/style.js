@@ -33,7 +33,7 @@ button{font-family:inherit;cursor:pointer}
 .b-blue,.b-green,.b-ghost,.b-red,.b-navy{border:0;border-radius:13px;padding:13px 14px;font-size:15px;font-weight:800;width:100%}
 .b-blue{background:var(--blue);color:#fff}.b-green{background:var(--green);color:#fff}.b-red{background:var(--red);color:#fff}.b-navy{background:var(--navy);color:#fff}.b-ghost{background:#e2e8f0;color:var(--ink)}
 .b-sm{width:auto;padding:7px 11px;font-size:12.5px;border-radius:8px}
-.btns{display:flex;gap:8px;margin-top:12px}
+.btns{display:flex;gap:8px;margin-top:12px}.btns.foot{margin:14px 0 6px;flex-wrap:wrap}
 .sticky{position:sticky;bottom:calc(var(--navh,72px) + env(safe-area-inset-bottom,0px));z-index:30;padding:10px 0 0;background:linear-gradient(to top,var(--bg) 70%,transparent)}
 input,select,textarea{width:100%;font-size:16px;padding:12px 13px;border:1.5px solid var(--line);border-radius:12px;outline:none;font-family:inherit;background:#fff;color:var(--ink)}
 input:focus,select:focus,textarea:focus{border-color:var(--blue)}

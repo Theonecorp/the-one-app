@@ -9,7 +9,7 @@
  *  orderLines/{id} = { sm, lines:[{c, d, q, p, lp, t, pq?, note?}] }   (lp = 목록가, t = 인보이스 종류, pq = 픽킹 수량)
  *  st: draft(임시저장) → sent(보냄) → pick(픽킹 중) → done(인보이스 확정) · x(취소)
  * ============================================================ */
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp, footBtns } from './ui.js';
 import { REQ_KINDS, reqClean, reqText, reqCount } from './reqs.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
@@ -517,6 +517,7 @@ function viewOrder(o, lines, local) {
   else if (mine && ['pick', 'ok', 'picked'].includes(o.st) && o.cfIssueOpen) B.push('<span class="muted" style="align-self:center">⏳ ' + bi('사무실에 보낸 요청 처리 중', 'Request sent to the office') + '</span>');
   if (B.length) h += '<div class="card"><div class="btns" style="margin-top:0">' + B.join('') + '</div></div>';
   h += '<div class="card"><h2>아이템 ' + lines.length + '줄</h2><input id="oFind" placeholder="이 주문 안에서 찾기" autocomplete="off" style="margin-bottom:6px"><div id="oLines"></div></div>';
+  if (B.length) h += footBtns(B.join(''));   // ⤵ 줄 목록 아래에도 같은 단추 (✅ 확인 · 📤 보내기)
   $('page').innerHTML = h;
   const paint = () => {
     const q = $('oFind').value.trim().toUpperCase();
