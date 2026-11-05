@@ -11,11 +11,27 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 - UI 문구에 사람 이름을 쓰지 않는다 (관리자 · 담당자 · 회계 담당 · 세일즈맨). 커밋 · 코드에 모델 이름을 넣지 않는다.
 - main 에 직접 푸시하지 않는다. 브랜치 → PR → `check` 워크플로 초록 → squash 머지.
 
+## 팀 · 담당 영역 (관리자 · 디자인 담당 · 창고 매니저)
+여러 사람이 각자 Claude 세션으로 같은 저장소를 고친다. 요청한 사람의 역할을 먼저 확인하고 그 영역 안에서 고친다.
+
+| 역할 | 영역 | 주 파일 |
+|---|---|---|
+| 관리자 | 전체 · 공용 뼈대 · 배포 · 데이터 | 전부. 특히 `ui.js` `style.js` `main.js` `db.js` `i18n.js` `sw.js` `index.html` `build.sh` `firestore.rules` `.github/` `tools/` |
+| 디자인 담당 | 사진 · 라벨 · 카탈로그 화면 · 분류 일괄 변경 | `src/photos.js` `src/labels.js` `src/catpage.js` `src/lvtool.js` `apps-script/SharePhotos.gs` `data/photo-index.json` |
+| 창고 매니저 | 재고 · UPS · 픽업 · 배송 · 아이템 · 출고 흐름 | `src/stock.js` `src/ship.js` `src/pickup.js` `src/track.js` `src/items.js` `src/catalog.js` `src/scan.js` `src/fulfill.js` `src/flow.js` `apps-script/UPS.gs` |
+
+- 담당은 `.github/CODEOWNERS` 와 같다 — 그 파일이 바뀌는 PR 에는 담당자에게 리뷰 요청이 자동으로 간다. 관리자는 모든 파일의 담당(최종 승인).
+- **영역 밖 파일**을 고쳐야 하면 최소한으로만 고치고 PR 설명 맨 위에 `영역 밖 변경: 파일 — 이유` 를 적는다. 공용 뼈대(위 표의 관리자 파일)를 크게 바꾸는 일은 관리자에게 넘긴다.
+- **머지는 관리자 승인 뒤** (main 보호 규칙). 디자인 담당 · 창고 매니저 세션은 PR 까지만 만들고 머지하지 않는다.
+- **저장소 밖 반영은 관리자만**: `firestore.rules` 배포, `apps-script/*` 를 Apps Script 에 붙여 넣고 배포, 라이브 Firestore 데이터 일괄 수정. 서비스 계정 키(`FIREBASE_*`)는 관리자 개인 클라우드 환경에만 있다. 다른 담당의 PR 은 설명에 `배포 필요: …` 로 적고 관리자가 반영한다.
+- **팀 공용 클라우드 환경에는 비밀값을 넣지 않는다** — 공용 환경의 변수는 모든 멤버의 세션이 읽는다. `FIREBASE_*` 가 없는 세션은 라이브 Firestore 에 쓰지 않는다.
+- **동시 작업**: 같은 날 여러 PR 이 열린다. 푸시 전마다 `sh tools/sync-main.sh` (최신 main 합치기 · 버전을 main 다음 번호로 · app.js 다시 빌드 · 번역 문구 합치기). PR 이 머지되기 전에 main 이 또 움직였으면 다시 실행.
+
 ## 변경 한 번의 순서
-1. `git fetch origin main && git merge origin/main` — **먼저 최신 main 을 합친다** (다른 세션의 변경을 잃지 않기 위해).
+1. `sh tools/sync-main.sh` — **먼저 최신 main 을 합친다** (다른 세션의 변경을 잃지 않기 위해). 버전 세 곳 · app.js · i18n.json 은 이 스크립트가 충돌 없이 처리하고, 남는 충돌은 진짜 src 충돌뿐이다.
 2. `src/` 수정 → `sh build.sh` (app.js 다시 빌드. src 를 고쳤으면 반드시). build.sh 는 package-lock 에 고정된 esbuild(node_modules)만 쓴다 — `npx esbuild` 를 직접 부르지 않는다 (버전이 다르면 app.js 가 통째로 달라져 CI 가 막는다).
-3. 버전 세 곳을 같이 올린다: `src/main.js` 의 `VER`, `index.html` 의 `app.js?v=`, `sw.js` 의 `CACHE` 이름(`theone-shell-vNNN`). 하나라도 빠지면 폰이 옛 앱을 계속 쓴다.
-4. 새 UI 문구가 있으면 `i18n.json` 에 EN · PT 를 넣는다.
+3. 버전 세 곳을 같이 올린다: `src/main.js` 의 `VER`, `index.html` 의 `app.js?v=`, `sw.js` 의 `CACHE` 이름(`theone-shell-vNNN`). 하나라도 빠지면 폰이 옛 앱을 계속 쓴다. 손으로 고치지 말고 `node tools/version.js bump origin/main` (main 다음 번호) — `sh tools/sync-main.sh` 도 src 가 바뀐 브랜치면 알아서 올린다.
+4. 새 UI 문구가 있으면 `i18n.json` 에 EN · PT 를 넣는다: `node tools/i18n.js add '한글' 'English' 'Português'` 또는 i18n.json 에 한 줄 추가. i18n.json 은 **한 줄에 한 문구 · 정렬** 형식이고 `sh build.sh` 가 매번 정리한다 (CI 가 형식을 확인).
 5. 시험: 새 시험 + 관련 시험 `node test/tNNN.js`. **푸시 전에는 반드시 `sh test/run-par.sh`(전체 시험 4조각 동시, 약 7분)로 전부 통과를 확인한다.** 하나라도 ❌ 이면 고칠 때까지 푸시하지 않는다 — PR 의 CI 실패는 관리자에게 메일로 간다. 화면을 바꿨으면 그 화면을 쓰는 옛 시험도 같이 고친다.
 6. 커밋 → 푸시 → PR → GitHub Actions `check` 가 ① app.js 가 src 와 같은지 ② 버전 세 곳 ③ 시험 전부를 확인 → 머지.
 7. **머지 뒤 main 을 다시 받아 `sh build.sh` 를 한 번 더** — 두 브랜치의 src 가 합쳐졌으면 app.js 도 다시 빌드돼야 한다 (충돌을 한쪽으로 풀면 상대 기능이 빠진 app.js 가 배포되는 사고의 원인).
