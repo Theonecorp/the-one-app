@@ -42,6 +42,6 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 ## 어디에 무엇이 있나
 - `src/main.js` 로그인 · 역할(관리자 `ADMIN_EMAILS` · 오너 · 담당자 job · 세일즈맨) · 서랍 메뉴 · 모드 바꾸기 · 라우터
 - `src/db.js` Firestore/메모리 DB 한 겹 (`DB.get/list/set/update/del/batch`, 시험은 `window.__MOCK__` 메모리) · `src/catalog.js` 아이템 · 분류 · 사진 색인 · `src/orders.js` 주문 · `src/admin.js` 관리 · 가져오기 · `src/mgr.js` 담당자 · `src/store.js` 가게 창
-- `firestore.rules` 권한 (배포는 Firebase 콘솔 또는 규칙 API) · `apps-script/` 메일 · 사진 색인 · 백업 · UPS
+- `firestore.rules` 권한 — 배포는 `node tools/deploy-rules.js` (서비스 계정 `FIREBASE_SERVICE_ACCOUNT` 또는 `FIREBASE_CLIENT_EMAIL`+`FIREBASE_PRIVATE_KEY` 가 있는 관리자 환경에서 · `--check` 는 문법만) 또는 Firebase 콘솔 · `apps-script/` 메일 · 사진 색인 · 백업 · UPS
 - `data/photo-index.json` 드라이브 사진 색인(앱 바탕) — `SharePhotos.gs` 가 이 파일과 Firestore `catalog/photoIndex`(Code.gs 가 한 시간마다 item_picture 를 훑어 씀)의 사진을 링크 공개로 바꿈
 - `test/` Playwright 시험 (`test/demo.html` + `test/seed.js` 메모리 데이터로 로그인 없이 돈다) · `test/INDEX.md` 기능 등록부
