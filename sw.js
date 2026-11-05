@@ -1,11 +1,18 @@
 /* THE ONE — 인터넷이 없어도 앱이 열리게 화면 파일만 폰에 보관 (데이터는 Firestore 가 따로 보관)
  *  · index.html / app.js : 먼저 인터넷에서 새로 받고, 안 되면 보관본
  *  · Firebase SDK (gstatic, 버전 고정) · 아이콘 : 보관본 먼저 */
-const CACHE = 'theone-shell-v172';
+const CACHE = 'theone-shell-v173';
 const IMG = 'theone-img-v1', IMG_MAX = 6000; let IMG_N = 0;   /* 정리는 100장마다 한 번만 (매번 전체 목록을 세면 느려짐) */   /* 📷 아이템 사진 썸네일 (드라이브 · Shopify) — 본 것부터 보관, 오프라인에서도 보임 */
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './logo.png', './logo-96.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== IMG).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+/* 📱💻 웹 푸시 — Apps Script 가 FCM 으로 보낸 알림을 화면에 (앱 창이 닫혀 있어도). 앱이 방금 같은 알림(같은 tag)을 띄웠으면 소리 없이 바꿔 끼움 */
+self.addEventListener('push', e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (x) { d = { data: { body: e.data ? e.data.text() : '' } }; }
+  const n = d.notification || {}, x = d.data || {}, title = n.title || x.title || 'THE ONE', body = n.body || x.body || '', tag = x.tag || n.tag || 'theone', url = x.url || (d.fcmOptions && d.fcmOptions.link) || './';
+  e.waitUntil(self.registration.getNotifications({ tag }).then(old => { const fresh = old.some(o => o.data && o.data.at && Date.now() - o.data.at < 180000);
+    return self.registration.showNotification(title, { body, tag, renotify: !fresh, silent: fresh, icon: 'icon-192.png', badge: 'icon-192.png', data: { url, at: Date.now() } }); }));
+});
 /* 🔔 폰 알림을 누르면 앱으로 (열려 있으면 그 창, 없으면 새로) */
 self.addEventListener('notificationclick', e => {
   e.notification.close();

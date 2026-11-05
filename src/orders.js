@@ -308,6 +308,7 @@ async function staffHome() {
   if (can('ship')) T.push(tile('ups', '🚚', bi('UPS 출고', 'UPS Shipping'), '읽는 중…', 'green'), tile('packed', '📮', bi('UPS 픽업 · 트럭 인계', 'UPS Pickup'), '읽는 중…'));
   T.push(tile('shipped', '📬', bi('출고 완료', 'Shipped'), '읽는 중…'));
   if (can('bo')) T.push(tile('bo', '⏳', bi('백오더', 'Backorders'), '읽는 중…'));
+  if (can('ship') || can('invoice') || can('newOrder')) T.push(tile('displays', '🖼', bi('디스플레이 출고', 'Display shipments'), '읽는 중…', 'amber'));
   const A = [];
   if (can('newOrder')) A.push(tile('new', '🛒', bi('새 주문', 'New order'), '가게 고르고 담기', 'blue'));
   if (can('invoice') || can('invLookup') || can('verify')) A.push(tile('inv', '📄', bi('인보이스 조회', 'Invoices'), '가게 · 날짜 · 번호'));
@@ -322,7 +323,7 @@ async function staffHome() {
   /* 담당자 홈 = 주문 처리 먼저 (접수 · 픽킹 · 인보이스 · 포장), 바로가기, 매출은 맨 아래 */
   /* 🏭 창고 매니저 — 주문 처리보다 재고 · UPS 출고 · 픽업 · 백오더가 먼저 (주문 처리 타일은 아래 작은 칸) */
   /* 🗂 큰 묶음 4개로 접어 둠 — 머리를 누르면 펼쳐져 세부 타일 (펼친 상태는 이 폰에 기억). 머리에는 핵심 숫자 */
-  const GRP = [['recv', '📥', '주문 접수', 'Intake', ['flow', 'sent', 'cfw', 'cfok', 'new', 'all']], ['ship', '📦', '출고 · 포장', 'Fulfillment', ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo']],
+  const GRP = [['recv', '📥', '주문 접수', 'Intake', ['flow', 'sent', 'cfw', 'cfok', 'new', 'all']], ['ship', '📦', '출고 · 포장', 'Fulfillment', ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo', 'displays']],
     ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'track', 'cat', 'items']]];
   const allT = T.concat(A), keyOf = h => (h.match(/data-hg="([^"]+)"/) || [])[1];
   const OKEY = 'theone.hgrp.' + j; let openG = null; try { openG = JSON.parse(localStorage.getItem(OKEY) || 'null'); } catch (e) {}
@@ -342,7 +343,7 @@ async function staffHome() {
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
-    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit' || k === 'bounce') return Router.go(k);
+    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit' || k === 'bounce' || k === 'displays') return Router.go(k);
     if (k === 'inv' || k === 'shipped') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
     if (k === 'inv') { LF.im = 'acct'; LF.iacct = ''; LF.iq = ''; }
     LF.st = k; LF.list = true; pageOrder('');
@@ -357,6 +358,7 @@ async function staffHome() {
     const sentIn = ords.filter(o => o.sentAt && o.st !== 'draft' && o.st !== 'x' && inR(o.sentAt)), doneIn = ords.filter(o => (o.st === 'done' || o.st === 'shipped') && o.doneAt && inR(o.doneAt)), shipIn = ords.filter(o => o.st === 'shipped' && o.shipAt && inR(o.shipAt));
     const wait = live.filter(o => o.st === 'sent'), pk = live.filter(o => o.st === 'pick' || o.st === 'ok'), pkd = live.filter(o => o.st === 'picked'), topack = live.filter(o => o.st === 'done'), mine = pk.filter(o => o.picker === S.user.email);
     const put = (id, v) => { const el = $('ht-' + id); if (el) el.innerHTML = v; };
+    if ($('ht-displays')) S.DB.list('displays', { where: [['st', 'in', ['open', 'ready']]] }).then(D => { const late = D.filter(d => d.due && d.due < today()).length; put('displays', D.length ? D.length + bt('건 나갈 것', ' to ship') + (late ? ' · <b class="warn">⚠️ ' + late + bt(' 지남', ' late') + '</b>' : '') : bt('없음', 'none')); }).catch(() => put('displays', ''));
     const nm = (L, f) => L.length ? L.length + '건 · ' + money(L.reduce((a, o) => a + (f ? f(o) : o.amt || 0), 0)) : '없음 · none';
     put('mine', nm(mine)); NewAcct.pendingBanner($('naBanH'));
     /* ⚠️ 하루 넘게 한 단계에 머문 주문 — 누르면 가장 오래된 주문이 있는 칸을 밀린 것만 */

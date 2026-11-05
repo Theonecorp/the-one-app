@@ -89,6 +89,7 @@ export function manage(o, lines) {
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
     (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 ' + bi('가게 기록', 'Store') + '</button>' : '') +
+    (o.st !== 'x' && (can('invoice') || can('newOrder')) ? '<button class="b-ghost b-sm" id="mDisp">🖼 ' + bi('디스플레이 출고', 'Display shipment') + ' <span id="mDispN"></span></button>' : '') +
     (o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>' : '') +
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
     (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
@@ -231,6 +232,8 @@ export function manage(o, lines) {
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 주문으로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mStoreI')) $('mStoreI').onclick = () => storeSheet(o.acct);
+  /* 🖼 이 주문으로 새 디스플레이가 나가야 하면 — 가게 · 요청한 디스플레이(o.req) 를 채워 디스플레이 출고 목록에 */
+  if ($('mDisp')) { import('./displays.js').then(D => { D.countForOrder(o.id).then(n => { if (n && $('mDispN')) $('mDispN').textContent = '(' + n + ')'; }); $('mDisp').onclick = () => D.form({ acct: o.acct || '', store: o.store, sm: o.sm, kinds: Object.fromEntries(Object.entries(o.req || {}).filter(([k]) => ['FLOOR', 'WALL', 'C4', 'C13'].includes(k))), orderId: o.id, orderNo: o.no, after: () => { D.countForOrder(o.id).then(n => { if ($('mDispN')) $('mDispN').textContent = n ? '(' + n + ')' : ''; }); } }); }); }
   if ($('mStoreChg')) $('mStoreChg').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 가게를 바꿀까요? (픽킹 입력은 사라집니다)')) return; changeStore(o, () => goOrder(o.id)); };
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);
@@ -426,14 +429,17 @@ export function pickingHtml(o, lines) {
   const rows = lines.slice().sort(pickSort);   // 📍 통로 · 선반 순 — 위치 없는 것은 맨 뒤 코드 순
   let lastA = null;
   const aisleRow = l => { const a = aisleOf(locOf(l.c)) || ''; if (a === lastA) return ''; lastA = a; return '<tr class="pkaisle"><td colspan="8">' + (a ? '📍 AISLE ' + esc(a) : '📍 위치 미지정 · NO LOCATION') + '</td></tr>'; };
-  return ('<div class="iv" style="min-height:0">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
+  /* 🖨 한 장에 머리 → 바로 아래 표 (예전엔 머리 칸이 인보이스용 "다음 장으로 넘김" 을 가져가 첫 장에 머리만 나오고 표는 둘째 장부터였음)
+   *   표 머리는 장마다 다시 · 줄은 장 사이에서 안 잘림 · 용지는 인보이스 설정(Letter / A4) · 여러 장 묶어 찍으면 주문마다 새 장 */
+  const paper = ((invView(S).paper || company(S).paper) === 'a4') ? 'A4' : 'letter';   // 인보이스 인쇄와 같은 용지
+  return ('<style>@page{size:' + paper + ';margin:.4in}</style><div class="pk"><div class="iv pkhd">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
     '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
     '<br>Rep. ' + esc(o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true)) : '') + '</div></div>' +
-    '<table><tr><th>#</th><th>LOC</th><th>CODE</th><th>DESCRIPTION</th><th>TYPE</th><th class="r">ORDER</th><th class="r">PICKED</th><th>NOTE</th></tr>' +
-    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>' +
+    '<table class="pktbl"><thead><tr><th style="width:26px">#</th><th style="width:52px">LOC</th><th style="width:82px">CODE</th><th>DESCRIPTION</th><th style="width:40px">TYPE</th><th class="r" style="width:52px">ORDER</th><th class="r" style="width:56px">PICKED</th><th style="width:70px">NOTE</th></tr></thead><tbody>' +
+    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td></td><td>' + esc(l.note || '') + '</td></tr>' +
       (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td>' + esc(locOf(k.c)) + '</td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
-    '<tr class="fin"><td colspan="5">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></table>' +
-    '<div class="sig"><div>Picked by</div><div>Checked by</div><div>Date</div></div>');
+    '<tr class="fin"><td colspan="5">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></tbody></table>' +
+    '<div class="sig"><div>Picked by</div><div>Checked by</div><div>Date</div></div></div>');
 }
 function csv(o, lines) {
   const q = s => { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };

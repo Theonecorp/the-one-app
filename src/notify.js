@@ -48,11 +48,11 @@ function badge(n) {
   if (btn) { let s = btn.querySelector('.nbadge'); if (n && !s) { s = document.createElement('span'); s.className = 'nbadge'; btn.appendChild(s); } if (s) { if (n) s.textContent = n; else s.remove(); } }
   document.title = (n ? '(' + n + ') ' : '') + 'THE ONE';
 }
-export async function phone(title, body, url) {
+export async function phone(title, body, url, tag) {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted' || document.visibilityState === 'visible') return;
     const r = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
-    if (r) r.showNotification(title, { body, tag: 'theone-' + title, renotify: true, icon: 'icon-192.png', badge: 'icon-192.png', data: { url } });
+    if (r) r.showNotification(title, { body, tag: tag || ('theone-' + title), renotify: true, icon: 'icon-192.png', badge: 'icon-192.png', data: { url, at: Date.now() } });   // tag = 웹 푸시와 같게 (1분 뒤 푸시가 와도 두 번 울리지 않음)
     else new Notification(title, { body, icon: 'icon-192.png' });
   } catch (e) {}
 }
@@ -60,6 +60,7 @@ export const notifyState = () => !('Notification' in window) ? 'none' : Notifica
 export async function askPermission() {
   if (!('Notification' in window)) return toast(bt('이 기기는 알림을 쓸 수 없습니다 — 아이폰은 홈 화면에 앱으로 설치한 뒤 가능', 'Notifications not available — on iPhone, install the app to the home screen first'), 'bad');
   const p = await Notification.requestPermission();
+  if (p === 'granted') { try { (await import('./push.js')).enable(true); } catch (e) {} }   // 📱💻 앱을 닫아도 뜨게 이 기기 등록
   toast(p === 'granted' ? '🔔 ' + bt('알림을 켰습니다', 'Notifications on') : bt('알림이 꺼져 있습니다 — 브라우저 설정에서 허용하세요', 'Notifications blocked — allow them in browser settings'), p === 'granted' ? 'good' : 'bad');
   return p;
 }
@@ -75,7 +76,7 @@ export function start() {
       const n = req.length + (day.length ? 1 : 0);
       badge(n);
       bar('cfBarS', req.length ? '❓ ' + bt('사무실 확인 요청', 'Office asks you to confirm') + ' <b>' + req.length + '</b>' + bt('건', '') + ' — <u>' + bt('보기', 'view') + '</u>' : '', () => { goHash('#/order/cf'); });
-      if (SEEN.req >= 0 && req.length > SEEN.req) { beep(); toast('❓ ' + bt('사무실에서 주문 확인을 요청했습니다', 'The office asked you to confirm an order'), 'bad'); phone('❓ ' + bt('주문 확인 요청', 'Order check requested'), req.map(o => o.store).slice(0, 3).join(', '), appUrl('order/cf')); }
+      if (SEEN.req >= 0 && req.length > SEEN.req) { beep(); toast('❓ ' + bt('사무실에서 주문 확인을 요청했습니다', 'The office asked you to confirm an order'), 'bad'); phone('❓ ' + bt('주문 확인 요청', 'Order check requested'), req.map(o => o.store).slice(0, 3).join(', '), appUrl('order/cf'), 'theone-cfreq'); }
       SEEN.req = req.length;
     }));
   }
@@ -83,7 +84,7 @@ export function start() {
     /* 매니저: 세일즈맨이 ⚠️ 문제 있음 / 확인 요청에 답하면 */
     STOP.push(S.DB.watch('orders', { where: [['cfIssueOpen', '==', true]] }, rows => {
       bar('cfBarM', rows.length ? '⚠️ ' + bt('세일즈맨이 알린 주문 문제', 'Salesman flagged orders') + ' <b>' + rows.length + '</b>' + bt('건', '') + ' — <u>' + bt('보기', 'view') + '</u>' : '', () => { goHash('#/order/' + rows[0].id); });
-      if (SEEN.iss >= 0 && rows.length > SEEN.iss) { beep(); toast('⚠️ ' + bt('세일즈맨이 주문 문제를 알렸습니다', 'A salesman flagged an order'), 'bad'); phone('⚠️ ' + bt('주문 문제', 'Order issue'), rows.map(o => o.store + ' · ' + (o.cfIssue || '')).slice(0, 2).join(' / '), appUrl('order/' + rows[0].id)); }
+      if (SEEN.iss >= 0 && rows.length > SEEN.iss) { beep(); toast('⚠️ ' + bt('세일즈맨이 주문 문제를 알렸습니다', 'A salesman flagged an order'), 'bad'); phone('⚠️ ' + bt('주문 문제', 'Order issue'), rows.map(o => o.store + ' · ' + (o.cfIssue || '')).slice(0, 2).join(' / '), appUrl('order/' + rows[0].id), 'theone-issue'); }
       SEEN.iss = rows.length;
     }));
   }

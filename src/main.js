@@ -37,12 +37,14 @@ import * as Flow from './flow.js';
 import * as Invlook from './invlook.js';
 import * as Access from './access.js';
 import * as Labels from './labels.js';
+import * as Displays from './displays.js';
+import * as Push from './push.js';
 import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.163';
+export const VER = 'v0.8.164';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -78,7 +80,7 @@ export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct
 export const CAN = {
   office:  ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
   acct:    ['verify', 'cod', 'ach', 'invLookup'],
-  pickinv: ['flow', 'invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],
+  pickinv: ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],   // v0.8.164: 출고 · 인보이스 담당도 주문 넣기
   invoice: ['newOrder', 'invoice', 'void', 'items', 'bo'],
   whmgr:   ['flow', 'assign', 'pick', 'ship', 'items', 'bo'],
   pick:    ['pick', 'ship', 'items'],
@@ -178,7 +180,7 @@ function waitScreen(email) {
   $('nav').innerHTML = '';
   $('page').innerHTML = '<div class="card login"><div class="logo">⏳</div><h1>등록 대기 <span class="en">Not registered yet</span></h1><p>' + esc(email) + ' 계정은 아직 앱에 등록되지 않았습니다.<br>관리자에게 등록을 요청해 주세요.<br><span class="en">This account is not registered. Please ask the administrator.</span></p>' +
     '<button class="b-ghost" id="btnOut">로그아웃 Sign out</button></div>';
-  $('btnOut').onclick = () => S.AUTH.signOut();
+  $('btnOut').onclick = () => { Push.disable().finally(() => S.AUTH.signOut()); };   // 로그아웃 → 이 기기 팝업 등록도 지움
 }
 /* ☰ 서랍 메뉴 — 왼쪽에서 밀려 나오는 메뉴 (회사 · 역할별 묶음 화면 · 설정 · 사용자 · 언어). 아래 메뉴 "모드" · 헤더 ☰ · 이름 누르기 모두 여기로 */
 function userMenu() {
@@ -194,7 +196,7 @@ function userMenu() {
   const settings = '<div class="dsec dset"><small>⚙️ ' + bt('설정', 'Settings') + '</small>' +
     (roles.length ? '<label>' + bt('화면 바꾸기', 'Switch view') + '</label>' + seg(roles.map(r => [r]), 'r', S.role, a => roleLabel(a[0]).split(' ')[0]) + (S.role === 'manager' && isAdm ? seg(JOBS, 'j', jobOf(), a => a[1]) : '') : '') +
     '<label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label>' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', a => a[1]) +
-    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mNet">📡 ' + bt('연결 · 보낼 함', 'Connection · outbox') + '</button><button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
+    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mPush">' + (Notify.notifyState() === 'granted' ? '🔔 ' + bt('팝업 알림 켜짐', 'Pop-ups on') : Notify.notifyState() === 'denied' ? '🔕 ' + bt('팝업 알림 막힘', 'Pop-ups blocked') : '🔔 ' + bt('팝업 알림 켜기', 'Turn on pop-ups')) + '</button><button type="button" class="b-ghost b-sm" id="mNet">📡 ' + bt('연결 · 보낼 함', 'Connection · outbox') + '</button><button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
   const name = S.user.name || S.user.email, ini = String(name).split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase();
   let d = $('drawer'); if (!d) { d = document.createElement('div'); d.id = 'drawer'; document.body.appendChild(d); }
   d.innerHTML = '<div class="dback" id="dBack"></div><aside class="dpanel"><div class="dhead"><img src="logo-96.png" alt=""><b>THE ONE CORP</b><button type="button" class="hb" id="dX">✕</button></div>' +
@@ -207,12 +209,14 @@ function userMenu() {
   d.querySelectorAll('[data-dgo]').forEach(b => b.onclick = () => { close(); const g = b.dataset.dgo, [r, a] = g.split('/'); if (a) Router.go(r, a); else Router.go(g); });
   $('mDiag').onclick = diag;
   if ($('mNet')) $('mNet').onclick = () => { close(); netSheet(); };
+  /* 🔔 팝업 알림 — 컴퓨터 · 폰 화면에 (앱을 닫아도). 이미 켜져 있으면 이 기기 등록을 새로 하고 시험 팝업 */
+  if ($('mPush')) $('mPush').onclick = async () => { close(); const st = Notify.notifyState(); if (st === 'denied') return toast(bt('브라우저 주소창 왼쪽 🔒 → 알림 → 허용 으로 바꾸세요', 'Allow notifications in the browser (🔒 left of the address bar)'), 'bad'); if (st !== 'granted') { await Notify.askPermission(); return; } const ok = await Push.enable(true); toast(ok ? '🔔 ' + bt('이 기기에서 팝업을 받습니다', 'This device gets pop-ups') : bt('이 브라우저는 앱을 닫았을 때 팝업을 받을 수 없습니다 — 앱이 열려 있을 때만', 'This browser only shows pop-ups while the app is open'), ok ? 'good' : 'bad'); if (ok) { try { const r = await navigator.serviceWorker.getRegistration(); if (r) r.showNotification('🔔 THE ONE', { body: bt('팝업 알림이 이렇게 뜹니다', 'Pop-ups look like this'), tag: 'theone-test', icon: 'icon-192.png', data: { url: location.href, at: Date.now() } }); } catch (e) {} } };   // 시험 팝업은 화면이 보일 때도 띄움
   d.querySelectorAll('[data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); userMenu(); });
   if ($('mInst')) $('mInst').onclick = () => { close(); doInstall(); };
   d.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
   d.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { close(); switchRole(b.dataset.r); });
   d.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { close(); S.me.job = b.dataset.j; switchRole('manager'); });
-  $('mOut').onclick = () => { close(); S.AUTH.signOut(); };
+  $('mOut').onclick = () => { close(); Push.disable().finally(() => S.AUTH.signOut()); };
   $('mReload').onclick = () => location.reload();
 }
 /* 🔁 모드만 고르는 작은 창 — 아래 메뉴 "모드" · 헤더의 이름 누르기 (전체 메뉴는 ☰ 서랍) */
@@ -401,7 +405,8 @@ async function afterLogin(user) {
     busy(false);
   }
   paintNav();
-  setTimeout(() => { Notify.start(); Msg.start(); }, snap ? 1500 : 0);   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
+  setTimeout(() => { Notify.start(); Msg.start(); }, snap ? 1500 : 0);
+  setTimeout(() => { Push.enable(false); }, 4000);   // 📱💻 알림을 허락한 기기면 하루 한 번 등록 확인 (앱을 닫아도 팝업)   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
   const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) goHash('#/' + navFor(S.role)[0][0]);
   Router.stack = [];
@@ -453,7 +458,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Msg.register(S); Router.on('msg', Msg.page);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
