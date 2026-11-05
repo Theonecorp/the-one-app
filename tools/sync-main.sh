@@ -24,7 +24,7 @@ else
   # ② 머지
   if ! git merge --no-edit -q origin/main; then
     echo "❌ src 충돌 — 아래 파일을 손으로 풀고 git add · git commit 한 뒤 다시 실행하세요:"; git diff --name-only --diff-filter=U | sed 's/^/   /'
-    echo "   (이 브랜치의 번역 문구는 $TMP/ours.json 에 보관돼 있습니다 — 다시 실행하면 자동으로 다시 넣습니다)"
+    echo "   (이 브랜치의 번역 문구는 .git/sync-ours-i18n.json 에 보관했습니다 — 다시 실행하면 자동으로 다시 넣습니다)"
     cp "$TMP/ours.json" .git/sync-ours-i18n.json; cp "$TMP/base.json" .git/sync-base-i18n.json; exit 1
   fi
   # ③ 번역 합치기
