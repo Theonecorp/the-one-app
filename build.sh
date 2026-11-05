@@ -4,3 +4,5 @@
 cd "$(dirname "$0")" || exit 1
 [ -x node_modules/.bin/esbuild ] || npm ci --silent --no-audit --no-fund || exit 1
 node_modules/.bin/esbuild src/main.js --bundle --format=esm --outfile=app.js --target=es2019 "--external:https://*" --minify --legal-comments=none
+# 번역 사전을 한 줄에 한 문구로 정리 (동시 작업 때 git 충돌을 막음 · tools/i18n.js)
+node tools/i18n.js fmt
