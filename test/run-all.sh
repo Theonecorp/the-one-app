@@ -23,7 +23,8 @@ for f in test/t[0-9]*.js; do   # t040.js … (trunc_scan.js · dbg.js · shot.js
   t=$(( $(date +%s) - s ))
   if [ "$st" = PASS ]; then echo "✅ $name PASS ${t}s"
   elif grep -qx "$name" test/known-fail.txt 2>/dev/null; then warn=$((warn+1)); echo "⚠️ $name $st ${t}s (known-fail — 고치면 known-fail.txt 에서 빼세요)"
-  else fail=$((fail+1)); echo "❌ $name $st ${t}s"; printf '%s\n' "$out" | tail -40 | sed 's/^/     /'; fi
+  # 실패하면 시험이 찍은 줄 위주로 (Playwright 재시도 기록은 뺌)
+  else fail=$((fail+1)); echo "❌ $name $st ${t}s"; printf '%s\n' "$out" | grep -v -E '\[2m|^\s+(- |[0-9]+ × |log: \[|\],?$|.+(waiting for|retrying|scrolling|element is|attempting|locator resolved|intercepts pointer).*$)' | tail -60 | sed 's/^/     /'; fi
 done
 echo "— shard $idx/$n: $total tests · failed $fail · known-fail $warn"
 [ $fail -eq 0 ]
