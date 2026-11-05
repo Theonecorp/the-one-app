@@ -41,7 +41,9 @@ const path = require('path');
   if ((await codN()) !== n0 + 1 || !saved || Math.abs(saved.amt - chip.bal) > 0.009 || !saved.invs || norm(saved.invs[0].no) !== norm(chip.no) || Math.abs(saved.invs[0].amt - chip.bal) > 0.009) errs.push('① matching rows must save with the invoice balance');
   /* ---------- ② ACH ---------- */
   const achN = () => pg.evaluate(() => Object.values(window.__MOCK_STORE__.ach || {}).filter(x => !x.void).length);
-  await pg.evaluate(() => { location.hash = '#/ach'; }); await pg.waitForSelector('[data-at="new"]', { timeout: 8000 }); await pg.click('[data-at="new"]'); await pg.waitForSelector('#aQ');
+  /* 저장 뒤 창 · 작업 중 표시가 완전히 닫힌 다음 ACH 입력 탭으로 (CI 느린 기계에서 탭 클릭이 닫히는 창에 가려 멈추던 것) */
+  await pg.waitForFunction(() => !document.querySelector('#modal.on') && !document.querySelector('.ovr') && !document.getElementById('busy').classList.contains('on'), null, { timeout: 10000 }).catch(() => {});
+  await pg.evaluate(() => { location.hash = '#/ach/new'; }); await pg.waitForSelector('#aQ', { timeout: 10000 });
   await pg.fill('#aQ', '1111'); await pg.waitForTimeout(150); await pg.click('#aHits [data-a]'); await pg.waitForSelector('#aOpen [data-ao]', { timeout: 8000 }).catch(() => errs.push('② ACH must show open-invoice chips after picking the store'));
   const achip = await pg.$eval('#aOpen [data-ao]', b => ({ no: b.dataset.ao, bal: Number(b.querySelector('.en').textContent.replace(/[^0-9.]/g, '')) })).catch(() => null); log('② chip:', JSON.stringify(achip));
   if (achip) {
