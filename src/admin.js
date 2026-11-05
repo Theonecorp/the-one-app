@@ -546,8 +546,10 @@ async function importSales(file) {
   if (!file) return; busy(true); outEl().innerHTML = '';
   try {
     const { XLSX, wb } = await readBook(file);
-    const ops = []; let nC = 0, nF = 0, missing = 0, nShift = 0;
+    const ops = []; let nC = 0, nF = 0, missing = 0, nShift = 0, nDone = 0;
     const cod = aoa(XLSX, wb, 'COD 입력');
+    /* 🔒 앱에서 이미 정산한 건(settled)은 파일을 다시 올려도 건드리지 않음 — 안 그러면 정산이 풀려 또 정산해야 함. 있는 문서는 set 이 아니라 merge(적은 칸만) */
+    const codOld = {}; if (cod) (await S.DB.list('cod')).forEach(x => { codOld[x.id] = x; });
     if (cod) {
       const H = hdrIdx(cod[0], { sm: /세일즈맨/, d: /날짜/, acct: /계정코드/, store: /가게/, method: /결제 방법/, ref: /참조/, amt: /^금액/, invA: /^A 인보이스/, amtA: /^A 금액/, invP: /^P 인보이스/, amtP: /^P 금액/, invCM: /^CM 인보이스/, amtCM: /^CM 금액/, invW: /^W 인보이스/, amtW: /^W 금액/, disc: /디스카운트/, note: /^메모/, id: /^ID$/, v: /정산 확인/, vn: /확인 메모/ });
 
@@ -559,7 +561,10 @@ async function importSales(file) {
         const method = String(r[H.method] || 'COD').trim().toUpperCase();
         /* ID 칸이 비어 있으면 줄 내용으로 같은 ID 를 만듦 — 같은 파일을 다시 올려도 두 번 들어가지 않게 */
         const id = String(r[H.id] || '').trim() || ('C' + hash36([String(r[H.sm]).trim().toUpperCase(), d, pad4(r[H.acct]), method, String(r[H.ref] || '').trim(), R2(num(r[H.amt])), invs.map(v => v.no).join(',')].join('|')));
-        ops.push({ op: 'set', col: 'cod', id, data: { id, d, ym: ym(d), sm: String(r[H.sm]).trim().toUpperCase(), acct: pad4(r[H.acct]), store: String(r[H.store] || '').trim(), method: /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', ref: String(r[H.ref] || '').trim(), amt: R2(num(r[H.amt])), invs, disc: r[H.disc] === '' ? '' : num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1), note: String(r[H.note] || '').trim(), v: r[H.v] === true || /TRUE/i.test(String(r[H.v])), vn: String(r[H.vn] || '').trim(), settled: '', void: false, imported: true } }); nC++; }
+        const old = codOld[id]; if (old && old.settled) { nDone++; continue; }
+        const data = { id, d, ym: ym(d), sm: String(r[H.sm]).trim().toUpperCase(), acct: pad4(r[H.acct]), store: String(r[H.store] || '').trim(), method: /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', ref: String(r[H.ref] || '').trim(), amt: R2(num(r[H.amt])), invs, disc: r[H.disc] === '' ? '' : num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1), note: String(r[H.note] || '').trim(), v: r[H.v] === true || /TRUE/i.test(String(r[H.v])), vn: String(r[H.vn] || '').trim(), settled: '', void: false, imported: true };
+        if (old) { delete data.settled; if (old.void) delete data.void; if (old.v && !data.v) { delete data.v; delete data.vn; } }   /* 있는 건: 앱에서 한 ✓ · 취소 표시를 파일이 되돌리지 않음 */
+        ops.push({ op: 'merge', col: 'cod', id, data }); nC++; }
     }
     const ents = {}; (await S.DB.list('entries', { where: [['imported', '==', true]] })).forEach(e => { ents[e.id] = e; });
     wb.SheetNames.forEach(name => {
@@ -568,15 +573,20 @@ async function importSales(file) {
       const H = hdrIdx(t[0], { sb: /SmartBee/, rc: /체크 수령/, disc: /디스카운트/, note: /담당자 메모/, id: /^ID$/, v: /정산 확인/, vn: /확인 메모/, comm: /커미션 정산/, amtA: /^A 금액/, amtP: /^P 금액/, amtW: /^W 금액/, amtCM: /^CM 금액/, invA: /^A 인보이스/, invP: /^P 인보이스/, invW: /^W 인보이스/, invCM: /^CM 인보이스/ });
       if (H.id < 0) return;
       for (let i = 1; i < t.length; i++) { const r = t[i]; const id = String(r[H.id] || '').trim().split('@')[0]; if (!id) continue; const e = ents[id]; if (!e) { missing++; continue; }
+        if (e.settled) { nDone++; continue; }   /* 🔒 앱에서 정산 끝난 수금은 그대로 */
         const tv = v => v === true || /TRUE/i.test(String(v));
-        const patch = { sb: tv(r[H.sb]), rc: tv(r[H.rc]), v: tv(r[H.v]), vn: String(r[H.vn] || '').trim(), disc: H.disc >= 0 && r[H.disc] !== '' ? num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1) : '', settled: H.comm >= 0 && r[H.comm] ? 'sheet:' + dstr(r[H.comm]) : '' };
+        /* 표시는 올리기만(✓ → 빈칸으로 되돌리지 않음) — 앱에서 한 ① 접수 확인 · ② 수령 · 정산 ✓ 가 옛 파일로 풀리지 않게 */
+        const patch = {}; if (tv(r[H.sb])) patch.sb = true; if (tv(r[H.rc])) patch.rc = true; if (tv(r[H.v])) patch.v = true; const vn = String(r[H.vn] || '').trim(); if (vn) patch.vn = vn;
+        if (H.disc >= 0 && r[H.disc] !== '' && r[H.disc] != null) patch.disc = num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1);
+        if (H.comm >= 0 && r[H.comm]) patch.settled = 'sheet:' + dstr(r[H.comm]);
         if (!(e.invs || []).length) { const invs = []; ['A', 'P', 'CM', 'W'].forEach(tt => { const no = invNo(r[H['inv' + tt]]), a = R2(num(r[H['amt' + tt]])); if (no) no.split(/[\s,]+/).filter(Boolean).forEach((x, j) => invs.push({ no: x, t: tt, amt: j === 0 ? a : 0 })); }); if (invs.length) { patch.invs = invs; patch.invTotal = sum(invs, v => v.amt); } }
+        if (!Object.keys(patch).length) continue;
         if (!e._p) { e._p = patch; nF++; } else Object.assign(e._p, patch); }
     });
     Object.values(ents).forEach(e => { if (e._p) ops.push({ op: 'update', col: 'entries', id: e.id, data: e._p }); });
     await S.DB.batch(ops);
     dropBossCache();
-    say('COD·카드·ACH ' + nC + '건' + (nShift ? ' (칸 밀린 옛 줄 ' + nShift + '건 바로잡음)' : '') + ' · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
+    say('COD·카드·ACH ' + nC + '건' + (nShift ? ' (칸 밀린 옛 줄 ' + nShift + '건 바로잡음)' : '') + ' · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
   } catch (e) { outEl().insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
 }
