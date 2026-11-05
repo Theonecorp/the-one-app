@@ -386,8 +386,8 @@ async function staffHome() {
     put('bo', bo.length ? bo.length + '건 · ' + money(bo.reduce((a, r) => a + (r.amt || 0), 0)) : '없음 · none');
     /* 🗂 묶음 머리 숫자 — 접어 둬도 할 일이 보이게 */
     const gs = (id, parts) => { const el = $('hg-' + id); if (el) el.innerHTML = parts.filter(p => p[1]).map(p => p[0] + ' <b' + (p[2] ? ' style="color:#b91c1c"' : '') + '>' + p[1] + '</b>').join(' · ') || bt('대기 없음', 'nothing waiting'); };
-    gs('recv', [[bt('신규', 'New'), nw.length, true], [bt('확인 대기', 'Awaiting'), cw.length], [bt('배정 대기', 'To assign'), ck2.length, true]]);
-    gs('ship', [[bt('작업 중', 'Picking'), pk.length], [bt('검수', 'Review'), pkd.length, true], [bt('포장', 'Pack'), topack.length, true], [bt('픽업', 'Pickup'), pkd2.length], [bt('백오더', 'BO'), bo.length]]);
+    gs('sale', [[bt('신규', 'New'), nw.length, true], [bt('확인 대기', 'Awaiting'), cw.length], [bt('배정 대기', 'To assign'), ck2.length, true], [bt('작업 중', 'Picking'), pk.length], [bt('검수', 'Review'), pkd.length, true]]);
+    gs('ship', [[bt('포장', 'Pack'), topack.length, true], [bt('픽업', 'Pickup'), pkd2.length], [bt('백오더', 'BO'), bo.length]]);
     /* 매출 */
     const iv = inv.filter(x => x.st !== 'x'), tot = sum(iv, x => x.total || 0), pcs = iv.reduce((a, x) => a + (x.qty || 0), 0);
     const pv = pinv ? sum(pinv.filter(x => x.st !== 'x'), x => x.total || 0) : null;
