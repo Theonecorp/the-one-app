@@ -182,7 +182,13 @@ service cloud.firestore {
       allow create: if registered() && request.resource.data.st == 'trk' && request.resource.data.by == email();   // 세일즈맨: 배송 조회만
       allow read: if registered() && resource.data.by == email();
     }
-    match /pickups/{id} { allow read, write: if isStaff(); }                                                                         // 📮 UPS 트럭 인계 기록
+    match /pickups/{id} { allow read, write: if isStaff(); }
+    match /displays/{id} { allow read, write: if isStaff(); }
+    match /pushTokens/{id} {                                                                                                         // 📱💻 웹 푸시 기기 — 자기 것만 적고 지움 (보내기는 Apps Script)
+      allow read: if signedIn() && resource.data.email == email();
+      allow create, update: if signedIn() && request.resource.data.email == email();
+      allow delete: if signedIn() && resource.data.email == email();
+    }                                                                        // 🖼 디스플레이 출고 — 사무실이 적고 창고가 ✓ 준비 · UPS                                                                         // 📮 UPS 트럭 인계 기록
     match /shipments/{id} {                                                                                                          // 📦 박스별 배송 기록 — 세일즈맨은 자기 가게 것
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
       allow write: if isStaff();

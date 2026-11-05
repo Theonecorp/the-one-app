@@ -4,7 +4,7 @@ const path = require('path'), fs = require('fs');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8774', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   fs.mkdirSync(path.resolve(__dirname, 'out'), { recursive: true });
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); const errs = [], log = (...a) => console.log(...a);
   pg.on('pageerror', e => errs.push(e.message + ' @ ' + String(e.stack).split('\n')[1])); pg.on('dialog', d => d.accept());
   const txt = async sel => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();
@@ -24,6 +24,8 @@ const path = require('path'), fs = require('fs');
   await pg.click('[data-at="new"]'); await pg.waitForSelector('#aQ'); await pg.fill('#aQ', '1111'); await pg.waitForTimeout(150); await pg.click('#aHits [data-a]'); await pg.waitForSelector('[data-lno]');
   const invD = '2026-10-01'; await pg.fill('#aInvD', invD); await pg.dispatchEvent('#aInvD', 'change'); await pg.waitForTimeout(200);
   const draw = await pg.$eval('#aDraw', e => e.value); log('draw for', invD, 'ACH 30 →', draw, '|', (await pg.textContent('.hint')).trim()); if (draw !== '2026-11-02') errs.push('draw date wrong ' + draw);  /* 10/31 토 → 11/2 월 */
+  /* 저장할 건은 인출일이 앞으로 오게 (지난 인출일 + 셋업은 3영업일 뒤 자동 완료 — 고정 날짜면 날이 지나 예약됨에서 사라짐) · (2026-11 날짜 의존 고침) */
+  const inv2 = (() => { const d = new Date(); d.setDate(d.getDate() - 20); return d.toISOString().substring(0, 10); })(); await pg.fill('#aInvD', inv2); await pg.dispatchEvent('#aInvD', 'change'); await pg.waitForTimeout(200); log('saving with invoice date', inv2, '→ draw', await pg.$eval('#aDraw', e => e.value));
   await pg.fill('[data-lno="0"]', 'A12345'); await pg.fill('[data-lamt="0"]', '750'); await pg.dispatchEvent('[data-lamt="0"]', 'input'); await pg.click('#aMore'); await pg.fill('[data-lno="1"]', 'P00012'); await pg.fill('[data-lamt="1"]', '50'); await pg.dispatchEvent('[data-lamt="1"]', 'input');
   log('total:', await pg.textContent('#aTot')); await shot('a1_new');
   await pg.click('#aSave'); await pg.waitForTimeout(400); log('after save click toast:', await pg.textContent('#toast')); await pg.waitForSelector('#cfOk', { timeout: 5000 }); log('confirm:', (await pg.textContent('#mbox')).replace(/\s+/g, ' ').slice(0, 120)); await pg.click('#cfOk'); await pg.waitForTimeout(700);

@@ -1,10 +1,10 @@
-/* v0.8.16 시험 — 수금 확인 (SmartBee 없이): 세일즈맨별 묶음 · 📬 체크 맞추기 → 수령 ✓ · ① 접수 확인 → 앱 인보이스 입금 반영 · 📚 가게 기록 */
+/* v0.8.16 시험 — 수금 확인 (SmartBee 없이): 세일즈맨별 묶음 · 📬 체크 맞추기 → 수령 ✓ · ① 접수 확인 → 앱 인보이스 입금 반영 · 📚 가게 기록 · (2026-11 화면에 맞춤: 수령 ✓ 는 ☑ 표시 → 아래 막대 💾 ② 체크 수령 완료로 저장) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8783', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   fs.mkdirSync(path.resolve(__dirname, 'out'), { recursive: true });
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); const errs = [], log = (...a) => console.log(...a);
   pg.on('pageerror', e => errs.push(e.message + ' @ ' + String(e.stack).split('\n')[1])); pg.on('dialog', d => d.accept());
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
@@ -17,7 +17,9 @@ const path = require('path'), fs = require('fs');
   if (!(await pg.$('.smgrp'))) errs.push('no salesman groups');
   /* 📬 체크 맞추기: 2201 (E2 · sb 됨 · rc 안 됨) */
   await pg.fill('#ckNo', '2201'); await pg.press('#ckNo', 'Enter'); await pg.waitForSelector('[data-ckrc]'); log('match:', (await txt('#ckOut')).slice(0, 120));
-  await pg.click('[data-ckrc]'); await pg.waitForTimeout(800);
+  await pg.click('[data-ckrc]'); await pg.waitForTimeout(300);   // ☑ 표시만 — 저장은 아래 막대에서 한 번에
+  log('bulk bar:', (await txt('#vBulk')).slice(0, 80));
+  await pg.click('#vbRc'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(900);
   const e2 = await pg.evaluate(() => window.__MOCK_STORE__.entries.E2); log('E2 after:', e2.rc, e2.rcAt); if (!e2.rc) errs.push('check match did not set rc');
   /* 없는 번호 */
   await pg.fill('#ckNo', '999999'); await pg.press('#ckNo', 'Enter'); await pg.waitForTimeout(500); log('no match:', (await txt('#ckOut')).slice(0, 60));

@@ -4,7 +4,7 @@ let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('ch
 const path = require('path'), fs = require('fs'), os = require('os');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8856', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 420, height: 820 } });
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8856/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
@@ -29,7 +29,7 @@ const path = require('path'), fs = require('fs'), os = require('os');
   await pg.click('[data-im="lowstk"]'); await pg.waitForTimeout(400); const lowL = await pg.evaluate(() => Array.from(document.querySelectorAll('#itList .irow .ct b')).map(b => b.textContent.trim().split(' ')[0])); if (!lowL.includes('AHG9001') || lowL.includes('AHG100')) errs.push('⚠️ 재고 부족 should list the 5-pc item only');
   await pg.click('[data-im="all"]'); await pg.waitForTimeout(300); await pg.fill('#itQ', 'AHG100'); await pg.waitForTimeout(400); const rowT = (await pg.textContent('#itList')).replace(/\s+/g, ' '); if (!/(^|\D)37(\D|$)/.test(rowT) || !/6B/.test(rowT)) errs.push('item row should show stock 37 and aisle 6B, got ' + rowT.slice(0, 160));   // v0.8.142: 표 칸으로
   await pg.click('[data-it="AHG100"]'); await pg.waitForSelector('#isEd', { timeout: 5000 }); await pg.click('#isEd'); await pg.waitForSelector('#fSup', { timeout: 5000 }).catch(() => errs.push('supplier field missing in item form'));
-  if (await pg.$('#fSup')) { await pg.fill('#fSup', '#CHINA2'); await pg.click('#fOk'); await pg.waitForTimeout(1200); const sup = await pg.evaluate(() => { const rows = JSON.parse(Object.values(window.__MOCK_STORE__.catalog).find(d => d.id === 'c0').j); const r = rows.find(r => r[0] === 'AHG100'); return r && r[12]; }); log('supplier saved:', sup); if (sup !== '#CHINA2') errs.push('supplier should be saved on the item row'); }
+  if (await pg.$('#fSup')) { await pg.selectOption('#fSup', '__other'); await pg.fill('#fSupT', '#CHINA2'); /* v0.8.161: 공급처는 공장 목록에서 고르고, 목록에 없으면 ✍️ 직접 입력 */ await pg.click('#fOk'); await pg.waitForTimeout(1200); const sup = await pg.evaluate(() => { const rows = JSON.parse(Object.values(window.__MOCK_STORE__.catalog).find(d => d.id === 'c0').j); const r = rows.find(r => r[0] === 'AHG100'); return r && r[12]; }); log('supplier saved:', sup); if (sup !== '#CHINA2') errs.push('supplier should be saved on the item row'); }
   await pg.close();
   /* ---------- 세일즈맨: 주문 화면에 📦 실재고 ---------- */
   pg = await mk('brandon@x.com', "s.stock = (s.stock || []).concat([{ id: 'AHG100', code: 'AHG100', qty: 37 }, { id: 'AHG101', code: 'AHG101', qty: 0 }, { id: 'AHG102', code: 'AHG102', qty: 4 }]);");

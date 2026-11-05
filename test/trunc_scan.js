@@ -18,7 +18,7 @@ const scan = () => {
 };
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8789', '--bind', '127.0.0.1'], { cwd: '/home/user/the-one-app', stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const W = Number(process.env.W || 390);
   const users = { 'brandon@x.com': ['home', 'order', 'order/new', 'invs', 'stores', 'entry', 'ar', 'mine', 'hist', 'mycomm', 'find', 'track', 'cat'], 'luke@theonefl.com': ['now', 'order', 'invs', 'stores', 'bossar', 'ar', 'verify', 'cod', 'ach', 'pay', 'mg', 'reports', 'flow', 'arup', 'track'] };
   for (const em in users) for (const r of users[em]) {

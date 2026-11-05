@@ -7,7 +7,7 @@
  * ============================================================ */
 import { $, esc, money, R2, num, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sortBy, bi, bt, printOpen, debounce } from './ui.js';
 import { loadCatalog, catalog, exactItem, searchItems, thumb } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache, monthsOf } from './invoicing.js';
 import { searchAccounts } from './accounts.js';
 import { mySm } from './access.js';
 import { can } from './main.js';
@@ -36,7 +36,7 @@ async function list() {
   const wait = rows.filter(x => x.st !== 'x' && !x.reviewed), done = rows.filter(x => x.st !== 'x' && x.reviewed), voided = rows.filter(x => x.st === 'x');
   const row = x => '<div class="pr tap' + (x.st === 'x' ? '' : x.reviewed ? ' v' : '') + '" data-cr="' + esc(x.no) + '"><div class="mk">' + (x.st === 'x' ? '✕' : x.reviewed ? '✓' : '·') + '</div><div class="ct"><b>' + esc(x.store) + ' <span class="tag t-k">' + esc(x.no) + '</span>' + ((x.flags || []).length ? ' <span class="tag" style="background:#fef3c7;color:#92400e">⚠️ ' + x.flags.length + '</span>' : '') + '</b><small>' + esc(x.d) + ' · ' + esc(x.sm || '') + ' · ' + esc(x.why || '') + ' · ' + (x.qty ? Math.abs(x.qty) + bt('개', ' pcs') : '') + '</small></div><div class="pa"><b>' + money(x.total) + '</b><small>' + (x.st === 'x' ? 'VOID' : x.reviewed ? bt('사무실 확인', 'Reviewed') : bt('확인 대기', 'To review')) + '</small></div></div>';
   $('page').innerHTML = '<div class="card"><h2>↩ ' + bi('크레딧 · 리턴', 'Credits · Returns') + '</h2><div class="muted">' + (isSales() ? bt('가게에 준 크레딧 기록입니다. 확정하면 CM 번호가 생기고 가게 잔액에서 바로 빠집니다. 사무실이 내용을 확인합니다.', 'Credits you gave to stores. Once confirmed a CM number is issued and the store balance drops right away. The office reviews it.') : bt('세일즈맨이 확정한 크레딧 메모입니다. 내용 · 가격을 보고 ✅ 확인하거나, 문제면 VOID 하세요.', 'Credit memos confirmed by salesmen. Review and ✅ confirm, or VOID if wrong.')) + '</div>' +
-    (isSales() ? '<div class="btns" style="justify-content:flex-start"><button class="b-blue" id="crNew">↩ ' + bi('크레딧 주기', 'Give credit') + '</button></div>' : '') +
+    (isSales() || staffOk() ? '<div class="btns" style="justify-content:flex-start"><button class="b-blue" id="crNew">↩ ' + bi('크레딧 주기', 'Give credit') + '</button></div>' : '') +   // v0.8.164: 인보이스 · 사무실 담당도 바로 크레딧
     '<div class="kpi" style="grid-template-columns:repeat(3,1fr)"><div><b>' + wait.length + '</b><span>' + bt('확인 대기', 'To review') + '</span></div><div><b>' + money(-sumOf(wait.concat(done))) + '</b><span>' + bt('크레딧 합계', 'Credits total') + '</span></div><div><b>' + rows.length + '</b><span>' + bt('전체', 'All') + '</span></div></div></div>' +
     (wait.length ? '<div class="card"><h2>' + bt('확인 대기', 'To review') + ' ' + wait.length + '</h2>' + wait.map(row).join('') + '</div>' : '') +
     (done.length ? '<div class="card"><h2>' + bt('확인 완료', 'Reviewed') + ' ' + done.length + '</h2>' + done.map(row).join('') + '</div>' : '') +
@@ -131,7 +131,7 @@ async function confirm() {
       lines: CR.lines.map(l => { const it = C && C.byCode[l.c]; return { c: l.c, d: l.d, q: -l.q, p: l.p, lp: l.lp, dc: l.dc, src: l.src, g: it ? (it.l1 || it.g || '') : '', ty: l.t, recent: l.recent ? { no: l.recent.no, d: l.recent.d, p: l.recent.p, disc: l.recent.disc } : null }; }),
       qty: -t.q, sub: -t.sub, list: -t.list, disc: 0, total: -t.sub, bal: -t.sub, discMap: CR.disc, flags: F, terms: (CR.acc && CR.acc.terms) || '', st: 'open', reviewed: false, createdBy: S.user.email, createdAt: now };
     await S.DB.set('invoices', no, doc);
-    dropInvCache();
+    dropInvCache(monthsOf([doc]));
     try { const N = await import('./notify.js'); await N.queue({ kind: 'credit', toStaff: true, chat: true, subject: '[THE ONE] ↩ 크레딧 ' + (F.length ? '⚠️ ' : '') + '— ' + CR.store + ' ' + money(-t.sub), text: '↩ 크레딧 ' + no + ' · ' + CR.sm + ' · ' + CR.store + ' (' + CR.acct + ')\n' + CR.why + (CR.note ? ' — ' + CR.note.trim() : '') + '\n' + CR.lines.map(l => l.c + ' ×' + l.q + ' @' + money(l.p)).join(', ') + '\n크레딧 −' + money(t.sub) + (F.length ? '\n⚠️ ' + F.join(' · ') : ''), url: N.appUrl('credit/' + encodeURIComponent(no)) }); } catch (e) {}
     closeModal(); toast('↩ ' + no + ' — ' + bt('크레딧 확정', 'credit confirmed') + ' −' + money(t.sub), 'good');
     Router.go('credit', encodeURIComponent(no));
@@ -159,7 +159,7 @@ async function detail(no) {
     openModal('<h2 style="color:#991b1b">🚫 ' + esc(x.no) + ' VOID</h2><div class="muted">' + bt('크레딧을 무효로 합니다. 가게 잔액에서 다시 더해지고 세일즈맨에게 사유가 전달됩니다.', 'Voids the credit: the store balance goes back up and the salesman is told why.') + '</div><div class="fg"><label>' + bt('사유 (필수)', 'Reason (required)') + '</label><input id="cvWhy"></div><div class="btns"><button class="b-ghost" id="cvX">' + bt('돌아가기', 'Back') + '</button><button class="b-red" id="cvGo">🚫 VOID</button></div>');
     $('cvX').onclick = closeModal;
     $('cvGo').onclick = async () => { const why = $('cvWhy').value.trim(); if (!why) return toast(bt('사유를 적으세요', 'Type the reason'), 'bad'); busy(true);
-      try { const now = new Date().toISOString(); await S.DB.update('invoices', x.no, { st: 'x', bal: 0, voidAt: now, voidBy: S.user.email, voidReason: why }); dropInvCache();
+      try { const now = new Date().toISOString(); await S.DB.update('invoices', x.no, { st: 'x', bal: 0, voidAt: now, voidBy: S.user.email, voidReason: why }); dropInvCache(monthsOf([x]));
         try { const N = await import('./notify.js'); await N.queue({ kind: 'creditVoid', toSm: x.sm, chat: true, subject: '[THE ONE] 🚫 크레딧 VOID — ' + x.store, text: '🚫 크레딧 ' + x.no + ' VOID → ' + x.sm + ' · ' + x.store + ' ' + money(x.total) + '\n사유: ' + why, url: N.appUrl('credit/' + encodeURIComponent(x.no)) }); } catch (e) {}
         closeModal(); toast('🚫 VOID ' + x.no); detail(no); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
   };

@@ -3,7 +3,7 @@ let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('ch
 const path = require('path');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8830', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8830/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
@@ -30,7 +30,7 @@ const path = require('path');
   pg = await mk('luke@theonefl.com', "s.orders[0].st = 'picked'; s.orders[0].cfOk = true; s.orderLines[0].lines.forEach(l => { l.pq = l.q; l.ok = true; l.t = 'A'; });");
   nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); if (!nav.includes('hub/wh')) errs.push('admin nav should have the inventory group');   // v0.8.135: 📦 재고 묶음
   await pg.evaluate(() => { location.hash = '#/stock/recv'; }); await pg.waitForSelector('#rvC', { timeout: 8000 }).catch(() => errs.push('receive tab missing'));
-  await pg.fill('#rvFrom', 'SHENGXING CNTR'); await pg.fill('#rvC', 'AHG100'); await pg.fill('#rvQ', '50'); await pg.click('#rvAdd'); await pg.waitForTimeout(200); await pg.fill('#rvC', 'AHG101'); await pg.fill('#rvQ', '10'); await pg.press('#rvQ', 'Enter'); await pg.waitForTimeout(200); await pg.fill('#rvC', 'ZZZ999'); await pg.fill('#rvQ', '3'); await pg.click('#rvAdd'); await pg.waitForTimeout(300);
+  await pg.selectOption('#rvFrom', '__other'); await pg.fill('#rvFromT', 'SHENGXING CNTR'); /* v0.8.161: 공장 목록에서 고르거나 ✍️ 직접 입력 */ await pg.fill('#rvC', 'AHG100'); await pg.fill('#rvQ', '50'); await pg.click('#rvAdd'); await pg.waitForTimeout(200); await pg.fill('#rvC', 'AHG101'); await pg.fill('#rvQ', '10'); await pg.press('#rvQ', 'Enter'); await pg.waitForTimeout(200); await pg.fill('#rvC', 'ZZZ999'); await pg.fill('#rvQ', '3'); await pg.click('#rvAdd'); await pg.waitForTimeout(300);
   const rv = await txt(pg, '#skBody'); log('recv:', rv.slice(0, 160)); if (!/3줄/.test(rv) || !/63/.test(rv) || !/목록에 없는 코드/.test(rv)) errs.push('receive list should show 3 lines · 63 pcs · unknown warning');
   await pg.click('[data-rvx="2"]'); await pg.waitForTimeout(200);
   await pg.click('#rvSave'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(1500);

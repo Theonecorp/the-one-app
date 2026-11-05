@@ -15,7 +15,7 @@ const path = require('path');
   if (sheet.length !== 3 || sheet[0].ym !== '2026-01' || sheet[0].in !== 799544.38 || sheet[0].out !== 785043.08 || sheet[2].ym !== '2026-10') errs.push('cashFromSheet should expose the months with numbers');
   /* 화면: 시트 숫자만 있을 때 홈 현금 흐름 · 🏦 은행 탭 */
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8824', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   const y = new Date().getFullYear(), mi = new Date().getMonth();
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { const m = k => { const a = Array(12).fill(0); a[o.mi] = k; return a; }; s.sales = [{ id: String(o.y), year: o.y, rows: [{ label: 'Statement Deposit', grp: 'cash', m: m(50000) }, { label: 'statement expense', grp: 'cash', m: m(-30000) }, { label: 'checks', grp: 'cash', m: m(-5000) }, { label: 'service fee', grp: 'cash', m: m(-25) }, { label: 'Monthly profit', grp: 'cash', m: m(14975) }] }]; }; }, { y, mi });

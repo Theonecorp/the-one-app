@@ -1,10 +1,10 @@
-/* v0.6.4 시험 — 분류 순서 (📌 위 → ABC → 📌 아래) · ✨ 자주 나가는 · 코드 순 · 📄 인보이스 찾기 (기간 · 날짜별 · 가게로) */
+/* v0.6.4 시험 — 분류 순서 (📌 위 → ABC → 📌 아래) · ✨ 자주 나가는 · 코드 순 · 📄 인보이스 찾기 (기간 · 날짜별 · 가게로) · (2026-11 화면에 맞춤: 단계별 목록 칩 ✅ 완료 · 조회 → 📄 인보이스, 날짜 묶음 .gline) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8770', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   fs.mkdirSync(path.resolve(__dirname, 'out'), { recursive: true });
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); const errs = [], log = (...a) => console.log(...a);
   pg.on('pageerror', e => errs.push(e.message + ' @ ' + String(e.stack).split('\n')[1])); pg.on('dialog', d => d.accept());
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
@@ -93,8 +93,9 @@ const path = require('path'), fs = require('fs');
   await pg.click('[data-hg="sent"]'); await pg.waitForSelector('#oStrip'); await pg.waitForTimeout(600); await shot('h2b_staff_list');
   log('strip:', (await pg.textContent('#oStrip')).replace(/\s+/g, ' '));
   /* 3. 📄 인보이스 찾기 */
-  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="inv"]'); await pg.click('[data-lf="inv"]'); await pg.waitForSelector('[data-im="date"]'); await pg.click('[data-im="date"]'); await pg.waitForSelector('#iqQ'); await pg.waitForSelector('.iday'); await shot('h3_inv_month');
-  const dayHeads = () => pg.$$eval('.iday b', els => els.map(e => e.textContent));
+  /* 목록 칩은 단계별 묶음 — ✅ 완료 · 조회 단계를 고르면 📄 인보이스 칩이 나옴 */
+  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="home"]'); if (!(await pg.$('[data-lf="inv"]'))) { await pg.click('[data-lg="fin"]'); await pg.waitForTimeout(300); } await pg.waitForSelector('[data-lf="inv"]'); await pg.click('[data-lf="inv"]'); await pg.waitForSelector('[data-im="date"]'); await pg.click('[data-im="date"]'); await pg.waitForSelector('#iqQ'); await pg.waitForSelector('#iList .gline'); await shot('h3_inv_month');
+  const dayHeads = () => pg.$$eval('#iList .gline b', els => els.map(e => e.textContent));
   log('month days:', (await dayHeads()).join(' | '), '| kpi:', (await pg.textContent('#iList .kpi')).replace(/\s+/g, ' '));
   const rowsN = () => pg.$$eval('#iList [data-go]', els => els.length);
   const nMonth = await rowsN();

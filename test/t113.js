@@ -4,7 +4,7 @@ let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('ch
 const path = require('path');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8866', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const mk = async (view) => { const pg = await br.newPage({ viewport: { width: 420, height: 860 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(v => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; try { localStorage.removeItem('theone.order.wip.brandon@x.com'); localStorage.removeItem('theone.order.pre'); localStorage.setItem('theone.order.view', v); } catch (x) {} }, view); await pg.goto('http://127.0.0.1:8866/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(400);
     await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(150); }

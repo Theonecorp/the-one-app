@@ -1,8 +1,10 @@
-const { chromium } = require('/home/claude/node_modules/playwright');
+/* v0.2 시험 — 👤 사용자 등록 화면: 새 사용자 저장(세일즈맨 코드 포함) · 세일즈맨 기본 자료 만들기 단추 */
+let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
+const { chromium } = pw;
 const path = require('path');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8766', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await chromium.launch({ ...(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {}) });
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); const errs = [];
   pg.on('pageerror', e => errs.push(e.message));
   await pg.addInitScript(u => { window.__MOCK_USER__ = u; }, { email: 'luke@theonefl.com', name: 'Luke Hur' });

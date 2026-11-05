@@ -3,7 +3,7 @@
  *    ① 들어온 주문 확인 (가격 수정 · 할인 변경 표시) → 🖨 픽킹 인보이스 인쇄 = 픽킹 시작
  *    ② 픽킹 결과 입력 (실제 담은 수량 · 줄 추가/수정 · 메모) → 모자란 것은 백오더
  *    ③ 🧾 인보이스 확정 → 종류(A · P · W …)별 세일즈 인보이스 번호 발행 · 인쇄
- *    ④ 백오더는 매니저가 골라서 새 주문로 만들거나 닫음
+ *    ④ 백오더는 매니저가 골라서 새 주문으로 만들거나 닫음
  *  backorders/{orderId} = { id, order, acct, store, sm, d, lines:[{c,d,q,p,lp,t}], qty, amt, st:'open'|'used'|'closed', newOrders:[], createdAt }
  * ============================================================ */
 import { timelineHtml } from './flow.js';
@@ -12,7 +12,7 @@ import { narrow, crow, cgrp } from './ui.js';
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts, itabs } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, monthsOf, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
@@ -89,6 +89,7 @@ export function manage(o, lines) {
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
     (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 ' + bi('가게 기록', 'Store') + '</button>' : '') +
+    (o.st !== 'x' && (can('invoice') || can('newOrder')) ? '<button class="b-ghost b-sm" id="mDisp">🖼 Notes Display <span id="mDispN"></span></button>' : '') +
     (o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>' : '') +
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
     (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
@@ -129,7 +130,7 @@ export function manage(o, lines) {
     busy(true); try { await saveLines(); toast('🏷 ' + bt('인보이스 종류 저장', 'Invoice type saved'), 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
   };
   const boLine = () => { const b = lines.filter(l => (l.pq || 0) < l.q), u = lines.filter(l => !l.ok); return (u.length ? '<div class="alert a-amb">○ 아직 두드리지 않은 줄 <b>' + u.length + '</b> / ' + lines.length + ' <span class="en">not yet checked</span></div>' : '') + (b.length ? '<div class="alert a-red">⏳ 백오더 ' + b.length + '줄 · ' + b.reduce((a, l) => a + l.q - (l.pq || 0), 0) + '개</div>' : u.length ? '' : '<div class="alert a-grn">✓ 모두 픽킹됨</div>'); };
-  const types = invTypes(S), office = canInv && S.role !== 'salesman' && (o.st === 'sent' || picking);   // 🏷 인보이스 종류(A · P · W)는 사무실이 접수 ~ 발행 전까지 주문을 보고 판단해서 바꿈
+  const types = invTypes(S), office = canInv && S.role !== 'salesman' && (o.st === 'sent' || o.st === 'mine' || picking);   // 접수 · 배정 · 픽킹 · 픽킹 완료 — 발행 전까지   // 🏷 인보이스 종류(A · P · W)는 사무실이 접수 ~ 발행 전까지 주문을 보고 판단해서 바꿈
   /* 픽킹 입력은 두드려서: 처음 한 번 = ✓ 통과(주문 수량), 다시 = ⏳ 백오더(0), 다시 = ✓ … · ✎ 수량 으로 일부만 담았을 때 숫자 입력 */
   const pkBtn = l => { const pq = l.pq || 0, st = !l.ok ? 'u' : pq >= l.q ? 'ok' : pq === 0 ? 'bo' : 'part'; const ic = st === 'u' ? '○' : st === 'ok' ? '✓' : st === 'bo' ? '⏳' : '◐'; return '<button class="pkb ' + st + '" data-pkt="' + l._i + '">' + ic + ' <b>' + pq + '</b><span>/' + l.q + '</span></button><button class="b-ghost pkq" data-pkq="' + l._i + '">✎ ' + bi('수량', 'Qty') + '</button>'; };
   const paint = () => {
@@ -208,7 +209,7 @@ export function manage(o, lines) {
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
-  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 주문를 들어온 주문로 보낼까요?', '보내기'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'sent', sentAt: now, updatedAt: now }); toast('보냈습니다 📤', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 주문을 들어온 주문으로 보낼까요?', '보내기'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'sent', sentAt: now, updatedAt: now }); toast('보냈습니다 📤', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mAssign')) $('mAssign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mReassign')) $('mReassign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mPickDone')) $('mPickDone').onclick = async () => {
@@ -229,8 +230,10 @@ export function manage(o, lines) {
   if ($('mUnship')) $('mUnship').onclick = async () => { const back = o.st === 'shipped' && o.pickupId ? 'packed' : 'done'; if (!(await confirmBox(back === 'packed' ? bt('UPS 인계를 취소할까요? (픽업 대기로 돌아감)', 'Undo handover? (back to awaiting pickup)') : bt('포장 · 출고를 취소할까요? (포장 대기로 돌아감)', 'Undo packing/shipping? (back to packing)'), bt('되돌리기', 'Undo')))) return; busy(true); try { await S.DB.update('orders', o.id, Object.assign({ st: back, updatedAt: new Date().toISOString() }, back === 'packed' ? { pickupId: '' } : {})); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mPickPrint')) $('mPickPrint').onclick = () => printPicking(o, lines);
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-  if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 주문로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 주문으로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mStoreI')) $('mStoreI').onclick = () => storeSheet(o.acct);
+  /* 🖼 이 주문으로 새 디스플레이가 나가야 하면 — 가게 · 요청한 디스플레이(o.req) 를 채워 디스플레이 출고 목록에 */
+  if ($('mDisp')) { import('./displays.js').then(D => { D.countForOrder(o.id).then(n => { if (n && $('mDispN')) $('mDispN').textContent = '(' + n + ')'; }); $('mDisp').onclick = () => D.form({ acct: o.acct || '', store: o.store, sm: o.sm, req: o.req || null, orderId: o.id, orderNo: o.no, after: () => { D.countForOrder(o.id).then(n => { if ($('mDispN')) $('mDispN').textContent = n ? '(' + n + ')' : ''; }); } }); }); }
   if ($('mStoreChg')) $('mStoreChg').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 가게를 바꿀까요? (픽킹 입력은 사라집니다)')) return; changeStore(o, () => goOrder(o.id)); };
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);
@@ -426,14 +429,17 @@ export function pickingHtml(o, lines) {
   const rows = lines.slice().sort(pickSort);   // 📍 통로 · 선반 순 — 위치 없는 것은 맨 뒤 코드 순
   let lastA = null;
   const aisleRow = l => { const a = aisleOf(locOf(l.c)) || ''; if (a === lastA) return ''; lastA = a; return '<tr class="pkaisle"><td colspan="8">' + (a ? '📍 AISLE ' + esc(a) : '📍 위치 미지정 · NO LOCATION') + '</td></tr>'; };
-  return ('<div class="iv" style="min-height:0">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
+  /* 🖨 한 장에 머리 → 바로 아래 표 (예전엔 머리 칸이 인보이스용 "다음 장으로 넘김" 을 가져가 첫 장에 머리만 나오고 표는 둘째 장부터였음)
+   *   표 머리는 장마다 다시 · 줄은 장 사이에서 안 잘림 · 용지는 인보이스 설정(Letter / A4) · 여러 장 묶어 찍으면 주문마다 새 장 */
+  const paper = ((invView(S).paper || company(S).paper) === 'a4') ? 'A4' : 'letter';   // 인보이스 인쇄와 같은 용지
+  return ('<style>@page{size:' + paper + ';margin:.4in}</style><div class="pk"><div class="iv pkhd">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
     '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
     '<br>Rep. ' + esc(o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true)) : '') + '</div></div>' +
-    '<table><tr><th>#</th><th>LOC</th><th>CODE</th><th>DESCRIPTION</th><th>TYPE</th><th class="r">ORDER</th><th class="r">PICKED</th><th>NOTE</th></tr>' +
-    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td style="min-width:60px"></td><td style="min-width:90px">' + esc(l.note || '') + '</td></tr>' +
+    '<table class="pktbl"><thead><tr><th style="width:26px">#</th><th style="width:52px">LOC</th><th style="width:82px">CODE</th><th>DESCRIPTION</th><th style="width:40px">TYPE</th><th class="r" style="width:52px">ORDER</th><th class="r" style="width:56px">PICKED</th><th style="width:70px">NOTE</th></tr></thead><tbody>' +
+    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td></td><td>' + esc(l.note || '') + '</td></tr>' +
       (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td>' + esc(locOf(k.c)) + '</td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
-    '<tr class="fin"><td colspan="5">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></table>' +
-    '<div class="sig"><div>Picked by</div><div>Checked by</div><div>Date</div></div>');
+    '<tr class="fin"><td colspan="5">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></tbody></table>' +
+    '<div class="sig"><div>Picked by</div><div>Checked by</div><div>Date</div></div></div>');
 }
 function csv(o, lines) {
   const q = s => { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -449,7 +455,7 @@ async function confirmInvoice(o, lines) {
   try { await loadCatalog(S); } catch (e) {}
   const groups = Object.values(splitByType(lines, o.disc, 'pq')).filter(g => g.qty > 0);
   const bo = lines.filter(l => (l.pq || 0) < l.q).map(l => Object.assign({ c: l.c, d: l.d, q: l.q - (l.pq || 0), p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }, l.kit ? { kit: l.kit } : {}));
-  if (!groups.length) return toast('픽킹된 수량이 없습니다 — 주문를 취소하거나 수량을 넣으세요', 'bad');
+  if (!groups.length) return toast('픽킹된 수량이 없습니다 — 주문을 취소하거나 수량을 넣으세요', 'bad');
   const types = invTypes(S);
   openModal('<h2>🧾 인보이스 확정 — ' + esc(o.store) + '</h2><div class="muted">종류별로 인보이스 번호가 하나씩 나옵니다. 확정하면 고칠 수 없습니다 (취소 후 다시).</div>' +
     '<table style="margin-top:8px"><tr><th>종류</th><th class="r">수량</th><th class="r">금액</th><th class="r">할인</th><th class="r">합계</th></tr>' + groups.map(g => '<tr><td>' + sel('', types.map(t => [t.c, t.c]), g.t, 'class="tsel" data-ivt="' + esc(g.t) + '" title="' + esc(bt('이 묶음 전체를 다른 종류로', 'Move this group to another type')) + '"') + ' ' + esc(typeName(g.t)) + '</td><td class="r">' + g.qty + '</td><td class="r">' + money(g.sub) + '</td><td class="r">' + (g.disc ? g.disc + '%' : '—') + '</td><td class="r"><b>' + money(g.total) + '</b></td></tr>').join('') + '</table>' +
@@ -479,7 +485,7 @@ async function confirmInvoice(o, lines) {
       ops.push({ op: 'set', col: 'orders', id: o.id, data: doc }, { op: 'set', col: 'orderLines', id: o.id, data: { sm: o.sm, lines } });
       const wake = acc && acc.inactive;   // 💤 비활성 거래처에 다시 인보이스 → 자동으로 활성
       if (wake) ops.push({ op: 'update', col: 'accounts', id: acc.acct, data: { inactive: false, reactAt: now, reactBy: 'invoice ' + invs.map(x => x.no).join(' ') } });
-      await S.DB.batch(ops); dropInvCache(); bumpSalesM(S, invs, 1); stockOut(invs);   // 📦 재고에서 빼기 (세트는 구성품으로)
+      await S.DB.batch(ops); dropInvCache(monthsOf(invs)); bumpSalesM(S, invs, 1); stockOut(invs);   // 📦 재고에서 빼기 (세트는 구성품으로)
       if (wake) { try { await bumpAccountsVer(); } catch (e) {} }
       toast('인보이스 ' + invs.map(x => x.no).join(', '), 'good');
       busy(false);
@@ -502,11 +508,12 @@ export async function pageLists(LF, head) {
   catch (e) { $('page').innerHTML = head + '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return bind(); }
   if (LF.sm) rows = rows.filter(r => r.sm === LF.sm);
   rows = sortBy(rows, r => r.createdAt || '', true);
-  $('page').innerHTML = head + '<div class="card"><h2>⏳ ' + bi('백오더', 'Backorders') + ' ' + rows.length + '건 · ' + money(rows.reduce((a, r) => a + (r.amt || 0), 0)) + '</h2><div class="muted">물건이 들어오면 골라서 새 주문로 만들거나, 필요 없으면 닫으세요. <span class="en">When stock arrives, make a new order from selected lines, or close.</span></div>' +
+  $('page').innerHTML = head + '<div class="card"><h2>⏳ ' + bi('백오더', 'Backorders') + ' ' + rows.length + '건 · ' + money(rows.reduce((a, r) => a + (r.amt || 0), 0)) + '</h2><div class="muted">물건이 들어오면 골라서 새 주문으로 만들거나, 필요 없으면 닫으세요. <span class="en">When stock arrives, make a new order from selected lines, or close.</span></div>' +
     (rows.length ? rows.map(r => '<div class="pr tap" data-go="bo:' + esc(r.id) + '"><div class="ct"><b>' + esc(r.store) + '</b><small>' + esc(md(r.d)) + ' · ' + esc(r.sm) + ' · ' + esc(r.order) + '</small></div><div class="pa"><b>' + money(r.amt) + '</b><small>' + r.lines.length + '줄 · ' + r.qty + '개</small></div></div>').join('') : '<div class="none">' + bt('백오더가 없습니다', 'No backorders') + '</div>') + '</div>';
   bind(); fillStrip();
   function bind() {
     document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') LF.list = false; else LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    document.querySelectorAll('[data-lg]').forEach(b => b.onclick = () => window.dispatchEvent(new CustomEvent('theone:stage', { detail: b.dataset.lg })));   // 위 단계 단추(📥 접수 · 📦 출고 · ✅ 완료 · ⏳ 기타) — bindListHead 와 같게 (백오더 · 인보이스 목록에서 안 눌리던 것)
     if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageLists(LF, head); };
     if ($('oNew')) $('oNew').onclick = () => Router.go('order', 'new');
     document.querySelectorAll('#page [data-go]').forEach(el => el.onclick = () => Router.go('order', el.dataset.go));
@@ -669,6 +676,7 @@ export async function invBrowser(LF, head) {
   };
   function bind() {
     document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') LF.list = false; else LF.st = b.dataset.lf; Router.go('order'); window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    document.querySelectorAll('[data-lg]').forEach(b => b.onclick = () => window.dispatchEvent(new CustomEvent('theone:stage', { detail: b.dataset.lg })));   // 위 단계 단추(📥 접수 · 📦 출고 · ✅ 완료 · ⏳ 기타) — bindListHead 와 같게 (백오더 · 인보이스 목록에서 안 눌리던 것)
     if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; invBrowser(LF, head); };
     if ($('oNew')) $('oNew').onclick = () => Router.go('order', 'new');
     const inp = $('iqQ');
@@ -852,7 +860,7 @@ export async function voidModal(invs, done) {
           ops.push({ op: 'update', col: 'orders', id: o.id, data: p });
           if ((act === 'redo' || act === 'cancel') && o.bo) { const b = await S.DB.get('backorders', o.id).catch(() => null); if (b && b.st === 'open') ops.push(act === 'redo' ? { op: 'del', col: 'backorders', id: o.id } : { op: 'update', col: 'backorders', id: o.id, data: { st: 'closed', closedAt: now, closedBy: S.user.email } }); }
         }
-        await S.DB.batch(ops); dropInvCache(); await bumpSalesM(S, L, -1); stockBack(L);   // 📦 재고 되돌리기
+        await S.DB.batch(ops); dropInvCache(monthsOf(L)); await bumpSalesM(S, L, -1); stockBack(L);   // 📦 재고 되돌리기
         toast('🚫 VOID ' + L.map(x => x.no).join(', ') + (act === 'redo' ? ' — 주문이 검수 대기로 돌아갔습니다' : ''), 'good');
         closeModal(); if (done) done(act, o);
       } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }

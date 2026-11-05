@@ -3,7 +3,7 @@ const path = require('path');
 const URL = 'http://127.0.0.1:8765/test/demo.html';
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8765', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--disable-background-networking'] });
+  const br = await chromium.launch({ ...(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {}), args: ['--disable-background-networking'] });
   const errs = [];
   async function shot(name, w, user, steps) {
     const pg = await br.newPage({ viewport: { width: w, height: 1000 } });

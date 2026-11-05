@@ -1,4 +1,4 @@
-/* v0.4.0 오더 흐름 시험 — node test/t040.js
+/* v0.4.0 오더 흐름 시험 — node test/t040.js · (2026-11 화면에 맞춤: 두드리는 픽킹 ✎ 수량, 작업 완료 → 인보이스, 단계별 목록 칩 · 홈 묶음 타일)
  *  세일즈맨: 가격 · 할인 수정, 인터넷 끊긴 상태에서 저장 → 보낼 함 → 다시 연결되면 전송
  *  매니저: 가격 · 할인 변경 표시 → 픽킹 시작 → 픽 수량 → 인보이스 확정 (종류별 번호) → 백오더 → 새 오더 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
@@ -6,7 +6,7 @@ const path = require('path'), fs = require('fs');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8768', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   fs.mkdirSync(path.resolve(__dirname, 'out'), { recursive: true });
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
   const errs = [], log = (...a) => console.log(...a);
   const shot = (pg, n) => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
@@ -56,19 +56,29 @@ const path = require('path'), fs = require('fs');
   await shot(pg, 'p3_mgr_sent');
   await pg.click('#mPick'); await pg.waitForTimeout(400); await pg.click('#prtClose'); await pg.waitForTimeout(400);
   log('status after pick:', await pg.textContent('#page h2 .tag'));
-  await pg.fill('[data-pq="0"]', '7'); await pg.dispatchEvent('[data-pq="0"]', 'change');
+  /* 픽 수량: 줄의 ✎ 수량 → 팝업에 숫자 (v0.8.5x 두드리는 픽킹) — 1번 줄(AHG100 10개) 을 7 로 */
+  await pg.click('[data-pkq="0"]'); await pg.waitForSelector('#pqIn'); await pg.fill('#pqIn', '7'); await pg.click('#pqOk'); await pg.waitForTimeout(150);
   await pg.fill('#mFind', 'EB103'); await pg.press('#mFind', 'Enter'); await pg.waitForTimeout(100);
   await pg.click('#mPickSave'); await pg.waitForTimeout(400);
   await shot(pg, 'p4_picking');
   log('sum:', (await pg.textContent('#mSum')).replace(/\s+/g, ' '));
+  /* 작업 완료(검수 대기) 를 거쳐야 인보이스 발행 버튼이 나옴 */
+  await pg.click('#mPickDone'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForSelector('#mInv'); await pg.waitForTimeout(200);
+  log('status after pick done:', await pg.textContent('#page h2 .tag'));
   await pg.click('#mInv'); await pg.waitForTimeout(200); await shot(pg, 'p5_confirm'); await pg.click('#ivOk'); await pg.waitForTimeout(800);
   await pg.screenshot({ path: path.resolve(__dirname, 'out', 'p6_invoice_print.png') }); await pg.click('#prtClose'); await pg.waitForTimeout(400);
   log('after inv:', (await pg.textContent('#page .sumbox')).replace(/\s+/g, ' '));
-  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(300);
-  await pg.click('[data-lf="bo"]'); await pg.waitForTimeout(600); log('bo list:', (await pg.textContent('#page .card h2')).trim());
+  /* 목록으로 가기: 홈(묶음 타일)으로 돌아가 묶음(📥 접수 · 📦 출고 · 💵 수금 · 📚 조회)을 펴고 타일을 누름 — 백오더 · 인보이스 목록(fulfill.pageLists)에서는 단계 버튼이 안 먹어 홈을 거침 */
+  const goList = async k => {
+    await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="home"], [data-hg="sent"]'); await pg.waitForTimeout(300);
+    if (await pg.$('[data-lf="home"]')) { await pg.click('[data-lf="home"]'); await pg.waitForSelector('[data-hg="sent"]'); await pg.waitForTimeout(300); }
+    await pg.evaluate(k => { const t = document.querySelector('[data-hg="' + k + '"]'), g = t && t.closest('.hgrp'); if (g) g.classList.add('open'); }, k); await pg.click('[data-hg="' + k + '"]');
+    await pg.waitForTimeout(600);
+  };
+  await goList('bo'); log('bo list:', (await pg.textContent('#page .card h2')).trim());
   await pg.click('#page [data-go^="bo:"]'); await pg.waitForTimeout(500); await shot(pg, 'p7_bo');
   await pg.click('#bMake'); await pg.waitForTimeout(600); log('new from bo:', (await pg.textContent('#page h2')).trim());
-  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(300); await pg.click('[data-lf="inv"]'); await pg.waitForTimeout(600);
+  await goList('inv'); await pg.waitForSelector('[data-im="date"]'); await pg.click('[data-im="date"]'); await pg.waitForSelector('#iList .kpi');   // 인보이스 목록은 거래처별이 기본 → 📅 기간별로
   log('inv list:', (await pg.textContent('#iList .kpi')).replace(/\s+/g, ' ')); await shot(pg, 'p8_invlist');
   /* 큰 오더: 1,100줄 (매니저가 만들기) */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
@@ -77,8 +87,12 @@ const path = require('path'), fs = require('fs');
   await pg.evaluate(() => { const inp = document.getElementById('eQ1'); for (let i = 0; i < 1100; i++) { inp.value = String(898000000000 + i); inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } });
   log('1100 scans ms:', Date.now() - t0, 'N:', await pg.textContent('#eN'));
   t0 = Date.now(); await pg.click('[data-ev="cart"]'); await pg.waitForSelector('#eCart .irow'); log('cart render ms:', Date.now() - t0);
-  await pg.click('#eSend'); await pg.waitForTimeout(150); await pg.click('#cfOk'); await pg.waitForTimeout(800);
-  t0 = Date.now(); await pg.click('#mPick'); await pg.waitForTimeout(300); await pg.click('#prtClose'); await pg.waitForSelector('[data-pq="1099"]'); log('picking render ms:', Date.now() - t0);
+  /* 편집 화면엔 💾 저장만 (v0.8.14) — 저장한 주문을 열어 📤 접수로 보내기 → 작업 시작 */
+  await pg.click('#eDraft'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(1200);
+  const bigId = await pg.evaluate(() => (Object.values(window.__MOCK_STORE__.orders).find(o => o.st === 'draft' && o.acct === '1271') || {}).id);
+  log('big order saved:', bigId); if (!bigId) errs.push('big order not saved as draft');
+  await pg.evaluate(id => { location.hash = '#/order/' + id; }, bigId); await pg.waitForSelector('#mSend'); await pg.click('#mSend'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForSelector('#mPick');
+  t0 = Date.now(); await pg.click('#mPick'); await pg.waitForTimeout(300); await pg.click('#prtClose'); await pg.waitForSelector('[data-pkq="1099"]'); log('picking render ms:', Date.now() - t0);
   /* 거래처 할인 · 인보이스 종류 설정 화면 */
   await pg.evaluate(() => { location.hash = '#/admin/set'; }); await pg.waitForTimeout(500); await shot(pg, 'p9_invtypes');
   log('errors:', errs); await br.close(); srv.kill();

@@ -4,7 +4,7 @@ let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('ch
 const path = require('path');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8804', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const seed = `const now = Date.now(), mk = (id, store, h, amt, ex) => { const t = new Date(now - h * 3600000).toISOString(); return Object.assign({ id, no: id, d: t.substring(0, 10), ym: t.substring(0, 7), sm: 'BRANDON', acct: '1111', store, st: 'sent', n: 3, qty: 12, amt, createdAt: t, updatedAt: t, sentAt: t }, ex || {}); };
     s.orders.push(mk('OD1', 'DAY SHOP A', 1, 120), mk('OD2', 'DAY SHOP B', 2, 80), mk('OD3', 'ASKED SHOP', 3, 50, { cfReq: true, cfNote: 'AHG100 24개 맞나요?' }), mk('OD4', 'OLD OK', 30, 10, { cfOk: true }));`;

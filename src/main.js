@@ -37,12 +37,14 @@ import * as Flow from './flow.js';
 import * as Invlook from './invlook.js';
 import * as Access from './access.js';
 import * as Labels from './labels.js';
+import * as Displays from './displays.js';
+import * as Push from './push.js';
 import { loadAccounts } from './accounts.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.157';
+export const VER = 'v0.8.164';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -78,7 +80,7 @@ export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct
 export const CAN = {
   office:  ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
   acct:    ['verify', 'cod', 'ach', 'invLookup'],
-  pickinv: ['flow', 'invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],
+  pickinv: ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],   // v0.8.164: 출고 · 인보이스 담당도 주문 넣기
   invoice: ['newOrder', 'invoice', 'void', 'items', 'bo'],
   whmgr:   ['flow', 'assign', 'pick', 'ship', 'items', 'bo'],
   pick:    ['pick', 'ship', 'items'],
@@ -146,9 +148,14 @@ function shell() {
     d.innerHTML = '<i></i>' + (off ? bt('오프라인', 'Offline') : bt('온라인', 'Online')) + (wait ? ' · 📤' + (n || '') : '');
     document.body.classList.toggle('isoff', off);
   };
-  window.addEventListener('online', net); window.addEventListener('offline', net); window.addEventListener('theone:net', net); net();
+  NET_PAINT = net; window.addEventListener('online', net); window.addEventListener('offline', net); window.addEventListener('theone:net', net); net();
   window.addEventListener('theone:slow', () => toast('🐢 ' + bt('연결이 느려 폰에 저장된 자료를 먼저 보여줍니다', 'Slow connection — showing data saved on this phone first'), 'warn'));
-  $('hNet').onclick = () => {
+  $('hNet').onclick = netSheet;
+}
+/** 📡 연결 · 보낼 함 창 — 위 알약(넓은 화면)과 ☰ 서랍 메뉴(폰에서는 알약이 숨겨짐)에서 염 */
+let NET_PAINT = null;
+export function netSheet() {
+  { const net = () => { if (NET_PAINT) NET_PAINT(); };
     const off = navigator.onLine === false, n = Orders.outboxList().length, pend = S.DB && S.DB.pending;
     openModal('<h2>' + (off ? '🔴 ' + bt('오프라인', 'Offline') : '🟢 ' + bt('온라인', 'Online')) + '</h2><div class="muted" style="line-height:1.7">' +
       (off ? bt('인터넷이 안 됩니다. 주문 · 수금은 그대로 입력하세요 — 폰에 저장했다가 인터넷이 되면 자동으로 회사로 올라갑니다. 다시 입력하지 마세요.', 'No internet. Keep entering orders and payments — they are saved on this phone and upload automatically when online. Don\'t re-enter.') : bt('회사 서버와 연결되어 있습니다.', 'Connected to the company server.')) + '<br>' +
@@ -157,7 +164,7 @@ function shell() {
       '</div><div id="netOff" style="margin-top:8px"></div><div class="btns">' + (n && !off ? '<button class="b-blue" id="netSend">📤 ' + bt('지금 보내기', 'Send now') + '</button>' : '') + '<button class="b-ghost" id="netX">' + bt('닫기', 'Close') + '</button></div>');
     $('netX').onclick = closeModal; Offline.homeCard($('netOff'), false);
     if ($('netSend')) $('netSend').onclick = async () => { busy(true); await Orders.syncOutbox(false); busy(false); closeModal(); net(); };
-  };
+  }
 }
 
 function loginScreen(msg) {
@@ -173,7 +180,7 @@ function waitScreen(email) {
   $('nav').innerHTML = '';
   $('page').innerHTML = '<div class="card login"><div class="logo">⏳</div><h1>등록 대기 <span class="en">Not registered yet</span></h1><p>' + esc(email) + ' 계정은 아직 앱에 등록되지 않았습니다.<br>관리자에게 등록을 요청해 주세요.<br><span class="en">This account is not registered. Please ask the administrator.</span></p>' +
     '<button class="b-ghost" id="btnOut">로그아웃 Sign out</button></div>';
-  $('btnOut').onclick = () => S.AUTH.signOut();
+  $('btnOut').onclick = () => { Push.disable().finally(() => S.AUTH.signOut()); };   // 로그아웃 → 이 기기 팝업 등록도 지움
 }
 /* ☰ 서랍 메뉴 — 왼쪽에서 밀려 나오는 메뉴 (회사 · 역할별 묶음 화면 · 설정 · 사용자 · 언어). 아래 메뉴 "모드" · 헤더 ☰ · 이름 누르기 모두 여기로 */
 function userMenu() {
@@ -189,7 +196,7 @@ function userMenu() {
   const settings = '<div class="dsec dset"><small>⚙️ ' + bt('설정', 'Settings') + '</small>' +
     (roles.length ? '<label>' + bt('화면 바꾸기', 'Switch view') + '</label>' + seg(roles.map(r => [r]), 'r', S.role, a => roleLabel(a[0]).split(' ')[0]) + (S.role === 'manager' && isAdm ? seg(JOBS, 'j', jobOf(), a => a[1]) : '') : '') +
     '<label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label>' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', a => a[1]) +
-    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
+    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mPush">' + (Notify.notifyState() === 'granted' ? '🔔 ' + bt('팝업 알림 켜짐', 'Pop-ups on') : Notify.notifyState() === 'denied' ? '🔕 ' + bt('팝업 알림 막힘', 'Pop-ups blocked') : '🔔 ' + bt('팝업 알림 켜기', 'Turn on pop-ups')) + '</button><button type="button" class="b-ghost b-sm" id="mNet">📡 ' + bt('연결 · 보낼 함', 'Connection · outbox') + '</button><button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
   const name = S.user.name || S.user.email, ini = String(name).split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase();
   let d = $('drawer'); if (!d) { d = document.createElement('div'); d.id = 'drawer'; document.body.appendChild(d); }
   d.innerHTML = '<div class="dback" id="dBack"></div><aside class="dpanel"><div class="dhead"><img src="logo-96.png" alt=""><b>THE ONE CORP</b><button type="button" class="hb" id="dX">✕</button></div>' +
@@ -201,12 +208,15 @@ function userMenu() {
   $('dBack').onclick = close; $('dX').onclick = close;
   d.querySelectorAll('[data-dgo]').forEach(b => b.onclick = () => { close(); const g = b.dataset.dgo, [r, a] = g.split('/'); if (a) Router.go(r, a); else Router.go(g); });
   $('mDiag').onclick = diag;
+  if ($('mNet')) $('mNet').onclick = () => { close(); netSheet(); };
+  /* 🔔 팝업 알림 — 컴퓨터 · 폰 화면에 (앱을 닫아도). 이미 켜져 있으면 이 기기 등록을 새로 하고 시험 팝업 */
+  if ($('mPush')) $('mPush').onclick = async () => { close(); const st = Notify.notifyState(); if (st === 'denied') return toast(bt('브라우저 주소창 왼쪽 🔒 → 알림 → 허용 으로 바꾸세요', 'Allow notifications in the browser (🔒 left of the address bar)'), 'bad'); if (st !== 'granted') { await Notify.askPermission(); return; } const ok = await Push.enable(true); toast(ok ? '🔔 ' + bt('이 기기에서 팝업을 받습니다', 'This device gets pop-ups') : bt('이 브라우저는 앱을 닫았을 때 팝업을 받을 수 없습니다 — 앱이 열려 있을 때만', 'This browser only shows pop-ups while the app is open'), ok ? 'good' : 'bad'); if (ok) { try { const r = await navigator.serviceWorker.getRegistration(); if (r) r.showNotification('🔔 THE ONE', { body: bt('팝업 알림이 이렇게 뜹니다', 'Pop-ups look like this'), tag: 'theone-test', icon: 'icon-192.png', data: { url: location.href, at: Date.now() } }); } catch (e) {} } };   // 시험 팝업은 화면이 보일 때도 띄움
   d.querySelectorAll('[data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); userMenu(); });
   if ($('mInst')) $('mInst').onclick = () => { close(); doInstall(); };
   d.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
   d.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { close(); switchRole(b.dataset.r); });
   d.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { close(); S.me.job = b.dataset.j; switchRole('manager'); });
-  $('mOut').onclick = () => { close(); S.AUTH.signOut(); };
+  $('mOut').onclick = () => { close(); Push.disable().finally(() => S.AUTH.signOut()); };
   $('mReload').onclick = () => location.reload();
 }
 /* 🔁 모드만 고르는 작은 창 — 아래 메뉴 "모드" · 헤더의 이름 누르기 (전체 메뉴는 ☰ 서랍) */
@@ -356,12 +366,20 @@ const mark = k => { PERF[k] = Math.round(performance.now()); };
 const BOOT_KEY = e => 'theone.boot.' + String(e || '').toLowerCase();
 const bootSave = (email, me, sms, st) => { try { localStorage.setItem(BOOT_KEY(email), JSON.stringify({ me, sms, settings: st, at: Date.now() })); } catch (e) {} };
 const bootLoad = email => { try { const j = JSON.parse(localStorage.getItem(BOOT_KEY(email)) || 'null'); return j && j.me && j.me.active !== false && Array.isArray(j.sms) && j.settings ? j : null; } catch (e) { return null; } };
+/* 관리자 기록 지키기 — 세일즈맨 가져오기 등이 관리자 사용자 문서를 role 'salesman' 으로 덮어썼거나 active 가 빠졋으면 로그인 때 되돌림
+ *   (규칙: 관리자 이메일은 users 쓰기 허용). 빠른 시작(폰 캐시) 경로와 서버 경로 둘 다에서 돈다 — 캐시 경로에서 안 돌아 관리자 모드가 사라지던 문제 */
+export async function healAdmin(email, me) {
+  if (!ADMIN_EMAILS.includes(email) || (me.active === true && me.role === 'admin')) return false;
+  const fix = { active: true, role: 'admin' };
+  try { await S.DB.update('users', email, fix); } catch (e) { try { await S.DB.set('users', email, Object.assign({}, me, fix)); } catch (e2) { return false; } }
+  Object.assign(me, fix); return true;
+}
 function applyBase(sms, st) { S.sms = sms || []; S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; }); S.settings = st || {}; setInvTypeMap(invTypes(S)); }
 async function afterLogin(user) {
   mark('auth'); S.user = user;
   const email = user.email, snap = bootLoad(email);
   const meP = S.DB.get('users', email);
-  let me = null;
+  let me = null, healed = false;
   if (snap) me = snap.me;
   else {
     try { me = await meP; } catch (e) { loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ')'); return; }
@@ -369,15 +387,13 @@ async function afterLogin(user) {
       me = { id: email, email, name: user.name, role: 'admin', active: true, createdAt: today() };
       try { await S.DB.set('users', email, me); } catch (e) { loginScreen('관리자 기록을 만들지 못했습니다: ' + e.message); return; }
     }
+    if (me) healed = await healAdmin(email, me);
     if (!me || me.active === false) { waitScreen(email); return; }
-    /* 옛 버전이 만든 관리자 기록에 active 가 없으면 규칙의 "등록된 사용자" 검사에 걸림 → 채워 둠 */
-    if (ADMIN_EMAILS.includes(email) && (me.active !== true || me.role !== 'admin')) {
-      try { await S.DB.update('users', email, { active: true, role: 'admin' }); me.active = true; me.role = 'admin'; } catch (e) {}
-    }
   }
   mark('me'); S.me = me; S.role = me.role || 'salesman';
-  /* 여러 화면을 쓰는 사람 (관리자 · 추가 역할) — 이 폰에서 마지막으로 본 화면으로 */
-  try { const v = localStorage.getItem(VIEW_KEY()); if (v && viewsOf(me).includes(v)) S.role = v; } catch (e) {}
+  /* 여러 화면을 쓰는 사람 (관리자 · 추가 역할) — 이 폰에서 마지막으로 본 화면으로 (관리자 역할을 방금 되돌렸으면 관리자 화면으로) */
+  if (healed) { try { localStorage.setItem(VIEW_KEY(), 'admin'); } catch (e) {} }
+  else { try { const v = localStorage.getItem(VIEW_KEY()); if (v && viewsOf(me).includes(v)) S.role = v; } catch (e) {} }
   const baseP = Promise.all([S.DB.list('salesmen', { order: ['code', 'asc'] }), S.DB.get('settings', 'app')]);
   if (snap) {
     applyBase(snap.sms, snap.settings); mark('base');
@@ -389,7 +405,8 @@ async function afterLogin(user) {
     busy(false);
   }
   paintNav();
-  setTimeout(() => { Notify.start(); Msg.start(); }, snap ? 1500 : 0);   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
+  setTimeout(() => { Notify.start(); Msg.start(); }, snap ? 1500 : 0);
+  setTimeout(() => { Push.enable(false); }, 4000);   // 📱💻 알림을 허락한 기기면 하루 한 번 등록 확인 (앱을 닫아도 팝업)   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
   const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) goHash('#/' + navFor(S.role)[0][0]);
   Router.stack = [];
@@ -397,9 +414,11 @@ async function afterLogin(user) {
   /* 빠른 시작이었으면 — 서버 것과 비교해 바뀐 것만 반영 */
   if (snap) {
     Promise.all([meP, baseP]).then(async ([m2, [sms2, st2]]) => {
+      const healed2 = m2 ? await healAdmin(email, m2) : false;   // 빠른 시작 경로에서도 관리자 역할이 지워졋으면 되돌림
       if (!m2 || m2.active === false) { waitScreen(email); return; }
       bootSave(email, m2, sms2, st2);
-      const roleChg = m2.role !== snap.me.role || (m2.job || '') !== (snap.me.job || '') || (m2.sm || '') !== (snap.me.sm || '') || JSON.stringify(m2.views || m2.extra || null) !== JSON.stringify(snap.me.views || snap.me.extra || null);
+      if (healed2) { S.role = 'admin'; try { localStorage.setItem(VIEW_KEY(), 'admin'); } catch (e) {} }
+      const roleChg = healed2 || m2.role !== snap.me.role || (m2.job || '') !== (snap.me.job || '') || (m2.sm || '') !== (snap.me.sm || '') || JSON.stringify(m2.views || m2.extra || null) !== JSON.stringify(snap.me.views || snap.me.extra || null);
       const accChg = String((st2 || {}).accountsVer || '0') !== String((snap.settings || {}).accountsVer || '0');
       S.me = m2; applyBase(sms2, st2);
       if (accChg) { try { S.accounts = await loadAccounts(S); } catch (e) {} }
@@ -439,7 +458,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Msg.register(S); Router.on('msg', Msg.page);
+  Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }

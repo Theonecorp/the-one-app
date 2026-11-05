@@ -4,7 +4,7 @@
  *  세일즈맨은 자기 가게(자기 sm 의 AR · 수금)만, 담당자는 가게 담당 세일즈맨 기준으로 봅니다
  * ============================================================ */
 import { $, esc, money, R2, num, md, toast, busy, openModal, closeModal, confirmBox, sortBy, daysBetween, today, bi, bt, printOpen, sortInv, invNo, sel, goHash } from './ui.js';
-import { company, docHead, termDays, getInvoice, dropInvCache, rebuildSalesM } from './invoicing.js';
+import { company, docHead, termDays, getInvoice, dropInvCache, monthsOf, rebuildSalesM } from './invoicing.js';
 import { searchAccounts } from './accounts.js';
 import { can } from './main.js';
 import { recentYms, stTag } from './orders.js';
@@ -251,7 +251,7 @@ export async function invDetail(no, acct, back) {
   if ($('idEdit')) $('idEdit').onclick = () => invEditForm(x, () => invDetail(no, '', back));
   if ($('idDel')) $('idDel').onclick = async () => {
     if (!(await confirmBox('🗑 ' + no + ' · ' + (x.store || acct) + ' · ' + money(x.total) + '\n' + bt('이 인보이스를 지울까요? (이전 시스템 인보이스 — 월별 매출 요약도 다시 계산합니다)', 'Delete this invoice? Monthly sales summary is recalculated.'), bt('지우기', 'Delete')))) return;
-    busy(true); try { await S.DB.del('invoices', x.id || no); dropInvCache(); dropStoreCache(); try { await rebuildSalesM(S, [x.ym || String(x.d || '').substring(0, 7)]); } catch (e) {} toast('🗑 ' + no, 'good'); closeModal(); if (back) back(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(true); try { await S.DB.del('invoices', x.id || no); dropInvCache(monthsOf([x])); dropStoreCache(); try { await rebuildSalesM(S, [x.ym || String(x.d || '').substring(0, 7)]); } catch (e) {} toast('🗑 ' + no, 'good'); closeModal(); if (back) back(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
 }
@@ -275,7 +275,7 @@ export function invEditForm(x, done) {
     const patch = { acct, store: a ? a.store : (x.store || ''), sm: $('ieSm').value, d, ym: d.substring(0, 7), total, memo: $('ieM').value.trim(), editAt: new Date().toISOString(), editBy: S.user.email };
     if (bal != null) { patch.bal = bal; patch.st = bal > 0.005 ? 'open' : 'paid'; }
     busy(true);
-    try { await S.DB.update('invoices', x.id || x.no, patch); dropInvCache(); dropStoreCache(); try { await rebuildSalesM(S, Array.from(new Set([x.ym, patch.ym].filter(Boolean)))); } catch (e) {} toast('💾 ' + x.no, 'good'); closeModal(); if (done) done(); }
+    try { await S.DB.update('invoices', x.id || x.no, patch); dropInvCache(monthsOf([x, patch])); dropStoreCache(); try { await rebuildSalesM(S, Array.from(new Set([x.ym, patch.ym].filter(Boolean)))); } catch (e) {} toast('💾 ' + x.no, 'good'); closeModal(); if (done) done(); }
     catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
@@ -330,7 +330,7 @@ export async function storeSheet(acct, onPick, opt0) {
     if (tab === 'inv') body = live.length || credits.length ?
       live.concat(credits).map(v => '<div class="pr tap" data-si="' + esc(v.no) + '"' + (v.bk >= 3 ? ' style="background:#fef2f2;border-radius:10px;padding-left:8px;padding-right:8px"' : '') + '><span class="tb" style="flex:0 0 34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;background:' + (v.bal < 0 ? '#15803d' : v.bk >= 3 ? '#b91c1c' : v.bk >= 1 ? '#b45309' : '#64748b') + '">' + esc(String(v.no).charAt(0)) + '</span>' + (v.hold ? '<span class="tag t-r" style="margin-right:6px">↩️ ' + bt('바운스 홀드', 'Bounce hold') + '</span>' : '') + '<div class="ct"><b>' + esc(v.no) + (v.app ? ' <span class="tag t-b">앱</span>' : '') + '</b><small>' + esc(md(v.d)) + (v.pdd > 0 ? ' · ' + v.pdd + '일 지남 overdue' : ' · 기한 전') + ' · ' + money(v.amt) + '</small></div><div class="pa"><b>' + money(v.bal) + '</b><small>' + (v.bal < 0 ? '크레딧' : '잔액 due') + '</small></div></div>').join('') : '<div class="none">미결 인보이스 없음 · No open invoices' + (info.asOf ? '' : ' (AR 아직 안 올라옴 · AR not uploaded yet)') + '</div>';
     else if (tab === 'invh') body = invhHtml(info);
-    else if (tab === 'ord') body = info.orders.length ? info.orders.map(o => '<div class="pr tap" data-so="' + esc(o.id) + '"><div class="ct"><b>' + esc(o.no) + ' ' + stTag(o.st) + '</b><small>' + esc(o.d) + ' · ' + esc(o.sm) + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.memo ? ' · ' + esc(o.memo) : '') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div></div>').join('') : '<div class="none">앱으로 넣은 주문가 아직 없습니다 · No app orders yet</div>';
+    else if (tab === 'ord') body = info.orders.length ? info.orders.map(o => '<div class="pr tap" data-so="' + esc(o.id) + '"><div class="ct"><b>' + esc(o.no) + ' ' + stTag(o.st) + '</b><small>' + esc(o.d) + ' · ' + esc(o.sm) + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.memo ? ' · ' + esc(o.memo) : '') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div></div>').join('') : '<div class="none">앱으로 넣은 주문이 아직 없습니다 · No app orders yet</div>';
     else if (tab === 'ship') body = '<div class="btns" style="margin:4px 0 6px;justify-content:flex-start"><button class="b-ghost b-sm" id="ssTrk">🚚 ' + bi('배송 조회 화면', 'Tracking page') + '</button></div>' + shipmentsHtml(ships.slice().sort((x, y) => String(y.shipDate || '').localeCompare(String(x.shipDate || '')) || (x.box || 0) - (y.box || 0)).slice(0, 80));
     else if (tab === 'note') body = '<button class="b-blue b-sm" id="ssNoteAdd" style="margin:4px 0 8px">📝 ' + bi('노트 남기기', 'Add note') + '</button>' + Notes.notesHtml(notes, { edit: true });
     else body = info.pays.length ? info.pays.map(e => '<div class="pr"><div class="ct"><b>' + esc((e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(', ') || '수금') + '</b><small>' + esc(e.d) + ' · ' + esc(e.sm) + (e.invs && e.invs.length ? ' · ' + esc(e.invs.map(v => v.no).filter(Boolean).join(', ')) : '') + '</small></div><div class="pa"><b>' + money(e.total) + '</b><small>' + (e.settled ? '정산됨' : e.v ? '확인' : e.sb ? '입력' : '') + '</small></div></div>').join('') : '<div class="none">최근 6개월 수금 기록 없음 · No payments in 6 months</div>';

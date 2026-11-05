@@ -3,7 +3,7 @@ let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('ch
 const path = require('path');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8843', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 900 } });
   const seed = "s.orders.forEach(o => { o.sm = 'BRANDON'; }); s.orderLines.forEach(l => { l.sm = 'BRANDON'; }); const o = s.orders[0]; s.orders.push(Object.assign({}, o, { id: 'O261020-PICK', no: 'O261020-PICK', st: 'pick', store: 'PICKING STORE', picker: 'pick1@x.com' })); s.orderLines.push(Object.assign({}, s.orderLines[0], { id: 'O261020-PICK' }));";

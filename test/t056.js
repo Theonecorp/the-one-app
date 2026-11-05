@@ -1,10 +1,10 @@
-/* v0.8.17 시험 — 📊 리포트 (아이템별 · 손님별 · 세일즈맨별 · CSV · 인쇄) · 손님용 스테이트먼트 (세일즈맨 가게 창에서 인쇄) */
+/* v0.8.17 시험 — 📊 리포트 (아이템별 · 손님별 · 세일즈맨별 · CSV · 인쇄) · 손님용 스테이트먼트 (세일즈맨 가게 창에서 인쇄) · (2026-11 화면에 맞춤: 스테이트먼트는 무엇을 · 기간 고르는 창 → 🖨 보기 · 인쇄) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8784', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   fs.mkdirSync(path.resolve(__dirname, 'out'), { recursive: true });
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const T = new Date(), d0 = T.toISOString().substring(0, 10), d1 = new Date(T - 86400000).toISOString().substring(0, 10);
   const mk = async (email) => {
@@ -38,7 +38,7 @@ const path = require('path'), fs = require('fs');
   pg = await mk('brandon@x.com');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', 'ali b/s'); await pg.waitForTimeout(250); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(1200);
   if (!(await pg.$('#ssStmt'))) { if (await pg.$('#modal.on')) await pg.click('#modal .mclose'); await pg.click('#eStoreI'); await pg.waitForSelector('#ssStmt'); }
-  await pg.click('#ssStmt'); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(300);
+  await pg.click('#ssStmt'); await pg.waitForSelector('#stGo'); log('stmt options:', (await txt(pg, '#mbox')).slice(0, 120)); await pg.click('#stGo'); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(300);
   const st = await txt(pg, '#prtbody'); log('statement:', st.slice(0, 300)); await shot(pg, 'f1_statement');
   if (!/STATEMENT/.test(st) || !/TOTAL DUE/.test(st) || !/A00002/.test(st)) errs.push('statement missing parts');
   await pg.close();

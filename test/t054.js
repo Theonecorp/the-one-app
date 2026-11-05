@@ -1,10 +1,10 @@
-/* v0.8.14 시험 — 뒤로가기(바로 전 화면) · 오더 저장→주문 확인→보내기 · 담당자 기간 대시보드 · 인보이스 줄합=합계 · 아이템 등록 */
+/* v0.8.14 시험 — 뒤로가기(바로 전 화면) · 오더 저장→주문 확인→보내기 · 담당자 기간 대시보드 · 인보이스 줄합=합계 · 아이템 등록 · (2026-11 화면에 맞춤: 아래 메뉴 세일 · 거래처 탭, 홈 묶음 타일, 단계별 목록 칩) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs');
 (async () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8779', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   fs.mkdirSync(path.resolve(__dirname, 'out'), { recursive: true });
-  const br = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const T = new Date(), d0 = T.toISOString().substring(0, 10), d1 = new Date(T - 86400000).toISOString().substring(0, 10);
   const mkPage = async (email) => {
@@ -31,13 +31,14 @@ const path = require('path'), fs = require('fs');
   let pg = await mkPage('brandon@x.com');
   await pg.waitForTimeout(500);
   const h0 = await pg.evaluate(() => location.hash); log('salesman start:', h0);
-  await pg.click('nav button[data-go="entry"]'); await pg.waitForTimeout(400);
-  await pg.click('nav button[data-go="ar"]'); await pg.waitForTimeout(400);
+  /* 세일즈맨 아래 메뉴: 🏠 홈 · 🛒 세일(order) · 💵 수금(묶음) · 🏬 거래처(stores) · 📚 조회(묶음) — 탭 둘을 차례로 (v0.8.135) */
+  await pg.click('nav button[data-go="order"]'); await pg.waitForTimeout(400);
+  await pg.click('nav button[data-go="stores"]'); await pg.waitForTimeout(400);
   log('dbg:', await pg.evaluate(() => location.hash + ' | ' + document.getElementById('hBack').className + ' | ' + (() => { const e = document.getElementById('hBack'); let a = e, out = []; while (a && a.tagName !== 'HTML') { const cs = getComputedStyle(a); out.push(a.tagName + (a.id ? '#' + a.id : '') + ':' + cs.display + '/' + cs.visibility + '/' + cs.opacity + '/' + cs.overflow); a = a.parentElement; } return 'rects=' + e.getClientRects().length + ' cv=' + e.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }) + ' ' + out.join(' > '); })() + ' | hdr ' + document.querySelector('header').getBoundingClientRect().width));
   const back = async () => { const r = await pg.$eval('#hBack', e => { const b = e.getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; }); await pg.mouse.click(r[0], r[1]); };
   await back(); await pg.waitForTimeout(400); const b1 = await pg.evaluate(() => location.hash);
   await back(); await pg.waitForTimeout(400); const b2 = await pg.evaluate(() => location.hash);
-  log('back chain: entry→ar →back', b1, '→back', b2); if (b1 !== h0 || b2 !== h0) errs.push('back should go up to home (tab → home), got ' + b1 + ' ' + b2);   // v0.8.44: 뒤로 = 한 단계 위
+  log('back chain: order→stores →back', b1, '→back', b2); if (b1 !== '#/order' || b2 !== h0) errs.push('back should return to the previous screen (stores → order → home), got ' + b1 + ' ' + b2);   // v0.8.152: ‹ 뒤로 = 바로 전 화면 (t116) — v0.8.44 의 '한 단계 위' 를 대신함
   /* 새 오더 → 저장만 있어야 함 */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
   await pg.fill('#eStoreQ', 'beauty 4u'); await pg.waitForTimeout(200); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(200); }
@@ -63,7 +64,9 @@ const path = require('path'), fs = require('fs');
   await pg.click('[data-hp="year"]'); await pg.waitForTimeout(1200); const yr = await txt(pg, '#hSales'); log('year:', yr.slice(0, 120)); if (!/\$252\.56/.test(yr)) errs.push('year total wrong');
   await shot(pg, 'd1_dash');
   /* 완료 목록에 기간 칩 */
-  await pg.click('[data-hg="done"]'); await pg.waitForTimeout(800); log('done list period chips:', await pg.$$eval('[data-hp2]', e => e.length));
+  /* 홈 타일은 묶음(📥 접수 · 📦 출고 · 💵 수금 · 📚 조회) 안에 접혀 있음 — 묶음을 펴고 타일을 누름 */
+  const tile = async k => { await pg.evaluate(k => { const t = document.querySelector('[data-hg="' + k + '"]'), g = t && t.closest('.hgrp'); if (g) g.classList.add('open'); }, k); await pg.click('[data-hg="' + k + '"]'); };
+  await tile('done'); await pg.waitForTimeout(800); log('done list period chips:', await pg.$$eval('[data-hp2]', e => e.length));
   /* 인보이스 인쇄 — 15% 할인: 줄 합 = Total */
   await pg.evaluate(() => { location.hash = '#/order/inv:A00009'; }); await pg.waitForSelector('#iPrint'); await pg.click('#iPrint'); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(500);
   const tot = await pg.$$eval('#prtbody .ivtot tr', r => r.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
@@ -76,7 +79,7 @@ const path = require('path'), fs = require('fs');
   /* 픽킹 할당 → 픽킹 완료 → 인보이스 발행 → 출고 · 세일즈맨 확인 요청 */
   const home = async () => { await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(600); if (await pg.$('[data-lf="home"]')) await pg.click('[data-lf="home"]'); await pg.waitForSelector('.htile'); await pg.waitForTimeout(600); };
   await home();
-  await pg.click('[data-hg="sent"]'); await pg.waitForSelector('[data-ck]'); log('sent list groups:', await pg.$$eval('.smgrp', e => e.length), 'rows:', await pg.$$eval('[data-ck]', e => e.length));
+  await tile('sent'); await pg.waitForSelector('[data-ck]'); log('sent list groups:', await pg.$$eval('[data-smhd]', e => e.length), 'rows:', await pg.$$eval('[data-ck]', e => e.length));   // 세일즈맨별 묶음 머리 = [data-smhd]
   await pg.click('[data-ckall="1"]'); await pg.click('#bkCf'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(800);
   /* v0.8.51 흐름: 확인 요청 → ❓ 확인 대기 → 👍 확인 완료 → 배정 */
   await pg.click('[data-lf="cfw"]'); await pg.waitForSelector('[data-ckall="1"]');
@@ -85,7 +88,7 @@ const path = require('path'), fs = require('fs');
   await pg.click('[data-lf="cfok"]'); await pg.waitForSelector('[data-ckall="1"]');
   await pg.click('[data-ckall="1"]'); await pg.click('#bkAssign'); await pg.waitForSelector('#pkOk'); log('picker opts:', await pg.$$eval('[data-pk]', e => e.map(x => x.textContent.trim())));
   await pg.evaluate(() => { document.getElementById('pkPrint').checked = false; }); await pg.click('#pkOk'); await pg.waitForTimeout(900);
-  await pg.click('[data-lf="pick"]'); await pg.waitForTimeout(700); const pk = await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid)); log('picking list:', pk);
+  /* 📦 출고 단계 → 출고 작업 칩 */ await pg.click('[data-lg="ship"]'); await pg.waitForTimeout(300); await pg.click('[data-lf="pick"]'); await pg.waitForTimeout(700); const pk = await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid)); log('picking list:', pk);
   await pg.evaluate(id => { location.hash = '#/order/' + id; }, pk[0]); await pg.waitForSelector('#mPickDone');
   /* 두드려서 픽킹: 1번 줄 — 한 번 = ✓ 통과, 두 번째 = ⏳ 백오더(0) */
   await pg.click('[data-pkt="1"]'); await pg.waitForTimeout(80); await pg.click('[data-pkt="1"]'); await pg.waitForTimeout(80); await pg.click('[data-pkt="0"]'); await pg.waitForTimeout(80);
@@ -110,7 +113,7 @@ const path = require('path'), fs = require('fs');
   log('after register:', (await txt(pg, '#itList')).slice(0, 120));
   const ok = await pg.evaluate(() => !!document.querySelector('[data-it="NEWX1"]')); if (!ok) errs.push('new item not listed');
   /* 수정: 가격 */
-  await pg.click('[data-it="NEWX1"]'); await pg.waitForSelector('#fOk'); await pg.fill('#fP', '5'); await pg.click('#fOk'); await pg.waitForTimeout(1200);
+  await pg.click('[data-it="NEWX1"]'); await pg.waitForSelector('#isEd'); await pg.click('#isEd'); await pg.waitForSelector('#fOk');   // 줄을 누르면 먼저 아이템 보기 창 → ✏️ 수정 await pg.fill('#fP', '5'); await pg.click('#fOk'); await pg.waitForTimeout(1200);
   log('after edit:', (await txt(pg, '[data-it="NEWX1"]')).slice(0, 80));
   await shot(pg, 'd3_items');
   /* 오더 화면에서 새 아이템 검색 */
@@ -120,7 +123,7 @@ const path = require('path'), fs = require('fs');
   await pg.close();
   /* 세일즈맨(ALEX 의 오더는 ALEX 에게) — seed 오더 O261014-AAAA 는 ALEX: alex 계정 없으면 brandon 으로 cf 요청된 자기 오더 확인 */
   pg = await mkPage('brandon@x.com'); await pg.waitForTimeout(800);
-  log('salesman home cf tile:', (await txt(pg, '#hs-order')).slice(0, 60), await pg.$$eval('.htile', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 30))));
+  await pg.waitForSelector('#dTodo'); log('salesman home todo · cf card:', (await txt(pg, '#dTodo')).slice(0, 80), '|', (await txt(pg, '#dayCf')).slice(0, 80), await pg.$$eval('.dkpi .dk, .qgrid .qb', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 30))));   // v0.8.135 세일즈맨 홈: 오늘 할 일 · 확인 요청 카드 · 바로 가기
   await pg.close();
   log('errors:', errs.length ? errs : 'none'); await br.close(); srv.kill(); process.exit(errs.length ? 1 : 0);
 })();
