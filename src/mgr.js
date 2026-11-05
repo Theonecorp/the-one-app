@@ -42,7 +42,7 @@ export async function applyToInvoices(key, invs, on) {
   }
   return n;
 }
-/* 💵 수금 확인 — 서버에서 읽는 것은 화면에 들어올 때 · 봉투 저장 뒤만. ☑ · ① · ② · 저장은 읽어 둔 줄(VROWS)을 고치고 그 자리에서 다시 그림 (맨 위로 안 올라감) */
+/* 💵 수금 확인 — 줄은 오래된 수금부터(가장 최근 것이 맨 아래) · 서버에서 읽는 것은 화면에 들어올 때 · 봉투 저장 뒤만. ☑ · ① · ② · 저장은 읽어 둔 줄(VROWS)을 고치고 그 자리에서 다시 그림 (맨 위로 안 올라감) */
 let VROWS = [];
 const VFOLD = new Set();   // 접어 둔 세일즈맨 묶음 — 다시 그려도 그대로
 async function pageVerify(keep) {
@@ -62,7 +62,7 @@ function drawVerify(y, focusQ) {
   let list = VF.f === 'todo' ? todo : VF.f === 'wait' ? wait : VF.f === 'bad' ? bad : VF.f === 'done' ? done : open;
   if (VF.sm) list = list.filter(r => r.sm === VF.sm);
   if (VF.q) { list = list.filter(r => hasWords(r.store + ' ' + r.acct + ' ' + (r.sm || ''), VF.q) || (r.pays || []).some(p => String(p.ref).includes(VF.q.trim()))); }
-  list = sortBy(list, r => r.d + (r.createdAt || ''), true);
+  list = sortBy(list, r => r.d + (r.createdAt || ''));   // 오래된 것이 위, 가장 최근 것이 아래 (들어온 순서대로 처리)
   const tdy = rows.filter(r => r.d === today());
   const accs = VF.q && !/^\d{5,}$/.test(VF.q.trim()) ? searchAccounts(S.accounts, VF.q, 6) : [];
   let h = '<div class="kpi" style="margin:0 0 10px">' + [['todo', '① 접수 확인 대기', todo.length, 'To review'], ['wait', '② 체크 수령 대기', wait.length, 'Awaiting check'], ['bad', '⚠️ 차액', bad.length, 'Mismatch'], ['all', '오늘 수금', money(sum(tdy, r => r.total)), 'Today ' + tdy.length]].map(c => '<div class="tap' + (VF.f === c[0] ? ' on' : '') + '" data-vf="' + c[0] + '" style="' + (VF.f === c[0] ? 'background:var(--blue2);outline:2px solid var(--blue)' : '') + '"><b>' + c[2] + '</b><span>' + c[1] + '<br><i class="en">' + c[3] + '</i></span></div>').join('') + '</div>' +
@@ -82,7 +82,7 @@ function drawVerify(y, focusQ) {
     Object.keys(by).sort().forEach(sm => { const L = by[sm], t = L.filter(r => !r.sb).length, w = L.filter(r => r.sb && !r.rc).length;
       h += '<div class="card smgrp' + (VFOLD.has(sm) ? ' fold' : '') + '"><div class="iday tap" data-smhd="' + esc(sm) + '" style="background:#e0e7ff;margin-top:0"><b>👤 ' + esc(sm) + '</b><span>' + L.length + '건 · ' + money(sum(L, r => r.total)) + (t ? ' · <span class="warn">접수 확인 ' + t + '</span>' : '') + (w ? ' · 체크 대기 ' + w : '') + ' ▾</span></div><div class="smbody">' + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0"><button class="b-ghost b-sm" data-vckall="' + esc(sm) + '">☑ ' + esc(sm) + ' 전체 선택 · Select all</button>' + (t ? '<button class="b-ghost b-sm" data-sball="' + esc(sm) + '">✓ 접수 확인 대기 ' + t + '건 모두 확인 · Review all</button>' : '') + '</div>' + L.map(row).join('') + '</div></div>'; });
   } else {
-    const by = groupBy(list, r => r.d), days = Object.keys(by).sort().reverse();
+    const by = groupBy(list, r => r.d), days = Object.keys(by).sort();   // 날짜별도 오래된 날부터
     days.forEach(d => { const L = by[d]; h += '<div class="card"><div class="dayhd"><span>' + dlabel(d) + ' <button class="b-ghost b-sm" data-vckday="' + d + '" style="margin-left:6px;padding:3px 8px">☑ 전체</button></span><span>' + money(sum(L, r => r.total)) + ' · ' + L.length + '건</span></div>' + L.map(row).join('') + '</div>'; });
   }
   h += '<div class="bulkbar" id="vBulk" style="display:none"></div>';

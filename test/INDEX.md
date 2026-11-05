@@ -94,3 +94,4 @@
 | t131 | v0.8.164 | Apps Script 알림 길 (apps-script/Code.gs 의 notifyRun_ 를 가짜 메일 · 챗 · Firestore · FCM 위에서 돌림, 브라우저 없음) |
 | t132 | v0.8.165 | ☁️ 사진 공개(apps-script/SharePhotos.gs)는 바탕 색인(data/photo-index.json)과 Firestore catalog/photoIndex 를 합쳐서 봄 (가짜 드라이브 · Firestore 위에서, 브라우저 없음) |
 | t133 | v0.8.165 | ⑤ 이전 시스템 sales_invoice.xlsx 가져오기: 머리글 오타 "CUSOMTER #" 도 고객 번호 열로 읽음 (INVOICE · DATE · CUSOMTER # · CUSTOMER NAME · SALES REP · TERM · SHIP TO · SHIP VIA · TOTAL · SALES ORDER) |
+| t134 | v0.8.166 | 💵 수금 확인 · 🧾 세일즈맨 정산의 거래처 줄은 오래된 수금이 위, 가장 최근 것이 맨 아래 (들어온 순서대로 처리) |
