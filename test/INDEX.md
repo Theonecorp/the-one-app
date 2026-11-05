@@ -92,3 +92,4 @@
 | t129 | v0.8.164 | 🖼 Notes Display (직원 앱의 Notes Display 와 같은 흐름) |
 | t130 | v0.8.164 | 📱💻 팝업 알림 · 사람끼리 메시지 |
 | t131 | v0.8.164 | Apps Script 알림 길 (apps-script/Code.gs 의 notifyRun_ 를 가짜 메일 · 챗 · Firestore · FCM 위에서 돌림, 브라우저 없음) |
+| t132 | v0.8.165 | ☁️ 사진 공개(apps-script/SharePhotos.gs)는 바탕 색인(data/photo-index.json)과 Firestore catalog/photoIndex 를 합쳐서 봄 (가짜 드라이브 · Firestore 위에서, 브라우저 없음) |
