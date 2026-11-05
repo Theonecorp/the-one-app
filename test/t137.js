@@ -1,6 +1,7 @@
-/* v0.8.166 시험 — 🔒 ② SALES(수금) 파일을 다시 올려도 앱에서 이미 정산한 건은 그대로: 정산이 풀려 또 정산하는 일이 없음
+/* v0.8.166 시험 — 🔒 ② SALES(수금) · ① 수금 입력 파일을 다시 올려도 앱에서 이미 정산한 건은 그대로: 정산이 풀려 또 정산하는 일이 없음
  *   ① COD 입력 탭: 정산된 건(settled)은 파일 내용이 달라도 건드리지 않음 · 있는 건은 통째로 바꾸지 않고 적은 칸만(createdAt · 취소 표시 유지) · 앱에서 한 ✓ 를 파일의 빈칸이 되돌리지 않음 · 새 줄은 들어옴
  *   ② 세일즈맨 탭: 정산된 수금은 그대로 · ① 접수 확인 · ② 수령 · ✓ 는 파일로 올리기만(TRUE → 반영, 빈칸 → 그대로)
+ *   ③ ① 수금 입력(_ENTRIES) 파일: 정산된 수금은 그대로 · 있는 수금은 적은 칸만(① ② ✓ 유지) · 새 수금은 들어옴
  *   (XLSX 라이브러리는 CDN 이라 시험에서는 window.XLSX 를 가짜로 — 시트 → 표 변환만 흉내) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
@@ -23,7 +24,8 @@ const path = require('path');
       s.entries.push(mk('ES1', { sb: true, rc: true, v: true, settled: 'SET1' }), mk('ES2', { sb: true, rc: true, v: true, settled: '' }), mk('ES3', { sb: false, rc: false, v: false, settled: '' }));
     };
     /* 가짜 XLSX — read() 는 위 표를, sheet_to_json(header:1) 은 그 표 그대로 */
-    window.XLSX = { read: () => ({ SheetNames: Object.keys(sh), Sheets: Object.fromEntries(Object.keys(sh).map(n => [n, { rows: sh[n] }])) }), utils: { sheet_to_json: ws => ws.rows.map(r => r.slice()) } };
+    window.__SHEETS = sh;
+    window.XLSX = { read: () => { const S = window.__SHEETS; return { SheetNames: Object.keys(S), Sheets: Object.fromEntries(Object.keys(S).map(n => [n, { rows: S[n] }])) }; }, utils: { sheet_to_json: ws => ws.rows.map(r => r.slice()) } };
   }, sheets);
   await pg.goto('http://127.0.0.1:8889/test/demo.html'); await pg.waitForSelector('#nav button');
   await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#f2', { state: 'attached', timeout: 8000 }); await pg.evaluate(() => { const d = document.getElementById('impOld'); if (d) d.open = true; });   /* ② 파일 칸은 접힌 '종류별로 따로 올리기' 안 */
@@ -43,6 +45,18 @@ const path = require('path');
   if (!S.ES1 || S.ES1.settled !== 'SET1' || !S.ES1.sb || !S.ES1.rc || !S.ES1.v) errs.push('② settled entry must stay as it was');
   if (!S.ES2 || !S.ES2.sb || !S.ES2.rc || !S.ES2.v || S.ES2.settled) errs.push('② blank cells in the file must not clear ① · ② · ✓ made in the app');
   if (!S.ES3 || !S.ES3.sb || S.ES3.rc || S.ES3.v) errs.push('② TRUE in the file still marks (SmartBee → sb), others untouched');
+  /* ---------- ③ ① 수금 입력 파일 (_ENTRIES 22칸) ---------- */
+  const EH = ['ID', '입력시각', '세일즈맨', '이메일', '가게', '계정', '주소', 'Pay Type', 'Check#', '금액', '메모', 'Deposit', '신규', '리포트', '상태', 'Post', 'Invoices', '받은날짜', '모바일', '보관', '대체', '원래체크'];
+  const er = (id, amt, memo) => [id, '2026-10-20', 'BRANDON', 'brandon@x.com', 'ALI B/S # 1', '1111', '', 'CHECK', '7777', amt, memo, '', '', '', '', '', 'A10055:' + amt, '2026-10-20', '', '', '', ''];
+  await pg.evaluate(sh => { window.__SHEETS = sh; document.getElementById('impOut').innerHTML = ''; }, { _ENTRIES: [EH, er('ES1', 999, 'file 999'), er('ES2', 123, 'memo from file'), er('ES4', 55, 'brand new')] });
+  await pg.setInputFiles('#f1', { name: 'THE ONE 수금 입력.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('fake') });
+  await pg.waitForFunction(() => document.querySelectorAll('#impOut .alert').length >= 1 && !document.getElementById('busy').classList.contains('on'), null, { timeout: 30000 }).catch(() => errs.push('③ import should finish'));
+  const msg3 = await pg.$$eval('#impOut .alert', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim()).join(' | ')); log('③ msg:', msg3.slice(0, 240));
+  if (!/🔒.*1건/.test(msg3)) errs.push('③ message should say 1 settled entry was left alone');
+  const E = await pg.evaluate(() => { const M = window.__MOCK_STORE__; const e = id => M.entries[id] && { total: M.entries[id].total, memo: M.entries[id].memo, sb: M.entries[id].sb, rc: M.entries[id].rc, v: M.entries[id].v, settled: M.entries[id].settled }; return { ES1: e('ES1'), ES2: e('ES2'), ES4: e('ES4') }; }); log('③ entries:', JSON.stringify(E));
+  if (!E.ES1 || E.ES1.settled !== 'SET1' || E.ES1.total === 999 || E.ES1.memo === 'file 999') errs.push('③ settled entry must stay exactly as it was');
+  if (!E.ES2 || E.ES2.total !== 123 || E.ES2.memo !== 'memo from file' || !E.ES2.sb || !E.ES2.rc || !E.ES2.v || E.ES2.settled) errs.push('③ open entry: amount · memo from the file, app ① ② ✓ kept, still unsettled');
+  if (!E.ES4 || E.ES4.total !== 55 || E.ES4.sb || E.ES4.v) errs.push('③ new entry comes in fresh');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();

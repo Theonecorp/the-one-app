@@ -531,7 +531,15 @@ async function importMain(file) {
     const users0 = {}; if (smv) { try { (await S.DB.list('users')).forEach(u => { users0[String(u.email || u.id || '').toLowerCase()] = u; }); } catch (e) {} }
     if (smv) { for (let i = 1; i < smv.length; i++) { const r = smv[i]; const name = String(r[1] || '').trim().toUpperCase(), email = String(r[0] || '').trim().toLowerCase(); if (!name) continue; const active = !/^N/i.test(String(r[2] || 'Y')); ops.push({ op: 'set', col: 'salesmen', id: name, data: Object.assign({ code: name, name, email, active, rates: RATE_DEFAULT }, S.smByCode[name] || {}, { active }) }); if (email) { const ex = users0[email]; if (!ex) ops.push({ op: 'set', col: 'users', id: email, data: { email, name, role: 'salesman', sm: name, active, createdAt: today() } }); else if (ex.role === 'salesman') ops.push({ op: 'update', col: 'users', id: email, data: { sm: name, name } }); else nKeep++; } nS++; } say('세일즈맨 ' + nS + '명 (이메일 있는 사람은 사용자에도 등록' + (nKeep ? ' · 관리자 · 담당자 ' + nKeep + '명은 그대로' : '') + ')'); }
     let nE = 0;
-    if (ent) { const list = parseEntriesSheet(ent); list.forEach(e => ops.push({ op: 'set', col: 'entries', id: e.id, data: e })); nE = list.length; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list, e => e.total))); }
+    if (ent) {
+      /* 🔒 앱에서 이미 정산한 수금은 파일을 다시 올려도 그대로 · 있는 건은 set 대신 merge — 앱에서 한 ① 접수 확인 · ② 수령 · ✓ · 정산 · 취소 표시가 파일로 풀리지 않게 */
+      const list = parseEntriesSheet(ent), old = {}; (await S.DB.list('entries', { where: [['imported', '==', true]] })).forEach(e => { old[e.id] = e; });
+      let nDone = 0, nKeep = 0;
+      list.forEach(e => { const o = old[e.id]; if (o && o.settled) { nDone++; return; }
+        if (o) { ['sb', 'rc', 'v', 'void', 'settled', 'settledAt', 'vn', 'disc', 'mismatch', 'env'].forEach(k => { if (o[k]) delete e[k]; }); nKeep++; }
+        ops.push({ op: o ? 'merge' : 'set', col: 'entries', id: e.id, data: e }); });
+      nE = list.length - nDone; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list.filter(e => !(old[e.id] && old[e.id].settled)), e => e.total)) + (nKeep ? ' · 있던 ' + nKeep + '건은 적은 칸만' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : ''));
+    }
     await S.DB.batch(ops);
     if (acc) await bumpAccountsVer();
     dropBossCache();
