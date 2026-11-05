@@ -6,6 +6,7 @@
  * ============================================================ */
 import { $, esc, md, toast, openModal, closeModal, Router, debounce, bi, bt, sortBy, groupBy, addDays, today } from './ui.js';
 import { searchAccounts } from './accounts.js';
+import { can } from './main.js';
 
 let S = null;
 const T = { q: '', acct: '' };
@@ -75,6 +76,7 @@ async function page(arg) {
   const q = T.q.trim().toUpperCase();
   $('page').innerHTML = '<div class="card"><h2>🚚 ' + bi('배송 조회', 'Shipment tracking') + '</h2><div class="muted">' + bi('가게 이름 · 계정 #, 인보이스 #, 주문 #, UPS 트래킹 # 로 찾으세요. 어느 인보이스가 어느 박스로 나가서 언제 받았는지 보입니다.', 'Search by store, invoice #, order # or UPS tracking # — see which invoice went in which box and when it arrived.') + '</div>' +
     '<div style="display:flex;gap:6px;margin-top:10px"><input id="tkQ" value="' + esc(T.q) + '" placeholder="' + esc(bt('가게 · 인보이스 # · 주문 # · 1Z…', 'Store · invoice # · order # · 1Z…')) + '" autocomplete="off" autocapitalize="characters" style="flex:1">' + (T.q || T.acct ? '<button class="b-ghost b-sm" id="tkC">✕</button>' : '') + '</div><div id="tkHits"></div></div><div class="card" id="tkOut"><div class="load">' + bt('읽는 중…', 'Loading…') + '</div></div>';
+  if (can('ship')) { const c = $('page').querySelector('.card'); c.insertAdjacentHTML('beforeend', '<div class="btns" style="justify-content:flex-start;margin-top:8px"><button class="b-ghost b-sm" id="tkAdhoc">➕ ' + bi('주문 없이 UPS 라벨 (임의 출고)', 'UPS label without an order') + '</button></div>'); $('tkAdhoc').onclick = () => import('./ship.js').then(M => M.adhocShip(() => page(''))); }
   Router.refreshBack();
   $('tkQ').oninput = debounce(() => { const v = $('tkQ').value.trim(); T.q = v; T.acct = ''; hits(v); }, 200);
   $('tkQ').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); T.q = $('tkQ').value.trim(); T.acct = ''; page(''); } };

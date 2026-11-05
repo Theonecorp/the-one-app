@@ -53,7 +53,7 @@ service cloud.firestore {
     match /settings/{id} {
       allow read: if registered();
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountsVer', 'arAsOf', 'updatedAt']))   // 담당자는 버전 · AR 기준일만
+      allow update: if isAdmin() || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountsVer', 'arAsOf', 'displayItems', 'updatedAt']))   // 담당자는 버전 · AR 기준일 · 🖼 디스플레이 품목 목록만
                     || (role() == 'manager' && userDoc().get('job', '') == 'catalog' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoDrive', 'catStart', 'catLoc', 'catPins', 'updatedAt']));   // 🎨 디자인 · 카탈로그 담당: 사진 · 분류 시작 · 위치 · 고정
     }
 
@@ -184,6 +184,7 @@ service cloud.firestore {
     }
     match /pickups/{id} { allow read, write: if isStaff(); }
     match /displays/{id} { allow read, write: if isStaff(); }
+    match /adhoc/{id} { allow read, write: if isStaff(); }                                                                           // ➕ 주문 없이 만든 UPS 라벨 (임의 출고)
     match /pushTokens/{id} {                                                                                                         // 📱💻 웹 푸시 기기 — 자기 것만 적고 지움 (보내기는 Apps Script)
       allow read: if signedIn() && resource.data.email == email();
       allow create, update: if signedIn() && request.resource.data.email == email();

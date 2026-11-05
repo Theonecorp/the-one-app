@@ -27,7 +27,7 @@ export const HUBS = {
   wh: { icon: '📦', ko: '재고', en: 'Inventory', items: [
     ['stock', '📦', '재고', 'Inventory', '조회 · 입고(팩킹 리스트) · 실사', 'find · receive · count', () => can('items')],
     ['items', '🏷', '아이템 · 위치', 'Items · Locations', '찾기 · 📍 통로 · 등록', 'find · aisle · add', () => can('items')],
-    ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹', 'boxes · tracking', () => can('ship')],
+    ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹 · 주문 없이 라벨', 'boxes · tracking · ad-hoc label', () => can('ship')],
     ['displays', '🖼', 'Notes Display', 'Notes Display', 'Empty Display 요청 · 준비 · UPS 박스', 'empty displays · prepare · UPS boxes', () => can('ship') || can('invoice') || can('newOrder')]
   ] },
   /* 🧑‍💼 세일즈맨 (v0.8.135) */

@@ -114,6 +114,9 @@ export function openModal(html, opts) {
   if (!w.querySelector('.mclose')) { const x = document.createElement('button'); x.className = 'mclose'; x.type = 'button'; x.setAttribute('aria-label', 'close'); x.innerHTML = '✕'; x.onclick = () => closeModal(); w.appendChild(x); }
   guardSync();
 }
+/* ⤵ 긴 화면(주문 · 픽킹 시트)의 주 단추를 맨 아래에도 — 위 단추를 복제(id → data-dup)해 두고, 누르면 원래 단추를 누른 것과 같음 (onclick 은 원래 단추 한 곳에만) */
+export const footBtns = html => html ? '<div class="btns foot">' + String(html).replace(/\sid="([^"]+)"/g, ' data-dup="$1"') + '</div>' : '';
+if (BROWSER) document.addEventListener('click', e => { const b = e.target && e.target.closest ? e.target.closest('[data-dup]') : null; if (!b) return; const t = document.getElementById(b.dataset.dup); if (t && !t.disabled) t.click(); });
 export function closeModal() { const m = $('modal'); m.classList.remove('on'); if (m._onClose) { const f = m._onClose; m._onClose = null; f(); } }
 export const modalOpen = () => { const m = $('modal'); return !!(m && m.classList.contains('on')); };
 export function goHash(h) { h = String(h || ''); if (h.charAt(0) !== '#') h = '#' + h; if (h === location.hash) return; try { location.replace(location.href.split('#')[0] + h); } catch (e) { location.hash = h; } }   // 주소 전체로 (<base> 가 있어도 같은 페이지)

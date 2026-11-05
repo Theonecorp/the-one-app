@@ -9,7 +9,7 @@
 import { timelineHtml } from './flow.js';
 import { reqText, reqCount } from './reqs.js';
 import { narrow, crow, cgrp } from './ui.js';
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts, itabs } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts, itabs, footBtns } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, monthsOf, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
@@ -108,6 +108,7 @@ export function manage(o, lines) {
   h += '<div class="card"><h2>' + (picking ? '📦 ' + bi('픽킹 결과 — 실제로 담은 수량', 'Picked qty') : bi('아이템', 'Items')) + ' ' + lines.length + '</h2>' +
     (picking ? '<div class="muted">줄의 버튼을 <b>한 번</b> 두드리면 ✓ 통과(주문 수량), <b>다시</b> 두드리면 ⏳ 백오더(0), 일부만 담았으면 <b>✎ 수량</b>. 코드를 스캔하면 1개씩 올라갑니다. <span class="en">Tap once = picked as ordered, tap again = backorder, ✎ for a partial qty.</span></div><div class="btns" style="flex-wrap:wrap"><button class="b-ghost b-sm" id="mAllQ">✓ ' + bi('모두 통과', 'All picked') + '</button><button class="b-ghost b-sm" id="mAllZ">⏳ ' + bi('모두 백오더', 'All backorder') + '</button><button class="b-ghost b-sm" id="mAdd">＋ ' + bi('아이템 추가', 'Add item') + '</button></div>' : '') +
     '<input id="mFind" placeholder="이 주문 안에서 찾기 · 스캔 / Find in this order · scan" autocomplete="off" style="margin:8px 0 6px"><div class="chips" style="margin:0 0 6px"><button class="on" data-mf="all">' + bi('전체', 'All') + '</button>' + (picking ? '<button data-mf="u">○ ' + bi('미확인만', 'Unchecked') + '</button><button data-mf="bo">⏳ ' + bi('백오더만', 'Backorder only') + '</button>' : '') + '<button data-mf="p">' + bi('가격 수정만', 'Price changed') + '</button></div><div id="mLines"></div></div>';
+  if (B.length) h += footBtns(B.join(''));   // ⤵ 줄 목록 아래에도 같은 단추 — 끝까지 내려간 뒤 바로 💾 작업 저장 · ✅ 작업 완료 · 🧾 발행
   $('page').innerHTML = h;
 
   fillPinned('mNotes', o.acct);

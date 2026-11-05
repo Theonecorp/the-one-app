@@ -15,8 +15,8 @@ const path = require('path');
   /* 홈 묶음 */
   await pg.waitForSelector('.hgrp', { timeout: 8000 }).catch(() => errs.push('home groups missing'));
   const grps = await pg.$$eval('.hgrp', g => g.map(x => x.dataset.grp + (x.classList.contains('open') ? '*' : ''))); log('home groups:', grps.join(' '));
-  if (grps.join() !== 'recv*,ship,money,look') errs.push('home should have 4 groups with intake open');
-  await pg.waitForTimeout(1500); const sumR = await pg.textContent('#hg-recv'); log('intake summary:', sumR); if (!/신규/.test(sumR)) errs.push('intake header should show counts');
+  if (grps.join() !== 'sale*,ship,money,look') errs.push('home should have 4 groups with 🛒 세일 open (v0.8.166: recv → sale)');
+  await pg.waitForTimeout(1500); const sumR = await pg.textContent('#hg-sale'); log('sale summary:', sumR); if (!/신규/.test(sumR)) errs.push('sale header should show counts');
   const vis = await pg.$$eval('.htile', t => t.filter(x => x.offsetParent).length); log('visible tiles:', vis); if (vis > 8) errs.push('only the open group tiles should be visible');
   await pg.click('[data-ghd="ship"]'); await pg.waitForTimeout(200); if (!(await pg.$('.hgrp[data-grp="ship"].open'))) errs.push('tapping a group header should open it');
   const saved = await pg.evaluate(() => localStorage.getItem('theone.hgrp.office')); log('saved open:', saved); if (!/ship/.test(saved || '')) errs.push('open groups should be remembered');

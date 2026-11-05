@@ -9,7 +9,7 @@
  *  orderLines/{id} = { sm, lines:[{c, d, q, p, lp, t, pq?, note?}] }   (lp = 목록가, t = 인보이스 종류, pq = 픽킹 수량)
  *  st: draft(임시저장) → sent(보냄) → pick(픽킹 중) → done(인보이스 확정) · x(취소)
  * ============================================================ */
-import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp } from './ui.js';
+import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp, footBtns } from './ui.js';
 import { REQ_KINDS, reqClean, reqText, reqCount } from './reqs.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
@@ -309,6 +309,7 @@ async function staffHome() {
   T.push(tile('shipped', '📬', bi('출고 완료', 'Shipped'), '읽는 중…'));
   if (can('bo')) T.push(tile('bo', '⏳', bi('백오더', 'Backorders'), '읽는 중…'));
   if (can('ship') || can('invoice') || can('newOrder')) T.push(tile('displays', '🖼', 'Notes Display', '읽는 중…', 'amber'));
+  if (can('ship')) T.push(tile('adhoc', '➕', bi('주문 없이 UPS 라벨', 'Ad-hoc UPS label'), bt('가게 · 인보이스 없이 받는 곳만 적어 라벨', 'label with just an address')));
   const A = [];
   if (can('newOrder')) A.push(tile('new', '🛒', bi('새 주문', 'New order'), '가게 고르고 담기', 'blue'));
   if (can('invoice') || can('invLookup') || can('verify')) A.push(tile('inv', '📄', bi('인보이스 조회', 'Invoices'), '가게 · 날짜 · 번호'));
@@ -323,11 +324,13 @@ async function staffHome() {
   /* 담당자 홈 = 주문 처리 먼저 (접수 · 픽킹 · 인보이스 · 포장), 바로가기, 매출은 맨 아래 */
   /* 🏭 창고 매니저 — 주문 처리보다 재고 · UPS 출고 · 픽업 · 백오더가 먼저 (주문 처리 타일은 아래 작은 칸) */
   /* 🗂 큰 묶음 4개로 접어 둠 — 머리를 누르면 펼쳐져 세부 타일 (펼친 상태는 이 폰에 기억). 머리에는 핵심 숫자 */
-  const GRP = [['recv', '📥', '주문 접수', 'Intake', ['flow', 'sent', 'cfw', 'cfok', 'new', 'all']], ['ship', '📦', '출고 · 포장', 'Fulfillment', ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'shipped', 'bo', 'displays']],
-    ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'track', 'cat', 'items']]];
+  /* 🛒 세일 = 인보이스 발행까지 (접수 · 확인 · 배정 · 픽킹 · 검수) · 🚚 배송 = 그 뒤 (포장 대기 · UPS 라벨 · 픽업 · 출고 완료 · 백오더 · 디스플레이 · 주문 없이 라벨 · 배송 조회) — v0.8.166 */
+  const GRP = [['sale', '🛒', '세일', 'Sales', ['flow', 'new', 'sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'all']], ['ship', '🚚', '배송', 'Shipping', ['done', 'ups', 'packed', 'shipped', 'bo', 'displays', 'adhoc', 'track']],
+    ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'cat', 'items']]];
   const allT = T.concat(A), keyOf = h => (h.match(/data-hg="([^"]+)"/) || [])[1];
   const OKEY = 'theone.hgrp.' + j; let openG = null; try { openG = JSON.parse(localStorage.getItem(OKEY) || 'null'); } catch (e) {}
-  if (!Array.isArray(openG)) openG = [j === 'pick' || j === 'whmgr' ? 'ship' : j === 'acct' ? 'money' : 'recv'];
+  if (!Array.isArray(openG)) openG = [j === 'whmgr' ? 'ship' : j === 'acct' ? 'money' : 'sale'];   /* 창고 매니저는 🚚 배송, 회계는 💵, 그 밖(픽킹 담당 포함)은 🛒 세일 */
+  if (openG.includes('recv')) openG = openG.map(g => g === 'recv' ? 'sale' : g);   /* 옛 이름(📥 주문 접수) 기억 → 세일 */
   let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + g[1] + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">▾</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
     allT.filter(h => !GRP.some(g => g[4].includes(keyOf(h)))).join('');
   $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">' + (j === 'whmgr' ? '🏭 ' + bi('창고', 'Warehouse') : '📦 ' + bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
@@ -342,6 +345,7 @@ async function staffHome() {
   document.querySelectorAll('[data-ghd]').forEach(b => b.onclick = () => { const g = b.closest('.hgrp'); g.classList.toggle('open'); const L = Array.from(document.querySelectorAll('.hgrp.open')).map(x => x.dataset.grp); try { localStorage.setItem(OKEY, JSON.stringify(L)); } catch (e) {} });
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
+    if (k === 'adhoc') return import('./ship.js').then(M => M.adhocShip(() => staffHome()));   /* ➕ 주문 없이 UPS 라벨 */
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
     if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit' || k === 'bounce' || k === 'displays') return Router.go(k);
     if (k === 'inv' || k === 'shipped') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
@@ -382,8 +386,8 @@ async function staffHome() {
     put('bo', bo.length ? bo.length + '건 · ' + money(bo.reduce((a, r) => a + (r.amt || 0), 0)) : '없음 · none');
     /* 🗂 묶음 머리 숫자 — 접어 둬도 할 일이 보이게 */
     const gs = (id, parts) => { const el = $('hg-' + id); if (el) el.innerHTML = parts.filter(p => p[1]).map(p => p[0] + ' <b' + (p[2] ? ' style="color:#b91c1c"' : '') + '>' + p[1] + '</b>').join(' · ') || bt('대기 없음', 'nothing waiting'); };
-    gs('recv', [[bt('신규', 'New'), nw.length, true], [bt('확인 대기', 'Awaiting'), cw.length], [bt('배정 대기', 'To assign'), ck2.length, true]]);
-    gs('ship', [[bt('작업 중', 'Picking'), pk.length], [bt('검수', 'Review'), pkd.length, true], [bt('포장', 'Pack'), topack.length, true], [bt('픽업', 'Pickup'), pkd2.length], [bt('백오더', 'BO'), bo.length]]);
+    gs('sale', [[bt('신규', 'New'), nw.length, true], [bt('확인 대기', 'Awaiting'), cw.length], [bt('배정 대기', 'To assign'), ck2.length, true], [bt('작업 중', 'Picking'), pk.length], [bt('검수', 'Review'), pkd.length, true]]);
+    gs('ship', [[bt('포장', 'Pack'), topack.length, true], [bt('픽업', 'Pickup'), pkd2.length], [bt('백오더', 'BO'), bo.length]]);
     /* 매출 */
     const iv = inv.filter(x => x.st !== 'x'), tot = sum(iv, x => x.total || 0), pcs = iv.reduce((a, x) => a + (x.qty || 0), 0);
     const pv = pinv ? sum(pinv.filter(x => x.st !== 'x'), x => x.total || 0) : null;
@@ -517,6 +521,7 @@ function viewOrder(o, lines, local) {
   else if (mine && ['pick', 'ok', 'picked'].includes(o.st) && o.cfIssueOpen) B.push('<span class="muted" style="align-self:center">⏳ ' + bi('사무실에 보낸 요청 처리 중', 'Request sent to the office') + '</span>');
   if (B.length) h += '<div class="card"><div class="btns" style="margin-top:0">' + B.join('') + '</div></div>';
   h += '<div class="card"><h2>아이템 ' + lines.length + '줄</h2><input id="oFind" placeholder="이 주문 안에서 찾기" autocomplete="off" style="margin-bottom:6px"><div id="oLines"></div></div>';
+  if (B.length) h += footBtns(B.join(''));   // ⤵ 줄 목록 아래에도 같은 단추 (✅ 확인 · 📤 보내기)
   $('page').innerHTML = h;
   const paint = () => {
     const q = $('oFind').value.trim().toUpperCase();

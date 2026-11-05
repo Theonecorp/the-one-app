@@ -98,7 +98,7 @@ const path = require('path');
   const st2 = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.settlements || {}).find(x => x.sm === 'KAEL')); log('kael settlement:', st2 && [st2.kind, st2.pay, st2.finalPay, st2.n]);
   if (!st2 || st2.kind !== 'salary' || st2.pay !== 0 || st2.finalPay !== 0 || !(st2.n > 0)) errs.push('salaried settlement should be kind salary with 0 pay');
   if (await pg.evaluate(() => Object.values(window.__MOCK_STORE__.pay1099 || {}).some(x => x.who === 'KAEL'))) errs.push('salaried should not create 1099');
-  const prt = await pg.evaluate(() => document.getElementById('prtbody').textContent.replace(/\s+/g, ' ')); if (!/급여제/.test(prt) || !/수금 기록/.test(prt)) errs.push('printed statement should say 급여제');
+  const prt = await pg.evaluate(() => document.getElementById('prtbody').textContent.replace(/\s+/g, ' ')); if (/급여제/.test(prt) || !/수금 기록/.test(prt)) errs.push('printed statement should be titled 수금 기록 without the 급여제 note (v0.8.166: 정산서는 단순하게)');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();
