@@ -61,6 +61,7 @@ async function openRows(force) {
   OPEN = sortBy(rows, o => (o.drawOn || '9999') + (o.createdAt || '')); OPEN_AT = Date.now(); return OPEN;
 }
 const drop = () => { OPEN = null; };
+export const dropAchCache = drop;   // 📥 ACH 시트 가져오기 뒤 목록을 다시 읽게
 /** 예정일 + 3영업일 지난 예약 건은 자동 완료 (Cash Pro 가 예정일에 그대로 빼므로) */
 async function autoComplete(rows) {
   const t = today(), keep = [];

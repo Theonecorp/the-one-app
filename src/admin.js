@@ -12,6 +12,7 @@ import { looksLikeBank, bankFile, bankPdfFile } from './bank.js';
 import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
 import { acctImportCard, bindAcctImport, acctFile, parseAcctList } from './acctimp.js';
+import { achBookFile } from './achimp.js';
 import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs, parseSmartBeeItems, smartbeeDiff, applySmartBee, codeFamily, photoStats } from './catalog.js';
 import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM, getInvoice, FOOTER_DEFAULT } from './invoicing.js';
 
@@ -380,13 +381,13 @@ async function arFileImport(f, out, asOf) {
  *    여러 파일은 ① 수금 입력 → ② SALES → ③ 커미션 → ④ 대시보드 → ⑤ 인보이스 → AR → 거래처 → 아이템 … 순서로
  * ============================================================ */
 const KINDS = [
-  ['main', '① 수금 입력 (거래처 · 세일즈맨 · 수금 · AR 탭)'], ['sales', '② SALES (COD · 카드 · ACH · 확인 표시)'], ['comm', '③ 커미션 (요율 · 정산 기록)'], ['boss', '④ 수금 대시보드 (공장 · 1099 · 보너스)'], ['inv', '⑤ 인보이스 목록 (sales_invoice)'],
+  ['main', '① 수금 입력 (거래처 · 세일즈맨 · 수금 · AR 탭)'], ['sales', '② SALES (COD · 카드 · ACH · 확인 표시)'], ['comm', '③ 커미션 (요율 · 정산 기록)'], ['boss', '④ 수금 대시보드 (공장 · 1099 · 보너스)'], ['inv', '⑤ 인보이스 목록 (sales_invoice)'], ['ach', '🏦 ACH 시트 (ACH 목록 · ACH 거래처)'],
   ['facstmt', '🏭 공장 명세서 (공장별 엑셀 — Date · ITEM · FREIGHT · Amount | PAID DATE · DEPOSIT MONEY)'], ['bank', '🏦 은행 명세서 (CSV · 엑셀 — 날짜 · 내용 · 금액 또는 입금/출금 · 잔액)'], ['bankpdf', '📄 은행 명세서 PDF (매달 — 입금 · 출금 합계 · 잔액)'], ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
   ['sets', '🧩 세트 구성 (SET_MASTER)'], ['bulk', '📄 아이템 일괄 변경 (LEVEL_1_AND_2 · GROUP_NAME_CHANGE · TreeUpdate …)'], ['loc', '📍 창고 위치 (재고 사이트 통로)'], ['pop', '✨ 자주 나가는 아이템 (Item · Qty)'], ['seed', '🧪 SEED_DATA (.js · .json)']];
 const kindName = k => (KINDS.find(x => x[0] === k) || ['', '❓ 모르는 파일 — 종류를 골라 주세요'])[1];
 function anyImportCard() {
   return '<div class="card" style="border:2px solid #2563eb"><h2>📥 파일 올리기 <span class="en">Upload any file</span> <span class="muted" style="font-weight:400;font-size:12px">— 종류는 앱이 알아봅니다</span></h2>' +
-    '<div class="muted">어떤 파일이든 여기 하나로 올리세요. 탭 이름 · 머리글을 보고 종류를 알아낸 뒤 맞는 자리에 넣습니다: 수금 입력 · SALES · 커미션 · 대시보드 · 인보이스 목록 · AR · 거래처 목록 · Item Master · <b>SmartBee ALL ITEMS</b> · 세트 구성 · 일괄 변경 · 창고 위치 · 자주 나가는 아이템. 여러 개를 한꺼번에 골라도 됩니다 (순서는 알아서). 바로 저장되는 종류(수금 · SALES · 커미션 · AR)는 바로 들어가고, 나머지는 미리보기 뒤 <b>적용</b>을 누릅니다.</div>' +
+    '<div class="muted">어떤 파일이든 여기 하나로 올리세요. 탭 이름 · 머리글을 보고 종류를 알아낸 뒤 맞는 자리에 넣습니다: 수금 입력 · SALES · 커미션 · 대시보드 · 인보이스 목록 · 🏦 ACH 시트 · AR · 거래처 목록 · Item Master · <b>SmartBee ALL ITEMS</b> · 세트 구성 · 일괄 변경 · 창고 위치 · 자주 나가는 아이템. 여러 개를 한꺼번에 골라도 됩니다 (순서는 알아서). 바로 저장되는 종류(수금 · SALES · 커미션 · AR)는 바로 들어가고, 나머지는 미리보기 뒤 <b>적용</b>을 누릅니다.</div>' +
     '<div class="two" style="margin-top:8px"><div class="fg"><label>인보이스 목록은 이 날짜부터 <span class="muted">(비우면 파일 전체)</span></label><input type="date" id="allFrom" value=""></div><div class="fg"><label>AR 기준일 <span class="muted">(비우면 오늘)</span></label><input type="date" id="allArD"></div></div>' +
     '<div class="fg"><label>📌 정산 마감일 <span class="muted">— 수금 입력 · SALES 파일의 이 날짜까지 수금 · COD 는 <b>정산 완료</b>로 넣음 (이미 정산한 것은 그대로 · 비우면 파일의 "커미션 정산" 칸만 봄)</span></label><input type="date" id="allSettle" value=""></div>' +
     '<label class="drop" id="anyDrop"><input type="file" id="fAny" multiple accept=".xlsx,.xls,.xlsm,.csv,.txt,.js,.json"><span>📂 <b>파일을 여기 끌어다 놓거나</b> 눌러서 고르세요</span><small>.xlsx · .csv · .js — 여러 개 가능</small></label>' +
@@ -412,6 +413,7 @@ export async function sniffFile(file) {
   const has = re => names.find(n => re.test(String(n).trim()));
   if (has(/^_(ENTRIES|ACCOUNTS)$/)) return { k: 'main', why: '탭 _ENTRIES · _ACCOUNTS' };
   if (names.includes('COD 입력')) return { k: 'sales', why: '탭 COD 입력' };
+  if (names.includes('ACH 목록') || names.includes('ACH 거래처')) return { k: 'ach', why: '탭 ACH 목록 · ACH 거래처' };
   if (has(/^(세일즈맨 요율|정산 기록)$/)) return { k: 'comm', why: '탭 세일즈맨 요율 · 정산 기록' };
   if (names.includes('공장') || has(/^🏭/)) return { k: 'boss', why: '탭 공장 · 🏭' };
   if (has(/세트\s*구성/)) return { k: 'sets', why: '탭 세트 구성' };
@@ -481,6 +483,7 @@ async function runKind(k, f, out) {
   else if (k === 'bank') await bankFile(f, out, readBook, aoa, parseCsv, csvDelim);
   else if (k === 'bankpdf') await bankPdfFile(f, out);
   else if (k === 'inv') await importInvoices(f, false, out, fromD);
+  else if (k === 'ach') await achBookFile(S, f, out, readBook, aoa);
   else if (k === 'ar') await arFileImport(f, out, asOf);
   else if (k === 'acct') await acctFile(S, f, out, readBook, aoa);
   else if (k === 'master') await itemMasterFile(f, out, stay);
