@@ -89,7 +89,7 @@ export function manage(o, lines) {
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
     (o.acct ? '<button class="b-ghost b-sm" id="mStoreI">📋 ' + bi('가게 기록', 'Store') + '</button>' : '') +
-    (o.st !== 'x' && (can('invoice') || can('newOrder')) ? '<button class="b-ghost b-sm" id="mDisp">🖼 ' + bi('디스플레이 출고', 'Display shipment') + ' <span id="mDispN"></span></button>' : '') +
+    (o.st !== 'x' && (can('invoice') || can('newOrder')) ? '<button class="b-ghost b-sm" id="mDisp">🖼 Notes Display <span id="mDispN"></span></button>' : '') +
     (o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>' : '') +
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
     (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
@@ -233,7 +233,7 @@ export function manage(o, lines) {
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 주문으로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mStoreI')) $('mStoreI').onclick = () => storeSheet(o.acct);
   /* 🖼 이 주문으로 새 디스플레이가 나가야 하면 — 가게 · 요청한 디스플레이(o.req) 를 채워 디스플레이 출고 목록에 */
-  if ($('mDisp')) { import('./displays.js').then(D => { D.countForOrder(o.id).then(n => { if (n && $('mDispN')) $('mDispN').textContent = '(' + n + ')'; }); $('mDisp').onclick = () => D.form({ acct: o.acct || '', store: o.store, sm: o.sm, kinds: Object.fromEntries(Object.entries(o.req || {}).filter(([k]) => ['FLOOR', 'WALL', 'C4', 'C13'].includes(k))), orderId: o.id, orderNo: o.no, after: () => { D.countForOrder(o.id).then(n => { if ($('mDispN')) $('mDispN').textContent = n ? '(' + n + ')' : ''; }); } }); }); }
+  if ($('mDisp')) { import('./displays.js').then(D => { D.countForOrder(o.id).then(n => { if (n && $('mDispN')) $('mDispN').textContent = '(' + n + ')'; }); $('mDisp').onclick = () => D.form({ acct: o.acct || '', store: o.store, sm: o.sm, req: o.req || null, orderId: o.id, orderNo: o.no, after: () => { D.countForOrder(o.id).then(n => { if ($('mDispN')) $('mDispN').textContent = n ? '(' + n + ')' : ''; }); } }); }); }
   if ($('mStoreChg')) $('mStoreChg').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 가게를 바꿀까요? (픽킹 입력은 사라집니다)')) return; changeStore(o, () => goOrder(o.id)); };
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);

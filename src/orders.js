@@ -308,7 +308,7 @@ async function staffHome() {
   if (can('ship')) T.push(tile('ups', '🚚', bi('UPS 출고', 'UPS Shipping'), '읽는 중…', 'green'), tile('packed', '📮', bi('UPS 픽업 · 트럭 인계', 'UPS Pickup'), '읽는 중…'));
   T.push(tile('shipped', '📬', bi('출고 완료', 'Shipped'), '읽는 중…'));
   if (can('bo')) T.push(tile('bo', '⏳', bi('백오더', 'Backorders'), '읽는 중…'));
-  if (can('ship') || can('invoice') || can('newOrder')) T.push(tile('displays', '🖼', bi('디스플레이 출고', 'Display shipments'), '읽는 중…', 'amber'));
+  if (can('ship') || can('invoice') || can('newOrder')) T.push(tile('displays', '🖼', 'Notes Display', '읽는 중…', 'amber'));
   const A = [];
   if (can('newOrder')) A.push(tile('new', '🛒', bi('새 주문', 'New order'), '가게 고르고 담기', 'blue'));
   if (can('invoice') || can('invLookup') || can('verify')) A.push(tile('inv', '📄', bi('인보이스 조회', 'Invoices'), '가게 · 날짜 · 번호'));
@@ -358,7 +358,7 @@ async function staffHome() {
     const sentIn = ords.filter(o => o.sentAt && o.st !== 'draft' && o.st !== 'x' && inR(o.sentAt)), doneIn = ords.filter(o => (o.st === 'done' || o.st === 'shipped') && o.doneAt && inR(o.doneAt)), shipIn = ords.filter(o => o.st === 'shipped' && o.shipAt && inR(o.shipAt));
     const wait = live.filter(o => o.st === 'sent'), pk = live.filter(o => o.st === 'pick' || o.st === 'ok'), pkd = live.filter(o => o.st === 'picked'), topack = live.filter(o => o.st === 'done'), mine = pk.filter(o => o.picker === S.user.email);
     const put = (id, v) => { const el = $('ht-' + id); if (el) el.innerHTML = v; };
-    if ($('ht-displays')) S.DB.list('displays', { where: [['st', 'in', ['open', 'ready']]] }).then(D => { const late = D.filter(d => d.due && d.due < today()).length; put('displays', D.length ? D.length + bt('건 나갈 것', ' to ship') + (late ? ' · <b class="warn">⚠️ ' + late + bt(' 지남', ' late') + '</b>' : '') : bt('없음', 'none')); }).catch(() => put('displays', ''));
+    if ($('ht-displays')) S.DB.list('displays', { where: [['st', 'in', ['open', 'prep', 'done']]] }).then(D => { const w = D.filter(d => d.st === 'open' || d.st === 'prep'), late = w.filter(d => d.due && d.due < today()).length, ups = D.filter(d => d.st === 'done').length; put('displays', D.length ? bt('대기', 'waiting') + ' ' + w.length + (ups ? ' · 📦 UPS ' + ups : '') + (late ? ' · <b class="warn">⚠️ ' + late + bt(' 지남', ' late') + '</b>' : '') : bt('없음', 'none')); }).catch(() => put('displays', ''));
     const nm = (L, f) => L.length ? L.length + '건 · ' + money(L.reduce((a, o) => a + (f ? f(o) : o.amt || 0), 0)) : '없음 · none';
     put('mine', nm(mine)); NewAcct.pendingBanner($('naBanH'));
     /* ⚠️ 하루 넘게 한 단계에 머문 주문 — 누르면 가장 오래된 주문이 있는 칸을 밀린 것만 */

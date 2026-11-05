@@ -33,6 +33,8 @@ export async function shipModal(o, after) {
     to: Object.assign({ email: acc.email || '', addr3: '', res: false }, base),
     fromX: null, svc: U.svc || '03', opt: { sat: false, sig: '', notify: false }, bill: { type: 'ship', acct: '', zip: '' }, boxes: [], desc: 'JEWELRY & ACCESSORIES'
   };
+  if (!F.boxes.length && o.boxSpec && o.boxSpec.length) o.boxSpec.forEach(b => F.boxes.push({ w: b.w || defW, l: b.l || '', wd: b.wd || '', h: b.h || '', pkg: '02', val: '', ref2: b.ref2 || '', invs: [] }));   // 🖼 Notes Display: 단위마다 박스 (상품 무게 · 크기)
+  if (o.desc && !(q && q.to)) F.desc = o.desc;
   if (!F.boxes.length) { const n = Math.max(1, o.boxes || invs.length || 1); for (let i = 0; i < n; i++) F.boxes.push({ w: defW, l: '', wd: '', h: '', pkg: '02', val: '', ref2: '', invs: n === invs.length ? [invs[i]] : invs.slice() }); }
   let saveAcct = false, showFrom = false, rates = null, rateBusy = false, av = null, stop = false;
   const from = Object.assign({ name: 'THE ONE CORP', attn: 'SHIPPING', phone: '', addr1: '', addr2: '', city: '', state: '', zip: '' }, U.from || {}, F.fromX || {});
