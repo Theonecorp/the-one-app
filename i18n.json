@@ -1207,6 +1207,8 @@
 "주문 배정 매니저 · 관리자만 코드를 붙입니다":["Only assigning managers / admins can assign codes","Só gerentes de atribuição / administradores atribuem códigos"],
 "주문 수정":["Edit","Editar pedido"],
 "주문 순서":["Order entry","Ordem do pedido"],
+"주문 없이 UPS 라벨 (임의 출고)":["UPS label without an order","Etiqueta UPS sem pedido"],
+"주문 없이 · 임의 출고":["Ad-hoc shipment","Envio avulso"],
 "주문 열기":["Open order",""],
 "주문 열기 (VOID · 다시 발행)":["Open order (void · reissue)","Abrir pedido (anular · reemitir)"],
 "주문 요약":["Summary","Resumo do pedido"],

@@ -10,6 +10,7 @@ import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, bi, bt, 
 import { goOrder } from './orders.js';
 import { upsTo, adrKey, saveShipAddr, upsValidate, printLabels } from './fulfill.js';
 import { bumpAccountsVer } from './mgr.js';
+import { newId } from './db.js';
 
 let S = null;
 export function register(state) { S = state; }
@@ -21,8 +22,15 @@ const acctOf = a => (S.accounts.byCode ? S.accounts.byCode[a] : null);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /** 출고 창 — after() 가 있으면 끝난 뒤 그것을, 없으면 주문 화면으로 */
+/* ➕ 주문 · 인보이스 · 가게 없이 UPS 라벨 — adhoc/{id} 문서 하나를 만들고 같은 출고 창에서 받는 곳을 손으로 적어 라벨을 만듦 (트래킹 · 요금은 그 문서와 shipments 에 남음) */
+export async function adhocShip(after) {
+  const id = newId('X'), now = new Date().toISOString(), no = 'ADHOC-' + today().replace(/-/g, '').substring(2) + '-' + id.slice(-4).toUpperCase();
+  const doc = { id, no, col: 'adhoc', st: 'open', store: '', acct: '', sm: '', invs: [], desc: '', createdBy: S.user.email, createdAt: now, updatedAt: now };
+  await S.DB.set('adhoc', id, doc);
+  return shipModal(doc, after);
+}
 export async function shipModal(o, after) {
-  const COL = o.col || 'orders', isOrder = COL === 'orders';   // 🖼 디스플레이 출고는 displays 문서에 트래킹을 붙이고 주문은 건드리지 않음
+  const COL = o.col || 'orders', isOrder = COL === 'orders', isAdhoc = COL === 'adhoc';   // 🖼 디스플레이 출고는 displays 문서에, ➕ 임의 출고는 adhoc 문서에 트래킹을 붙이고 주문은 건드리지 않음
   const fin = () => { if (after) after(); else goOrder(o.id); };
   let q = null; try { q = await S.DB.get('shipq', o.id); } catch (e) {}
   const U = (S.settings && S.settings.ups) || {}, defW = Number(U.defW) || 5, acc = acctOf(o.acct) || {};
@@ -44,7 +52,7 @@ export async function shipModal(o, after) {
 
   const paint = () => {
     const done = q && q.st === 'done', working = q && (q.st === 'wait' || q.st === 'working' || q.st === 'void');
-    let h = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h2 style="margin:0">🚚 ' + bi('UPS 출고', 'UPS shipment') + '</h2><div class="muted">' + esc(o.store) + ' · ' + esc(invs.join(', ') || o.no) + ' · ' + esc(o.sm) + '</div></div><button class="b-ghost b-sm xin" id="shX">✕</button></div>';
+    let h = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h2 style="margin:0">🚚 ' + bi('UPS 출고', 'UPS shipment') + '</h2><div class="muted">' + esc(o.store || (isAdhoc ? bt('주문 없이 · 임의 출고', 'Ad-hoc shipment') : '')) + ' · ' + esc(invs.join(', ') || o.no) + (o.sm ? ' · ' + esc(o.sm) : '') + '</div></div><button class="b-ghost b-sm xin" id="shX">✕</button></div>';
     if (done) {
       h += '<div class="shs" style="background:#ecfdf5"><h3>✅ ' + bi('UPS 라벨', 'UPS labels') + ' ' + (q.labels || []).length + (q.env === 'test' ? ' <span class="tag t-c">' + bt('시험 라벨', 'TEST') + '</span>' : '') + '</h3>' +
         (q.labels || []).map((l, i) => { const b = (q.boxes || [])[i] || {}; return '<div class="shpbox"><div class="top"><div><span class="trk">📦 ' + (i + 1) + '/' + q.labels.length + ' · ' + esc(l.trk) + '</span><div class="muted" style="font-size:12px">' + esc((b.invs || []).join(', ') || '') + (b.w ? ' · ' + b.w + ' lb' : '') + ([b.l, b.wd, b.h].filter(Number).length === 3 ? ' · ' + b.l + '×' + b.wd + '×' + b.h + '"' : '') + '</div></div><a class="b-ghost b-sm lnk" href="https://www.ups.com/track?tracknum=' + esc(l.trk) + '" target="_blank" rel="noopener">UPS.com</a></div></div>'; }).join('') +
@@ -149,8 +157,11 @@ export async function shipModal(o, after) {
       busy(true);
       try {
         /* 주소가 바뀌었으면 — 거래처 기록 또는 이 주문만 */
-        if (adrKey(F.to) !== adrKey(base) || (F.to.name || '') !== (base.name || '')) await saveShipAddr(o, { name: F.to.name, addr1: F.to.addr1, addr2: F.to.addr2, city: F.to.city, state: F.to.state, zip: F.to.zip }, saveAcct && !!acctOf(o.acct));
-        if (F.to.email && acctOf(o.acct) && !acctOf(o.acct).email) { try { await S.DB.update('accounts', o.acct, { email: F.to.email }); await bumpAccountsVer(); } catch (e) {} }
+        if (isAdhoc) { o.store = F.to.name || ''; await S.DB.update('adhoc', o.id, { store: o.store, to: F.to, updatedAt: new Date().toISOString() }); }   /* 임의 출고: 받는 곳 이름이 곧 가게 이름 */
+        else {
+          if (adrKey(F.to) !== adrKey(base) || (F.to.name || '') !== (base.name || '')) await saveShipAddr(o, { name: F.to.name, addr1: F.to.addr1, addr2: F.to.addr2, city: F.to.city, state: F.to.state, zip: F.to.zip }, saveAcct && !!acctOf(o.acct));
+          if (F.to.email && acctOf(o.acct) && !acctOf(o.acct).email) { try { await S.DB.update('accounts', o.acct, { email: F.to.email }); await bumpAccountsVer(); } catch (e) {} }
+        }
         const doc = Object.assign(payload(), { id: o.id, st: 'wait', createdAt: new Date().toISOString() });
         await S.DB.set('shipq', o.id, doc); q = doc;
       } catch (e) { busy(false); toast('실패: ' + (e.code || e.message), 'bad'); return reopen(); }
@@ -184,7 +195,7 @@ export async function shipModal(o, after) {
     return '';
   };
   const payload = () => ({
-    orderId: isOrder ? o.id : '', dispId: isOrder ? '' : o.id, no: o.no, acct: o.acct || '', store: o.store, sm: o.sm, invs, by: S.user.email,
+    orderId: isOrder ? o.id : '', dispId: COL === 'displays' ? o.id : '', adhocId: isAdhoc ? o.id : '', no: o.no, acct: o.acct || '', store: o.store || (isAdhoc ? (F.to.name || '') : ''), sm: o.sm || '', invs, by: S.user.email,
     svc: F.svc, to: F.to, fromX: showFrom ? { name: from.name, attn: from.attn, phone: from.phone, addr1: from.addr1, addr2: from.addr2, city: from.city, state: from.state, zip: from.zip } : null,
     opt: F.opt, bill: F.bill, desc: F.desc,
     boxes: F.boxes.map(b => ({ w: Number(b.w) || defW, l: Number(b.l) || '', wd: Number(b.wd) || '', h: Number(b.h) || '', pkg: b.pkg || '02', val: Number(b.val) || '', ref2: b.ref2 || '', invs: b.invs || [] })),
