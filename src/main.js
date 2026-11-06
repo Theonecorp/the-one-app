@@ -40,6 +40,7 @@ import * as Labels from './labels.js';
 import * as Displays from './displays.js';
 import * as Push from './push.js';
 import { loadAccounts } from './accounts.js';
+import { setReqKinds } from './reqs.js';
 import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
@@ -377,7 +378,7 @@ export async function healAdmin(email, me) {
   try { await S.DB.update('users', email, fix); } catch (e) { try { await S.DB.set('users', email, Object.assign({}, me, fix)); } catch (e2) { return false; } }
   Object.assign(me, fix); return true;
 }
-function applyBase(sms, st) { S.sms = sms || []; S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; }); S.settings = st || {}; setInvTypeMap(invTypes(S)); }
+function applyBase(sms, st) { S.sms = sms || []; S.smByCode = {}; S.sms.forEach(x => { S.smByCode[x.code] = x; }); S.settings = st || {}; setInvTypeMap(invTypes(S)); setReqKinds(S.settings.reqKinds); }
 async function afterLogin(user) {
   mark('auth'); S.user = user;
   const email = user.email, snap = bootLoad(email);

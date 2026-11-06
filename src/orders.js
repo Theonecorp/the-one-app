@@ -10,7 +10,7 @@
  *  st: draft(임시저장) → sent(보냄) → pick(픽킹 중) → done(인보이스 확정) · x(취소)
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp, footBtns } from './ui.js';
-import { REQ_KINDS, reqClean, reqText, reqCount } from './reqs.js';
+import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel } from './reqs.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
 import { jobOf, can } from './main.js';
@@ -703,7 +703,7 @@ function paintMemo() {
   const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
   const rq = O.req || (O.req = {});
   const reqCard = '<div class="card"><h2>🎁 ' + bi('인서트 · 디스플레이 요청', 'Insert · display request') + '</h2><div class="muted">' + bt('가게에 같이 보낼 인서트 · 디스플레이 — 출고 담당이 보고 인보이스에도 찍힙니다', 'Inserts and displays to ship with this order — warehouse sees it and it prints on the invoice') + '</div>' +
-    '<div class="reqs">' + REQ_KINDS.map(k => '<div class="reqrow' + (rq[k[0]] > 0 ? ' on' : '') + '"><b>' + bi(k[1], k[2]) + '</b><span class="rqs"><button type="button" data-rqm="' + k[0] + '">−</button><span data-rqv="' + k[0] + '">' + (rq[k[0]] || 0) + '</span><button type="button" data-rqp="' + k[0] + '">＋</button></span></div>').join('') + '</div>' +
+    '<div class="reqs">' + REQ_KINDS.map(k => '<div class="reqrow' + (rq[k[0]] > 0 ? ' on' : '') + '"><b>' + reqLabel(k[0]) + '</b><span class="rqs"><button type="button" data-rqm="' + k[0] + '">−</button><span data-rqv="' + k[0] + '">' + (rq[k[0]] || 0) + '</span><button type="button" data-rqp="' + k[0] + '">＋</button></span></div>').join('') + '</div>' +
     (reqCount(rq) ? '<div class="alert a-amb" style="margin-top:8px">🎁 ' + reqText(rq) + '</div>' : '') + '</div>';
   $('eBody').innerHTML = reqCard + '<div class="card"><h2>📝 ' + bi('메모', 'Memo') + '</h2><div class="muted">배송 방법 · 특이사항 · 할인 요청 등 사무실에 전할 말 <span class="en">Shipping, special requests, discount asks</span></div>' +
     '<textarea id="eMemo" rows="4" placeholder="예: UPS 로 보내 주세요 / 금요일 전 도착 / 디스플레이 같이" style="margin-top:8px">' + esc(O.memo || '') + '</textarea>' +
@@ -1068,6 +1068,9 @@ function putOut(o, lines) {
 
 async function saveOrder(st) {
   if (!O.store) return toast('가게를 고르세요', 'bad');
+  if (!O.sm && isStaff() && O.acct) {   /* 가게의 세일즈맨을 서버에서 다시 읽음 — 폰에 보관한 거래처 목록이 옛것이면 비어 있을 수 있어서 (v0.8.172) */
+    try { const a = await S.DB.get('accounts', O.acct); const smv = a && a.sm ? String(a.sm).toUpperCase() : ''; if (smv) { O.sm = smv; saveWip(); if ($('eSm')) $('eSm').value = smv; toast('👤 ' + bt('가게의 세일즈맨', 'Store salesman') + ' ' + smv, 'good'); } } catch (e) {}
+  }
   if (!O.sm) { if (!isStaff()) return toast('세일즈맨을 고르세요', 'bad'); if (!(await pickSm())) return; }   /* 담당자: 가게에 기본 세일즈맨이 없으면 여기서 바로 고름 (v0.8.172 — 위 고정 머리 아래 선택 칸은 내리면 안 보여서) */
   if (!O.lines.some(l => l.q > 0)) return toast('아이템을 담으세요', 'bad');
   const t = totals();
