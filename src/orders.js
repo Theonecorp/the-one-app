@@ -51,6 +51,8 @@ export const stName = st => { const x = ST[st] || ST.draft; return x[0] + ' · '
 export const stTag = st => { const x = ST[st] || ST.draft; return '<span class="tag ' + x[2] + '" title="' + x[1] + '">' + x[0] + '</span>'; };
 const isStaff = () => S.role !== 'salesman';
 const mySm = () => (S.me && S.me.sm ? String(S.me.sm).toUpperCase() : '');
+/** 주문의 세일즈맨을 골라 넣어야 하는 사람 — 담당자 · 관리자 모드, 또는 세일즈 모드인데 자기 세일즈맨 코드가 없는 관리자 (v0.8.172) */
+const needSm = () => isStaff() || !mySm();
 const OUT_KEY = 'theone.outbox.v1';
 /* 작성 중 주문은 로그인한 사람별로 보관 (한 기기를 여럿이 쓸 때 섞이지 않게) */
 const WIP_KEY_ = 'theone.order.wip', wipKey = () => WIP_KEY_ + '.' + ((S && S.user && S.user.email) || '');
@@ -594,7 +596,7 @@ function reindex() { IDX = {}; O.lines.forEach(l => { IDX[l.c] = l; }); }
 function accDiscOf() { return acctDisc(O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null); }
 
 export async function openEditor(order, wip, lines) {
-  if (!order && !wip && !isStaff() && !mySm()) return toast('세일즈맨 코드가 없습니다', 'bad');
+  if (!order && !wip && !isStaff() && !mySm() && !(S.me && S.me.role === 'admin')) return toast('세일즈맨 코드가 없습니다', 'bad');   /* 관리자는 세일즈 모드에서도 주문 — 세일즈맨은 가게 기본값 · 저장 때 고름 (v0.8.173) */
   $('page').innerHTML = '<div class="load">아이템 목록 준비 중… (처음 한 번은 조금 걸립니다)</div>';
   try { await loadCatalog(S); } catch (e) { if (!catalog()) { $('page').innerHTML = '<div class="card"><div class="alert a-red">아이템 목록을 읽지 못했습니다: ' + esc(e.code || e.message) + '</div></div>'; return; } }
   if (!catalog().items.length) { $('page').innerHTML = '<div class="card"><div class="none">아직 아이템 목록이 없습니다.<br>관리 → 📦 아이템에서 Item Master 를 올려 주세요.</div></div>'; return; }
@@ -625,7 +627,7 @@ function paintEditor() {
   if (O.id) h += '<div class="alert a-amb" style="margin:0 0 8px">✏️ ' + esc(O.no) + ' 수정 중 ' + stTag(O.st) + '</div>';
   if (acc && acc.note) h += '<div class="alert a-blu" style="margin:0 0 8px">📝 ' + esc(acc.note) + '</div>';
   h += '<div id="eStoreNotes"></div>';
-  if (isStaff()) h += '<div class="fg" style="margin:0 0 8px"><label>세일즈맨 <span class="en">Salesman</span></label>' + sel('eSm', [['', '— 선택 — select —']].concat(S.sms.map(s => [s.code, s.code])), O.sm) + '</div>';
+  if (needSm()) h += '<div class="fg" style="margin:0 0 8px"><label>세일즈맨 <span class="en">Salesman</span></label>' + sel('eSm', [['', '— 선택 — select —']].concat(S.sms.map(s => [s.code, s.code])), O.sm) + '</div>';
   h += '<div id="eBody"></div>';
   const isSentEdit = O.st && O.st !== 'draft';
   /* 아래 고정 바: 가게 이름 · 지금까지 금액(크게) · 종류별(A/P/W) 소계 · 저장
@@ -657,7 +659,7 @@ function paintEditor() {
   }
   async function pickStore(code, seen) {
         const a = S.accounts.byCode[code]; if (!a) return; O.acct = a.acct; O.store = a.store;
-        if (isStaff() && !O.sm && a.sm) O.sm = String(a.sm).toUpperCase();
+        if (needSm() && !O.sm && a.sm) O.sm = String(a.sm).toUpperCase();
         O.disc = acctDisc(a);   // 가게 기본 할인으로 시작
         saveWip(); paintEditor();
         if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
@@ -709,7 +711,7 @@ function paintMemo() {
     '<textarea id="eMemo" rows="4" placeholder="예: UPS 로 보내 주세요 / 금요일 전 도착 / 디스플레이 같이" style="margin-top:8px">' + esc(O.memo || '') + '</textarea>' +
     '<div class="chips" style="margin-top:8px">' + ['UPS 배송', '픽업 (가게에서 가져감)', '세일즈맨 직접 배달', '급함 — 먼저 처리', '디스플레이 같이 보내기'].map(x => '<button data-mq="' + esc(x) + '">+ ' + esc(x) + '</button>').join('') + '</div></div>' +
     '<div class="card"><h2>' + bi('주문 요약', 'Summary') + '</h2><div class="pr"><div class="ct"><b>' + esc(O.store || '가게 미선택') + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : '') + '</small></div></div>' +
-    '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div' + (isStaff() ? ' data-smk="1" style="cursor:pointer"' : '') + '><b id="eSmK"' + (isStaff() && !O.sm ? ' class="warn"' : '') + '>' + esc(O.sm || (isStaff() ? '선택 ✎' : '-')) + '</b><span>세일즈맨' + (isStaff() && O.sm ? ' ✎' : '') + '</span></div></div>' + typeSummary(t.by) + '</div>';
+    '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div' + (needSm() ? ' data-smk="1" style="cursor:pointer"' : '') + '><b id="eSmK"' + (needSm() && !O.sm ? ' class="warn"' : '') + '>' + esc(O.sm || (needSm() ? '선택 ✎' : '-')) + '</b><span>세일즈맨' + (needSm() && O.sm ? ' ✎' : '') + '</span></div></div>' + typeSummary(t.by) + '</div>';
   document.querySelectorAll('[data-smk]').forEach(el => el.onclick = async () => { if (await pickSm()) paintMemo(); });
   const ta = $('eMemo'); ta.oninput = () => { O.memo = ta.value; saveWip(); if ($('eMdot')) $('eMdot').textContent = O.memo || reqCount(O.req) ? ' •' : ''; };
   const bump = (k, d) => { O.req = O.req || {}; O.req[k] = Math.max(0, Math.min(99, (Number(O.req[k]) || 0) + d)); saveWip(); paintMemo(); if ($('eMdot')) $('eMdot').textContent = O.memo || reqCount(O.req) ? ' •' : ''; };
@@ -1068,10 +1070,10 @@ function putOut(o, lines) {
 
 async function saveOrder(st) {
   if (!O.store) return toast('가게를 고르세요', 'bad');
-  if (!O.sm && isStaff() && O.acct) {   /* 가게의 세일즈맨을 서버에서 다시 읽음 — 폰에 보관한 거래처 목록이 옛것이면 비어 있을 수 있어서 (v0.8.172) */
+  if (!O.sm && needSm() && O.acct) {   /* 가게의 세일즈맨을 서버에서 다시 읽음 — 폰에 보관한 거래처 목록이 옛것이면 비어 있을 수 있어서 (v0.8.172) */
     try { const a = await S.DB.get('accounts', O.acct); const smv = a && a.sm ? String(a.sm).toUpperCase() : ''; if (smv) { O.sm = smv; saveWip(); if ($('eSm')) $('eSm').value = smv; toast('👤 ' + bt('가게의 세일즈맨', 'Store salesman') + ' ' + smv, 'good'); } } catch (e) {}
   }
-  if (!O.sm) { if (!isStaff()) return toast('세일즈맨을 고르세요', 'bad'); if (!(await pickSm())) return; }   /* 담당자: 가게에 기본 세일즈맨이 없으면 여기서 바로 고름 (v0.8.172 — 위 고정 머리 아래 선택 칸은 내리면 안 보여서) */
+  if (!O.sm) { if (!needSm()) return toast('세일즈맨을 고르세요', 'bad'); if (!(await pickSm())) return; }   /* 담당자: 가게에 기본 세일즈맨이 없으면 여기서 바로 고름 (v0.8.172 — 위 고정 머리 아래 선택 칸은 내리면 안 보여서) */
   if (!O.lines.some(l => l.q > 0)) return toast('아이템을 담으세요', 'bad');
   const t = totals();
   if (st === 'sent' && O.st === 'draft' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + money(t.amt) + ' 주문을 보낼까요? / Send this order?', '보내기 Send'))) return;
