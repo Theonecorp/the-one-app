@@ -16,7 +16,7 @@
 3. 새 기능 · 고친 버그마다 **새 시험** `test/tNNN.js`(다음 번호) 를 같이 만들고 `node test/index.js` 로 `test/INDEX.md` 를 갱신합니다. 있던 기능을 바꾸기 전에는 `test/INDEX.md` 에서 그 기능의 시험을 먼저 읽습니다.
 4. 새 UI 문구는 `node tools/i18n.js add '한글' 'English' 'Português'` 로 EN · PT 를 넣습니다.
 5. 푸시 전 `sh test/run-par.sh` (전체 시험, 약 7분) — 하나라도 ❌ 이면 고칠 때까지 푸시하지 않습니다.
-6. 브랜치 → 푸시 → PR. **main 에 직접 푸시하지 않고, 머지하지 않습니다** — 관리자 승인 뒤 squash 머지됩니다. 규칙 · Apps Script 배포가 필요하면 PR 설명에 `배포 필요: …` 를 적습니다.
+6. 브랜치 → 푸시 → PR. **main 에 직접 푸시하지 않습니다.** 자기 영역 파일만 바뀐 PR 은 GitHub Actions `check` 가 초록이 된 것을 확인한 뒤 직접 squash 머지해도 됩니다. 영역 밖 · 공용 뼈대 · 규칙 · `.github/` · `tools/` 가 바뀌었으면 관리자 승인을 기다립니다. 규칙 · Apps Script 배포가 필요하면 PR 설명에 `배포 필요: …` 를 적습니다.
 
 ## 4. 하지 않는 것
 - 비밀값(키 · 토큰 · 비밀번호)을 채팅 · 코드 · 커밋에 넣지 않습니다.
@@ -27,4 +27,4 @@
 `src/main.js` 로그인 · 역할 · 메뉴 · 라우터 · `src/db.js` DB 한 겹 · `src/catalog.js` 아이템 · 분류 · 사진 색인 · `src/items.js` 아이템 화면 · `src/itembulk.js` 일괄 등록 · 삭제 · `src/stock.js` 재고 · `src/ship.js` `src/pickup.js` `src/track.js` UPS · 픽업 · 배송 · `src/orders.js` 주문 · `src/admin.js` 관리 · 가져오기 · `test/` Playwright 시험 (`test/INDEX.md` 기능 등록부). 자세한 것은 `CLAUDE.md`.
 
 ---
-**English (short):** Read `CLAUDE.md` first — it is the rulebook. Work only in your area (see the team table), never put secrets in chat/code, add a test (`test/tNNN.js`) with every change, run `sh tools/sync-main.sh` before you start and `sh test/run-par.sh` before you push, then open a PR. Do not push to `main` or merge; the admin reviews and merges.
+**English (short):** Read `CLAUDE.md` first — it is the rulebook. Work only in your area (see the team table), never put secrets in chat/code, add a test (`test/tNNN.js`) with every change, run `sh tools/sync-main.sh` before you start and `sh test/run-par.sh` before you push, then open a PR. Never push to `main`. A PR that only touches your own area may be squash-merged by you once the `check` workflow is green; anything outside your area waits for the admin.
