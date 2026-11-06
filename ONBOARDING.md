@@ -27,4 +27,34 @@
 `src/main.js` 로그인 · 역할 · 메뉴 · 라우터 · `src/db.js` DB 한 겹 · `src/catalog.js` 아이템 · 분류 · 사진 색인 · `src/items.js` 아이템 화면 · `src/itembulk.js` 일괄 등록 · 삭제 · `src/stock.js` 재고 · `src/ship.js` `src/pickup.js` `src/track.js` UPS · 픽업 · 배송 · `src/orders.js` 주문 · `src/admin.js` 관리 · 가져오기 · `test/` Playwright 시험 (`test/INDEX.md` 기능 등록부). 자세한 것은 `CLAUDE.md`.
 
 ---
+
+# THE ONE APP — Integração de novos membros (trabalhar junto com o Claude Code)
+
+Este repositório é o app (PWA) de pedidos · cobrança · estoque da THE ONE CORP. Várias pessoas alteram o mesmo repositório, cada uma na sua própria sessão do Claude Code; o PR passa pelo `check` (GitHub Actions) e, ao ser mesclado em `main`, é publicado automaticamente no GitHub Pages. **Ao iniciar uma sessão, o `CLAUDE.md` é lido primeiro e as regras dele valem para tudo.** Este documento é só a orientação inicial.
+
+## 1. Preparação (uma vez)
+1. Aceite o convite de colaborador no GitHub (`theonecorp/the-one-app`). O e-mail joao@theonefl.com precisa estar confirmado na sua conta do GitHub para que os pedidos de revisão (CODEOWNERS) cheguem até você.
+2. Em claude.ai → Code, conecte sua conta do GitHub (https://claude.ai/connect-github), crie um ambiente na nuvem e escolha este repositório. **Nunca coloque segredos no ambiente** — a chave de serviço (`FIREBASE_*`) existe só no ambiente pessoal do administrador; uma sessão sem a chave não grava nos dados reais. Os testes rodam com dados em memória (`test/seed.js`), sem precisar dos dados reais.
+3. Sua área está na tabela "팀 · 담당 영역" do `CLAUDE.md` (estoque · UPS · retirada · envio · itens · fluxo de expedição: `src/stock.js` `src/ship.js` `src/pickup.js` `src/track.js` `src/items.js` `src/catalog.js` `src/scan.js` `src/fulfill.js` `src/flow.js` `apps-script/UPS.gs`).
+
+## 2. Minha área
+Altere arquivos fora da sua área só o mínimo necessário e escreva no topo da descrição do PR `영역 밖 변경: arquivo — motivo`. Mudanças grandes na base comum (`ui.js` `style.js` `main.js` `db.js` `i18n.js` `sw.js` `index.html` `build.sh` `firestore.rules` `.github/` `tools/`) ficam com o administrador.
+
+## 3. Ordem de uma alteração (basta dizer isto à sessão)
+1. `sh tools/sync-main.sh` — primeiro traga o `main` mais recente (resolve sozinho os conflitos de versão · app.js · i18n.json).
+2. Altere `src/` e rode `sh build.sh` — reconstrói o app.js (não use `npx esbuild` direto).
+3. Toda função nova ou bug corrigido vem com **um teste novo** `test/tNNN.js` (próximo número); depois `node test/index.js` atualiza o `test/INDEX.md`. Antes de mudar algo que já existe, leia o teste daquela função no `test/INDEX.md`.
+4. Texto novo de interface: `node tools/i18n.js add '한글' 'English' 'Português'` para incluir EN · PT.
+5. Antes de enviar: `sh test/run-par.sh` (todos os testes, ~7 min) — com qualquer ❌ não envie até corrigir.
+6. Branch → push → PR. **Nunca faça push direto em `main`.** Um PR que só altera arquivos da sua área pode ser mesclado por você (squash) depois que o `check` do GitHub Actions ficar verde. Se mexeu fora da área, na base comum, nas regras, em `.github/` ou `tools/`, espere a aprovação do administrador. Se precisar publicar regras ou Apps Script, escreva `배포 필요: …` na descrição do PR.
+
+## 4. O que não fazer
+- Não coloque segredos (chaves · tokens · senhas) no chat, no código ou em commits.
+- Importações e gravações em lote não substituem documentos inteiros (use `merge` · `update`, só os campos). Documentos de usuários (`users`) nunca são sobrescritos por importação.
+- Não use nomes de pessoas nos textos da interface. Não coloque nomes de modelos em commits ou código.
+
+## 5. Onde está cada coisa (resumo)
+`src/main.js` login · papéis · menu · roteador · `src/db.js` camada do banco · `src/catalog.js` itens · categorias · índice de fotos · `src/items.js` tela de itens · `src/itembulk.js` cadastro · exclusão em lote · `src/stock.js` estoque · `src/ship.js` `src/pickup.js` `src/track.js` UPS · retirada · rastreio · `src/orders.js` pedidos · `src/admin.js` administração · importação · `test/` testes Playwright (`test/INDEX.md` é o registro de funções). Detalhes no `CLAUDE.md`.
+
+---
 **English (short):** Read `CLAUDE.md` first — it is the rulebook. Work only in your area (see the team table), never put secrets in chat/code, add a test (`test/tNNN.js`) with every change, run `sh tools/sync-main.sh` before you start and `sh test/run-par.sh` before you push, then open a PR. Never push to `main`. A PR that only touches your own area may be squash-merged by you once the `check` workflow is green; anything outside your area waits for the admin.
