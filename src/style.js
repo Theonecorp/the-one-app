@@ -359,7 +359,7 @@ input.past{border-color:var(--amber);background:#fffbeb}input.later{border-color
   .seg.big button{font-size:16px;padding:13px 10px}.chips button{font-size:13.5px;padding:8px 13px}.chips.crumbs button{font-size:15px;padding:10px 16px}
 }
 @media (min-width:1200px){
-  .wrap{max-width:1280px}
+  .wrap{max-width:1600px}
   .two{gap:14px}.kpi{gap:10px}
 }
 .hb.hlang{white-space:nowrap;flex:0 0 auto;width:auto;min-width:0;padding:0 9px;font-size:12.5px;font-weight:800;letter-spacing:.3px;margin-right:6px}.langpick{display:grid;gap:10px;margin-top:10px}.langpick button{font-size:18px;padding:16px}
@@ -419,4 +419,33 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 @media (min-width:641px) and (max-width:1023px){.wrap{max-width:100%;padding:14px 18px 0}.phgrid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}.chips button{font-size:13px;padding:7px 12px}}
 @media (min-width:1024px){.wrap{max-width:1280px;padding:16px 24px 0}}
 @media (min-width:1400px){.wrap{max-width:1500px}}@media (min-width:1800px){.wrap{max-width:1700px}}
+
+/* ---- 🖥 태블릿 · 컴퓨터(900+)의 주문 화면 — SBM GO 처럼 화면을 채움 (v0.8.173): 본문이 넓어지고, 분류 타일은 폭에 맞춰 칸 수가 늘고 키가 커지며, 아래 고정 바(프리셋 · 합계 · 저장)는 한 줄로 합쳐 목록이 더 보임 ---- */
+@media (min-width:900px){
+  .wrap{max-width:1400px}
+  .ecard .cats{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+  .ecard .cats button{min-height:clamp(96px,13vh,136px);padding:12px 10px;border-radius:14px}
+  .ecard .cats button b{font-size:18px}.ecard .cats button span{font-size:13.5px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+  .ordtop .chips.crumbs button{font-size:16px;padding:11px 18px}
+  #page .sticky{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:8px 0 0}
+  #page .sticky #eQuick{flex:1 1 100%}#page .sticky .qbar{margin:0}
+  #page .sticky .tbar{flex:1 1 320px;min-width:0;margin:0}
+  #page .sticky .btns{flex:0 0 auto;margin:0}#page .sticky .btns .b-green{min-width:170px}
+}
+@media (min-width:1200px){
+  #page .sticky #eQuick{flex:0 0 auto}#page .sticky .qbar span{display:none}
+}
+/* 🔄 가로로 눕힌 태블릿(넓고 낮음: 900+ × 높이 820 이하) — 위 · 아래 고정 영역을 더 줄여 아이템이 두 줄 이상 보이게: 검색과 분류 경로를 한 줄에, 아래 바(프리셋 · 합계 · 저장)를 한 줄에, 카드 사진은 낮게 */
+@media (min-width:900px) and (max-height:820px){
+  .ehead{margin-bottom:4px;padding-top:4px}
+  .ehead .ordtop{display:flex;gap:8px;align-items:center;margin-top:4px}.ehead .ordtop>div:first-child{flex:0 1 40%;min-width:260px}.ehead .ordtop .chips.crumbs{flex:1 1 auto;min-width:0;margin:0;flex-wrap:nowrap;overflow-x:auto;padding:0}
+  .ehead .ordtop input{padding:8px 10px}.ehead .ordtop .ib{flex:0 0 40px;height:40px;font-size:18px}
+  .ordtop .chips.crumbs button{font-size:14px;padding:8px 13px;white-space:nowrap}
+  .ecard{padding:8px}.ecard .cats{gap:8px}.ecard .cats button{min-height:clamp(72px,11vh,110px);padding:8px}.ecard .cats button b{font-size:16px}
+  .grid{gap:8px}.gimg{aspect-ratio:4/3}.gt{padding:5px 8px 7px}
+  #page .sticky{flex-wrap:nowrap;padding-top:6px;gap:8px}#page .sticky #eQuick{flex:0 0 auto}#page .sticky .qbar span{display:none}
+  #page .sticky .qbar button{min-width:42px;height:42px;font-size:17px}#page .sticky .tbar{flex:1 1 180px;padding:5px 10px}#page .sticky .tbar .ta{font-size:20px}
+  #page .sticky .btns{min-width:0}#page .sticky .btns button{padding:10px 12px}#page .sticky .btns .b-green{min-width:110px}#page .sticky .btns #eClose{flex:0 0 auto}
+}
 `;

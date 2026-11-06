@@ -113,3 +113,4 @@
 | t150 | v0.8.172 | 🏷 오피스 매니저 홈에서 아이템 등록 · 📋 일괄 등록은 엑셀처럼 셀 격자 (#/items/bulk) |
 | t151 | v0.8.172 | 👤 담당자 주문: 가게에 기본 세일즈맨이 없으면 저장할 때 세일즈맨 고르는 창이 뜨고, 요약의 세일즈맨 칸을 눌러도 고름 (위 고정 머리 아래 선택 칸은 내리면 안 보여 "세일즈맨을 고르세요" 만 뜨던 문제) |
 | t152 | v0.8.172 | 🎁 인서트 · 디스플레이 요청 종류: 창고 실제 종류 16종이 영어 표기 그대로 (C4 Spinner · C4 Insert · C13 Spinner · C13 Insert · BCBTop · BCBase · LB1 · LB2 · LB3 · LD · Wall Short · Wall Long · Black Insert · Bangle Insert · Nose Ring Insert · Black Wide Insert) |
+| t153 | v0.8.174 | 🖥 태블릿 · 컴퓨터(900px+)의 주문 화면이 SBM GO 처럼 화면을 채움: 분류 타일이 폭에 맞춰 칸이 늘고, 아래 바(프리셋 · 합계 · 저장)가 한 줄로 합쳐져 아이템이 더 보임 |
