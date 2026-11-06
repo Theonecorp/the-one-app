@@ -731,7 +731,7 @@ function setQty(code, q) {
   if (!q) { if (cur) { if (O.view === 'cart') cur.q = 0; /* ✅ 주문 확인에서 0 은 줄을 지우지 않고 0 으로 둠 (다시 넣기 쉽게) — 저장 · 보내기 때 0 줄은 빠짐 */ else { O.lines = O.lines.filter(l => l !== cur); delete IDX[code]; } } }
   else if (cur) cur.q = q;
   else if (it) {
-    const l = { c: it.c, d: it.d, q, p: it.p, lp: it.p, t: typeOfItem(S, it) };
+    const l = { c: it.c, d: it.d, q, p: O.pov && O.pov[it.c] != null ? O.pov[it.c] : it.p, lp: it.p, t: typeOfItem(S, it) };   /* 💲 같은 분류 가격 적용이 걸려 있으면 그 가격으로 담김 (v0.8.174) */
     if (it.k) l.kit = it.k.map(x => ({ c: x[0], q: x[1] }));   // 세트: 구성품을 같이 저장 (픽킹 · 재고용)
     O.lines.push(l); IDX[code] = l;
   }
@@ -803,13 +803,14 @@ function paintAdd() {
   const kids = node.kids.length || popTile ? '<div class="cats">' + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
   /* 검색 + 분류 경로는 카드 밖 sticky — 아래로 아무리 내려가도 맨 위에 붙어 있어 바로 상위로 돌아감 */
   $('eTop').innerHTML = '<div class="ordtop"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
-    '<button class="b-ghost ib" id="eVM" title="보기 바꾸기">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost ib" id="eShow" title="손님 보기">🖼</button></div>' + crumbs + '</div>';
+    '<button type="button" class="b-ghost ib" id="eQX" title="' + esc(bt('검색어 지우기', 'Clear search')) + '" style="' + (O.q ? '' : 'display:none') + '">✕</button><button class="b-ghost ib" id="eVM" title="보기 바꾸기">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost ib" id="eShow" title="손님 보기">🖼</button></div>' + crumbs + '</div>';
   $('eBody').innerHTML = '<div class="card ecard">' + kids + '<div id="eRes"></div></div>';
   const sb = $('eQuick'); if (sb) { sb.innerHTML = quickBar(); bindQuick(sb); }
   eHeadH(); paneTop(); setTimeout(eHeadH, 50);
   const q = $('eQ1');
   const run = () => { if (!O || !$('eQ1')) return; O.q = q.value; PAGE = 60; paintResults(); paneTop(); };
-  const cats = $('eBody').querySelector('.cats'); const showCats = () => { if (cats) cats.style.display = q.value.trim() ? 'none' : ''; };   // 검색어가 있으면 분류 타일은 숨김 — 결과가 바로 위에
+  const cats = $('eBody').querySelector('.cats'); const showCats = () => { if (cats) cats.style.display = q.value.trim() ? 'none' : ''; const x = $('eQX'); if (x) x.style.display = q.value ? '' : 'none'; };   // 검색어가 있으면 분류 타일은 숨김 — 결과가 바로 위에 · ✕ 는 검색어가 있을 때만
+  $('eQX').onclick = () => { q.value = ''; O.q = ''; PAGE = 60; showCats(); paintResults(); paneTop(); q.focus(); };   /* ✕ 검색어 지우기 (v0.8.174) */
   showCats(); q.addEventListener('input', showCats);
   q.oninput = debounce(run, 160);
   q.onkeydown = e => {
@@ -820,8 +821,9 @@ function paintAdd() {
     if (it) { if (it.h) toast('🙈 숨김 아이템을 담았습니다 (담당자 전용)'); const n = tapAdd(it.c); toast(it.c + ' → ' + n + '개', 'good'); q.value = ''; O.q = ''; paintResults(); }
     else { run(); toast('정확히 맞는 코드가 없습니다 — 아래에서 고르세요', 'bad'); }
   };
-  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.pop = false; O.all = false; PAGE = 60; paintAdd(); });
-  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); O.pop = false; O.all = false; PAGE = 60; paintAdd(); });
+  /* 전체 · 분류 경로 · 분류 타일을 누르면 검색어도 지움 — 검색어가 남아 있으면 "전체" 를 눌러도 검색 결과만 보여 분류로 못 가던 문제 (v0.8.174) */
+  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.q = ''; O.pop = false; O.all = false; PAGE = 60; paintAdd(); });
+  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); O.q = ''; O.pop = false; O.all = false; PAGE = 60; paintAdd(); });
   const pt = document.querySelector('[data-pop]'); if (pt) pt.onclick = () => { O.pop = !O.pop; PAGE = 60; paintAdd(); };
   $('eVM').onclick = () => { VM = VM === 'grid' ? 'list' : 'grid'; try { localStorage.setItem(VM_KEY, VM); } catch (e) {} paintAdd(); };
   $('eShow').onclick = () => showMode(LAST, 0);
@@ -874,7 +876,7 @@ function itemCard(it) {
     '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pp="' + esc(it.c) + '">' + priceTxt(it, true) + '</span></div></div>';
 }
 /** 담은 줄의 가격 (바꿨으면 그 가격 · 목록가 줄긋기) — ✎ 누르면 가격 · 수량 */
-function priceTxt(it, plain) { const l = IDX[it.c], p = l ? l.p : it.p, chg = l && Math.abs(l.p - it.p) > 0.0001; return (chg ? '<s>' + money(it.p) + '</s> ' : '') + '<b' + (chg ? ' class="chgp"' : '') + '>' + money(p) + '</b>' + (plain ? '' : '<i class="pen"> ✎</i>'); }
+function priceTxt(it, plain) { const l = IDX[it.c], ov = !l && O && O.pov && O.pov[it.c] != null ? O.pov[it.c] : null, p = l ? l.p : ov != null ? ov : it.p, chg = Math.abs(p - it.p) > 0.0001; return (chg ? '<s>' + money(it.p) + '</s> ' : '') + '<b' + (chg ? ' class="chgp"' : '') + '>' + money(p) + '</b>' + (plain ? '' : '<i class="pen"> ✎</i>'); }
 function refreshRowPrice(c) { const it = catalog().byCode[c]; if (!it) return; document.querySelectorAll('[data-pe="' + CSS.escape(c) + '"]').forEach(el => { el.innerHTML = priceTxt(it); }); document.querySelectorAll('[data-pp="' + CSS.escape(c) + '"]').forEach(el => { el.innerHTML = priceTxt(it, true); }); }
 const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data-d="-1">−</button><input type="number" inputmode="numeric" min="0" data-qi="' + esc(c) + '" value="' + (v || '') + '" placeholder="0"><button data-dq="' + esc(c) + '" data-d="1">＋</button></div>';
 function paintResults() {
@@ -904,7 +906,8 @@ function paintResults() {
   /* 목록 보기에서 줄(이름 · 사진)을 누르면 카드처럼 담김 (프리셋 적용) */
   /* 목록 줄을 길게 누르면 수량 · 가격 창 (카드의 길게 누르기와 같음) */
   root.querySelectorAll('[data-frow] .ct, [data-frow] .pc').forEach(el => { let t = null; el.addEventListener('pointerdown', () => { clearTimeout(t); t = setTimeout(() => { el.dataset.long = '1'; qtyPad(el.closest('[data-frow]').dataset.frow); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(t))); });
-  root.querySelectorAll('[data-frow] .ct, [data-frow] .pc').forEach(el => el.onclick = () => { if (el.dataset.long) { delete el.dataset.long; return; } const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = tapAdd(c); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
+  root.querySelectorAll('[data-frow] .pc').forEach(el => el.onclick = e => { e.stopPropagation(); if (el.dataset.long) { delete el.dataset.long; return; } qtyPad(el.closest('[data-frow]').dataset.frow, true); });   /* 💲 가격 칸을 누르면 바로 가격 수정 (SBM GO 의 Cust Price 칸처럼 · v0.8.174) */
+  root.querySelectorAll('[data-frow] .ct').forEach(el => el.onclick = () => { if (el.dataset.long) { delete el.dataset.long; return; } const r = el.closest('[data-frow]'), c = r.dataset.frow; root.querySelectorAll('.foc').forEach(x => x.classList.remove('foc')); r.classList.add('foc'); const n = tapAdd(c); const inp = root.querySelector('[data-qi="' + CSS.escape(c) + '"]'); if (inp) inp.value = n || ''; markRow(root, c, n); setFocus(c); if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {} });
   root.querySelectorAll('[data-kit]').forEach(el => el.onclick = e => { e.stopPropagation(); kitSheet(catalog().byCode[el.dataset.kit]); });
   root.querySelectorAll('[data-gm]').forEach(b => b.onclick = e => { e.stopPropagation(); const c = b.dataset.gm; setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); sure(c); refreshCard(c); });
   root.querySelectorAll('[data-pe]').forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); qtyPad(b.dataset.pe, true); });
@@ -945,18 +948,29 @@ function pickSm() {
 function qtyPad(c, focusPrice) {
   const it = catalog().byCode[c]; if (!it) return;
   const cur = IDX[c] ? IDX[c].q : 0;
+  /* 📂 같은 분류(Group › Level 1 › 2 › 3) · 같은 목록가 아이템 — 이전 프로그램처럼 한 번 바꾸면 같은 폴더의 같은 가격 아이템이 같이 바뀜 (v0.8.174) */
+  const sib = catalog().items.filter(x => x.c !== it.c && !x.virt && !x.h && x.g === it.g && x.l1 === it.l1 && x.l2 === it.l2 && x.l3 === it.l3 && Math.abs(x.p - it.p) < 0.0001);
+  const sibIn = sib.filter(x => IDX[x.c]).length, folder = cleanName(it.l3 || it.l2 || it.l1 || it.g || '');
+  const curP = IDX[c] ? IDX[c].p : (O.pov && O.pov[c] != null ? O.pov[c] : it.p);
   openModal('<h2>' + esc(it.c) + '</h2><div class="muted">' + esc(it.d) + ' · ' + money(it.p) + '</div>' +
     '<div class="qty" style="justify-content:center;margin:14px 0"><button id="qpM" style="width:56px;height:56px">−</button><input id="qpV" type="number" inputmode="numeric" min="0" value="' + cur + '" style="width:110px;font-size:26px"><button id="qpP" style="width:56px;height:56px">＋</button></div>' +
     '<div class="chips" style="justify-content:center">' + [1, 2, 3, 6, 12, 24].map(n => '<button data-qp="' + n + '" style="min-width:48px;font-size:15px">' + n + '</button>').join('') + '</div><div class="muted" style="text-align:center">그 밖의 수량은 위 칸에 직접 입력 · or type a quantity</div>' +
-    '<div class="fg" style="margin-top:10px"><label>💲 ' + bi('가격', 'Price') + ' <span class="muted">(' + bt('목록', 'list') + ' ' + money(it.p) + (INFO && Store.lastPrice(INFO, c) != null ? ' · ' + bt('지난번', 'last') + ' ' + money(Store.lastPrice(INFO, c)) : '') + ')</span></label><div style="display:flex;gap:6px"><input id="qpPr" type="number" step="0.01" inputmode="decimal" value="' + (IDX[c] ? IDX[c].p : it.p) + '" style="font-size:20px;font-weight:800"><button class="b-ghost b-sm" id="qpPrR" style="flex:0 0 auto;width:auto">' + bt('목록가로', 'Reset') + '</button></div></div>' +
+    '<div class="fg" style="margin-top:10px"><label>💲 ' + bi('가격', 'Price') + ' <span class="muted">(' + bt('목록', 'list') + ' ' + money(it.p) + (INFO && Store.lastPrice(INFO, c) != null ? ' · ' + bt('지난번', 'last') + ' ' + money(Store.lastPrice(INFO, c)) : '') + ')</span></label><div style="display:flex;gap:6px"><input id="qpPr" type="number" step="0.01" inputmode="decimal" value="' + curP + '" style="font-size:20px;font-weight:800"><button class="b-ghost b-sm" id="qpPrR" style="flex:0 0 auto;width:auto">' + bt('목록가로', 'Reset') + '</button></div></div>' +
+    (sib.length ? '<label class="pick on" id="qpSib" style="margin-top:8px"><span class="ck">✓</span><span class="pm"><b>📂 ' + bt('같은 분류 · 같은 목록가 ', 'Same category · same list price: ') + sib.length + bt('개도 이 가격으로', ' more items get this price') + '</b><small>' + esc(folder) + ' · ' + bt('목록가', 'list') + ' ' + money(it.p) + ' — ' + bt('담긴 ', 'in this order ') + sibIn + bt('개는 바로, 나머지는 담을 때 이 가격', ' change now, the rest when added') + '</small></span></label>' : '') +
     '<div class="btns"><button class="b-ghost" id="qpX">닫기</button><button class="b-blue" id="qpOk">확인</button></div>');
+  let sibOn = sib.length > 0; if ($('qpSib')) $('qpSib').onclick = () => { sibOn = !sibOn; $('qpSib').classList.toggle('on', sibOn); };
   const v = $('qpV'), pr = $('qpPr'); setTimeout(() => { const f = focusPrice ? pr : v; f.focus(); f.select(); }, 50);
   $('qpPrR').onclick = () => { pr.value = it.p; };
   $('qpM').onclick = () => { v.value = Math.max(0, (Number(v.value) || 0) - 1); };
   $('qpP').onclick = () => { v.value = (Number(v.value) || 0) + 1; };
   document.querySelectorAll('[data-qp]').forEach(b => b.onclick = () => { v.value = b.dataset.qp; });
   /* 가격만 고치러 왔는데 아직 안 담은 아이템이면 1개(프리셋)로 담고 가격 적용 */
-  const ok = () => { let q = Math.max(0, Math.floor(Number(v.value) || 0)); const np = R2(pr.value); const pchg = pr.value !== '' && Math.abs(np - (IDX[c] ? IDX[c].p : it.p)) > 0.0001; if (!q && pchg) q = tapQty(c) || 1; setQty(c, q); sure(c); if (IDX[c] && pr.value !== '') { IDX[c].p = np; saveWip(); refreshTotals(); } closeModal(); if (O.view === 'add') { refreshCard(c); refreshRowPrice(c); } else paintCart(); };
+  const ok = () => { let q = Math.max(0, Math.floor(Number(v.value) || 0)); const np = R2(pr.value); const pchg = pr.value !== '' && Math.abs(np - curP) > 0.0001; if (!q && pchg) q = tapQty(c) || 1; setQty(c, q); sure(c); if (IDX[c] && pr.value !== '') { IDX[c].p = np; }
+    /* 📂 같은 분류 · 같은 목록가 아이템에도: 담긴 줄은 바로, 안 담긴 것은 담을 때 적용 (목록가로 되돌리면 적용도 지움) */
+    let nSib = 0; if (pchg && sibOn && sib.length) { O.pov = O.pov || {}; const back = Math.abs(np - it.p) < 0.0001; sib.forEach(x => { if (IDX[x.c]) IDX[x.c].p = np; if (back) delete O.pov[x.c]; else O.pov[x.c] = np; nSib++; }); }
+    if (pr.value !== '') { saveWip(); refreshTotals(); }
+    closeModal(); if (O.view === 'add') { refreshCard(c); refreshRowPrice(c); sib.forEach(x => refreshRowPrice(x.c)); } else paintCart();
+    if (nSib) toast('💲 ' + it.c + bt(' 외 ', ' and ') + nSib + bt('개 → ', ' more → ') + money(np), 'good'); };
   $('qpOk').onclick = ok; v.onkeydown = e => { if (e.key === 'Enter') ok(); }; pr.onkeydown = e => { if (e.key === 'Enter') ok(); };
   $('qpX').onclick = closeModal;
 }
