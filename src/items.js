@@ -35,6 +35,7 @@ const inPath = (x, path) => { const L = x.lv1 == null ? [x.g, x.l1, x.l2, x.l3] 
 
 async function page(arg) {
   if (!isStaff()) { $('page').innerHTML = '<div class="card"><div class="none">담당자 · 관리자만 쓰는 화면입니다</div></div>'; return; }
+  if (arg === 'bulk' || arg === 'bulk:del') { const M = await import('./itembulk.js'); M.register(S); return M.page(arg === 'bulk:del' ? 'del' : 'add'); }   /* 📋 일괄 등록 · 🗑 일괄 삭제 */
   if (arg === 'new') { IT.q = ''; IT.path = []; IT.mode = 'all'; setTimeout(() => form(null, ''), 400); }
   else if (arg === 'nolv' || arg === 'nopr' || arg === 'nobar' || arg === 'hid' || arg === 'noloc') { IT.q = ''; IT.path = []; IT.mode = arg; }   // 🎨 할 일: 분류 없음 · 가격 없음 · 바코드 없음 · 숨김
   else if (arg === 'noph' || String(arg || '').indexOf('noph:') === 0) { IT.q = ''; IT.mode = 'noph'; IT.path = arg.length > 5 ? decodeURIComponent(arg.substring(5)).split('/').filter(Boolean) : []; }   // 📷 사진 없는 아이템 (분류 경로)
@@ -76,7 +77,7 @@ function paint() {
   const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
   /* 🗂 분류별 · 📍 통로별은 그 보기에서만 칩이 나옴 — 기본(📋 목록)은 검색 + 걸러보기만, 목록은 바로 (v0.8.139) */
   const view = IT.view || 'list';
-  $('page').innerHTML = pageHead('🏷 ' + bi('아이템 관리', 'Items'), nAll.toLocaleString() + bt('개', ' items') + ' · 👁 ' + (nAll - nHid).toLocaleString() + ' · 🙈 ' + nHid.toLocaleString() + ' · 📦 ' + bt('재고 있음', 'in stock') + ' ' + nStk.in.toLocaleString(), locOnly() ? '' : '<button class="b-blue" id="itNew">＋ ' + bi('신규 아이템', 'New item') + '</button>') +
+  $('page').innerHTML = pageHead('🏷 ' + bi('아이템 관리', 'Items'), nAll.toLocaleString() + bt('개', ' items') + ' · 👁 ' + (nAll - nHid).toLocaleString() + ' · 🙈 ' + nHid.toLocaleString() + ' · 📦 ' + bt('재고 있음', 'in stock') + ' ' + nStk.in.toLocaleString(), locOnly() ? '' : '<button class="b-ghost" id="itBulkGo">📋 ' + bi('일괄 등록 · 삭제', 'Bulk') + '</button><button class="b-blue" id="itNew">＋ ' + bi('신규 아이템', 'New item') + '</button>') +
     '<div class="card"><input id="itQ" placeholder="코드 · 이름 · 바코드 · 위치 / Code · Name · Barcode · Location" value="' + esc(IT.q) + '" autocomplete="off" autocapitalize="characters">' +
     itabs([['list', '📋', '목록', 'List'], ['tree', '🗂', '분류별', 'By category'], ['aisle', '📍', '통로별', 'By aisle']], view, 'iv') +
     '<div class="chips">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()], ['instk', '📦 ' + bt('재고 있음', 'In stock') + ' ' + nStk.in.toLocaleString()], ['lowstk', '⚠️ ' + bt('재고 부족', 'Low') + ' ' + nStk.low.toLocaleString()], ['nostk', '✕ ' + bt('재고 없음', 'Out') + ' ' + nStk.out.toLocaleString()]].concat(['nolv', 'nopr', 'nobar'].includes(IT.mode) ? [[IT.mode, { nolv: '🗂 ' + bt('분류 없음', 'No category'), nopr: '💲 ' + bt('가격 없음', 'No price'), nobar: '🏷 ' + bt('바코드 없음', 'No barcode') }[IT.mode]]] : []).map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
@@ -94,6 +95,7 @@ function paint() {
   document.querySelectorAll('[data-ik]').forEach(b => b.onclick = () => { IT.path = IT.path.concat([b.dataset.ik]); IT.page = 100; paint(); });
   $('itQ').oninput = debounce(() => { IT.q = $('itQ').value; IT.page = 100; list(); }, 150);
   if ($('itNew')) $('itNew').onclick = () => form(null, IT.q.trim().toUpperCase());
+  if ($('itBulkGo')) $('itBulkGo').onclick = () => Router.go('items', 'bulk');   /* 📋 일괄 등록 · 삭제 (itBulk 는 아래 선택 막대) */
   list();
   if (isAdmin()) sbmCard();
 }
