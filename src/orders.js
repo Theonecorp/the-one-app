@@ -318,6 +318,8 @@ async function staffHome() {
   if (can('invoice') || can('verify')) A.push(tile('credit', '↩', bi('크레딧 확인', 'Credits'), bt('세일즈맨이 준 크레딧 · 확인 · VOID', 'credits given by salesmen'), 'amber'));
   if (can('verify')) A.push(tile('bounce', '↩️', bi('바운스 체크', 'Bounced checks'), bt('등록 · 세일즈맨 알림 · 해결', 'register · notify · clear'), 'amber'));
   if (can('items')) A.push(tile('items', '🏷', bi('아이템 · 재고 위치', 'Items · Inventory'), '찾기 · 위치 · 등록'));
+  /* 🏷 오피스 · 인보이스 담당도 아이템을 바로 등록 — 홈에서 한 번에 (v0.8.172) */
+  if (can('items') && (can('newOrder') || can('invoice'))) A.push(tile('items/new', '＋', bi('아이템 등록', 'New item'), bt('코드 · 이름 · 가격 · 분류', 'code · name · price · category')), tile('items/bulk', '📋', bi('아이템 일괄 등록', 'Bulk add items'), bt('엑셀처럼 칸에 쭉 입력 · 붙여넣기', 'spreadsheet cells · paste')));
   A.push(tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 바코드 라벨 · 엑셀'));
   A.push(tile('track', '🚚', bi('배송 조회', 'Tracking'), '가게 · 인보이스 · 트래킹'));
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
@@ -326,7 +328,7 @@ async function staffHome() {
   /* 🗂 큰 묶음 4개로 접어 둠 — 머리를 누르면 펼쳐져 세부 타일 (펼친 상태는 이 폰에 기억). 머리에는 핵심 숫자 */
   /* 🛒 세일 = 인보이스 발행까지 (접수 · 확인 · 배정 · 픽킹 · 검수) · 🚚 배송 = 그 뒤 (포장 대기 · UPS 라벨 · 픽업 · 출고 완료 · 백오더 · 디스플레이 · 주문 없이 라벨 · 배송 조회) — v0.8.166 */
   const GRP = [['sale', '🛒', '세일', 'Sales', ['flow', 'new', 'sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'all']], ['ship', '🚚', '배송', 'Shipping', ['done', 'ups', 'packed', 'shipped', 'bo', 'displays', 'adhoc', 'track']],
-    ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'cat', 'items']]];
+    ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'cat', 'items', 'items/new', 'items/bulk']]];
   const allT = T.concat(A), keyOf = h => (h.match(/data-hg="([^"]+)"/) || [])[1];
   const OKEY = 'theone.hgrp.' + j; let openG = null; try { openG = JSON.parse(localStorage.getItem(OKEY) || 'null'); } catch (e) {}
   if (!Array.isArray(openG)) openG = [j === 'whmgr' ? 'ship' : j === 'acct' ? 'money' : 'sale'];   /* 창고 매니저는 🚚 배송, 회계는 💵, 그 밖(픽킹 담당 포함)은 🛒 세일 */
@@ -346,6 +348,7 @@ async function staffHome() {
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
     if (k === 'adhoc') return import('./ship.js').then(M => M.adhocShip(() => staffHome()));   /* ➕ 주문 없이 UPS 라벨 */
+    if (k.indexOf('/') > 0) { const [r, a] = k.split('/'); return Router.go(r, a); }   /* items/new · items/bulk 처럼 칸이 있는 화면 */
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
     if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit' || k === 'bounce' || k === 'displays') return Router.go(k);
     if (k === 'inv' || k === 'shipped') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
