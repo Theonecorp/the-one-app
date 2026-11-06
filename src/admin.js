@@ -5,7 +5,7 @@ import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, 
 import { newId } from './db.js';
 import { RATE_LABELS, RATE_DEFAULT, invType, setInvTypeMap } from './comm.js';
 import { bumpAccountsVer, parseArRows, saveAr } from './mgr.js';
-import { roleLabel, JOBS, jobLabel, can } from './main.js';
+import { roleLabel, JOBS, jobLabel, can, jobOf } from './main.js';
 import { seedImport, dropMgCache } from './mg.js';
 import { parseFactoryStatement, looksLikeStatement, suggestFactoryCode, matchFactory } from './facstmt.js';
 import { looksLikeBank, bankFile, bankPdfFile } from './bank.js';
@@ -38,7 +38,7 @@ async function pageCatMg(arg) {
   const noLv = vis.filter(x => !x.l1 && !x.virt).length, noPr = vis.filter(x => !(x.p > 0)).length, hid = C.items.filter(x => x.h).length, sets = C.items.filter(x => x.k).length, noBar = vis.filter(x => !x.b && !x.virt).length;
   const tile = (go, n, label, warn) => '<button data-cg="' + go + '" class="' + (warn && n ? 'warn' : '') + '"><b>' + n.toLocaleString() + '</b><small>' + label + '</small></button>';
   const tabs = [['', '🏠 ' + bt('할 일', 'To do')], ['cat', '📥 ' + bt('올리기 · 세트 · 사진 설정', 'Upload · Sets · Photo settings')], ['tree', '🗂 ' + bt('분류', 'Categories')]];
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px"><h2 style="margin:0 0 6px">🎨 ' + bi('디자인 · 카탈로그', 'Design & Catalog') + ' <span class="muted" style="font-weight:400;font-size:12px">' + bt('아이템', 'items') + ' ' + vis.length.toLocaleString() + (C.updatedAt ? ' · ' + esc(String(C.updatedAt).substring(0, 10)) : '') + '</span></h2>' +
+  $('page').innerHTML = '<div class="card" style="padding:12px 14px"><h2 style="margin:0 0 6px">' + (S.role === 'manager' && jobOf() === 'itemmgr' ? '🏷 ' + bi('아이템 · 재고 관리', 'Items & Inventory') : '🎨 ' + bi('디자인 · 카탈로그', 'Design & Catalog')) + ' <span class="muted" style="font-weight:400;font-size:12px">' + bt('아이템', 'items') + ' ' + vis.length.toLocaleString() + (C.updatedAt ? ' · ' + esc(String(C.updatedAt).substring(0, 10)) : '') + '</span></h2>' +
     '<div class="seg">' + tabs.map(t => '<button class="' + (CTAB === t[0] ? 'on' : '') + '" data-ct2="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
     (CTAB ? '' : '<div class="cdash">' + tile('photos/noph', st.miss.length, '📷✕ ' + bt('사진 없음', 'No photo'), true) + tile('items/nolv', noLv, '🗂 ' + bt('분류 없음', 'No category'), true) + tile('items/nopr', noPr, '💲 ' + bt('가격 없음', 'No price'), true) + tile('items/nobar', noBar, '🏷 ' + bt('바코드 없음', 'No barcode'), false) + tile('items/hid', hid, '🙈 ' + bt('숨김', 'Hidden'), false) + tile('catmg/cat', sets, '🧩 ' + bt('세트', 'Sets'), false) + '</div>' +
     '<div class="btns" style="justify-content:flex-start;margin:10px 0 0;flex-wrap:wrap"><button class="b-blue b-sm" data-cg="items/new">＋ ' + bt('새 아이템', 'New item') + '</button><button class="b-ghost b-sm" data-cg="items/bulk">📋 ' + bt('일괄 등록 · 삭제 (붙여넣기)', 'Bulk add · delete (paste)') + '</button><button class="b-ghost b-sm" data-cg="photos">📷 ' + bt('사진 작업대', 'Photo workbench') + '</button><button class="b-ghost b-sm" data-cg="photos/bulk">📁 ' + bt('사진 일괄 등록', 'Bulk photos') + '</button><button class="b-ghost b-sm" data-cg="labels">🖨 ' + bt('라벨 인쇄', 'Print labels') + '</button><button class="b-ghost b-sm" data-cg="items">🏷 ' + bt('아이템 전체', 'All items') + '</button><button class="b-ghost b-sm" data-cg="cat">📒 ' + bt('카탈로그 · 바코드 라벨', 'Catalog · labels') + '</button></div>') + '</div>' +
