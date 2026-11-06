@@ -80,10 +80,13 @@ function run() {
     if (!list.length) return;   // 보낼 것이 없으면 설정도 안 읽음 (읽기 아끼기)
     const settings = getDoc_('settings', 'app') || {};
     const cc = String(settings.reportTo || DEFAULT_TO).split(/[,;\s]+/).filter(isEmail_);
+    let RU = null; const activeUsers = () => RU || (RU = listAll_('users').filter(u => u.active !== false).map(u => String(u.email || u._id || '').toLowerCase()));
     list.forEach(r => {
       try {
+        /* 🔐 H2: 리포트의 by 는 등록된 사용자여야 보냄 — 남의 주소를 적어 체크 사진을 밖으로 빼내지 못하게 */
         const to = [];
-        if (isEmail_(r.by)) to.push(r.by);
+        if (isEmail_(r.by) && activeUsers().indexOf(String(r.by).toLowerCase()) >= 0) to.push(String(r.by).toLowerCase());
+        else if (isEmail_(r.by)) Logger.log('리포트 ' + r._id + ': by 가 등록된 사용자가 아님 — 사무실 주소로만 보냄');
         cc.forEach(x => { if (to.indexOf(x) < 0) to.push(x); });
         if (!to.length) throw new Error('받는 사람이 없습니다');
         const total = Number(r.total) || 0;
@@ -119,6 +122,12 @@ function notifyRun_() {
   const officeRoom = () => props.getProperty('CHAT_WEBHOOK_OFFICE') || props.getProperty('CHAT_WEBHOOK') || '';
   let USERS = null; const users = () => USERS || (USERS = listAll_('users').filter(u => u.active !== false));
   const emailOf = u => String(u.email || u._id || '').toLowerCase();
+  /* 🔐 H1: 보낸 사람이 담당자(관리자 · 오너 · 매니저)가 아니면 받는 사람 직접 지정(to)은 무시, 링크는 앱 주소만, 한 사람이 한 번에 많이 보내면 뒤는 버림 */
+  const isStaffUser = u => !!u && (u.role === 'admin' || u.role === 'owner' || u.role === 'manager');
+  const senderOf = n => users().find(u => emailOf(u) === String(n.by || '').toLowerCase()) || null;
+  const known = e => users().some(u => emailOf(u) === String(e || '').toLowerCase());
+  const APP_URL = 'https://theonecorp.github.io/the-one-app/';
+  const perSender = {};
   const group = g => users().filter(u => { const r = u.role, j = u.job || 'office';
     if (g === 'g:all') return true; if (g === 'g:sales') return r === 'salesman';
     if (g === 'g:wh') return r === 'manager' && (j === 'whmgr' || j === 'pick' || j === 'pickinv');
@@ -126,6 +135,12 @@ function notifyRun_() {
   list.forEach(n => {
     try {
       const by = String(n.by || '').toLowerCase(), add = (L, e) => { e = String(e || '').trim().toLowerCase(); if (isEmail_(e) && L.indexOf(e) < 0) L.push(e); };
+      const sender = senderOf(n), staffSender = isStaffUser(sender);
+      perSender[by] = (perSender[by] || 0) + 1;
+      if (!sender) { patch_('notifyq', n._id, { st: 'skip', skipWhy: 'unknown sender', at: new Date().toISOString() }); return; }   // 등록된 사용자가 아니면 보내지 않음
+      if (perSender[by] > 10) { patch_('notifyq', n._id, { st: 'skip', skipWhy: 'too many', at: new Date().toISOString() }); return; }   // 한 번에 10건 넘게는 버림
+      const toList = n.to ? (Array.isArray(n.to) ? n.to : String(n.to).split(/[,;\s]+/)).filter(e => staffSender || known(e)) : [];   // 담당자가 아니면 등록된 사용자 주소만
+      const url = n.url && String(n.url).indexOf(APP_URL) === 0 ? String(n.url) : '';   // 앱 주소가 아닌 링크는 버림
       /* 받는 사람 */
       const smUsers = n.toSm ? query_('users', 'sm', String(n.toSm), 5) : [];
       const toUser = n.toUser ? (users().find(u => emailOf(u) === String(n.toUser).toLowerCase()) || { email: n.toUser }) : null;
@@ -133,17 +148,17 @@ function notifyRun_() {
       if (!n.pushOnly && !n.noMail) {
         smUsers.forEach(u => add(mail, u.email || u._id));
         if (n.toStaff) staff.forEach(e => add(mail, e));
-        if (n.to) (Array.isArray(n.to) ? n.to : String(n.to).split(/[,;\s]+/)).forEach(e => add(mail, e));
+        toList.forEach(e => add(mail, e));
       }
       const push = [];
-      smUsers.forEach(u => add(push, u.email || u._id)); if (toUser) add(push, toUser.email || toUser._id);
-      if (n.to) (Array.isArray(n.to) ? n.to : String(n.to).split(/[,;\s]+/)).forEach(e => add(push, e));
+      smUsers.forEach(u => add(push, u.email || u._id)); if (toUser && (staffSender || known(toUser.email || toUser._id))) add(push, toUser.email || toUser._id);
+      toList.forEach(e => add(push, e));
       if (n.toGroup) group(n.toGroup).forEach(e => add(push, e)); else if (n.toStaff) group('g:office').forEach(e => add(push, e));
       const pushTo = push.filter(e => e !== by);   // 보낸 사람 자신에게는 팝업 안 함
       const lines = String(n.text || '').split('\n');
       if (mail.length) MailApp.sendEmail({ to: mail.join(','), subject: n.subject || '[THE ONE] 알림', name: 'THE ONE', replyTo: isEmail_(n.by) ? n.by : REPLY_TO,
         htmlBody: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px">' + lines.map(esc_).join('<br>') + (n.byName || n.by ? '<p style="color:#64748b;font-size:13px">— ' + esc_(n.byName || n.by) + '</p>' : '') +
-          (n.url ? '<p><a href="' + esc_(n.url) + '" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:bold">앱에서 열기 · Open in app</a></p>' : '') + '</div>' });
+          (url ? '<p><a href="' + esc_(url) + '" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:bold">앱에서 열기 · Open in app</a></p>' : '') + '</div>' });
       /* 구글 챗 — 세일즈맨: 개인 방만 · 한 사람: 그 사람 방 · 그 밖(사무실): 사무실 방 */
       let chat = '';
       if (n.chat && !n.pushOnly) {
