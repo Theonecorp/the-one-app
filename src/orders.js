@@ -709,7 +709,8 @@ function paintMemo() {
     '<textarea id="eMemo" rows="4" placeholder="예: UPS 로 보내 주세요 / 금요일 전 도착 / 디스플레이 같이" style="margin-top:8px">' + esc(O.memo || '') + '</textarea>' +
     '<div class="chips" style="margin-top:8px">' + ['UPS 배송', '픽업 (가게에서 가져감)', '세일즈맨 직접 배달', '급함 — 먼저 처리', '디스플레이 같이 보내기'].map(x => '<button data-mq="' + esc(x) + '">+ ' + esc(x) + '</button>').join('') + '</div></div>' +
     '<div class="card"><h2>' + bi('주문 요약', 'Summary') + '</h2><div class="pr"><div class="ct"><b>' + esc(O.store || '가게 미선택') + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : '') + '</small></div></div>' +
-    '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div><b>' + esc(O.sm || '-') + '</b><span>세일즈맨</span></div></div>' + typeSummary(t.by) + '</div>';
+    '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div' + (isStaff() ? ' data-smk="1" style="cursor:pointer"' : '') + '><b id="eSmK"' + (isStaff() && !O.sm ? ' class="warn"' : '') + '>' + esc(O.sm || (isStaff() ? '선택 ✎' : '-')) + '</b><span>세일즈맨' + (isStaff() && O.sm ? ' ✎' : '') + '</span></div></div>' + typeSummary(t.by) + '</div>';
+  document.querySelectorAll('[data-smk]').forEach(el => el.onclick = async () => { if (await pickSm()) paintMemo(); });
   const ta = $('eMemo'); ta.oninput = () => { O.memo = ta.value; saveWip(); if ($('eMdot')) $('eMdot').textContent = O.memo || reqCount(O.req) ? ' •' : ''; };
   const bump = (k, d) => { O.req = O.req || {}; O.req[k] = Math.max(0, Math.min(99, (Number(O.req[k]) || 0) + d)); saveWip(); paintMemo(); if ($('eMdot')) $('eMdot').textContent = O.memo || reqCount(O.req) ? ' •' : ''; };
   document.querySelectorAll('[data-rqp]').forEach(b => b.onclick = () => bump(b.dataset.rqp, 1));
@@ -925,6 +926,19 @@ function refreshCard(c) {
   if (n && !m) { m = document.createElement('button'); m.className = 'gm'; m.dataset.gm = c; m.textContent = '−'; m.onclick = e => { e.stopPropagation(); setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); sure(c); refreshCard(c); }; el.appendChild(m); }
   if (!n && m) m.remove();
 }
+/** 👤 세일즈맨 고르기 창 (담당자) — 가게에 기본 세일즈맨이 없을 때 저장하면 뜸 · 요약의 세일즈맨 칸을 눌러도. 고른 코드 또는 null (v0.8.172) */
+function pickSm() {
+  return new Promise(res => {
+    const L = (S.sms || []).filter(x => x.active !== false);
+    if (!L.length) { toast(bt('등록된 세일즈맨이 없습니다 — 관리 → 사용자', 'No salesmen registered — Admin → Users'), 'bad'); return res(null); }
+    let done = false; const fin = v => { if (done) return; done = true; res(v); };
+    openModal('<h2>👤 ' + bi('세일즈맨을 고르세요', 'Pick a salesman') + '</h2><div class="muted">' + bt('이 주문의 세일즈맨 — 커미션 · 수금 · 리포트가 이 사람 앞으로 갑니다. 가게에 기본 세일즈맨이 없어 직접 고릅니다.', 'The salesman for this order — commission, payments and reports go to this person. This store has no default salesman.') + '</div>' +
+      '<div id="smPick" style="margin-top:10px">' + L.map(x => '<button type="button" class="pick' + (O.sm === x.code ? ' on' : '') + '" data-smp="' + esc(x.code) + '" style="width:100%;text-align:left;background:#fff"><span class="ck">✓</span><span class="pm"><b>' + esc(x.code) + '</b><small>' + esc(x.name || '') + '</small></span></button>').join('') + '</div>' +
+      '<div class="btns"><button type="button" class="b-ghost" id="smPickX">' + bi('닫기', 'Close') + '</button></div>', { onClose: () => fin(null) });
+    document.querySelectorAll('[data-smp]').forEach(b => b.onclick = () => { O.sm = b.dataset.smp; saveWip(); if ($('eSm')) $('eSm').value = O.sm; if ($('eSmK')) { $('eSmK').textContent = O.sm; $('eSmK').classList.remove('warn'); } fin(O.sm); closeModal(); });
+    $('smPickX').onclick = closeModal;
+  });
+}
 /** 수량 직접 입력 */
 function qtyPad(c, focusPrice) {
   const it = catalog().byCode[c]; if (!it) return;
@@ -1054,7 +1068,7 @@ function putOut(o, lines) {
 
 async function saveOrder(st) {
   if (!O.store) return toast('가게를 고르세요', 'bad');
-  if (!O.sm) return toast('세일즈맨을 고르세요', 'bad');
+  if (!O.sm) { if (!isStaff()) return toast('세일즈맨을 고르세요', 'bad'); if (!(await pickSm())) return; }   /* 담당자: 가게에 기본 세일즈맨이 없으면 여기서 바로 고름 (v0.8.172 — 위 고정 머리 아래 선택 칸은 내리면 안 보여서) */
   if (!O.lines.some(l => l.q > 0)) return toast('아이템을 담으세요', 'bad');
   const t = totals();
   if (st === 'sent' && O.st === 'draft' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + money(t.amt) + ' 주문을 보낼까요? / Send this order?', '보내기 Send'))) return;

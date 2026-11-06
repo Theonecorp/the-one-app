@@ -32,6 +32,7 @@ export function parsePaste(text) {
 }
 
 export async function page(arg) {
+  if (arg === 'add' && TAB === 'add' && $('ibGrid') && ROWS.some(filled)) return;   /* 라우터가 같은 화면을 한 번 더 그릴 때(앞 화면이 늦게 끝남) 적던 격자를 지우지 않음 */
   if (arg === 'del') TAB = 'del'; else if (arg === 'add') TAB = 'add';
   $('page').innerHTML = '<div class="load">읽는 중…</div>';
   try { await loadCatalog(S); } catch (e) {}
