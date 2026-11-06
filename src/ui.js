@@ -116,7 +116,11 @@ export function openModal(html, opts) {
 }
 /* ⤵ 긴 화면(주문 · 픽킹 시트)의 주 단추를 맨 아래에도 — 위 단추를 복제(id → data-dup)해 두고, 누르면 원래 단추를 누른 것과 같음 (onclick 은 원래 단추 한 곳에만) */
 export const footBtns = html => html ? '<div class="btns foot">' + String(html).replace(/\sid="([^"]+)"/g, ' data-dup="$1"') + '</div>' : '';
-if (BROWSER) document.addEventListener('click', e => { const b = e.target && e.target.closest ? e.target.closest('[data-dup]') : null; if (!b) return; const t = document.getElementById(b.dataset.dup); if (t && !t.disabled) t.click(); });
+if (BROWSER) document.addEventListener('click', e => { const b = e.target && e.target.closest ? e.target.closest('[data-dup]') : null; if (!b) return; const t = document.getElementById(b.dataset.dup); if (t && !t.disabled) t.click(); })
+/* 🔐 L5(CSP): HTML 문자열 안의 인라인 클릭 속성은 CSP 가 막음 — 화면 이동 단추는 data-hash="#/…" 로 적고 여기서 한 번에 받음 */
+if (BROWSER) document.addEventListener('click', e => { const b = e.target && e.target.closest ? e.target.closest('[data-hash]') : null; if (b) location.hash = b.dataset.hash; })
+/* 🖼 사진이 안 열리면 — data-fb="코드" 는 코드 글자로 바꿈 · data-fb="" 는 src 만 뗌(빈 칸) · data-fb="-" 는 숨김. (img 의 인라인 onerror 속성 대신 — CSP) · 드라이브 대체 사진(catalog.js, data-alt)이 먼저 시도됨 */
+if (BROWSER) document.addEventListener('error', e => { const im = e.target; if (!im || im.tagName !== 'IMG' || im.dataset.fb == null) return; setTimeout(() => { if (im.dataset.alt || !im.isConnected) return; const fb = im.dataset.fb; if (fb === '') im.removeAttribute('src'); else if (fb === '-') im.style.visibility = 'hidden'; else { const sp = document.createElement('span'); sp.className = 'gcode'; sp.textContent = fb; im.replaceWith(sp); } }, 0); }, true);;
 export function closeModal() { const m = $('modal'); m.classList.remove('on'); if (m._onClose) { const f = m._onClose; m._onClose = null; f(); } }
 export const modalOpen = () => { const m = $('modal'); return !!(m && m.classList.contains('on')); };
 export function goHash(h) { h = String(h || ''); if (h.charAt(0) !== '#') h = '#' + h; if (h === location.hash) return; try { location.replace(location.href.split('#')[0] + h); } catch (e) { location.hash = h; } }   // 주소 전체로 (<base> 가 있어도 같은 페이지)

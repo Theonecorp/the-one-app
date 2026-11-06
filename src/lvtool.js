@@ -39,8 +39,8 @@ function paint(done) {
   const d = diag(), L1 = l1List();
   openModal('<h2>📥 레벨 · 그룹 일괄 변경 <span class="en">Level · Group bulk update</span></h2>' +
     '<div class="sumbox"><b>주문 화면에서 안 보이는 아이템</b><div class="muted" style="margin-top:4px">' +
-    '<a href="javascript:void 0" data-lq="hid">🙈 숨김 ' + d.hid.toLocaleString() + '개</a> — 세일즈맨 주문 화면(분류 · 검색)에서 빠짐<br>' +
-    '<a href="javascript:void 0" data-lq="none">❔ Level 1 없음 ' + (d.none + d.sets).toLocaleString() + '개</a> — 검색은 되고 분류에는 맨 뒤 <b>' + esc(cleanName(NO_L1)) + '</b>' + (d.sets ? ' · 세트 ' + d.sets + '개는 <b>' + esc(cleanName(SET_L1)) + '</b>' : '') + ' 에 모여 있음. 제자리 Level 1 을 넣어 주세요.</div></div>' +
+    '<a href="#" data-lq="hid">🙈 숨김 ' + d.hid.toLocaleString() + '개</a> — 세일즈맨 주문 화면(분류 · 검색)에서 빠짐<br>' +
+    '<a href="#" data-lq="none">❔ Level 1 없음 ' + (d.none + d.sets).toLocaleString() + '개</a> — 검색은 되고 분류에는 맨 뒤 <b>' + esc(cleanName(NO_L1)) + '</b>' + (d.sets ? ' · 세트 ' + d.sets + '개는 <b>' + esc(cleanName(SET_L1)) + '</b>' : '') + ' 에 모여 있음. 제자리 Level 1 을 넣어 주세요.</div></div>' +
     '<div class="card" style="margin:10px 0 0;box-shadow:none;border:1px solid var(--line,#e5e7eb)"><b>① 지금 상태 받기</b>' +
     '<div class="seg" style="margin-top:6px;flex-wrap:wrap">' + [['all', '전체'], ['q', '🔎 코드 · 이름'], ['l1', 'Level 1'], ['none', '❔ 분류 없음'], ['hid', '🙈 숨김']].map(m => '<button class="' + (F.by === m[0] ? 'on' : '') + '" data-lb="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
     (F.by === 'q' ? '<input id="lvQ" value="' + esc(F.q) + '" placeholder="예: BD · BJB · BODY" autocapitalize="characters" style="margin-top:6px">' : '') +
@@ -53,7 +53,7 @@ function paint(done) {
     '<div class="btns"><button class="b-ghost" id="lvX">닫기</button></div>', { wide: true });
   const cnt = () => { if ($('lvN')) $('lvN').textContent = pick().length.toLocaleString(); };
   document.querySelectorAll('[data-lb]').forEach(b => b.onclick = () => { F.by = b.dataset.lb; paint(done); });
-  document.querySelectorAll('[data-lq]').forEach(a => a.onclick = () => { F.by = a.dataset.lq; paint(done); });
+  document.querySelectorAll('[data-lq]').forEach(a => a.onclick = e => { e.preventDefault(); F.by = a.dataset.lq; paint(done); });
   if ($('lvQ')) { $('lvQ').oninput = () => { F.q = $('lvQ').value; cnt(); }; setTimeout(() => $('lvQ') && $('lvQ').focus(), 50); }
   if ($('lvL1')) $('lvL1').onchange = () => { F.l1 = $('lvL1').value; cnt(); };
   $('lvX').onclick = closeModal;

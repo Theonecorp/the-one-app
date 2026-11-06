@@ -108,3 +108,5 @@
 | t145 | v0.8.167 | 📋 아이템 일괄 등록(붙여넣기) · 🗑 일괄 삭제 (#/items/bulk): 엑셀에서 복사한 표를 붙여 넣으면 미리보기 → 등록, 찾아서 체크 → 삭제 · 숨김 |
 | t146 | v0.8.169 | 🏷 새 직무 '아이템 · 재고 관리'(itemmgr): 아이템 등록 · 분류 · 사진 · 세트 · 올리기 + 📦 재고 · 위치는 만지고, 주문 흐름 · 수금 · 정산 · 경영 · 사용자 관리는 메뉴에 없음 |
 | t147 | v0.8.170 | 🔐 보안 1차 (Joao 점검 보고서 H1 · H2): 알림 대기열(notifyq)과 Daily Report 메일이 회사 이름으로 아무 주소에 나가지 않음 (apps-script/Code.gs 를 가짜 메일 · Firestore 위에서, 브라우저 없음) |
+| t148 | v0.8.171 | 🔐 L5 CSP: index.html 과 시험 화면(test/demo.html)에 Content-Security-Policy 가 있고, 앱의 모든 화면은 인라인 스크립트(onclick · onerror · javascript:) 없이 돈다 |
+| t149 | v0.8.171 | 🔐 보안 2차: H3 직무별 규칙 · M2 크레딧 한도 · L4 세일즈맨 주문 칸 제한 (firestore.rules 불변식 + 크레딧 화면) |

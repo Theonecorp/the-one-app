@@ -828,7 +828,7 @@ function itemRow(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const t = typeOfItem(S, it), dc = Number((O.disc || {})[t]) || 0, hist = Store.histText(INFO, it.c), lp = Store.lastPrice(INFO, it.c);
   return '<tr class="irow' + (cur ? ' v' : '') + tapCls(IDX[it.c]) + (FOCUS === it.c ? ' foc' : '') + '" data-row="' + esc(it.c) + '" data-frow="' + esc(it.c) + '">' +
-    '<td class="pho">' + (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" onerror="this.removeAttribute(\'src\')">' : '<div class="ith"></div>') + '</td>' +
+    '<td class="pho">' + (it.ph ? '<img src="' + esc(thumb(it.ph)) + '" loading="lazy" alt="" class="ith" data-big="' + esc(it.c) + '" data-fb="">' : '<div class="ith"></div>') + '</td>' +
     '<td class="ct wrap"><b>' + esc(it.c) + (it.k ? ' <span class="tag t-a" data-kit="' + esc(it.c) + '">🧩 ' + it.k.length + '종</span>' : '') + '</b><div class="desc">' + esc(it.k ? (it.kn || it.d) : it.d) + '</div>' + (it.k ? '<small class="sub0">' + esc(kitLine(it)) + '</small>' : '') +
     '<small class="meta"><span class="stk" data-stk="' + esc(it.c) + '">📦 …</span>' + (it.s ? ' · SRP ' + money(it.s) : '') + (lp != null && Math.abs(lp - it.p) > 0.001 ? ' · ' + bt('지난번', 'last') + ' ' + money(lp) : '') + (dc ? ' · ' + dc + '% → ' + money(it.p * (1 - dc / 100)) : '') + '</small>' +
     (hist ? '<small class="hist">🕘 ' + esc(hist) + '</small>' : '') + '</td>' +
@@ -853,7 +853,7 @@ export function photoPop(c) {
 function kitMosaic(it) {
   const C = catalog(); const ph = it.k.map(x => C.byCode[x[0]]).filter(x => x && x.ph).slice(0, 4);
   if (!ph.length) return '<span>🧩 ' + esc(it.c.substring(0, 8)) + '</span>';
-  return '<div class="mosaic m' + ph.length + '">' + ph.map(x => '<img src="' + esc(thumb(x.ph, 160)) + '" loading="lazy" alt="" onerror="this.style.visibility=\'hidden\'">').join('') + '</div>';
+  return '<div class="mosaic m' + ph.length + '">' + ph.map(x => '<img src="' + esc(thumb(x.ph, 160)) + '" loading="lazy" alt="" data-fb="-">').join('') + '</div>';
 }
 /** 세트 구성 한 줄 — "14KCHN01×6 · 14KCHN02×6 · …" */
 function kitLine(it) { return it.k.slice(0, 3).map(x => x[0] + '×' + x[1]).join(' · ') + (it.k.length > 3 ? ' 외 ' + (it.k.length - 3) + '종' : ''); }
@@ -862,7 +862,7 @@ function itemCard(it) {
   const name = it.k ? (it.kn || it.d) : it.d;
   const ln = IDX[it.c], hl = Store.histLast(INFO, it.c);   // 🕘 이 가게에 마지막으로 나간 날·수량
   return '<div class="gcard' + (cur ? ' on' : '') + tapCls(ln) + (it.k ? ' kit' : '') + '" data-gc="' + esc(it.c) + '" data-ph="' + esc(it.ph || '') + '">' +
-    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" onerror="this.outerHTML=\'<span class=gcode>' + esc(it.c) + '</span>\'"><span class="gz" data-gz="' + esc(it.c) + '" title="' + esc(bt('사진 크게', 'Zoom photo')) + '">🔍</span>' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + (hl ? '<span class="ghist" title="' + esc(Store.histText(INFO, it.c, 8)) + '">🕘 ' + esc(hl) + '</span>' : '') + '<span class="gstk" data-stk="' + esc(it.c) + '"></span></div>' +
+    '<div class="gimg">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 300)) + '" loading="lazy" alt="" data-fb="' + esc(it.c) + '"><span class="gz" data-gz="' + esc(it.c) + '" title="' + esc(bt('사진 크게', 'Zoom photo')) + '">🔍</span>' : it.k ? kitMosaic(it) : '<span class="gcode">' + esc(it.c) + '</span>') + (hl ? '<span class="ghist" title="' + esc(Store.histText(INFO, it.c, 8)) + '">🕘 ' + esc(hl) + '</span>' : '') + '<span class="gstk" data-stk="' + esc(it.c) + '"></span></div>' +
     (it.k ? '<span class="gkit" data-kit="' + esc(it.c) + '">🧩 세트 ' + it.k.length + '종 · 구성 보기</span>' : '') +
     '<span class="gq" data-gq="' + esc(it.c) + '">' + (cur || '') + '</span>' + (multi(ln) ? '<span class="gtap" data-gt="' + esc(it.c) + '">×' + ln.tap + '</span>' : '') + (cur ? '<button class="gm" data-gm="' + esc(it.c) + '">−</button>' : '') +
     '<div class="gt"><b>' + esc(it.c) + '</b><small>' + esc(name) + '</small>' + (it.k ? '<em>' + esc(kitLine(it)) + '</em>' : '') + '<span class="gp" data-pp="' + esc(it.c) + '">' + priceTxt(it, true) + '</span></div></div>';
@@ -1024,7 +1024,7 @@ function paintCart() {
     }).join('') : '<div class="none">아직 담은 아이템이 없습니다 — 🔍 아이템 담기</div>';
     bindQty($('eCart'));
     $('eCart').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { const c = b.dataset.rm, cur = IDX[c]; if (cur) { O.lines = O.lines.filter(l => l !== cur); delete IDX[c]; } saveWip(); refreshTotals(); paint(); paintTypes(); });
-    $('eCart').querySelectorAll('[data-kitl]').forEach(el => el.onclick = () => { const it = catalog().byCode[el.dataset.kitl]; if (it && it.k) kitSheet(it); else { const l = IDX[el.dataset.kitl]; openModal('<h2>🧩 ' + esc(l.c) + '</h2>' + l.kit.map(x => '<div>' + esc(x.c) + ' × ' + x.q + '</div>').join('') + '<div class="btns"><button class="b-ghost" onclick="document.getElementById(\'modal\').classList.remove(\'on\')">닫기</button></div>'); } });
+    $('eCart').querySelectorAll('[data-kitl]').forEach(el => el.onclick = () => { const it = catalog().byCode[el.dataset.kitl]; if (it && it.k) kitSheet(it); else { const l = IDX[el.dataset.kitl]; openModal('<h2>🧩 ' + esc(l.c) + '</h2>' + l.kit.map(x => '<div>' + esc(x.c) + ' × ' + x.q + '</div>').join('') + '<div class="btns"><button class="b-ghost" id="kitClose">닫기</button></div>'); $('kitClose').onclick = closeModal; } });
     $('eCart').querySelectorAll('[data-pi]').forEach(inp => inp.onchange = () => { const l = IDX[inp.dataset.pi]; if (!l) return; l.p = R2(inp.value); inp.value = l.p; saveWip(); refreshTotals(); setTimeout(() => { if (O && $('eCart')) { paintTypes(); paint(); } }, 0); });
     $('eCart').querySelectorAll('[data-qi],[data-dq]').forEach(el => el.addEventListener(el.dataset.qi ? 'change' : 'click', () => setTimeout(paintTypes, 0)));
   };
