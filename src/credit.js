@@ -18,6 +18,8 @@ const isSales = () => S.role === 'salesman';
 const staffOk = () => S.role === 'admin' || S.role === 'owner' || (S.role === 'manager' && (can('invoice') || can('verify')));
 export function register(state) { S = state; Router.on('credit', page); }
 /** CM 번호용 인보이스 종류 — 설정에 CM 칸 종류가 있으면 그것, 없으면 CM */
+/** ↩ 세일즈맨 크레딧 메모 한 장 한도 — settings/app.creditMax (기본 1000) · firestore.rules 의 creditMax() 와 같음 */
+export const creditMax = () => { const v = Number(S && S.settings && S.settings.creditMax); return v >= 0 && isFinite(v) && S.settings.creditMax != null ? v : 1000; };
 export function creditType() { return invTypes(S).find(t => t.comm === 'CM') || { c: 'CM', n: '크레딧 메모 Credit Memo', comm: 'CM', start: 1 }; }
 const CR = { acct: '', store: '', sm: '', acc: null, disc: {}, why: '', note: '', lines: [], rec: [] };
 
@@ -116,11 +118,12 @@ const totals = () => { const q = CR.lines.reduce((a, l) => a + l.q, 0), sub = R2
 const flagsOf = () => { const F = []; const nd = CR.lines.filter(diffP).length; if (nd) F.push('가격이 최근 인보이스와 다름 ' + nd + '줄'); const nm = CR.lines.filter(l => l.src === 'manual').length; if (nm) F.push('가격을 직접 바꿈 ' + nm + '줄'); return F; };
 function paintTot() {
   const t = totals(), F = flagsOf(), ok = CR.acct && CR.why && CR.lines.length && t.sub > 0;
-  const el = $('crTot'); if (el) el.innerHTML = CR.lines.length ? '<div class="sumbox" style="margin-top:8px">' + bt('수량', 'Qty') + ' <b>' + t.q + '</b> · ' + bt('목록가 합', 'List total') + ' ' + money(t.list) + ' · <b style="font-size:17px;color:#b45309">' + bt('크레딧', 'Credit') + ' −' + money(t.sub) + '</b>' + (F.length ? '<div class="warn" style="margin-top:4px">⚠️ ' + F.map(esc).join(' · ') + ' — ' + bt('사무실에 표시됩니다', 'shown to the office') + '</div>' : '') + '</div>' : '';
+  const el = $('crTot'); if (el) el.innerHTML = CR.lines.length ? '<div class="sumbox" style="margin-top:8px">' + bt('수량', 'Qty') + ' <b>' + t.q + '</b> · ' + bt('목록가 합', 'List total') + ' ' + money(t.list) + ' · <b style="font-size:17px;color:#b45309">' + bt('크레딧', 'Credit') + ' −' + money(t.sub) + '</b>' + (!can('invoice') && t.sub > creditMax() ? '<div class="warn" style="margin-top:4px">⛔ ' + bt('크레딧 한 장 한도', 'Credit memo limit') + ' ' + money(creditMax()) + ' — ' + bt('넘는 금액은 사무실에 요청하세요', 'ask the office for larger credits') + '</div>' : '') + (F.length ? '<div class="warn" style="margin-top:4px">⚠️ ' + F.map(esc).join(' · ') + ' — ' + bt('사무실에 표시됩니다', 'shown to the office') + '</div>' : '') + '</div>' : '';
   const g = $('crGo'); if (g) { g.disabled = !ok; g.style.background = ok ? '#b45309' : '#e2e8f0'; g.style.color = ok ? '#fff' : '#94a3b8'; }
 }
 async function confirm() {
   const t = totals(); if (!CR.acct) return toast(bt('가게를 고르세요', 'Pick a store'), 'bad'); if (!CR.why) return toast(bt('사유를 고르세요', 'Pick a reason'), 'bad'); if (!CR.lines.length || !(t.sub > 0)) return toast(bt('아이템을 담으세요', 'Add items'), 'bad');
+  if (!can('invoice') && t.sub > creditMax()) return toast(bt('크레딧 한 장 한도', 'Credit memo limit') + ' ' + money(creditMax()) + ' — ' + bt('넘는 금액은 사무실에 요청하세요', 'ask the office for larger credits'), 'bad');   // 🔐 M2 (firestore.rules 도 같은 한도)
   if (!CR.sm) return toast(bt('세일즈맨이 없습니다', 'No salesman'), 'bad');
   const F = flagsOf();
   if (!(await confirmBox(bt('크레딧을 확정할까요?', 'Confirm this credit?') + '\n' + CR.store + ' · ' + CR.why + '\n' + CR.lines.length + bt('개 아이템 · ', ' items · ') + t.q + bt('개 · 크레딧 −', ' pcs · credit −') + money(t.sub) + (F.length ? '\n⚠️ ' + F.join(' · ') : ''), '↩ ' + bt('확정', 'Confirm')))) return;

@@ -44,7 +44,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.170';
+export const VER = 'v0.8.171';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -128,7 +128,7 @@ function shell() {
     '<div id="busy"><div class="spin"></div></div><div id="topbar"></div>' +
     '<div id="toast"></div>' +
     '<div id="modal"><div class="box" id="mbox"></div></div>' +
-    '<div id="prt"><div id="prtbar"><button onclick="window.print()">🖨 인쇄 / PDF</button><button id="prtClose">닫기</button></div><div id="prtbody"></div></div>';
+    '<div id="prt"><div id="prtbar"><button id="prtGo">🖨 인쇄 / PDF</button><button id="prtClose">닫기</button></div><div id="prtbody"></div></div>';
   /* 창은 ✕ · 닫기 버튼으로만 닫힘 (바깥을 눌러도 안 닫힘 — 실수로 닫히는 것 방지, v0.8.115) */
   /* ⏳ 서버에서 읽는 동안 화면 맨 위에 진행 막대 (0.15초 넘게 걸릴 때만) */
   /* 처리 안 된 오류가 나도 화면이 막힌 채 남지 않게 — 동그라미를 풀고 알림 */
@@ -137,7 +137,7 @@ function shell() {
   /* 큰 버튼(저장 · 적용 · 보내기 …) 두 번 빨리 누르면 한 번만 — 같은 일이 겹쳐 돌다 화면이 꼬이는 것 막기 (수량 +/- 같은 작은 버튼은 그대로) */
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button.b-blue,button.b-red,button.b-green,button.b-amb,#nav button'); if (!b) return; const t = Date.now(); if (b._tap && t - b._tap < 450) { e.stopImmediatePropagation(); e.preventDefault(); return; } b._tap = t; }, true);
   let tbT = 0; window.addEventListener('dbbusy', e => { const n = e.detail, tb = $('topbar'); if (!tb) return; clearTimeout(tbT); if (n > 0) tbT = setTimeout(() => tb.classList.add('on'), 150); else tb.classList.remove('on'); });
-  $('prtClose').onclick = printClose;
+  $('prtClose').onclick = printClose; $('prtGo').onclick = () => window.print();
   $('hMenu').onclick = userMenu; $('hSearch').onclick = globalSearch; $('hScan').onclick = headerScan; $('hBell').onclick = () => Msg.openPanel();
   /* 🌐 언어 — 앱 위쪽 버튼으로 바로 (이 폰 · 컴퓨터에 저장, 로그인한 사람과 상관없이) */
   $('hLang').onclick = () => { openModal('<h2 translate="no">🌐 Language · 언어 · Idioma</h2><div class="langpick" translate="no">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'b-blue' : 'b-ghost') + '" data-lang="' + l[0] + '">' + ({ ko: '🇰🇷 ', en: '🇺🇸 ', pt: '🇧🇷 ' })[l[0]] + l[1] + '</button>').join('') + '</div>');
@@ -457,6 +457,7 @@ setInterval(checkUpdate, 30 * 60000);
 
 async function boot() {
   shell();
+  if (!MOCK && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});   // 🔐 L5: index.html 의 인라인 스크립트 대신 여기서 (CSP 가 인라인을 막음)
   setTimeout(checkUpdate, 4000);
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;

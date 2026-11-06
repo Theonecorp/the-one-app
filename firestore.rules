@@ -14,6 +14,13 @@ service cloud.firestore {
     function isStaff() { let r = role(); return isAdminEmail() || r == 'admin' || r == 'owner' || r == 'manager'; }    // 담당자(회계) + 관리자
     function mySm() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('sm', '') : ''; }
     function achOk() { return isRealAdmin() || (registered() && userDoc().get('achAccess', false) == true); }
+    // 🔐 H3: 담당자(manager)는 자기 직무(users.job · 없으면 오피스)의 자료만 씀 — 앱의 CAN 표(src/main.js)와 같음. 관리자 · 오너는 전부
+    function staffJob(jobs) { let r = role(); return isAdminEmail() || r == 'admin' || r == 'owner' || (r == 'manager' && userDoc().get('job', 'office') in jobs); }
+    function money() { return staffJob(['office', 'acct']); }                                                        // 💵 수금 · COD · ACH · 리포트 · 체크 · 정산 보기
+    function invJob() { return staffJob(['office', 'acct', 'pickinv', 'invoice']); }                                 // 🧾 인보이스 · 월 매출 요약
+    function ordJob() { return staffJob(['office', 'pickinv', 'invoice', 'whmgr', 'pick']); }                        // 📦 주문 · 피킹 · 출고 · UPS · 픽업
+    function opsJob() { return staffJob(['office', 'acct', 'pickinv', 'invoice', 'whmgr', 'pick']); }                // 🏬 거래처 · 번호 (아이템 전담은 제외)
+    function itemJob() { return staffJob(['office', 'pickinv', 'invoice', 'whmgr', 'pick', 'catalog', 'itemmgr']); } // 🏷 아이템 · 재고 · 사진 (회계는 제외)
 
     // ---------- 사용자 ----------
     match /users/{uid} {
@@ -46,7 +53,7 @@ service cloud.firestore {
     }
     match /accounts/{id} {
       allow read: if registered();
-      allow write: if isStaff();
+      allow write: if opsJob();
       // 🆕 세일즈맨이 새 거래처를 임시 번호(N261027-AB12)로 열기 · 코드 받기 전까지 자기가 연 것 고치기 — 정식 코드는 매니저가 붙임
       allow create: if registered() && id.matches('^N[0-9]{6}-[A-Z0-9]{4}$') && request.resource.data.pending == true
                     && request.resource.data.sm == mySm() && request.resource.data.newBy == email();
@@ -57,15 +64,15 @@ service cloud.firestore {
       allow read: if registered();
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountsVer', 'arAsOf', 'displayItems', 'updatedAt']))   // 담당자는 버전 · AR 기준일 · 🖼 디스플레이 품목 목록만
-                    || (role() == 'manager' && userDoc().get('job', '') == 'catalog' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoDrive', 'catStart', 'catLoc', 'catPins', 'updatedAt']));   // 🎨 디자인 · 카탈로그 담당: 사진 · 분류 시작 · 위치 · 고정
+                    || (role() == 'manager' && userDoc().get('job', '') in ['catalog', 'itemmgr'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoDrive', 'catStart', 'catLoc', 'catPins', 'updatedAt']));   // 🎨 디자인 · 카탈로그 담당 · 🏷 아이템 · 재고 관리: 사진 · 분류 시작 · 위치 · 고정
     }
 
     // ---------- 현장 수금 ----------
     match /entries/{id} {
-      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email()
+      allow read: if money() || (registered() && resource.data.sm == mySm());
+      allow create: if money() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email()
                                      && request.resource.data.sb == false && request.resource.data.rc == false && request.resource.data.v == false && request.resource.data.settled == '');
-      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.sb != true && resource.data.settled == ''
+      allow update: if money() || (registered() && resource.data.sm == mySm() && resource.data.sb != true && resource.data.settled == ''
                                      && request.resource.data.sm == resource.data.sm
                                      && request.resource.data.sb == resource.data.sb && request.resource.data.rc == resource.data.rc
                                      && request.resource.data.v == resource.data.v && request.resource.data.settled == resource.data.settled)
@@ -75,60 +82,60 @@ service cloud.firestore {
     // ---------- 📦 체크 봉투 — 세일즈맨이 보낸 체크 묶음, 회계 담당이 도착 맞춤 ----------
     // ↩️ 바운스 체크 — 회계가 등록 · 해결, 세일즈맨은 자기 것 읽기 · 메모(log) · 새 체크 연결 표시만
     match /bounces/{id} {
-      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow create, delete: if isStaff();
-      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log', 'updatedAt', 'st', 'replEid', 'replAt']) && (request.resource.data.st == resource.data.st || request.resource.data.st == 'repl'));
+      allow read: if money() || (registered() && resource.data.sm == mySm());
+      allow create, delete: if money();
+      allow update: if money() || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log', 'updatedAt', 'st', 'replEid', 'replAt']) && (request.resource.data.st == resource.data.st || request.resource.data.st == 'repl'));
     }
     // 📅 체크 날짜 변경 요청 · ⏸ 홀드 — 세일즈맨은 자기 것 읽기 · 날짜 변경 요청 만들기 · 메모 · 받아온 날짜
     match /checkReq/{id} {
-      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.kind == 'date' && request.resource.data.st == 'open' && request.resource.data.by == email());
-      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log', 'propDep', 'updatedAt', 'st', 'doneAt', 'doneBy']) && (request.resource.data.st == resource.data.st || (request.resource.data.st == 'no' && resource.data.by == email())));
-      allow delete: if isStaff();
+      allow read: if money() || (registered() && resource.data.sm == mySm());
+      allow create: if money() || (registered() && request.resource.data.sm == mySm() && request.resource.data.kind == 'date' && request.resource.data.st == 'open' && request.resource.data.by == email());
+      allow update: if money() || (registered() && resource.data.sm == mySm() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log', 'propDep', 'updatedAt', 'st', 'doneAt', 'doneBy']) && (request.resource.data.st == resource.data.st || (request.resource.data.st == 'no' && resource.data.by == email())));
+      allow delete: if money();
     }
     // 🏦 은행 명세서 — 관리자 · 오너만 (민감)
     match /bank/{id} { allow read, write: if isAdmin(); }
     match /bankM/{id} { allow read, write: if isAdmin(); }   // 월별 요약 (PDF)
     match /envelopes/{id} {
-      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by == email() && request.resource.data.st == 'sent');
-      allow update, delete: if isStaff();
+      allow read: if money() || (registered() && resource.data.sm == mySm());
+      allow create: if money() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by == email() && request.resource.data.st == 'sent');
+      allow update, delete: if money();
     }
     // ---------- Daily Report (세일즈맨 하루 수금 보고 · 체크 사진) ----------
     match /reports/{id} {
-      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow read: if money() || (registered() && resource.data.sm == mySm());
       // 🔐 H2: 세일즈맨은 자기 리포트만 — 만들 때 sm · by 가 자기 것, 고칠 때는 원래 자기 것이고 sm 이 안 바뀌어야 (남의 리포트를 덮어 체크 사진을 빼내지 못하게)
-      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by.lower() == email());
-      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && request.resource.data.sm == resource.data.sm && resource.data.by.lower() == email() && request.resource.data.by.lower() == email());
+      allow create: if money() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by.lower() == email());
+      allow update: if money() || (registered() && resource.data.sm == mySm() && request.resource.data.sm == resource.data.sm && resource.data.by.lower() == email() && request.resource.data.by.lower() == email());
       allow delete: if isAdmin();
     }
     // ---------- COD · 카드 · ACH ----------
     match /cod/{id} {
-      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow write: if isStaff();
+      allow read: if money() || (registered() && resource.data.sm == mySm());
+      allow write: if money();
     }
     // ---------- AR (세일즈맨은 자기 것만) ----------
     match /ar/{sm} {
-      allow read: if isStaff() || (registered() && sm == mySm());
-      allow write: if isStaff();
+      allow read: if isStaff() || (registered() && sm == mySm());   // 미수 현황은 모든 담당자 (홈 타일)
+      allow write: if money();
     }
     // ---------- 정산 ----------
     match /settlements/{id} {
-      allow read: if isStaff() || (registered() && resource.data.sm == mySm());
+      allow read: if money() || (registered() && resource.data.sm == mySm());
       allow write: if isAdmin();
     }
     // ---------- ACH (은행 정보는 따로) ----------
-    match /ach/{id} { allow read, write: if isStaff(); }
+    match /ach/{id} { allow read, write: if money(); }
     match /achBank/{id} { allow read, write: if achOk(); }
 
     // ---------- 아이템 목록 · 오더 ----------
-    match /catalog/{id} { allow read: if registered(); allow write: if isStaff(); }
+    match /catalog/{id} { allow read: if registered(); allow write: if itemJob(); }
     // 📦 재고 — 지금 수량 · 움직임 기록 · 입고 (창고 · 오피스 담당자가 쓰고, 세일즈맨은 보기만)
-    match /stock/{id} { allow read: if registered(); allow write: if isStaff(); }
-    match /stockLog/{id} { allow read: if registered(); allow write: if isStaff(); }
-    match /receipts/{id} { allow read: if registered(); allow write: if isStaff(); }
-    match /itemPhotos/{id} { allow read: if registered(); allow write: if isStaff(); }
-    match /photoUploads/{id} { allow read, write: if isStaff(); }   // ☁️ 드라이브로 올릴 큰 사진 큐 (스크립트가 올리고 비움)   // 📷 앱에서 올린 아이템 사진 (디자인 · 카탈로그 담당 · 담당자)
+    match /stock/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /stockLog/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /receipts/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /itemPhotos/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /photoUploads/{id} { allow read, write: if itemJob(); }   // ☁️ 드라이브로 올릴 큰 사진 큐 (스크립트가 올리고 비움)   // 📷 앱에서 올린 아이템 사진 (디자인 · 카탈로그 담당 · 담당자)
     function okSt(st) { return st == 'draft' || st == 'sent'; }
     /* 세일즈맨이 자기 주문을 바꾸는 경우 (세일즈맨 코드는 한 번만 읽음)
      *  ① 임시 · 접수 상태에서 내용 수정 (상태는 임시 · 접수로만)  ② "맞습니다" 확인 · ⚠️ 문제 · 취소 요청 칸만
@@ -137,34 +144,40 @@ service cloud.firestore {
       let me = mySm();
       let keys = request.resource.data.diff(resource.data).affectedKeys();
       return me != '' && resource.data.sm == me && (
-        (okSt(resource.data.st) && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st))
+        // 🔐 L4: 내용 수정에서도 번호 · 만든 사람 · 피킹 · 포장 · 출고 · 인보이스 · 사무실 확인 칸은 못 바꿈 (사무실 · 창고만 적는 칸)
+        (okSt(resource.data.st) && request.resource.data.sm == resource.data.sm && okSt(request.resource.data.st)
+          && !keys.hasAny(['no', 'createdBy', 'createdAt', 'picker', 'pickerName', 'pickAt', 'pickBy', 'packAt', 'packBy', 'shipVia', 'track', 'boxes', 'shipCost', 'shipAt', 'shipBy', 'pickupId', 'invs', 'cfReq', 'cfReqAt', 'cfReqBy', 'cfNote', 'cfHow', 'cfIssueDoneAt', 'cfIssueDoneBy']))
         || keys.hasOnly(['cfOk', 'cfAt', 'cfBy', 'cfHow', 'cfIssue', 'cfIssueAt', 'cfIssueOpen'])
         || (okSt(resource.data.st) && request.resource.data.st == 'x' && request.resource.data.cancelBy == email()
             && keys.hasOnly(['st', 'updatedAt', 'cancelBy', 'cancelWhy', 'cancelAt', 'cancelSelf'])));
     }
     match /orders/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email() && okSt(request.resource.data.st));
-      allow update: if isStaff() || smOrderUpdate();
-      allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && resource.data.st == 'draft');
+      allow create: if ordJob() || (registered() && request.resource.data.sm == mySm() && request.resource.data.createdBy == email() && okSt(request.resource.data.st));
+      allow update: if ordJob() || smOrderUpdate();
+      allow delete: if ordJob() || (registered() && resource.data.sm == mySm() && resource.data.st == 'draft');
     }
     match /orderLines/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow create, update: if isStaff() || (registered() && request.resource.data.sm == mySm()
+      allow create, update: if ordJob() || (registered() && request.resource.data.sm == mySm()
                                      && getAfter(/databases/$(database)/documents/orders/$(id)).data.sm == mySm()
                                      && okSt(getAfter(/databases/$(database)/documents/orders/$(id)).data.st));
-      allow delete: if isStaff() || (registered() && resource.data.sm == mySm() && !existsAfter(/databases/$(database)/documents/orders/$(id)));
+      allow delete: if ordJob() || (registered() && resource.data.sm == mySm() && !existsAfter(/databases/$(database)/documents/orders/$(id)));
     }
 
     // ---------- 인보이스 · 백오더 · 번호 (매니저) ----------
     // 인보이스 — 세일즈맨: 내가 발행한 것 · 내 담당 가게(거래처 담당 = 내 코드) 것 · 관리자가 허락한 가게 것 (허락 기간 동안)
     function ownAcct(a) { return mySm() != '' && get(/databases/$(database)/documents/accounts/$(a)).data.get('sm', '') == mySm(); }
     function granted(a) { return exists(/databases/$(database)/documents/grants/$(email() + '__' + a)) && get(/databases/$(database)/documents/grants/$(email() + '__' + a)).data.untilMs > request.time.toMillis(); }
+    function creditMax() { return exists(/databases/$(database)/documents/settings/app) ? get(/databases/$(database)/documents/settings/app).data.get('creditMax', 1000) : 1000; }
     match /invoices/{id} {
       allow read: if isStaff() || (registered() && (resource.data.sm == mySm() || ownAcct(resource.data.acct) || granted(resource.data.acct)));
-      allow write: if isStaff();
+      allow write: if invJob();
+      allow update: if staffJob(['whmgr', 'pick']) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shipTo', 'store', 'updatedAt']);   // 창고: 배송 주소 · 가게 이름만 (출고 때)
       // ↩ 크레딧 메모 — 세일즈맨이 자기 가게에 바로 확정 (금액 마이너스 · src credit · 자기 세일즈맨 코드)
-      allow create: if registered() && mySm() != '' && request.resource.data.src == 'credit' && request.resource.data.sm == mySm() && request.resource.data.total <= 0 && request.resource.data.createdBy == email() && ownAcct(request.resource.data.acct);
+      // 🔐 M2: 한 장 한도(settings/app.creditMax · 기본 1000) 안에서만 · 사무실 확인(reviewed)은 못 붙임
+      allow create: if registered() && mySm() != '' && request.resource.data.src == 'credit' && request.resource.data.sm == mySm() && request.resource.data.total <= 0 && request.resource.data.total >= -creditMax()
+                    && request.resource.data.get('reviewed', false) == false && request.resource.data.createdBy == email() && ownAcct(request.resource.data.acct);
     }
     // 🔐 조회 요청 · 허락 — 세일즈맨이 요청, 관리자만 허락
     match /invReq/{id} {
@@ -176,21 +189,23 @@ service cloud.firestore {
       allow read: if isStaff() || (registered() && resource.data.email == email());
       allow write: if isRealAdmin();
     }
-    match /backorders/{id} { allow read, write: if isStaff(); }
+    match /backorders/{id} { allow read: if isStaff(); allow write: if ordJob(); }
     match /counters/{id} {
-      allow read, write: if isStaff();
+      allow read: if isStaff();
+      allow write: if opsJob();
       // ↩ 크레딧 번호(CM) 는 세일즈맨도 올림 — inv2 문서의 CM 칸만
       // 🔐 L3: 세일즈맨은 CM 칸을 +1 만 (아무 값으로 되돌려 중복 번호를 만들지 못하게)
       allow write: if registered() && mySm() != '' && id == 'inv2' && (resource == null || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['CM']) && request.resource.data.get('CM', 0) == resource.data.get('CM', request.resource.data.get('CM', 0) - 1) + 1));
     }
     match /shipq/{id} {                                                                                                              // 🚚 UPS 요청 (라벨 · 취소 · 요금 · 주소 · 배송 조회) — UPS.gs 가 처리
-      allow read, write: if isStaff();
+      allow read: if isStaff();
+      allow write: if ordJob();
       allow create: if registered() && request.resource.data.st == 'trk' && request.resource.data.by == email();   // 세일즈맨: 배송 조회만
       allow read: if registered() && resource.data.by == email();
     }
-    match /pickups/{id} { allow read, write: if isStaff(); }
-    match /displays/{id} { allow read, write: if isStaff(); }
-    match /adhoc/{id} { allow read, write: if isStaff(); }                                                                           // ➕ 주문 없이 만든 UPS 라벨 (임의 출고)
+    match /pickups/{id} { allow read: if isStaff(); allow write: if ordJob(); }
+    match /displays/{id} { allow read: if isStaff(); allow write: if ordJob(); }
+    match /adhoc/{id} { allow read: if isStaff(); allow write: if ordJob(); }                                                                           // ➕ 주문 없이 만든 UPS 라벨 (임의 출고)
     match /pushTokens/{id} {                                                                                                         // 📱💻 웹 푸시 기기 — 자기 것만 적고 지움 (보내기는 Apps Script)
       // 🔐 L2: 등록된 사용자만, 고칠 때는 원래 주인이어야
       allow read: if registered() && resource.data.email == email();
@@ -200,14 +215,14 @@ service cloud.firestore {
     }                                                                        // 🖼 디스플레이 출고 — 사무실이 적고 창고가 ✓ 준비 · UPS                                                                         // 📮 UPS 트럭 인계 기록
     match /shipments/{id} {                                                                                                          // 📦 박스별 배송 기록 — 세일즈맨은 자기 가게 것
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow write: if isStaff();
+      allow write: if ordJob();
     }
     match /acctNotes/{id} {                                                                                                          // 📝 거래처 노트 — 누구나 남기고 읽음, 고치기 · 지우기는 쓴 사람 · 담당자
       allow read: if registered();
       allow create: if registered() && request.resource.data.by == email();
       allow update, delete: if isStaff() || (registered() && resource.data.by == email());
     }
-    match /upsLog/{id} { allow read, write: if isStaff(); }                                                                           // 📡 Quantum View 출고 · 배달 기록 (UPS.gs qvSync)                                                                            // 🚚 UPS 라벨 요청 (apps-script/UPS.gs 가 처리)
+    match /upsLog/{id} { allow read: if isStaff(); allow write: if ordJob(); }                                                                           // 📡 Quantum View 출고 · 배달 기록 (UPS.gs qvSync)                                                                            // 🚚 UPS 라벨 요청 (apps-script/UPS.gs 가 처리)
 
     // ---------- 경영 (루크만) ----------
     match /factories/{id} { allow read, write: if isAdmin(); }
@@ -218,9 +233,9 @@ service cloud.firestore {
     match /bonusAcc/{id} { allow read, write: if isAdmin(); }
     match /bonusDist/{id} { allow read, write: if isAdmin(); }
     match /bonusSplit/{id} { allow read, write: if isAdmin(); }
-    match /deductions/{id} { allow read: if isStaff() || (registered() && resource.data.sm == mySm()); allow write: if isAdmin(); }   // 6개월 초과 디덕션
+    match /deductions/{id} { allow read: if money() || (registered() && resource.data.sm == mySm()); allow write: if isAdmin(); }   // 6개월 초과 디덕션
     match /sales/{id} { allow read, write: if isAdmin(); }
-    match /salesM/{id} { allow read, write: if isStaff(); }                                                                           // 월별 매출 요약 (현황 · 대시보드)                                                                            // 회사 매출 (월별)
+    match /salesM/{id} { allow read: if isStaff(); allow write: if invJob(); }                                                                           // 월별 매출 요약 (현황 · 대시보드)                                                                            // 회사 매출 (월별)
 
     match /{document=**} { allow read, write: if false; }
   }

@@ -82,11 +82,11 @@ function paint() {
     itabs([['list', '📋', '목록', 'List'], ['tree', '🗂', '분류별', 'By category'], ['aisle', '📍', '통로별', 'By aisle']], view, 'iv') +
     '<div class="chips">' + [['all', '전체 ' + nAll.toLocaleString()], ['vis', '👁 보임 ' + (nAll - nHid).toLocaleString()], ['hid', '🙈 숨김 ' + nHid.toLocaleString()], ['noph', '📷✕ ' + bt('사진 없음', 'No photo') + ' ' + nNoPh.toLocaleString()], ['instk', '📦 ' + bt('재고 있음', 'In stock') + ' ' + nStk.in.toLocaleString()], ['lowstk', '⚠️ ' + bt('재고 부족', 'Low') + ' ' + nStk.low.toLocaleString()], ['nostk', '✕ ' + bt('재고 없음', 'Out') + ' ' + nStk.out.toLocaleString()]].concat(['nolv', 'nopr', 'nobar'].includes(IT.mode) ? [[IT.mode, { nolv: '🗂 ' + bt('분류 없음', 'No category'), nopr: '💲 ' + bt('가격 없음', 'No price'), nobar: '🏷 ' + bt('바코드 없음', 'No barcode') }[IT.mode]]] : []).map(m => '<button class="' + (IT.mode === m[0] ? 'on' : '') + '" data-im="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
     (view === 'tree' ? crumbs + tiles : '') + (view === 'aisle' ? aisleRow(C) : '') +
-    (locOnly() ? '' : '<div class="muted" style="margin-top:6px;font-size:12px">' + bt('체크해서 여러 개를 한 번에 숨기기 · 보이기 · 분류 옮기기 · 삭제. 🙈 숨김은 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연).', 'Check items to hide · show · move · delete in bulk. Hidden items do not appear on the salesman order screen.') + ' <a href="#" id="itLv" onclick="return false">📥 ' + bt('레벨 · 그룹 엑셀로 일괄 변경', 'Bulk update levels by Excel') + '</a></div>') + '</div>' +
+    (locOnly() ? '' : '<div class="muted" style="margin-top:6px;font-size:12px">' + bt('체크해서 여러 개를 한 번에 숨기기 · 보이기 · 분류 옮기기 · 삭제. 🙈 숨김은 세일즈맨 주문 화면에 안 나옵니다 (단종 · 재입고 지연).', 'Check items to hide · show · move · delete in bulk. Hidden items do not appear on the salesman order screen.') + ' <a href="#" id="itLv">📥 ' + bt('레벨 · 그룹 엑셀로 일괄 변경', 'Bulk update levels by Excel') + '</a></div>') + '</div>' +
     '<div class="card"><div id="itList"></div></div>' + (isAdmin() ? '<div id="itSbm"></div>' : '') +
     '<div class="bulkbar" id="itBulk" style="display:none"></div>';
   Router.refreshBack();
-  if ($('itLv')) $('itLv').onclick = () => levelTool(S, paint);
+  if ($('itLv')) $('itLv').onclick = e => { e.preventDefault(); levelTool(S, paint); };
   document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { IT.mode = b.dataset.im; IT.page = 100; paint(); });
   document.querySelectorAll('[data-iv]').forEach(b => b.onclick = () => { IT.view = b.dataset.iv; if (IT.view !== 'aisle') IT.aisle = ''; if (IT.view !== 'tree') IT.path = []; IT.page = 100; paint(); });
   document.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => { IT.path = IT.path.slice(0, Number(b.dataset.ip)); IT.page = 100; paint(); });
