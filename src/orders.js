@@ -10,7 +10,7 @@
  *  st: draft(임시저장) → sent(보냄) → pick(픽킹 중) → done(인보이스 확정) · x(취소)
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp, footBtns } from './ui.js';
-import { REQ_KINDS, reqClean, reqText, reqCount } from './reqs.js';
+import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel } from './reqs.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, popularItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
 import { jobOf, can } from './main.js';
@@ -318,6 +318,8 @@ async function staffHome() {
   if (can('invoice') || can('verify')) A.push(tile('credit', '↩', bi('크레딧 확인', 'Credits'), bt('세일즈맨이 준 크레딧 · 확인 · VOID', 'credits given by salesmen'), 'amber'));
   if (can('verify')) A.push(tile('bounce', '↩️', bi('바운스 체크', 'Bounced checks'), bt('등록 · 세일즈맨 알림 · 해결', 'register · notify · clear'), 'amber'));
   if (can('items')) A.push(tile('items', '🏷', bi('아이템 · 재고 위치', 'Items · Inventory'), '찾기 · 위치 · 등록'));
+  /* 🏷 오피스 · 인보이스 담당도 아이템을 바로 등록 — 홈에서 한 번에 (v0.8.172) */
+  if (can('items') && (can('newOrder') || can('invoice'))) A.push(tile('items/new', '＋', bi('아이템 등록', 'New item'), bt('코드 · 이름 · 가격 · 분류', 'code · name · price · category')), tile('items/bulk', '📋', bi('아이템 일괄 등록', 'Bulk add items'), bt('엑셀처럼 칸에 쭉 입력 · 붙여넣기', 'spreadsheet cells · paste')));
   A.push(tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 바코드 라벨 · 엑셀'));
   A.push(tile('track', '🚚', bi('배송 조회', 'Tracking'), '가게 · 인보이스 · 트래킹'));
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
@@ -326,7 +328,7 @@ async function staffHome() {
   /* 🗂 큰 묶음 4개로 접어 둠 — 머리를 누르면 펼쳐져 세부 타일 (펼친 상태는 이 폰에 기억). 머리에는 핵심 숫자 */
   /* 🛒 세일 = 인보이스 발행까지 (접수 · 확인 · 배정 · 픽킹 · 검수) · 🚚 배송 = 그 뒤 (포장 대기 · UPS 라벨 · 픽업 · 출고 완료 · 백오더 · 디스플레이 · 주문 없이 라벨 · 배송 조회) — v0.8.166 */
   const GRP = [['sale', '🛒', '세일', 'Sales', ['flow', 'new', 'sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'all']], ['ship', '🚚', '배송', 'Shipping', ['done', 'ups', 'packed', 'shipped', 'bo', 'displays', 'adhoc', 'track']],
-    ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'cat', 'items']]];
+    ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'cat', 'items', 'items/new', 'items/bulk']]];
   const allT = T.concat(A), keyOf = h => (h.match(/data-hg="([^"]+)"/) || [])[1];
   const OKEY = 'theone.hgrp.' + j; let openG = null; try { openG = JSON.parse(localStorage.getItem(OKEY) || 'null'); } catch (e) {}
   if (!Array.isArray(openG)) openG = [j === 'whmgr' ? 'ship' : j === 'acct' ? 'money' : 'sale'];   /* 창고 매니저는 🚚 배송, 회계는 💵, 그 밖(픽킹 담당 포함)은 🛒 세일 */
@@ -346,6 +348,7 @@ async function staffHome() {
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => {
     const k = b.dataset.hg;
     if (k === 'adhoc') return import('./ship.js').then(M => M.adhocShip(() => staffHome()));   /* ➕ 주문 없이 UPS 라벨 */
+    if (k.indexOf('/') > 0) { const [r, a] = k.split('/'); return Router.go(r, a); }   /* items/new · items/bulk 처럼 칸이 있는 화면 */
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
     if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit' || k === 'bounce' || k === 'displays') return Router.go(k);
     if (k === 'inv' || k === 'shipped') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
@@ -700,13 +703,14 @@ function paintMemo() {
   const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
   const rq = O.req || (O.req = {});
   const reqCard = '<div class="card"><h2>🎁 ' + bi('인서트 · 디스플레이 요청', 'Insert · display request') + '</h2><div class="muted">' + bt('가게에 같이 보낼 인서트 · 디스플레이 — 출고 담당이 보고 인보이스에도 찍힙니다', 'Inserts and displays to ship with this order — warehouse sees it and it prints on the invoice') + '</div>' +
-    '<div class="reqs">' + REQ_KINDS.map(k => '<div class="reqrow' + (rq[k[0]] > 0 ? ' on' : '') + '"><b>' + bi(k[1], k[2]) + '</b><span class="rqs"><button type="button" data-rqm="' + k[0] + '">−</button><span data-rqv="' + k[0] + '">' + (rq[k[0]] || 0) + '</span><button type="button" data-rqp="' + k[0] + '">＋</button></span></div>').join('') + '</div>' +
+    '<div class="reqs">' + REQ_KINDS.map(k => '<div class="reqrow' + (rq[k[0]] > 0 ? ' on' : '') + '"><b>' + reqLabel(k[0]) + '</b><span class="rqs"><button type="button" data-rqm="' + k[0] + '">−</button><span data-rqv="' + k[0] + '">' + (rq[k[0]] || 0) + '</span><button type="button" data-rqp="' + k[0] + '">＋</button></span></div>').join('') + '</div>' +
     (reqCount(rq) ? '<div class="alert a-amb" style="margin-top:8px">🎁 ' + reqText(rq) + '</div>' : '') + '</div>';
   $('eBody').innerHTML = reqCard + '<div class="card"><h2>📝 ' + bi('메모', 'Memo') + '</h2><div class="muted">배송 방법 · 특이사항 · 할인 요청 등 사무실에 전할 말 <span class="en">Shipping, special requests, discount asks</span></div>' +
     '<textarea id="eMemo" rows="4" placeholder="예: UPS 로 보내 주세요 / 금요일 전 도착 / 디스플레이 같이" style="margin-top:8px">' + esc(O.memo || '') + '</textarea>' +
     '<div class="chips" style="margin-top:8px">' + ['UPS 배송', '픽업 (가게에서 가져감)', '세일즈맨 직접 배달', '급함 — 먼저 처리', '디스플레이 같이 보내기'].map(x => '<button data-mq="' + esc(x) + '">+ ' + esc(x) + '</button>').join('') + '</div></div>' +
     '<div class="card"><h2>' + bi('주문 요약', 'Summary') + '</h2><div class="pr"><div class="ct"><b>' + esc(O.store || '가게 미선택') + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : '') + '</small></div></div>' +
-    '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div><b>' + esc(O.sm || '-') + '</b><span>세일즈맨</span></div></div>' + typeSummary(t.by) + '</div>';
+    '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div' + (isStaff() ? ' data-smk="1" style="cursor:pointer"' : '') + '><b id="eSmK"' + (isStaff() && !O.sm ? ' class="warn"' : '') + '>' + esc(O.sm || (isStaff() ? '선택 ✎' : '-')) + '</b><span>세일즈맨' + (isStaff() && O.sm ? ' ✎' : '') + '</span></div></div>' + typeSummary(t.by) + '</div>';
+  document.querySelectorAll('[data-smk]').forEach(el => el.onclick = async () => { if (await pickSm()) paintMemo(); });
   const ta = $('eMemo'); ta.oninput = () => { O.memo = ta.value; saveWip(); if ($('eMdot')) $('eMdot').textContent = O.memo || reqCount(O.req) ? ' •' : ''; };
   const bump = (k, d) => { O.req = O.req || {}; O.req[k] = Math.max(0, Math.min(99, (Number(O.req[k]) || 0) + d)); saveWip(); paintMemo(); if ($('eMdot')) $('eMdot').textContent = O.memo || reqCount(O.req) ? ' •' : ''; };
   document.querySelectorAll('[data-rqp]').forEach(b => b.onclick = () => bump(b.dataset.rqp, 1));
@@ -922,6 +926,19 @@ function refreshCard(c) {
   if (n && !m) { m = document.createElement('button'); m.className = 'gm'; m.dataset.gm = c; m.textContent = '−'; m.onclick = e => { e.stopPropagation(); setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); sure(c); refreshCard(c); }; el.appendChild(m); }
   if (!n && m) m.remove();
 }
+/** 👤 세일즈맨 고르기 창 (담당자) — 가게에 기본 세일즈맨이 없을 때 저장하면 뜸 · 요약의 세일즈맨 칸을 눌러도. 고른 코드 또는 null (v0.8.172) */
+function pickSm() {
+  return new Promise(res => {
+    const L = (S.sms || []).filter(x => x.active !== false);
+    if (!L.length) { toast(bt('등록된 세일즈맨이 없습니다 — 관리 → 사용자', 'No salesmen registered — Admin → Users'), 'bad'); return res(null); }
+    let done = false; const fin = v => { if (done) return; done = true; res(v); };
+    openModal('<h2>👤 ' + bi('세일즈맨을 고르세요', 'Pick a salesman') + '</h2><div class="muted">' + bt('이 주문의 세일즈맨 — 커미션 · 수금 · 리포트가 이 사람 앞으로 갑니다. 가게에 기본 세일즈맨이 없어 직접 고릅니다.', 'The salesman for this order — commission, payments and reports go to this person. This store has no default salesman.') + '</div>' +
+      '<div id="smPick" style="margin-top:10px">' + L.map(x => '<button type="button" class="pick' + (O.sm === x.code ? ' on' : '') + '" data-smp="' + esc(x.code) + '" style="width:100%;text-align:left;background:#fff"><span class="ck">✓</span><span class="pm"><b>' + esc(x.code) + '</b><small>' + esc(x.name || '') + '</small></span></button>').join('') + '</div>' +
+      '<div class="btns"><button type="button" class="b-ghost" id="smPickX">' + bi('닫기', 'Close') + '</button></div>', { onClose: () => fin(null) });
+    document.querySelectorAll('[data-smp]').forEach(b => b.onclick = () => { O.sm = b.dataset.smp; saveWip(); if ($('eSm')) $('eSm').value = O.sm; if ($('eSmK')) { $('eSmK').textContent = O.sm; $('eSmK').classList.remove('warn'); } fin(O.sm); closeModal(); });
+    $('smPickX').onclick = closeModal;
+  });
+}
 /** 수량 직접 입력 */
 function qtyPad(c, focusPrice) {
   const it = catalog().byCode[c]; if (!it) return;
@@ -1051,7 +1068,10 @@ function putOut(o, lines) {
 
 async function saveOrder(st) {
   if (!O.store) return toast('가게를 고르세요', 'bad');
-  if (!O.sm) return toast('세일즈맨을 고르세요', 'bad');
+  if (!O.sm && isStaff() && O.acct) {   /* 가게의 세일즈맨을 서버에서 다시 읽음 — 폰에 보관한 거래처 목록이 옛것이면 비어 있을 수 있어서 (v0.8.172) */
+    try { const a = await S.DB.get('accounts', O.acct); const smv = a && a.sm ? String(a.sm).toUpperCase() : ''; if (smv) { O.sm = smv; saveWip(); if ($('eSm')) $('eSm').value = smv; toast('👤 ' + bt('가게의 세일즈맨', 'Store salesman') + ' ' + smv, 'good'); } } catch (e) {}
+  }
+  if (!O.sm) { if (!isStaff()) return toast('세일즈맨을 고르세요', 'bad'); if (!(await pickSm())) return; }   /* 담당자: 가게에 기본 세일즈맨이 없으면 여기서 바로 고름 (v0.8.172 — 위 고정 머리 아래 선택 칸은 내리면 안 보여서) */
   if (!O.lines.some(l => l.q > 0)) return toast('아이템을 담으세요', 'bad');
   const t = totals();
   if (st === 'sent' && O.st === 'draft' && !(await confirmBox(O.store + ' — ' + O.lines.length + '줄 · ' + money(t.amt) + ' 주문을 보낼까요? / Send this order?', '보내기 Send'))) return;

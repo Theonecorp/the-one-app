@@ -24,7 +24,7 @@ const path = require('path');
   if (tiles.join() !== 'stock,items') errs.push('② 재고 묶음 = 재고 · 아이템 only (got ' + tiles.join() + ')');
   await pg.evaluate(() => { location.hash = '#/stock'; }); await pg.waitForTimeout(1500); const stockTxt = await pg.evaluate(() => document.getElementById('page').textContent.replace(/\s+/g, ' ').slice(0, 120)); log('② stock:', stockTxt.slice(0, 60));
   if (/창고 · 오피스 담당자가 봅니다|staff only/.test(stockTxt)) errs.push('② stock page must open for itemmgr');
-  await pg.evaluate(() => { location.hash = '#/items/bulk'; }); await pg.waitForSelector('#ibTxt', { timeout: 8000 }).catch(() => errs.push('② bulk add screen opens'));
+  await pg.evaluate(() => { location.hash = '#/items/bulk'; }); await pg.waitForSelector('#ibGrid', { timeout: 8000 }).catch(() => errs.push('② bulk add screen opens'));
   await pg.close();
   /* ③ 관리자: 직무 목록 */
   const ad = await mk('luke@theonefl.com', '');
