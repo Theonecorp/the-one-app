@@ -2,7 +2,8 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // ---------- 공통 ----------
-    function signedIn() { return request.auth != null && request.auth.token.email != null; }
+    // 🔐 C1: 이메일이 확인된 Google 로그인만 신원으로 믿음 — 다른 로그인 방식이 콘솔에서 켜져도 이메일만 맞춰 관리자 · 직원을 사칭할 수 없게 (앱은 Google 로그인만 씀)
+    function signedIn() { return request.auth != null && request.auth.token.email != null && request.auth.token.email_verified == true && request.auth.token.firebase.sign_in_provider == 'google.com'; }
     function email() { return request.auth.token.email.lower(); }
     function isAdminEmail() { return signedIn() && email() == 'luke@theonefl.com'; }
     function userDoc() { return get(/databases/$(database)/documents/users/$(email())).data; }
@@ -24,7 +25,9 @@ service cloud.firestore {
     match /salesmen/{id} { allow read: if registered(); allow write: if isAdmin(); }   // 요율 · 캐쉬 보관은 루크만
     // 🔔 알림 대기열 — 앱이 넣고 Apps Script(THE ONE Mail)가 이메일 · 구글 챗으로 보냄
     match /notifyq/{id} {
-      allow create: if registered() && request.resource.data.by == email() && request.resource.data.st == 'wait';
+      // 🔐 H1: 담당자가 아닌 사람(세일즈맨)은 받는 사람을 직접 적지 못하고(to) 링크도 앱 주소만 — 회사 이름으로 아무 주소에 메일을 보내는 오픈 릴레이 방지
+      allow create: if registered() && request.resource.data.by == email() && request.resource.data.st == 'wait'
+                    && (isStaff() || (!('to' in request.resource.data) && (!('url' in request.resource.data) || request.resource.data.url.matches('^https://theonecorp\\.github\\.io/the-one-app/.*'))));
       allow read, update, delete: if isStaff();
     }
     // 💬 메시지 — 보낸 사람 또는 받는 주소(내 이메일 · 내 세일즈맨 코드 · 내 역할 묶음)가 맞아야 읽음 · 읽음 표시(reads)는 받는 쪽이 갱신
@@ -94,7 +97,9 @@ service cloud.firestore {
     // ---------- Daily Report (세일즈맨 하루 수금 보고 · 체크 사진) ----------
     match /reports/{id} {
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());
-      allow create, update: if isStaff() || (registered() && request.resource.data.sm == mySm());
+      // 🔐 H2: 세일즈맨은 자기 리포트만 — 만들 때 sm · by 가 자기 것, 고칠 때는 원래 자기 것이고 sm 이 안 바뀌어야 (남의 리포트를 덮어 체크 사진을 빼내지 못하게)
+      allow create: if isStaff() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by.lower() == email());
+      allow update: if isStaff() || (registered() && resource.data.sm == mySm() && request.resource.data.sm == resource.data.sm && resource.data.by.lower() == email() && request.resource.data.by.lower() == email());
       allow delete: if isAdmin();
     }
     // ---------- COD · 카드 · ACH ----------
@@ -175,7 +180,8 @@ service cloud.firestore {
     match /counters/{id} {
       allow read, write: if isStaff();
       // ↩ 크레딧 번호(CM) 는 세일즈맨도 올림 — inv2 문서의 CM 칸만
-      allow write: if registered() && mySm() != '' && id == 'inv2' && (resource == null || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['CM']));
+      // 🔐 L3: 세일즈맨은 CM 칸을 +1 만 (아무 값으로 되돌려 중복 번호를 만들지 못하게)
+      allow write: if registered() && mySm() != '' && id == 'inv2' && (resource == null || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['CM']) && request.resource.data.get('CM', 0) == resource.data.get('CM', request.resource.data.get('CM', 0) - 1) + 1));
     }
     match /shipq/{id} {                                                                                                              // 🚚 UPS 요청 (라벨 · 취소 · 요금 · 주소 · 배송 조회) — UPS.gs 가 처리
       allow read, write: if isStaff();
@@ -186,9 +192,11 @@ service cloud.firestore {
     match /displays/{id} { allow read, write: if isStaff(); }
     match /adhoc/{id} { allow read, write: if isStaff(); }                                                                           // ➕ 주문 없이 만든 UPS 라벨 (임의 출고)
     match /pushTokens/{id} {                                                                                                         // 📱💻 웹 푸시 기기 — 자기 것만 적고 지움 (보내기는 Apps Script)
-      allow read: if signedIn() && resource.data.email == email();
-      allow create, update: if signedIn() && request.resource.data.email == email();
-      allow delete: if signedIn() && resource.data.email == email();
+      // 🔐 L2: 등록된 사용자만, 고칠 때는 원래 주인이어야
+      allow read: if registered() && resource.data.email == email();
+      allow create: if registered() && request.resource.data.email == email();
+      allow update: if registered() && resource.data.email == email() && request.resource.data.email == email();
+      allow delete: if registered() && resource.data.email == email();
     }                                                                        // 🖼 디스플레이 출고 — 사무실이 적고 창고가 ✓ 준비 · UPS                                                                         // 📮 UPS 트럭 인계 기록
     match /shipments/{id} {                                                                                                          // 📦 박스별 배송 기록 — 세일즈맨은 자기 가게 것
       allow read: if isStaff() || (registered() && resource.data.sm == mySm());

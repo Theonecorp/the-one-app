@@ -99,7 +99,8 @@ function listCollections_() {
     const r = fetch_(FS + ':listCollectionIds', { method: 'post', contentType: 'application/json', payload: JSON.stringify({ pageSize: 300, pageToken: token || undefined }) });
     ids = ids.concat(r.collectionIds || []); token = r.nextPageToken || '';
   } while (token);
-  return ids.sort();
+  /* 🔐 M1: 은행 라우팅 · 계좌 번호(achBank)와 푸시 기기 토큰은 드라이브 백업에 넣지 않음 — 드라이브 폴더가 넓게 공유되면 그대로 노출됨 (achBank 는 Firestore 에만, 관리자 · ACH 권한자만 읽음) */
+  return ids.filter(c => c !== 'achBank' && c !== 'pushTokens').sort();
 }
 /** Firestore 값 → 보통 JSON */
 function plain_(v) {
