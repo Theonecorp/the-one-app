@@ -14,7 +14,7 @@ import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, monthsOf, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
 import { storeInfo } from './store.js';
-import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip } from './orders.js';
+import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip, sendStamp } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
 import { storeSheet, invDetail } from './store.js';
 import { searchAccounts, sortStores } from './accounts.js';
@@ -210,7 +210,7 @@ export function manage(o, lines) {
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
-  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 주문을 들어온 주문으로 보낼까요?', '보내기'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'sent', sentAt: now, updatedAt: now }); toast('보냈습니다 📤', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 주문을 들어온 주문으로 보낼까요?', '보내기'))) return; busy(true); try { await S.DB.update('orders', o.id, sendStamp(o)); toast('보냈습니다 📤', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mAssign')) $('mAssign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mReassign')) $('mReassign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mPickDone')) $('mPickDone').onclick = async () => {

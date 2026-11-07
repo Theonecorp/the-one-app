@@ -58,6 +58,8 @@ const OUT_KEY = 'theone.outbox.v1';
 const WIP_KEY_ = 'theone.order.wip', wipKey = () => WIP_KEY_ + '.' + ((S && S.user && S.user.email) || '');
 export function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
 function newNo() { const d = today().replace(/-/g, '').substring(2); return 'O' + d + '-' + Math.floor(Math.random() * 1679616).toString(36).toUpperCase().padStart(4, '0'); }
+/** 📤 보낼 때 붙이는 칸 — 주문 날짜(d · ym)는 보낸 날로, 처음 시작한 날이 다르면 d0 에 남김 (v0.8.174: 임시로 묵힌 주문이 옛 날짜로 접수되던 문제) */
+export function sendStamp(o) { const now = new Date().toISOString(), t = today(); const x = { st: 'sent', sentAt: now, updatedAt: now, d: t, ym: ym(t) }; if (o.d && o.d !== t && !o.d0) x.d0 = o.d; return x; }
 /** 같은 주소면 hashchange 가 안 생기므로 직접 엶 */
 export function goOrder(id) { if (location.hash === '#/order/' + encodeURIComponent(id)) pageOrder(id); else Router.go('order', id); }
 export const canEdit = o => isStaff() ? (o.st !== 'done' && o.st !== 'x') : (o.sm === mySm() && (o.st === 'draft' || o.st === 'sent' || o.st === 'local'));
@@ -142,7 +144,7 @@ async function pageHome() {
 /* ============================================================
  *  목록
  * ============================================================ */
-let LF = { st: 'sent', sm: '' };
+let LF = { st: 'sent', sm: '', grp: 'day' };   /* 담당자 목록 기본 = 📅 날짜별 (v0.8.174) */
 /* 접수(sent) 를 세 칸으로 — 📥 신규(확인 요청 전) · ❓ 확인 대기(세일즈맨 답 기다림) · 👍 확인 완료(배정 대기) */
 const NEWK = { sent: 1, cfw: 1, cfok: 1 };
 const subOf = o => o.cfOk ? 'cfok' : o.cfReq ? 'cfw' : 'sent';
@@ -261,7 +263,7 @@ async function pageOrder(arg) {
     busy(true);
     try {
       const now = new Date().toISOString();
-      for (const id of ids) { const o = drafts.find(x => x.id === id); if (!o) continue; const L = await S.DB.get('orderLines', id); putOut(Object.assign({}, o, { st: 'sent', sentAt: now, updatedAt: now }), (L && L.lines) || []); }
+      for (const id of ids) { const o = drafts.find(x => x.id === id); if (!o) continue; const L = await S.DB.get('orderLines', id); putOut(Object.assign({}, o, sendStamp(o)), (L && L.lines) || []); }
       const r = await syncOutbox(true);
       toast(r.left ? '📱 ' + r.left + '건은 인터넷이 되면 자동으로 보냅니다' : '📤 ' + ids.length + '건 보냈습니다', r.left ? '' : 'good');
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
@@ -462,7 +464,7 @@ const oCols = ck => (ck ? 1 : 0) + 7 + (ck && assignMode() ? 1 : 0);
 const grpRow = (nc, inner, attr, cls) => narrow() ? cgrp(inner, attr, cls) : '<tr class="grp ' + (cls || '') + '"' + (attr || '') + '><td colspan="' + nc + '">' + inner + '</td></tr>';
 function oTbl(rowsHtml, ck) {
   if (narrow()) return '<div class="crows otbl">' + rowsHtml + '</div>';
-  return '<div class="dtw"><table class="dt otbl"><thead><tr>' + (ck ? '<th style="width:30px"></th>' : '') + '<th>' + bt('가게', 'Store') + '</th><th style="width:118px">' + bt('번호', 'No.') + '</th><th style="width:52px">' + bt('날짜', 'Date') + '</th><th class="hs" style="width:78px">' + bt('세일즈맨', 'Rep') + '</th><th class="r" style="width:88px">' + bt('금액', 'Amount') + '</th><th class="r hs" style="width:58px">' + bt('줄 · 개', 'Lines · pcs') + '</th><th>' + bt('메모', 'Notes') + '</th>' + (ck && assignMode() ? '<th style="width:40px"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+  return '<div class="dtw"><table class="dt otbl"><thead><tr>' + (ck ? '<th style="width:30px"></th>' : '') + '<th>' + bt('가게', 'Store') + '</th><th style="width:62px">' + bt('날짜', 'Date') + '</th><th style="width:118px">' + bt('번호', 'No.') + '</th><th class="hs" style="width:78px">' + bt('세일즈맨', 'Rep') + '</th><th class="r" style="width:88px">' + bt('금액', 'Amount') + '</th><th class="r hs" style="width:58px">' + bt('줄 · 개', 'Lines · pcs') + '</th><th>' + bt('메모', 'Notes') + '</th>' + (ck && assignMode() ? '<th style="width:40px"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 }
 function orderRow(o, local, err, ck, sg) {
   const flags = (NewAcct.isTemp(o.acct) ? ' <span class="tag t-b">🆕 ' + bt('신규 거래처', 'New account') + '</span>' : '') + (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '') + (isStaff() ? cfTag(o) : (o.cfReq && !o.cfOk ? ' <span class="tag t-c">❓ 확인 요청</span>' : o.cfOk ? ' <span class="tag t-k">✅ 확인함</span>' : ''));
@@ -473,11 +475,11 @@ function orderRow(o, local, err, ck, sg) {
   const sga = sg ? ' data-sg="' + esc(sg) + '"' : '';
   if (narrow()) return crow({ attr: ' data-oid="' + esc(o.id) + '"' + sga, cls: 'tap', ck: ck ? '<span class="ckw" data-ckw="' + esc(o.id) + '"><input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '"></span>' : '',
     title: esc(o.store || '-') + ' ' + stTag(local ? 'local' : o.st) + agT + flags + ty + (err ? '<div class="warn" style="font-size:11.5px">' + esc(err) + '</div>' : ''),
-    sub: esc(o.no) + ' · ' + esc(md(o.d)) + (o.sm ? ' · ' + esc(o.sm) : '') + ' · ' + (o.n || 0) + bt('줄', ' ln') + ' ' + (o.qty || 0) + bt('개', ' pcs'), sub2: notes,
+    sub: '<b>' + esc(md(o.d)) + '</b>' + (o.d0 ? ' <span class="muted" title="' + esc(bt('처음 담기 시작한 날', 'started on')) + '">(' + esc(md(o.d0)) + '~)</span>' : '') + ' · ' + esc(o.no) + (o.sm ? ' · ' + esc(o.sm) : '') + ' · ' + (o.n || 0) + bt('줄', ' ln') + ' ' + (o.qty || 0) + bt('개', ' pcs'), sub2: notes,
     num: money(o.amt), act: ck && assignMode() && o.st === 'sent' ? '<span class="cact"><button type="button" class="b-ghost b-sm qa" data-open="' + esc(o.id) + '">📄</button></span>' : '' });
   return '<tr class="tap" data-oid="' + esc(o.id) + '"' + sga + '>' + (ck ? '<td><span class="ckw" data-ckw="' + esc(o.id) + '"><input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '"></span></td>' : '') +
     '<td class="ct wrap" style="min-width:150px"><b>' + esc(o.store || '-') + '</b> ' + stTag(local ? 'local' : o.st) + agT + flags + ty + (err ? '<div class="warn" style="font-size:11.5px">' + esc(err) + '</div>' : '') + '</td>' +
-    '<td class="sub0">' + esc(o.no) + '</td><td>' + esc(md(o.d)) + '</td><td class="hs">' + (o.sm ? '<span class="tag t-x">' + esc(o.sm) + '</span>' : '') + '</td>' +
+    '<td><b>' + esc(md(o.d)) + '</b>' + (o.d0 ? '<div class="muted" style="font-size:11px">' + esc(md(o.d0)) + '~</div>' : '') + '</td><td class="sub0">' + esc(o.no) + '</td><td class="hs">' + (o.sm ? '<span class="tag t-x">' + esc(o.sm) + '</span>' : '') + '</td>' +
     '<td class="r"><b>' + money(o.amt) + '</b></td><td class="r hs sub0">' + (o.n || 0) + ' · ' + (o.qty || 0) + '</td><td class="wrap sub0" style="min-width:120px">' + notes + '</td>' +
     (ck && assignMode() ? '<td>' + (o.st === 'sent' ? '<button type="button" class="b-ghost b-sm qa" data-open="' + esc(o.id) + '" title="' + esc(bt('주문 내용 보기', 'Open order')) + '">📄</button>' : '') + '</td>' : '') + '</tr>';
 }
@@ -546,7 +548,7 @@ function viewOrder(o, lines, local) {
   if ($('oCxReq')) $('oCxReq').onclick = () => cancelReq(o);
   if ($('oDropLocal')) $('oDropLocal').onclick = async () => { if (!(await confirmBox('회사로 못 간 이 주문을 폰에서 지울까요? (' + readOut()[o.id].err + ')', '지우기'))) return; const b = readOut(); delete b[o.id]; writeOut(b); Router.go('order'); };
   if ($('oSyncOne')) $('oSyncOne').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast('인터넷이 안 됩니다 — 폰에 그대로 있습니다', 'bad'); else goOrder(o.id); };
-  if ($('oSend')) $('oSend').onclick = async () => { const ol = Object.assign({}, o, { st: 'sent', sentAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); putOut(ol, lines); await syncOutbox(false); goOrder(o.id); };
+  if ($('oSend')) $('oSend').onclick = async () => { const ol = Object.assign({}, o, sendStamp(o)); putOut(ol, lines); await syncOutbox(false); goOrder(o.id); };
 }
 /** ✕ 작업이 시작된 주문 — 세일즈맨은 바로 못 지우고 사무실에 취소 요청 (⚠️ 문제 알림과 같은 칸 → 담당자 화면 빨간 띠 · 알림) */
 function cancelReq(o) {

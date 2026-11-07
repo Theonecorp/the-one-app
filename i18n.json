@@ -1339,6 +1339,7 @@
 "챗으로 메시지를 보내려면 그 스페이스의 웹훅 주소를 Apps Script(THE ONE Mail) 스크립트 속성 CHAT_WEBHOOK 에 넣으세요 — 앱에는 저장하지 않습니다.":["To post messages, put the space webhook URL in the Apps Script (THE ONE Mail) script property CHAT_WEBHOOK — not stored in the app.","Para postar mensagens, coloque o webhook do espaço na propriedade CHAT_WEBHOOK do Apps Script (THE ONE Mail) — não fica no app."],
 "처리된 것":["Done","Concluídos"],
 "처리했습니다 ✅":["Done ✅","Feito ✅"],
+"처음 담기 시작한 날":["started on","iniciado em"],
 "청구할 UPS 계정 번호를 넣으세요":["Enter the UPS account to bill","Informe a conta UPS para cobrança"],
 "체크":["Check","Cheque"],
 "체크 # · 가게":["Check # · store","Nº do cheque · loja"],
