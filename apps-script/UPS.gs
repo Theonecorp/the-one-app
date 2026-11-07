@@ -23,6 +23,7 @@
  *        UPS_ACCOUNT        = UPS 배송 계정 번호 (6자리, 예: Y9620E)
  *        UPS_ENV            = test   (처음엔 test = UPS 시험 서버, 가짜 라벨 · 요금 안 나감. 확인 뒤 live 로 바꿈)
  *        UPS_QV_NAME        = (선택) Quantum View 구독 이름 — 직원 앱 등 다른 곳에서 찍은 UPS 출고도 앱 주문에 붙이려면
+ *        UPS_TRACK_ENV      = (선택) 배송 조회 서버. 비우면 live — 라벨이 test 여도 실제 운송장을 조회함(돈 안 듦). test 로 두면 시험 서버만
  *   3. 함수 목록에서 setup 고르고 ▶ 실행 → 권한 허용 → 로그에 "UPS 연결 OK" 가 나오면 끝
  *      (1분마다 도는 트리거가 생깁니다)
  *
@@ -88,22 +89,25 @@ function run() {
 
 /* ---------- UPS ---------- */
 function env_() { return String(prop_('UPS_ENV') || 'test').toLowerCase() === 'live' ? 'live' : 'test'; }
-function base_() { return env_() === 'live' ? 'https://onlinetools.ups.com' : 'https://wwwcie.ups.com'; }
+function base_(env) { return (env || env_()) === 'live' ? 'https://onlinetools.ups.com' : 'https://wwwcie.ups.com'; }
+/** 📦 배송 조회는 돈이 안 들고 읽기만 하므로 라벨이 시험(test)이어도 실제 서버(live)에 묻는다 — 스크립트 속성 UPS_TRACK_ENV=test 로 끌 수 있음 */
+function trackEnv_() { return String(prop_('UPS_TRACK_ENV') || 'live').toLowerCase() === 'test' ? 'test' : 'live'; }
 function prop_(k) { return PropertiesService.getScriptProperties().getProperty(k); }
-function upsToken_() {
-  const c = CacheService.getScriptCache(), k = 'tok_' + env_(), hit = c.get(k); if (hit) return hit;
+function upsToken_(env) {
+  env = env || env_();
+  const c = CacheService.getScriptCache(), k = 'tok_' + env, hit = c.get(k); if (hit) return hit;
   const id = prop_('UPS_CLIENT_ID'), sec = prop_('UPS_CLIENT_SECRET'), acct = prop_('UPS_ACCOUNT');
   if (!id || !sec || !acct) throw new Error('스크립트 속성에 UPS_CLIENT_ID · UPS_CLIENT_SECRET · UPS_ACCOUNT 를 넣어 주세요');
-  const res = UrlFetchApp.fetch(base_() + '/security/v1/oauth/token', { method: 'post', payload: 'grant_type=client_credentials', contentType: 'application/x-www-form-urlencoded',
+  const res = UrlFetchApp.fetch(base_(env) + '/security/v1/oauth/token', { method: 'post', payload: 'grant_type=client_credentials', contentType: 'application/x-www-form-urlencoded',
     headers: { Authorization: 'Basic ' + Utilities.base64Encode(id + ':' + sec), 'x-merchant-id': acct }, muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) throw new Error('UPS 로그인 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 300));
   const j = JSON.parse(res.getContentText());
   c.put(k, j.access_token, Math.max(60, Math.min(21000, Number(j.expires_in || 3600) - 120)));
   return j.access_token;
 }
-function upsFetch_(path, method, body) {
-  const res = UrlFetchApp.fetch(base_() + path, { method, contentType: 'application/json', payload: body ? JSON.stringify(body) : undefined,
-    headers: { Authorization: 'Bearer ' + upsToken_(), transId: Utilities.getUuid().substring(0, 32), transactionSrc: 'THEONEAPP' }, muteHttpExceptions: true });
+function upsFetch_(path, method, body, env) {
+  const res = UrlFetchApp.fetch(base_(env) + path, { method, contentType: 'application/json', payload: body ? JSON.stringify(body) : undefined,
+    headers: { Authorization: 'Bearer ' + upsToken_(env), transId: Utilities.getUuid().substring(0, 32), transactionSrc: 'THEONEAPP' }, muteHttpExceptions: true });
   const txt = res.getContentText(), code = res.getResponseCode();
   let j = {}; try { j = JSON.parse(txt); } catch (e) {}
   if (code !== 200) { const er = j.response && j.response.errors ? j.response.errors.map(x => x.code + ' ' + x.message).join(' / ') : txt.substring(0, 300); throw new Error('UPS ' + code + ': ' + er); }
@@ -254,7 +258,11 @@ function qvDelivery_(d) {
 const ymd_ = s => String(s || '').replace(/^(\d{4})(\d{2})(\d{2}).*/, '$1-$2-$3');
 const hm_ = s => String(s || '').replace(/^(\d{2})(\d{2}).*/, '$1:$2');
 function track_(trk) {
-  const j = upsFetch_('/api/track/v1/details/' + encodeURIComponent(trk) + '?locale=en_US&returnSignature=false', 'get');
+  /* 실제 서버에 묻고, 시험 라벨(1ZXXXXXXXXXXXXXXXX)이거나 실제 서버 권한이 없으면 시험 서버로 */
+  const path = '/api/track/v1/details/' + encodeURIComponent(trk) + '?locale=en_US&returnSignature=false';
+  let j;
+  if (trackEnv_() === 'test' || /^1ZX{16}$/.test(trk)) j = upsFetch_(path, 'get', null, 'test');
+  else { try { j = upsFetch_(path, 'get', null, 'live'); } catch (e) { if (env_() === 'test' && /UPS 40[13]|로그인 실패/.test(String(e.message))) { try { j = upsFetch_(path, 'get', null, 'test'); } catch (e2) { throw new Error(String(e.message) + ' — UPS 개발자 앱에 Production 권한이 없으면 실제 운송장은 조회할 수 없습니다'); } } else throw e; } }
   const sh = (((j.trackResponse || {}).shipment) || [])[0] || {}, k = [].concat(sh.package || [])[0] || {};
   if (!k.trackingNumber && sh.warnings) throw new Error([].concat(sh.warnings).map(w => w.message).join(' / ') || '조회 결과 없음');
   const ev = [].concat(k.activity || []).map(a => { const ad = ((a.location || {}).address) || {}, st = a.status || {}; return { d: ymd_(a.date), t: hm_(a.time), st: st.type || '', desc: st.description || '', loc: [ad.city, ad.stateProvince, ad.country].filter(Boolean).join(', ') }; });
