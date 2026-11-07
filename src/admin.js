@@ -628,7 +628,7 @@ async function invStat() {
 export function parseInvoiceList(aoa, fromD) {
   let hi = -1, ix = {};
   /* 이전 시스템 내보내기마다 머리글이 조금씩 다름 — sales_invoice(invoice · customer# · customer name) · invoice_list(trans # → "trans 3", cusomer # → "cusomer 3", name, slaes order) · 2026-11 sales_invoice("CUSOMTER #") → 고객 번호 열은 cus… 로 시작하고 # · 3 · no 로 끝나면 됨 */
-  const want = { no: /^(invoice|trans)\s*(#|no|3)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /^cus\w*\s*(#|3|no)?$|acct|account/i, store: /customer\s*name|store|^name$/i, sm: /sales?\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /s[a-z]*\s*order|^s\.?o\.?$/i };
+  const want = { no: /^(invoice|trans)\s*(#|no|3)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /^cus\w*\s*(#|3|no)?$|acct|account/i, store: /customer\s*name|store|^name$/i, sm: /sales?\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /s[a-z]*\s*order|^s\.?o\.?$/i, memo: /^memo|^note|^comment|메모/i };   /* 📝 Memo 열 (2026-11 sales_invoice_with_memo) — 할인 · 외상 조건 같은 인보이스 메모 (v0.8.174) */
   for (let r = 0; r < Math.min(aoa.length, 8) && hi < 0; r++) {
     const row = aoa[r].map(x => String(x == null ? '' : x).trim()); const m = {};
     Object.keys(want).forEach(k => { const c = row.findIndex(h => h && want[k].test(h)); if (c >= 0) m[k] = c; });
@@ -649,7 +649,7 @@ export function parseInvoiceList(aoa, fromD) {
     const total = R2(num(row[ix.total])), frt = ix.frt != null ? R2(num(row[ix.frt])) : 0, discAmt = ix.disc != null ? R2(num(row[ix.disc])) : 0, bal = ix.bal != null ? R2(num(row[ix.bal])) : 0;
     const t = (no.match(/^[A-Z]+/) || ['A'])[0].replace(/^CM$/, 'CM');
     out.push({ id: no, no, t: t.length > 2 ? t.charAt(0) : t, d, ym: d.substring(0, 7), acct: ix.acct != null ? pad4(row[ix.acct]) : '', store: String(row[ix.store] || '').trim(), sm: String(row[ix.sm] || '').trim().toUpperCase(), terms: String(row[ix.terms] || '').trim(), shipVia: String(row[ix.via] || '').trim(),
-      ship: frt, discAmt, sub: R2(total - frt + discAmt), disc: 0, total: R2(total - frt), bal, st: bal > 0.005 ? 'open' : 'paid', order: ix.so != null ? String(row[ix.so] || '').trim() : '', qty: 0, lines: [], src: 'legacy' });
+      ship: frt, discAmt, sub: R2(total - frt + discAmt), disc: 0, total: R2(total - frt), bal, st: bal > 0.005 ? 'open' : 'paid', order: ix.so != null ? String(row[ix.so] || '').trim() : '', memo: ix.memo != null ? String(row[ix.memo] || '').trim() : '', qty: 0, lines: [], src: 'legacy' });
   }
   const hdr = aoa[hi].map(x => String(x == null ? '' : x).trim()), cols = {}; Object.keys(ix).forEach(k => { cols[k] = hdr[ix[k]]; });
   const noLetter = out.filter(r => !/^[A-Z]{1,2}-?\d{3,}$/.test(r.no)).length;
