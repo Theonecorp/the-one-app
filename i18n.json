@@ -43,6 +43,7 @@
 "UPS 라벨을 취소할까요? 붙인 라벨은 버려 주세요.":["Void these UPS labels?","Cancelar estas etiquetas UPS?"],
 "UPS 로 실제 보낸 주소(다른 프로그램에서 찍은 라벨 포함)와 앱의 거래처 주소가 다른 가게입니다. 맞는 쪽을 고르세요.":["Shipments on the UPS account went to a different address than the customer record.","Envios na conta UPS foram para um endereço diferente do cadastro do cliente."],
 "UPS 박스 한 개 = 상품 한 개. 무게(lb)와 상자 크기(in)가 UPS 라벨에 그대로 들어갑니다.":["One UPS box per unit — weight (lb) and box size (in) go onto the label.","Uma caixa UPS por unidade — peso (lb) e tamanho (in) vão para a etiqueta."],
+"UPS 시험 서버 응답 (실제 운송장은 못 찾음)":["UPS test server (real tracking numbers are not found there)","Servidor de teste da UPS (rastreios reais não são encontrados lá)"],
 "UPS 에 묻는 중…":["Asking UPS…","Consultando a UPS…"],
 "UPS 에 묻는 중… (최대 1분)":["Asking UPS… (up to 1 min)","Consultando a UPS… (até 1 min)"],
 "UPS 에 주소 확인 중… (최대 1분)":["Asking UPS… (up to 1 min)","Consultando a UPS… (até 1 min)"],

@@ -25,6 +25,7 @@
  *        UPS_QV_NAME        = (선택) Quantum View 구독 이름 — 직원 앱 등 다른 곳에서 찍은 UPS 출고도 앱 주문에 붙이려면
  *        UPS_TRACK_ENV      = (선택) 배송 조회 서버. 비우면 live — 라벨이 test 여도 실제 운송장을 조회함(돈 안 듦). test 로 두면 시험 서버만
  *   3. 함수 목록에서 setup 고르고 ▶ 실행 → 권한 허용 → 로그에 "UPS 연결 OK" 가 나오면 끝
+ *   4. 잘 되는지 모르겠으면 status 를 실행 — 어느 서버를 쓰는지 · 로그인이 되는지 로그에 나옴
  *      (1분마다 도는 트리거가 생깁니다)
  *
  * 보내는 곳(창고 주소)은 앱 관리 → ⚙️ 설정 → 🚚 UPS 출고 에서 정합니다 (Firestore settings/app.ups).
@@ -44,6 +45,15 @@ function setup() {
   Logger.log('UPS 연결 OK (' + env_() + ') · 토큰 받음 ' + String(tok).substring(0, 6) + '…');
   Logger.log(c === 200 ? 'Firestore OK' : 'Firestore 읽기 실패 ' + c + ': ' + r.getContentText().substring(0, 900) +
     (c === 403 || c === 401 ? '\n→ ⚙️ 프로젝트 설정에서 "appsscript.json 매니페스트 파일 표시" 를 켜고 UPS.appsscript.json 내용을 붙여넣은 뒤 setup 을 다시 실행해 권한을 허용하세요' : ''));
+}
+/** 진단: 함수 목록에서 status 를 골라 ▶ 실행 → 로그에 어느 서버(test/live)를 쓰는지 · 속성이 들어 있는지 · 트리거 · UPS 로그인이 되는지 */
+function status() {
+  const P = PropertiesService.getScriptProperties().getProperties(), keys = Object.keys(P);
+  Logger.log('라벨 서버: ' + env_() + ' (UPS_ENV=' + JSON.stringify(P.UPS_ENV === undefined ? null : P.UPS_ENV) + ') · 조회 서버: ' + trackEnv_());
+  Logger.log('속성: ' + ['UPS_CLIENT_ID', 'UPS_CLIENT_SECRET', 'UPS_ACCOUNT', 'UPS_ENV', 'UPS_QV_NAME', 'UPS_TRACK_ENV'].map(k => k + (P[k] ? ' ✓' : ' ✗')).join(' · ') + (keys.filter(k => !/^UPS_/.test(k)).length ? ' · 그 외: ' + keys.filter(k => !/^UPS_/.test(k)).join(', ') : ''));
+  Logger.log('트리거: ' + (ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction()).join(', ') || '없음 — setup 을 실행하세요'));
+  ['test', 'live'].forEach(e => { try { CacheService.getScriptCache().remove('tok_' + e); upsToken_(e); Logger.log('UPS ' + e + ' 로그인 OK'); } catch (x) { Logger.log('UPS ' + e + ' 로그인 실패: ' + String(x.message).substring(0, 200) + (e === 'live' ? ' → UPS 개발자 포털에서 이 앱에 Production 권한을 추가해야 실제 라벨 · 조회가 됩니다' : '')); } });
+  try { const r = track_('1ZXXXXXXXXXXXXXXXX'); Logger.log('시험 조회 OK (' + r.env + '): ' + r.status); } catch (x) { Logger.log('시험 조회 실패: ' + String(x.message).substring(0, 200)); }
 }
 /** 시험: 앱 없이 라벨 하나 만들어 보기 (test 환경에서만) */
 function testLabel() {
@@ -88,10 +98,10 @@ function run() {
 }
 
 /* ---------- UPS ---------- */
-function env_() { return String(prop_('UPS_ENV') || 'test').toLowerCase() === 'live' ? 'live' : 'test'; }
+function env_() { return String(prop_('UPS_ENV') || 'test').trim().toLowerCase() === 'live' ? 'live' : 'test'; }
 function base_(env) { return (env || env_()) === 'live' ? 'https://onlinetools.ups.com' : 'https://wwwcie.ups.com'; }
 /** 📦 배송 조회는 돈이 안 들고 읽기만 하므로 라벨이 시험(test)이어도 실제 서버(live)에 묻는다 — 스크립트 속성 UPS_TRACK_ENV=test 로 끌 수 있음 */
-function trackEnv_() { return String(prop_('UPS_TRACK_ENV') || 'live').toLowerCase() === 'test' ? 'test' : 'live'; }
+function trackEnv_() { return String(prop_('UPS_TRACK_ENV') || 'live').trim().toLowerCase() === 'test' ? 'test' : 'live'; }
 function prop_(k) { return PropertiesService.getScriptProperties().getProperty(k); }
 function upsToken_(env) {
   env = env || env_();
@@ -260,15 +270,15 @@ const hm_ = s => String(s || '').replace(/^(\d{2})(\d{2}).*/, '$1:$2');
 function track_(trk) {
   /* 실제 서버에 묻고, 시험 라벨(1ZXXXXXXXXXXXXXXXX)이거나 실제 서버 권한이 없으면 시험 서버로 */
   const path = '/api/track/v1/details/' + encodeURIComponent(trk) + '?locale=en_US&returnSignature=false';
-  let j;
-  if (trackEnv_() === 'test' || /^1ZX{16}$/.test(trk)) j = upsFetch_(path, 'get', null, 'test');
-  else { try { j = upsFetch_(path, 'get', null, 'live'); } catch (e) { if (env_() === 'test' && /UPS 40[13]|로그인 실패/.test(String(e.message))) { try { j = upsFetch_(path, 'get', null, 'test'); } catch (e2) { throw new Error(String(e.message) + ' — UPS 개발자 앱에 Production 권한이 없으면 실제 운송장은 조회할 수 없습니다'); } } else throw e; } }
+  let j, used = 'live';
+  if (trackEnv_() === 'test' || /^1ZX{16}$/.test(trk)) { used = 'test'; j = upsFetch_(path, 'get', null, 'test'); }
+  else { try { j = upsFetch_(path, 'get', null, 'live'); } catch (e) { if (env_() === 'test' && /UPS 40[13]|로그인 실패/.test(String(e.message))) { try { used = 'test'; j = upsFetch_(path, 'get', null, 'test'); } catch (e2) { throw new Error(String(e.message) + ' — UPS 개발자 앱에 Production 권한이 없으면 실제 운송장은 조회할 수 없습니다'); } } else throw e; } }
   const sh = (((j.trackResponse || {}).shipment) || [])[0] || {}, k = [].concat(sh.package || [])[0] || {};
   if (!k.trackingNumber && sh.warnings) throw new Error([].concat(sh.warnings).map(w => w.message).join(' / ') || '조회 결과 없음');
   const ev = [].concat(k.activity || []).map(a => { const ad = ((a.location || {}).address) || {}, st = a.status || {}; return { d: ymd_(a.date), t: hm_(a.time), st: st.type || '', desc: st.description || '', loc: [ad.city, ad.stateProvince, ad.country].filter(Boolean).join(', ') }; });
   const cur = k.currentStatus || {}, dd = [].concat(k.deliveryDate || []), del = dd.find(x => x.type === 'DEL'), sdd = dd.find(x => x.type === 'SDD' || x.type === 'RDD');
   const delivered = (ev[0] && ev[0].st === 'D') || /delivered/i.test(cur.description || '');
-  return { status: cur.description || (ev[0] || {}).desc || '', code: cur.code || '', delivered, deliveredAt: delivered ? (del ? ymd_(del.date) : (ev[0] || {}).d || '') : '', eta: !delivered && sdd ? ymd_(sdd.date) : '', receivedBy: ((k.deliveryInformation || {}).receivedBy) || '', dlvLoc: ((k.deliveryInformation || {}).location) || '', events: ev.slice(0, 40), svcName: ((k.service || {}).description) || '', w: Number(((k.weight || {}).weight) || 0) || undefined, at: iso_() };
+  return { status: cur.description || (ev[0] || {}).desc || '', code: cur.code || '', delivered, deliveredAt: delivered ? (del ? ymd_(del.date) : (ev[0] || {}).d || '') : '', eta: !delivered && sdd ? ymd_(sdd.date) : '', receivedBy: ((k.deliveryInformation || {}).receivedBy) || '', dlvLoc: ((k.deliveryInformation || {}).location) || '', events: ev.slice(0, 40), svcName: ((k.service || {}).description) || '', w: Number(((k.weight || {}).weight) || 0) || undefined, env: used, at: iso_() };
 }
 /** 조회 결과를 shipments 기록에 (있을 때만) · 배달되면 주문에도 */
 function updShipment_(trk, r) {
