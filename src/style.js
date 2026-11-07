@@ -448,4 +448,11 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
   #page .sticky .qbar button{min-width:42px;height:42px;font-size:17px}#page .sticky .tbar{flex:1 1 180px;padding:5px 10px}#page .sticky .tbar .ta{font-size:20px}
   #page .sticky .btns{min-width:0}#page .sticky .btns button{padding:10px 12px}#page .sticky .btns .b-green{min-width:110px}#page .sticky .btns #eClose{flex:0 0 auto}
 }
+
+/* 📦 배송 조회 — 출고 목록 · 출고 팝업 (v0.8.174) */
+.shplist .pr small{display:block;font-size:12px;color:var(--muted)}.shplist .pr .pa .tag{white-space:nowrap}
+.shpsum{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}.shpsum>div>small{display:block;font-size:11px;letter-spacing:.02em}.shpsum>div>div{font-size:13.5px}
+@media (max-width:480px){.shpsum{grid-template-columns:1fr}}
+.shptbl td.mono,.shplist .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.shptbl tr.tap{cursor:pointer}.shptbl tr.tap:hover td{background:#f8fafc}
 `;
