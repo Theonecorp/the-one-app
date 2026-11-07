@@ -454,5 +454,5 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 .shpsum{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}.shpsum>div>small{display:block;font-size:11px;letter-spacing:.02em}.shpsum>div>div{font-size:13.5px}
 @media (max-width:480px){.shpsum{grid-template-columns:1fr}}
 .shptbl td.mono,.shplist .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
-.shptbl tr.tap{cursor:pointer}.shptbl tr.tap:hover td{background:#f8fafc}
+.shptbl th,.shptbl td{padding:7px 7px}.shptbl td{max-width:220px}.shptbl tr.tap{cursor:pointer}.shptbl tr.tap:hover td{background:#f8fafc}
 `;
