@@ -224,6 +224,15 @@ export function popularItems(path, start, hist, limit) {
   return out;
 }
 
+/** 🆕 새로 나온 — 최근 days 일 안에 앱에 등록된 아이템 (분류 경로 안에서) · 새 순 */
+export function newItems(path, start, days) {
+  if (!CAT) return [];
+  const d = new Date(); d.setDate(d.getDate() - (days || 30)); const from = d.toISOString().substring(0, 10);
+  const inPath = x => { if (!path || !path.length) return true; const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); };
+  return CAT.items.filter(x => x.at && x.at >= from && !x.h && !x.virt && inPath(x)).sort((a, b) => b.at.localeCompare(a.at) || COLL.compare(a.c, b.c));
+}
+const todayStr = () => new Date().toISOString().substring(0, 10);
+
 export async function loadCatalog(S, force) {
   if (S && S.settings && S.settings.catPins) setPins(S.settings.catPins);
   if (S && S.settings) setLocs(S.settings.catLoc);
@@ -271,7 +280,7 @@ function setKind(x, byCode) {
 }
 const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function index(pack) {
-  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', sup: r[12] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
+  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', sup: r[12] || '', at: r[13] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
   const byCode = {}, byBar = {}, byNorm = {};
   items.forEach(x => { byCode[x.c] = x; if (x.b) byBar[x.b] = byBar[x.b] || x; const n = norm(x.c); if (!byNorm[n]) byNorm[n] = x; });
   /* 세트: 아이템 목록에 있으면 그 아이템에 구성을 붙이고, 없으면 세트 아이템을 새로 만듦 (가격 = 구성품 합) */
@@ -401,6 +410,7 @@ export function parseItemMaster(items, cats) {
 }
 /** 묶음으로 나눠 저장 → meta 의 ver 를 바꿔 모든 폰이 새로 받게 함 */
 export async function publishCatalog(S, parsed) {
+  if (CAT && CAT.rows && CAT.rows.length) { const prev = CAT.byCode || {}; parsed.rows.forEach(r => { while (r.length < 14) r.push(''); if (!r[13]) r[13] = prev[r[0]] ? (prev[r[0]].at || '') : todayStr(); }); }
   const chunks = []; let cur = [], size = 0;
   parsed.rows.forEach(r => { const s = JSON.stringify(r).length + 1; if (size + s > CHUNK_BYTES && cur.length) { chunks.push(cur); cur = []; size = 0; } cur.push(r); size += s; });
   if (cur.length) chunks.push(cur);
@@ -472,7 +482,7 @@ export function parseSetBook(compRows, listRows, which) {
  *  분류 · 아이템 일괄 변경 (관리) — SBM 의 "레벨 정리 · 디스크립션 변경 · 코드 변경 · 일괄 업데이트" 파일 역할
  *  rows 한 줄 = [code, desc, price, srp, barcode, group, l1, l2, l3, photo]
  * ============================================================ */
-const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9, h: 10, loc: 11 };
+const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9, h: 10, loc: 11, sup: 12, at: 13 };   // at = 앱에 등록된 날 (yyyy-mm-dd) — 🆕 새로 나온 묶음
 /** 위치 일괄 — codes 의 아이템 위치를 loc 로 (빈 값 = 분류 기본 위치 따름) */
 export function setLoc(rows, codes, loc) { const set = new Set(codes.map(c => String(c).toUpperCase())); let k = 0; rows.forEach(r => { if (set.has(r[0])) { while (r.length < 11) r.push(r.length === 10 ? 0 : ''); r[11] = loc; k++; } }); return k; }
 /** 숨김 · 보임 일괄 — codes 의 아이템을 on(true=숨김) 으로. 돌려주는 값: 바뀐 수 */
@@ -627,7 +637,7 @@ export function applyBulk(rows, cats, sets, patches) {
     let i = at[pt.code];
     if (i == null) {
       /* 없는 코드 — 디스크립션 · 가격이 다 있으면 새 아이템으로 추가 */
-      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0, pt.set.loc || '']; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; return; }
+      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0, pt.set.loc || '', '', todayStr()]; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; return; }
       /* 세트북 세트 — Level 1 을 줄 때만 줄을 만듦 (빈 Level 1 = 숨김 뜻이라 그대로 두면 세트가 사라지지 않게) */
       const vr = pt.set.l1 ? virtRow(pt.code) : null;
       if (!vr) { if (!(CAT && CAT.byCode[pt.code] && CAT.byCode[pt.code].virt)) sum.missing.push(pt.code); return; }
@@ -765,7 +775,7 @@ export function applySmartBee(rows, cats, plan) {
   const F = Object.assign({ d: true, p: true, b: true }, plan.fields || {});
   const sum = { changed: 0, added: 0, addedHidden: 0, hidden: 0 };
   (plan.chg || []).forEach(x => { const r = rows[at[x.c]]; if (!r) return; let ch = false; if (F.d && x.ch.d != null && r[1] !== x.ch.d) { r[1] = x.ch.d; ch = true; } if (F.p && x.ch.p != null && r[2] !== x.ch.p) { r[2] = x.ch.p; ch = true; } if (F.b && x.ch.b != null && r[4] !== x.ch.b) { r[4] = x.ch.b; ch = true; } if (ch) sum.changed++; });
-  (plan.add || []).forEach(x => { if (at[x.c] != null) return; const L = (x.lv || []).concat(['', '', '', '']).slice(0, 4); rows.push([x.c, x.d, x.p || 0, 0, x.b || '', L[0], L[1], L[2], L[3], '', x.h ? 1 : 0, '']); at[x.c] = rows.length - 1; sum.added++; if (x.h) sum.addedHidden++; });
+  (plan.add || []).forEach(x => { if (at[x.c] != null) return; const L = (x.lv || []).concat(['', '', '', '']).slice(0, 4); rows.push([x.c, x.d, x.p || 0, 0, x.b || '', L[0], L[1], L[2], L[3], '', x.h ? 1 : 0, '', '', todayStr()]); at[x.c] = rows.length - 1; sum.added++; if (x.h) sum.addedHidden++; });
   (plan.hide || []).forEach(c => { const r = rows[at[c]]; if (!r) return; while (r.length < 11) r.push(r.length === 10 ? 0 : ''); if (!r[10]) { r[10] = 1; sum.hidden++; } });
   ensureCats(rows, cats);
   return sum;
