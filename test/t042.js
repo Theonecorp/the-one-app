@@ -1,4 +1,4 @@
-/* v0.6.4 시험 — 분류 순서 (📌 위 → ABC → 📌 아래) · ✨ 자주 나가는 · 코드 순 · 📄 인보이스 찾기 (기간 · 날짜별 · 가게로) · (2026-11 화면에 맞춤: 단계별 목록 칩 ✅ 완료 · 조회 → 📄 인보이스, 날짜 묶음 .gline) */
+/* v0.6.4 시험 — 분류 순서 (📌 위 → ABC → 📌 아래) · (✨ 자주 나가는 타일은 v0.8.174 에서 뺌) · 코드 순 · 📄 인보이스 찾기 (기간 · 날짜별 · 가게로) · (2026-11 화면에 맞춤: 단계별 목록 칩 ✅ 완료 · 조회 → 📄 인보이스, 날짜 묶음 .gline) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs');
 (async () => {
@@ -29,14 +29,10 @@ const path = require('path'), fs = require('fs');
   await shot('h0_cats');
   const tiles = await pg.$$eval('.cats button', els => els.map(e => e.querySelector('b').textContent.trim()));
   log('L1 tiles:', tiles.join(' | '));
-  if (!tiles[0].startsWith('✨ 자주 나가는') || tiles[1] !== 'Wax' || tiles[tiles.length - 1] !== 'Chains') errs.push('tile order wrong: ' + tiles.join('|'));
-  const mid = tiles.slice(2, -1).filter(t => t !== 'SET ORDER');   // SET ORDER(세트북 세트)는 이전 시스템처럼 맨 앞 고정 if (mid.join() !== mid.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).join()) errs.push('not ABC: ' + mid.join('|'));
-  /* ✨ 자주 나가는: 이 가게(3001) 가 최근 산 AHG100 · AHG101 먼저, 그 다음 GM104 EB103 */
-  await pg.click('[data-pop]'); await pg.waitForTimeout(300); await shot('h1_pop');
-  const pop = await pg.$$eval('#eRes .gcard .gt > b, #eRes .irow .ct > b', els => els.map(e => e.textContent.trim().split(' ')[0]));
-  log('pop:', pop.slice(0, 6).join(' '), '|', (await pg.textContent('#eRes .muted')).trim());
-  if (pop[0] !== 'AHG100' || pop[1] !== 'AHG101' || pop[2] !== 'GM104') errs.push('pop order wrong: ' + pop.slice(0, 4).join(','));
-  await pg.click('[data-pop]'); await pg.waitForTimeout(200);
+  if (tiles[0] !== 'Wax' || tiles[tiles.length - 1] !== 'Chains' || tiles.some(t => t.startsWith('✨'))) errs.push('tile order wrong (v0.8.174: 자주 나가는 타일 없음): ' + tiles.join('|'));
+  const mid = tiles.slice(1, -1).filter(t => t !== 'SET ORDER');   // SET ORDER(세트북 세트)는 이전 시스템처럼 맨 앞 고정 if (mid.join() !== mid.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).join()) errs.push('not ABC: ' + mid.join('|'));
+  /* ✨ 자주 나가는 타일은 v0.8.174 에서 뺌 — 없는지만 확인 */
+  if (await pg.$('[data-pop]')) errs.push('popular tile should be gone');
   /* 분류 안은 코드 순 */
   await pg.click('[data-ck="Wax"]'); await pg.waitForTimeout(300);
   const codes = await pg.$$eval('#eRes .gcard .gt > b, #eRes .irow .ct > b', els => els.map(e => e.textContent.trim().split(' ')[0]).slice(0, 5));

@@ -12,7 +12,7 @@
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp, footBtns } from './ui.js';
 import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel } from './reqs.js';
 import { searchAccounts, accountLabel } from './accounts.js';
-import { loadCatalog, catalog, searchItems, popularItems, newItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
+import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
 import { jobOf, can } from './main.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
@@ -800,10 +800,9 @@ function paintAdd() {
   let node = T; O.path.forEach(p => { node = (node && node.map[p]) || null; });
   if (!node) { O.path = []; node = T; }
   const crumbs = '<div class="chips crumbs">' + (O.path.length ? '<button class="up" data-cp="' + (O.path.length - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">' + bi('전체', 'All') + '</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
-  const newN = newItems(O.path, catStart(S), 30).length;
+  const newN = O.path.length ? 0 : newItems([], catStart(S), 30).length;   /* 🆕 새로 나온 — 1단계(전체)에서만 */
   const newTile = newN ? '<button class="newt' + (O.nw ? ' on' : '') + '" data-new="1"><b>🆕 새로 나온 <span class="en">New</span></b><span>' + bt('최근 30일에 등록', 'added in the last 30 days') + ' · ' + newN + '</span></button>' : '';
-  const popN = popularItems(O.path, catStart(S), INFO && INFO.hist, 300).length;
-  const popTile = popN ? '<button class="pop' + (O.pop ? ' on' : '') + '" data-pop="1"><b>✨ 자주 나가는 <span class="en">Popular</span></b><span>' + (INFO && Object.keys(INFO.hist).length ? '이 가게 최근 구매 + 많이 나가는 순 · recent + best sellers' : '많이 나가는 순 · best sellers') + ' · ' + popN + '</span></button>' : '';
+  const popTile = '';   /* ✨ 자주 나가는 묶음은 v0.8.174 에서 뺌 (모든 단계에 보여 번거로움) */
   const kids = node.kids.length || popTile || newTile ? '<div class="cats">' + newTile + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
   /* 검색 + 분류 경로는 카드 밖 sticky — 아래로 아무리 내려가도 맨 위에 붙어 있어 바로 상위로 돌아감 */
   $('eTop').innerHTML = '<div class="ordtop"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
@@ -828,7 +827,6 @@ function paintAdd() {
   /* 전체 · 분류 경로 · 분류 타일을 누르면 검색어도 지움 — 검색어가 남아 있으면 "전체" 를 눌러도 검색 결과만 보여 분류로 못 가던 문제 (v0.8.174) */
   document.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { O.path = O.path.slice(0, Number(b.dataset.cp)); O.q = ''; O.pop = false; O.nw = false; O.all = false; PAGE = 60; paintAdd(); });
   document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => { O.path = O.path.concat([b.dataset.ck]); O.q = ''; O.pop = false; O.nw = false; O.all = false; PAGE = 60; paintAdd(); });
-  const pt = document.querySelector('[data-pop]'); if (pt) pt.onclick = () => { O.pop = !O.pop; O.nw = false; PAGE = 60; paintAdd(); };
   const nt = document.querySelector('[data-new]'); if (nt) nt.onclick = () => { O.nw = !O.nw; O.pop = false; PAGE = 60; paintAdd(); };
   $('eVM').onclick = () => { VM = VM === 'grid' ? 'list' : 'grid'; try { localStorage.setItem(VM_KEY, VM); } catch (e) {} paintAdd(); };
   $('eShow').onclick = () => showMode(LAST, 0);
@@ -886,7 +884,7 @@ function refreshRowPrice(c) { const it = catalog().byCode[c]; if (!it) return; d
 const qtyBox = (c, v) => '<div class="qty"><button data-dq="' + esc(c) + '" data-d="-1">−</button><input type="number" inputmode="numeric" min="0" data-qi="' + esc(c) + '" value="' + (v || '') + '" placeholder="0"><button data-dq="' + esc(c) + '" data-d="1">＋</button></div>';
 function paintResults() {
   if (!O || !$('eRes')) return;
-  const pop = O.pop && !O.q, nw = O.nw && !O.q;
+  const pop = false, nw = O.nw && !O.q;
   /* 분류를 끝까지(하위가 없을 때까지) 누르기 전에는 아이템을 펼치지 않음 — 검색 · ✨ · "모두 보기" 는 예외 */
   const T = treeFor(S); let nd = T; O.path.forEach(p => { nd = (nd && nd.map[p]) || null; });
   const branch = nd && nd.kids.length > 0;
@@ -896,7 +894,7 @@ function paintResults() {
     LAST = [];
     return;
   }
-  const all = nw ? newItems(O.path, catStart(S), 30) : pop ? popularItems(O.path, catStart(S), INFO && INFO.hist, 300) : searchItems(O.q, O.path, 5000, catStart(S));
+  const all = nw ? newItems([], catStart(S), 30) : searchItems(O.q, O.path, 5000, catStart(S));
   LAST = all;
   const res = all.slice(0, PAGE);
   const head = '<div class="muted" style="margin:6px 0">' + (nw ? '🆕 ' + bt('최근 30일에 등록된 아이템', 'Items added in the last 30 days') + ' · ' + all.length + bt('개 (새 순)', ' (newest first)') : pop ? '✨ ' + (all.nStore ? '이 가게가 최근에 산 ' + all.nStore + '개 먼저, 그 다음 ' : '') + '많이 나가는 순 · ' + all.length + '개' : O.q || O.path.length ? all.length.toLocaleString() + '개 (코드 순)' : '전체 ' + catalog().items.length.toLocaleString() + '개 — 카테고리를 고르거나 검색하세요 <span class="en">Pick a category or search</span>') + '</div>';
