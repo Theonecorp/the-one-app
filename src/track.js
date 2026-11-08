@@ -64,31 +64,49 @@ async function trackNow(trks) {
 }
 const errText = e => String(e.code || e.message) + (String(e.code || e.message).includes('permission') ? ' — Firestore 규칙을 다시 게시해야 합니다' : '');
 const kv = (k, v) => v ? '<div><small class="muted">' + k + '</small><div>' + v + '</div></div>' : '';
-/** 📦 한 출고의 자세한 내용 — 직원 앱의 팝업처럼: 개요 · 박스마다 운송장 · 무게 · 상태 · 🔄 지금 조회 */
+/** 📦 한 출고의 자세한 내용 — 직원 앱의 팝업과 같은 항목: 운송장(복사 · UPS 추적) · 출고일 · 예상 배송 · 주문 · 고객 · 세일즈맨 · 주소 · 전화 · 중량 · 청구 중량 · 박스별 치수 · 담당자 · 상태 · 추적 타임라인 · 비용 요약 · 라벨 · 박스마다 📍 기록 · 🔄 지금 조회 */
+const dtKo = s => { s = String(s || ''); return s.length >= 10 ? s.substring(0, 10) + (s.length >= 16 ? ' ' + s.substring(11, 16) : '') : s; };
 export function shipModal(s) {
-  let busyQ = false, err = '';
+  let busyQ = false, err = '', more = false, labels = null;
   const paint = () => {
     const a = s.a, B = s.boxes, acc = a.acct && S.accounts && S.accounts.byCode ? S.accounts.byCode[a.acct] : null;
     const addr = [a.attn && a.attn !== a.store ? a.attn : '', a.to, [a.city, a.state, a.zip].filter(Boolean).join(' ')].filter(Boolean);
-    $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h2 style="margin:0">📦 ' + esc(md(a.shipDate || '')) + ' · ' + custHtml(a) + '</h2><div style="margin-top:4px">' + shpBadge(s) + ' <span class="mono">' + esc(a.trk) + '</span></div></div><button class="b-ghost b-sm xin" id="shX">✕</button></div>' +
+    const bw = B.reduce((t, x) => t + Math.max(Number(x.w) || 0, Number(x.dw) || 0), 0), w = s.w || B.reduce((t, x) => t + (Number(x.w) || 0), 0);
+    const by = a.by && a.by !== 'import' ? a.by : '', tel = (acc && acc.tel) || a.tel || '';
+    const stKo = s.st === 'void' ? [bt('취소됨', 'Voided'), 'Voided'] : s.st === 'dlv' ? [bt('배송 완료', 'Delivered'), 'Delivered'] : s.st === 'go' ? [bt('운송 중', 'In transit'), a.status || 'On the Way'] : [bt('라벨 생성', 'Label created'), a.status || 'Label created'];
+    /* 추적 타임라인: 박스마다 받은 스캔 기록을 시간 역순으로 (여러 박스면 박스 번호 표시) */
+    let ev = []; B.forEach(x => (x.events || []).forEach(e => ev.push(Object.assign({ bx: x.box || 1 }, e)))); ev = sortBy(ev, e => (e.d || '') + ' ' + (e.t || ''), true);
+    const evHtml = e => '<div class="tev' + (e.st === 'D' ? ' d' : e.st === 'X' ? ' x' : '') + '"><b>' + esc(e.desc || e.st) + (B.length > 1 ? ' <span class="muted" style="font-weight:400">📦 ' + e.bx + '</span>' : '') + '</b><small>' + esc(e.d || '') + ' ' + esc(e.t || '') + (e.loc ? ' · ' + esc(e.loc) : '') + '</small></div>';
+    const saved = Number(a.list) && Number(a.list) > s.cost ? Number(a.list) - s.cost : 0;
+    $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h2 style="margin:0">📦 ' + esc(md(a.shipDate || '')) + ' · ' + custHtml(a) + '</h2></div><button class="b-ghost b-sm xin" id="shX">✕</button></div>' +
+      '<div class="shphd"><div class="svc">UPS</div><div style="flex:1;min-width:0"><b>' + esc(a.svcName || svcN[a.svc] || a.svc || 'UPS') + '</b><div class="mono" style="font-size:13px">' + bt('운송장', 'Tracking') + ': ' + esc(a.trk) + (B.length > 1 ? ' <span class="muted">+' + (B.length - 1) + '</span>' : '') + ' <button class="b-ghost b-sm" id="shCopy" title="' + esc(bt('복사', 'Copy')) + '">⧉</button></div></div><a class="b-ghost b-sm lnk" href="' + upsUrl(a.trk) + '" target="_blank" rel="noopener">' + bt('UPS 에서 추적', 'Track on UPS') + ' ↗</a></div>' +
       '<div class="sumbox shpsum">' +
-        kv(bt('출고일', 'Shipped'), esc(a.shipDate || '') + (a.rec ? ' · <span class="mono">' + esc(a.rec) + '</span>' : '')) +
-        kv(bt('배송', 'Delivery'), s.st === 'dlv' ? '✅ ' + esc(a.deliveredAt || '') + (a.receivedBy ? ' · ' + bt('받은 사람', 'Signed by') + ' ' + esc(a.receivedBy) : '') + (a.dlvLoc ? ' · ' + esc(a.dlvLoc) : '') : s.st === 'void' ? bt('취소됨', 'Voided') : a.eta ? bt('예정', 'ETA') + ' ' + esc(a.eta) : esc(a.status || '')) +
-        kv(bt('거래처', 'Customer'), custHtml(a) + (acc && acc.tel ? ' · ' + esc(acc.tel) : a.tel ? ' · ' + esc(a.tel) : '')) +
-        kv(bt('세일즈맨', 'Salesman'), esc(smName(a.sm))) +
-        kv(bt('주소', 'Address'), addr.map(esc).join('<br>')) +
-        kv(bt('서비스', 'Service'), esc(a.svcName || svcN[a.svc] || a.svc || '') + ' · ' + s.n + ' ' + bt('박스', 'boxes') + (s.w ? ' · ' + lb(s.w) : '')) +
-        kv(bt('운임', 'Cost'), s.cost ? '<b>' + money(s.cost) + '</b>' + (Number(a.list) && Number(a.list) > s.cost ? ' <span class="muted">(' + bt('정가', 'list') + ' ' + money(a.list) + ')</span>' : '') : '') +
-        kv(bt('인보이스 · 주문', 'Invoice · order'), [(a.invs || []).length ? '🧾 ' + esc(a.invs.join(', ')) : '', a.no ? esc(a.no) : ''].filter(Boolean).join(' · ')) +
-        kv('UPS ID', a.shipId ? '<span class="mono">' + esc(a.shipId) + '</span>' : '') +
-        (a.src === 'ups' ? kv(bt('출처', 'Source'), bt('UPS 기록 가져오기', 'imported from UPS')) : a.src === 'qv' ? kv(bt('출처', 'Source'), bt('다른 프로그램 출고', 'shipped outside the app')) : '') +
+        kv(bt('출고일', 'Shipped'), esc(dtKo(a.shipAt || a.shipDate)) + (a.rec ? ' · <span class="mono">' + esc(a.rec) + '</span>' : '')) +
+        kv(bt('예상 배송', 'Expected delivery'), s.st === 'dlv' ? '✅ ' + bt('배송 완료', 'Delivered') + ' ' + esc(a.deliveredAt || '') + (a.receivedBy ? ' · ' + bt('받은 사람', 'Signed by') + ' ' + esc(a.receivedBy) : '') : s.st === 'void' ? '—' : a.eta ? esc(a.eta) : '<span class="muted">' + bt('UPS 조회 뒤 표시', 'after a UPS check') + '</span>') +
+        kv(bt('주문', 'Order'), a.no ? esc(a.no) + ((a.invs || []).length ? ' · 🧾 ' + esc(a.invs.join(', ')) : '') : '<span class="muted">' + bt('주문 없음 (계정 출고)', 'No order (account shipment)') + '</span>') +
+        kv(bt('고객 / 매장', 'Customer / store'), custHtml(a)) +
+        kv(bt('영업 담당자', 'Sales rep'), esc(smName(a.sm)) || '—') +
+        kv(bt('전화', 'Phone'), tel ? '<a href="tel:' + esc(String(tel).replace(/[^0-9+]/g, '')) + '">' + esc(tel) + '</a>' : '—') +
+        '<div style="grid-column:1/-1"><small class="muted">' + bt('주소', 'Address') + '</small><div>' + (addr.map(esc).join('<br>') || '—') + '</div></div>' +
+        kv(bt('중량', 'Weight'), lb(w) || '—') +
+        kv(bt('청구 중량', 'Billed weight'), lb(bw || w) || '—') +
+        kv(bt('치수 (in)', 'Dimensions (in)'), B.map(x => '<span class="dimchip"><i>' + (x.box || 1) + '</i>' + esc(x.dims || '—') + ' <span class="muted">' + lb(x.w) + '</span></span>').join(' ')) +
+        kv(bt('박스', 'Boxes'), String(s.n)) +
+        kv(bt('담당자', 'Shipped by'), by ? esc(by) : a.src === 'ups' ? bt('다른 프로그램 (UPS 기록)', 'another program (UPS record)') : a.src === 'qv' ? bt('다른 프로그램 출고', 'shipped outside the app') : '—') +
+        kv(bt('상태', 'Status'), shpBadge(s) + ' <span class="muted">' + esc(stKo[1]) + '</span>') +
       '</div>' +
       (err ? '<div class="alert a-red">' + esc(err) + '</div>' : '') +
+      '<div class="shp2"><div><h3>' + bi('추적 타임라인', 'Tracking timeline') + '</h3>' + (ev.length ? ev.slice(0, more ? ev.length : 5).map(evHtml).join('') + (ev.length > 5 ? '<button class="b-ghost b-sm" id="shMore">' + (more ? bt('접기', 'Show less') : bt('이벤트 ' + (ev.length - 5) + '개 더 보기', 'Show ' + (ev.length - 5) + ' more')) + '</button>' : '') : '<div class="muted">' + bt('아직 스캔 기록이 없습니다 — 🔄 로 UPS 에 지금 물어보세요', 'No scans yet — tap 🔄 to ask UPS now') + '</div>') + '</div>' +
+      '<div><h3>' + bi('비용 요약', 'Cost summary') + '</h3><div class="costbox">' + (Number(a.list) ? '<div><span>' + bt('UPS 견적 (공시)', 'UPS list rate') + '</span><b>' + money(a.list) + '</b></div>' : '') + '<div class="neg"><span>' + bt('협상 요금', 'Negotiated rate') + '</span><b>' + (s.cost ? money(s.cost) : '—') + '</b></div>' + (saved ? '<div><span>' + bt('절감액', 'Savings') + '</span><b>−' + money(saved) + '</b></div>' : '') + '<div class="tot"><span>' + bt('합계', 'Total') + '</span><b>' + (s.cost ? money(s.cost) : '—') + '</b></div></div>' +
+      (a.orderId ? '<h3 style="margin-top:10px">' + bi('라벨', 'Label') + '</h3>' + (labels === null ? '<button class="b-ghost b-sm" id="shLbl">👁 ' + bt('라벨 보기', 'View label') + '</button>' : labels.length ? labels.map(l => '<a href="data:image/gif;base64,' + l.img + '" target="_blank" rel="noopener"><img src="data:image/gif;base64,' + l.img + '" alt="' + esc(l.trk) + '" style="width:100%;max-width:260px;border:1px solid var(--line);border-radius:8px"></a>').join('') : '<div class="muted">' + bt('저장된 라벨이 없습니다', 'No label saved') + '</div>') : '') + '</div></div>' +
       '<h3 style="margin:10px 0 4px">' + bi('박스', 'Boxes') + ' ' + B.length + '</h3>' +
       B.map(x => '<div class="shpbox"><div class="top"><div><span class="trk">📦 ' + (x.box || 1) + '/' + (x.boxes || B.length) + ' · ' + esc(x.trk) + '</span><div style="margin-top:3px">' + stBadge(x) + (x.receivedBy ? ' <span class="muted" style="font-size:12px">' + esc(x.receivedBy) + '</span>' : '') + '</div><div class="muted" style="font-size:12px;margin-top:2px">' + [lb(x.w), x.dims ? esc(x.dims) + '"' : '', (x.invs || []).length ? '🧾 ' + esc(x.invs.join(', ')) : ''].filter(Boolean).join(' · ') + (x.trkAt ? ' · ' + bt('조회', 'checked') + ' ' + esc(String(x.trkAt).substring(5, 16).replace('T', ' ')) : '') + '</div></div>' +
         '<div style="display:flex;flex-direction:column;gap:4px"><button class="b-ghost b-sm" data-trk="' + esc(x.trk) + '">📍 ' + bt('기록', 'History') + '</button><a class="b-ghost b-sm lnk" href="' + upsUrl(x.trk) + '" target="_blank" rel="noopener">UPS.com</a></div></div></div>').join('') +
       '<div class="btns" style="flex-wrap:wrap;margin-top:8px"><button class="b-blue" id="shGo"' + (busyQ || s.st === 'void' ? ' disabled' : '') + '>' + (busyQ ? '⏳ ' + bt('UPS 에 묻는 중… (최대 1분)', 'Asking UPS… (up to 1 min)') : '🔄 ' + bi('UPS 에서 지금 조회', 'Track now with UPS')) + '</button>' + (a.acct ? '<button class="b-ghost" id="shStore">🏬 ' + bi('가게 기록', 'Store history') + '</button>' : '') + '</div>';
     $('shX').onclick = closeModal;
+    $('shCopy').onclick = () => { try { navigator.clipboard.writeText(B.map(x => x.trk).join(' ')); toast(bt('운송장 번호를 복사했습니다', 'Tracking number copied')); } catch (e) {} };
+    if ($('shMore')) $('shMore').onclick = () => { more = !more; paint(); };
+    if ($('shLbl')) $('shLbl').onclick = async () => { try { const q = await S.DB.get('shipq', a.orderId); labels = (q && q.labels || []).filter(l => l.img); } catch (e) { labels = []; } paint(); };
     $('mbox').querySelectorAll('[data-trk]').forEach(b => b.onclick = () => trackModal(b.dataset.trk, B.find(x => x.trk === b.dataset.trk), () => { openModal(''); paint(); }));
     if ($('shStore')) $('shStore').onclick = () => { closeModal(); openStore(a.acct); };
     $('shGo').onclick = async () => {

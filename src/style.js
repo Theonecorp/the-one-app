@@ -454,5 +454,9 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 .shpsum{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}.shpsum>div>small{display:block;font-size:11px;letter-spacing:.02em}.shpsum>div>div{font-size:13.5px}
 @media (max-width:480px){.shpsum{grid-template-columns:1fr}}
 .shptbl td.mono,.shplist .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.shphd{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin:8px 0}.shphd .svc{background:#3b2a06;color:#f5b400;font-weight:900;font-size:13px;border-radius:10px;padding:10px 8px;letter-spacing:.04em}
+.dimchip{display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:999px;padding:2px 8px 2px 3px;font-size:12.5px;margin:1px 0}.dimchip i{font-style:normal;background:#0f172a;color:#fff;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.shp2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}.shp2 h3{margin:0 0 6px;font-size:14px}@media (max-width:640px){.shp2{grid-template-columns:1fr}}
+.costbox{border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.5px}.costbox>div{display:flex;justify-content:space-between;padding:7px 10px;border-bottom:1px solid #eef2f7}.costbox>div:last-child{border-bottom:0}.costbox .neg{background:#ecfdf5}.costbox .neg b{color:#15803d}.costbox .tot{background:#f8fafc;font-weight:800}
 .shptbl th,.shptbl td{padding:7px 7px}.shptbl td{max-width:220px}.shptbl tr.tap{cursor:pointer}.shptbl tr.tap:hover td{background:#f8fafc}
 `;
