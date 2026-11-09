@@ -601,6 +601,13 @@ export function addToWip(codes) {
   if (w === O) { reindex(); flushWip(); } else try { localStorage.setItem(wipKey(), JSON.stringify(w)); } catch (e) {}
   return n;
 }
+/** 🛒 이 가게로 새 주문 (크레딧 화면의 "교환 물건 주문") — 작성 중 주문이 있으면 물어보고, 가게 · 할인 · 세일즈맨을 채워 주문 화면으로 */
+export function startOrderFor(acct) {
+  const a = S.accounts && S.accounts.byCode && S.accounts.byCode[acct]; if (!a) return Router.go('order', 'new');
+  const w = readWip(); if (w && w.lines.length && w.acct !== a.acct && !confirm(bt('작성 중인 주문이 있습니다. 버리고 이 가게로 새로 시작할까요?', 'You have an order in progress. Discard it and start one for this store?'))) return;
+  O = { id: '', no: '', st: 'draft', sm: isStaff() ? (a.sm ? String(a.sm).toUpperCase() : '') : mySm(), acct: a.acct, store: a.store, memo: '', req: {}, disc: acctDisc(a), lines: w && w.acct === a.acct ? w.lines : [], d: today(), view: 'add' };
+  flushWip(); Router.go('order', 'new');
+}
 function flushWip() { if (!O) return; try { localStorage.setItem(wipKey(), JSON.stringify(O)); } catch (e) {} }
 const saveWip = debounce(flushWip, 400);
 if (typeof window !== 'undefined') { window.addEventListener('pagehide', flushWip); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushWip(); }); }
@@ -632,7 +639,7 @@ function paintEditor() {
   /* 🛒 아이템 담는 동안은 가게 칸을 한 줄로 접음(이름 · 코드 · 미수금 · 📋 · 바꾸기) — 위 고정 칸이 낮아져 목록이 더 보임. 주문 확인 · 메모에서는 펼침 */
   const slim = O.view === 'add' && !!O.store;
   let h = '<div class="ehead' + (slim ? ' slim' : '') + '" id="eHead"><div class="etop"><div class="erow">';
-  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + (slim ? '' : ' · ' + [acc.city, acc.state].filter(Boolean).join(', ')) : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small><small id="eStoreHist"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="' + esc(bt('이 가게 기록 — 인보이스 · 주문 · 수금 · 노트', 'Store history — invoices · orders · payments · notes')) + '">📋 ' + bt('기록', 'History') + '</button>' : '') + '<button class="b-ghost b-sm" id="eStoreX">' + (slim ? '🔁' : bi('바꾸기', 'Change')) + '</button></div>';
+  if (O.store) h += '<div class="estore"><div class="es1"><b>' + (O.id ? '✏️ ' : '') + esc(O.store) + '</b><small>' + esc(acc ? acc.acct + (slim ? '' : ' · ' + [acc.city, acc.state].filter(Boolean).join(', ')) : (O.acct || '계정 없음')) + ' <span id="eStoreBal"></span></small><small id="eStoreHist"></small></div>' + (O.acct ? '<button class="b-ghost b-sm" id="eStoreI" title="' + esc(bt('이 가게 기록 — 인보이스 · 주문 · 수금 · 노트', 'Store history — invoices · orders · payments · notes')) + '">📋 ' + bt('기록', 'History') + '</button>' + (O.id ? '' : '<button class="b-ghost b-sm" id="eStoreCr" title="' + esc(bt('이 가게에 크레딧 · 리턴 — 주문은 그대로 남음', 'Credit / return for this store — the order stays')) + '">↩ ' + bt('크레딧', 'Credit') + '</button>') : '') + '<button class="b-ghost b-sm" id="eStoreX">' + (slim ? '🔁' : bi('바꾸기', 'Change')) + '</button></div>';
   else h += '<div style="flex:1;min-width:0;position:relative"><input id="eStoreQ" placeholder="🏬 가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div></div>';
   h += '</div><div class="etabs"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">🛒 ' + bi('주문', 'Order') + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + bi('주문 확인', 'Review') + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">📝 ' + bi('메모', 'Memo') + '<span id="eMdot">' + (O.memo || reqCount(O.req) ? ' •' : '') + '</span></button></div></div><div id="eTop"></div></div>';
   /* 고정 칸 밖: 수정 중 표시 · 메모 · 고정 노트 · (담당자) 세일즈맨 */
@@ -653,7 +660,8 @@ function paintEditor() {
   $('page').innerHTML = h;
   eHeadH();
   if ($('eStoreX')) $('eStoreX').onclick = async () => { if (O.lines.length && !(await confirmBox('가게를 바꿀까요? 담은 아이템 ' + O.lines.length + '줄은 그대로 두고 가게만 바뀝니다 (할인은 새 가게 기본으로). / Change store?', '바꾸기'))) return; O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
-  if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct, null, 'invh');   // 📋 기록 — 인보이스 기록 탭부터 (담는 동안은 기록 줄이 숨어 이 버튼이 그 역할)
+  if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct, null, 'invh');
+  if ($('eStoreCr')) $('eStoreCr').onclick = () => { flushWip(); Router.go('credit', 'new:' + encodeURIComponent(O.acct)); };   /* ↩ 같은 가게로 크레딧 — 작성 중 주문은 폰에 남아 돌아오면 이어서 */   // 📋 기록 — 인보이스 기록 탭부터 (담는 동안은 기록 줄이 숨어 이 버튼이 그 역할)
   if (O.acct) { loadInfo(O.acct); Notes.fillPinned('eStoreNotes', O.acct); }
   if ($('eStoreQ')) {
     const q = $('eStoreQ'), box = $('eStoreHits');

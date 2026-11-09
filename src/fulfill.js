@@ -6,6 +6,7 @@
  *    ④ 백오더는 매니저가 골라서 새 주문으로 만들거나 닫음
  *  backorders/{orderId} = { id, order, acct, store, sm, d, lines:[{c,d,q,p,lp,t}], qty, amt, st:'open'|'used'|'closed', newOrders:[], createdAt }
  * ============================================================ */
+import { creditType as CRT } from './credit.js';
 import { timelineHtml } from './flow.js';
 import { reqText, reqCount } from './reqs.js';
 import { narrow, crow, cgrp } from './ui.js';
@@ -635,7 +636,7 @@ export async function invBrowser(LF, head) {
     (accs.length > 1 && !acc ? '<div class="chips">' + accs.map(a => '<button data-iqa="' + esc(a.acct) + '">' + esc(a.acct) + ' ' + esc(a.store) + '</button>').join('') + '</div>' : '') +
     (digitInv.length > 1 ? '<div class="chips"><span class="muted" style="align-self:center">📄 ' + bt('이 번호의 인보이스', 'Invoices with this number') + ':</span>' + digitInv.map(c => '<button data-iqa="' + esc(c.no) + '">' + esc(c.no) + ' · ' + esc(c.inv.store || '') + '</button>').join('') + '</div>' : '') +
     (acc || byAcct ? '' : '<div class="chips">' + PERIODS.filter(c => c[0] !== 'custom').map(c => '<button class="' + (LF.ip === c[0] ? 'on' : '') + '" data-ip="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (LF.ip === 'custom' ? 'on' : '') + '" id="iCal">📅 ' + esc(md(from) + (from !== to ? ' ~ ' + md(to) : '')) + '</button></div>') +
-    '<div class="chips" style="margin-top:4px"><button class="' + (LF.it ? '' : 'on') + '" data-it="">' + bi('종류 전체', 'All types') + '</button>' + types.map(t => '<button class="' + (LF.it === t.c ? 'on' : '') + '" data-it="' + esc(t.c) + '">' + esc(t.c) + ' ' + esc(t.n) + '</button>').join('') + '<button class="' + (LF.ivoid ? 'on' : '') + '" data-ivoid="1">VOID ' + bi('포함', 'incl.') + '</button></div></div>';
+    '<div class="chips" style="margin-top:4px"><button class="' + (LF.it ? '' : 'on') + '" data-it="">' + bi('종류 전체', 'All types') + '</button>' + types.map(t => '<button class="' + (LF.it === t.c ? 'on' : '') + '" data-it="' + esc(t.c) + '">' + esc(t.c) + ' ' + esc(t.n) + '</button>').join('') + (types.some(t => t.c === CRT().c) ? '' : '<button class="' + (LF.it === CRT().c ? 'on' : '') + '" data-it="' + esc(CRT().c) + '">↩ ' + esc(CRT().c) + ' ' + bi('크레딧', 'Credits') + '</button>') + '<button class="' + (LF.ivoid ? 'on' : '') + '" data-ivoid="1">VOID ' + bi('포함', 'incl.') + '</button></div></div>';
   $('page').innerHTML = head + top + '<div id="iList"><div class="load">읽는 중…</div></div>';
   bind(); fillStrip();
   let rows = [], err = '';
@@ -781,6 +782,7 @@ export async function openInvoice(no) {
   const x = await getInvoice(S, no);
   if (!x) { $('page').innerHTML = '<div class="card"><div class="none">인보이스를 찾지 못했습니다</div></div>'; return; }
   if (x.src === 'legacy' && !(x.lines || []).length) return legacyInvoice(x);
+  if (x.src === 'credit') return Router.go('credit', encodeURIComponent(x.no));   /* ↩ 크레딧 메모는 크레딧 화면(확인 · VOID · 할인 백 · 인쇄)으로 */
   $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between"><div><h2 style="margin:0">📄 ' + esc(x.no) + (x.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(x.store) + '</div><div class="muted">' + esc(x.sm) + ' · ' + esc(x.d) + ' · 주문 <a href="#/order/' + esc(x.orderId) + '">' + esc(x.order) + '</a></div></div><button class="b-ghost b-sm" id="iBack">‹ ' + bi('목록', 'List') + '</button></div>' +
     '<div class="kpi"><div><b>' + x.qty + '</b><span>수량</span></div><div><b>' + money(x.sub) + '</b><span>금액</span></div><div><b>' + (x.disc ? x.disc + '%' : '—') + '</b><span>할인</span></div><div><b>' + money(x.total) + '</b><span>합계</span></div></div>' +
     '<div class="btns"><button class="b-blue" id="iPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' + (can('void') && x.st !== 'x' ? '<button class="b-ghost" id="iVoid" style="color:#991b1b">🚫 VOID</button>' : '') + '</div>' + (x.st === 'x' ? '<div class="alert a-red">🚫 VOID · ' + esc(String(x.voidAt || '').substring(0, 10)) + ' · ' + esc(String(x.voidBy || '').split('@')[0]) + (x.voidReason ? ' — ' + esc(x.voidReason) : '') + '</div>' : '') + '</div>' +

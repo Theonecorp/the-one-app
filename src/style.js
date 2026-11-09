@@ -86,7 +86,13 @@ nav button.on{color:var(--blue)}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}#toast.bad{background:var(--red)}#toast.good{background:var(--green)}#toast.warn{background:#b45309}
 #modal{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:90;display:none;align-items:flex-end;justify-content:center}
 #modal.on{display:flex}
-#modal .bwrap{position:relative;width:100%;max-width:min(600px,100%);display:flex;flex-direction:column;max-height:100%}#modal .bwrap.wide{max-width:min(820px,100%)}
+#modal .bwrap{position:relative;width:100%;max-width:min(600px,100%);display:flex;flex-direction:column;max-height:100%}#modal .bwrap.wide{max-width:min(820px,100%)}#modal .bwrap.ssw{max-width:min(1240px,100%)}.iphd .b-ghost{width:auto;padding:3px 10px;font-size:12px;margin-left:6px}.ipsub .b-ghost{width:auto;margin-top:6px}
+.ipw{display:grid;grid-template-columns:1fr;gap:10px}.ipw.wide{grid-template-columns:1.35fr 1fr}.ipl{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px}.ipr{display:flex;flex-direction:column;gap:10px;min-width:0}
+.ipitems,.ippays{border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:22vh}.ipw:not(.wide) .ippays{max-height:34vh}.ipw.wide .ippays{max-height:24vh}.ipw.wide .ipitems{max-height:22vh;min-height:120px}
+.iphd{padding:6px 10px;background:#f8fafc;border-bottom:1px solid var(--line);font-size:13px;position:sticky;top:0;z-index:1}
+.iptbl{width:100%;border-collapse:collapse;font-size:12.5px}.iptbl th{position:sticky;top:0;background:#eef2f7;color:#334155;font-weight:800;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;z-index:1}.ippays .iptbl th,.ipitems .iptbl th{top:31px}.iptbl td{padding:6px 8px;border-bottom:1px solid #eef2f7;vertical-align:top}.iptbl .r{text-align:right;white-space:nowrap}
+.iptbl tr.tap:hover td{background:#f1f5f9}.iptbl tr.on td{background:#dbeafe}.iptbl tr.late td{background:#fef2f2}.iptbl tr.on.late td{background:#fbcfe8}.iptbl td.warn{color:#b91c1c;font-weight:800}.iptbl td.ok{color:#15803d;font-weight:800}.ipmemo{color:#475569;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ipsub td{background:#f8fafc;padding:4px 6px 8px}.ipm2{display:none}.ipsub .iptbl{font-size:12px}
+@media (max-width:640px){.ipinv th:nth-child(5),.ipinv td.ipmemo{display:none}.ipm2{display:block;color:#64748b;font-size:11px;font-weight:600;white-space:normal}.iptbl{font-size:12px}.iptbl td,.iptbl th{padding:5px 6px}}
 #modal .xin{display:none!important}   /* 창 안의 옛 ✕ — 모서리 ✕ 가 있으니 숨김 */
 #modal .mclose{position:absolute;top:-16px;right:10px;width:38px;height:38px;border-radius:50%;background:#fff;color:#0f172a;border:1.5px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.22);font-size:17px;font-weight:800;z-index:3;display:flex;align-items:center;justify-content:center}
 /* 🔢 숫자 패드 */
