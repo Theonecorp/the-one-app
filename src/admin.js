@@ -874,14 +874,15 @@ async function catalogAdmin() {
     '<div class="card" style="border:2px solid #fcd34d"><h2>🐝 SmartBee ALL ITEMS 로 맞추기 <span class="en">Sync from SmartBee export</span></h2>' +
     '<div class="muted">SmartBee 에서 <b>ALL ITEMS</b>(CATEGORY · ITEM 3 · DESCRIPTION · PRICE · BARCODE)를 엑셀로 뽑아 <b>그대로</b> 올리세요 — Item Master 모양으로 고칠 필요 없습니다. 새 코드는 비슷한 코드 · 이름으로 분류를 추정해 추가하고(미리보기에서 고쳐 쓸 수 있음), 이미 있는 코드는 <b>이름 · 가격 · 바코드가 바뀐 것만</b> 고칩니다. 앱에서 정한 분류 · 숨김 · 창고 위치 · 사진 · SRP 는 그대로 둡니다. 관리 → 📥 가져오기의 "파일 올리기"에 넣어도 같은 결과입니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="sbFile" accept=".xlsx,.xls,.csv"></div><div id="sbOut"></div></div>' +
-    '<div class="card"><h2>📦 Item Master 엑셀 — 전체 바꾸기</h2><div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽습니다. Hide 에 x 표시된 것은 <b>숨김</b>으로 올립니다. <b>목록 전체가 파일대로 바뀝니다</b> — 앱에서 고친 숨김 · 위치 · 분류가 시트에 없으면 사라지니, 새 아이템만 넣을 때는 위 🐝 SmartBee 파일을 쓰세요.</div>' +
-    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' +
+    /* 🔒 전체 바꾸기는 관리자만 — 2026-11-09 디자인 담당이 옛 Item Master 파일로 올려 관리자 분류 작업 · 세트 코드 · 새 아이템이 통째로 되돌아간 일. 담당자는 SmartBee 맞추기(분류 · 숨김 · 위치 유지) · 아이템 화면만 */
+    (S.role === 'admin' ? '<div class="card"><h2>📦 Item Master 엑셀 — 전체 바꾸기</h2><div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽습니다. Hide 에 x 표시된 것은 <b>숨김</b>으로 올립니다. <b>목록 전체가 파일대로 바뀝니다</b> — 앱에서 고친 숨김 · 위치 · 분류가 시트에 없으면 사라지니, 새 아이템만 넣을 때는 위 🐝 SmartBee 파일을 쓰세요.</div>' +
+    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' : '<div class="card"><h2>📦 Item Master 엑셀 — 전체 바꾸기</h2><div class="alert a-amb">🔒 ' + bt('관리자만 올릴 수 있습니다 — 파일의 아이템 · 분류로 전체가 바뀌어 다른 사람의 작업이 사라질 수 있습니다. 새 아이템 · 이름 · 가격은 위 SmartBee 맞추기나 아이템 화면으로.', 'Admin only — this replaces every item and category and can wipe other people\'s work. Use the SmartBee sync or the Items screen instead.') + '</div></div>') +
     '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
     photoCard();
   setAdmin();
   document.querySelectorAll('#adminBody [data-cg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.cg.split('/'); if (a) Router.go(r, a); else Router.go(r); });   /* 📋 일괄 등록 · 삭제 */
   $('sbFile').onchange = () => { const f = $('sbFile').files[0]; if (f) smartbeeFile(f, $('sbOut'), catalogAdmin); };
-  $('catFile').onchange = () => { const f = $('catFile').files[0]; if (f) itemMasterFile(f, $('catOut'), catalogAdmin); };
+  if ($('catFile')) $('catFile').onchange = () => { const f = $('catFile').files[0]; if (f) itemMasterFile(f, $('catOut'), catalogAdmin); };
   $('phDrive').onclick = async () => {
     const on = !S.settings.photoDrive;
     busy(true);
@@ -914,6 +915,7 @@ async function itemMasterFile(file, out, after) {
       (lost || locs ? '<div class="alert a-amb">⚠️ 전체 바꾸기입니다 — ' + (lost ? '지금 목록에 있는데 파일에 없는 아이템 <b>' + lost.toLocaleString() + '개</b>가 빠지고, ' : '') + (locs ? '📍 창고 위치가 있는 아이템 ' + locs.toLocaleString() + '개는 파일의 Location 열이 없으면 위치가 비며, ' : '') + '앱에서 바꾼 숨김 · 분류도 파일대로 됩니다. 새 아이템만 넣으려면 🐝 SmartBee ALL ITEMS 로 올리세요.</div>' : '') +
       '<button class="b-blue" id="catGo" style="margin-top:10px">이대로 전체 바꾸기</button>';
     $('catGo').onclick = async () => {
+      if (S.role !== 'admin') return toast('관리자만 올릴 수 있습니다', 'bad');
       if (lost && !(await confirmBox(lost.toLocaleString() + '개 아이템이 목록에서 빠집니다. 그래도 파일대로 전체를 바꿀까요?', '전체 바꾸기'))) return;
       busy(true);
       try { const r = await publishCatalog(S, p); await loadCatalog(S, true); toast('아이템 ' + p.rows.length + '개 올림 (' + r.chunks + '묶음)', 'good'); out.innerHTML = '<div class="alert a-grn">올렸습니다 — ' + p.rows.length.toLocaleString() + '개</div>'; (after || catalogAdmin)(); }

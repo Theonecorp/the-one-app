@@ -212,6 +212,7 @@
 "관리자":["Admin","Administrador"],
 "관리자 · 매니저만 보는 화면입니다":["Managers only","Somente gerentes"],
 "관리자 허락으로 조회 중":["Viewing with admin approval","Visualizando com aprovação do admin"],
+"관리자만 올릴 수 있습니다 — 파일의 아이템 · 분류로 전체가 바뀌어 다른 사람의 작업이 사라질 수 있습니다. 새 아이템 · 이름 · 가격은 위 SmartBee 맞추기나 아이템 화면으로.":["Admin only — this replaces every item and category and can wipe other people's work. Use the SmartBee sync or the Items screen instead.","Somente administrador — substitui todos os itens e categorias e pode apagar o trabalho de outras pessoas. Use a sincronização SmartBee ou a tela de itens."],
 "구글 지도":["Google Maps","Google Maps"],
 "구글 챗 스페이스 링크 (주문 문의 — \"챗 열기\" 버튼)":["Google Chat space link (order questions)","Link do espaço Google Chat (dúvidas de pedido)"],
 "구글 챗 스페이스로 보냅니다 (5분 안). 담당 세일즈맨 · 직원들이 그 스페이스에서 봅니다.":["Posts to the Google Chat space (within 5 min).","Publica no espaço do Google Chat (em até 5 min)."],
