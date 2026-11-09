@@ -12,7 +12,7 @@
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp, footBtns } from './ui.js';
 import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel } from './reqs.js';
 import { searchAccounts, accountLabel } from './accounts.js';
-import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName } from './catalog.js';
+import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName, prefixRank } from './catalog.js';
 import { jobOf, can } from './main.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
@@ -770,6 +770,18 @@ function setPre(n) { PRE = n; try { localStorage.setItem('theone.order.pre', Str
 function tapQty(c) { const cur = IDX[c] ? IDX[c].q : 0; return PRE > 0 ? (cur ? cur + PRE : PRE) : cur + 1; }
 /* 카드 · 줄을 눌러 담기 — 같은 아이템을 프리셋으로 두 번 · 세 번 누르면 tap 이 2 · 3 → 주황색 + ×2 로 표시 (실수로 여러 번 누른 것을 알아채게).
  * 수량을 직접 넣거나(숫자 창 · 빠른 수량 버튼) ＋/− 로 고치면 일부러 정한 것으로 보고 표시를 지움 */
+/* 🎁 디스플레이 · 선물 · 소모품(설정 flexCats · 기본 'DISPLAYS, GIFT & SUPPLY' 1단계) 줄은 인보이스 종류를 따로 갖지 않고 주문의 나머지 줄을 따라감 —
+ *   주얼리 주문이면 A 인보이스에, 그 외 제품 주문이면 P 인보이스에 같이 찍힘. 나머지 줄이 없으면 기본 종류(A). (v0.8.174) */
+export function flexCats(S) { const v = S && S.settings && S.settings.flexCats; return (Array.isArray(v) ? v : typeof v === 'string' && v.trim() ? v.split(',') : ['DISPLAYS, GIFT & SUPPLY']).map(x => cleanName(String(x).trim()).toUpperCase()).filter(Boolean); }
+export function isFlexItem(S, it) { return !!it && flexCats(S).includes(cleanName(it.l1 || '').toUpperCase()); }
+export function flexTypes(lines) {
+  const C = catalog(); if (!C) return lines;
+  const flex = lines.filter(l => isFlexItem(S, C.byCode[l.c])); if (!flex.length) return lines;
+  const cnt = {}; lines.forEach(l => { if (!isFlexItem(S, C.byCode[l.c])) cnt[l.t || DT()] = (cnt[l.t || DT()] || 0) + 1; });
+  const best = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a] || (a === DT() ? -1 : b === DT() ? 1 : a.localeCompare(b)))[0] || DT();
+  flex.forEach(l => { l.t = best; });
+  return lines;
+}
 function tapAdd(c) { const had = IDX[c] ? IDX[c].q : 0, n = setQty(c, tapQty(c)), l = IDX[c]; if (l) { if (PRE > 0 && had) l.tap = (l.tap || 1) + 1; else delete l.tap; saveWip(); } return n; }
 function sure(c) { const l = IDX[c]; if (l && l.tap) { delete l.tap; saveWip(); } }
 const multi = l => !!(l && l.tap >= 2);
@@ -803,7 +815,8 @@ function paintAdd() {
   const newN = O.path.length ? 0 : newItems([], catStart(S), 30).length;   /* 🆕 새로 나온 — 1단계(전체)에서만 */
   const newTile = newN ? '<button class="newt' + (O.nw ? ' on' : '') + '" data-new="1"><b>🆕 새로 나온 <span class="en">New</span></b><span>' + bt('최근 30일에 등록', 'added in the last 30 days') + ' · ' + newN + '</span></button>' : '';
   const popTile = '';   /* ✨ 자주 나가는 묶음은 v0.8.174 에서 뺌 (모든 단계에 보여 번거로움) */
-  const kids = node.kids.length || popTile || newTile ? '<div class="cats">' + newTile + popTile + node.kids.map(k => '<button data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
+  const kindCls = n => { const r = prefixRank(n); return r <= 1 ? 'k-set' : r === 2 ? 'k-jew' : r === 3 ? 'k-oth' : 'k-last'; };   /* 1단계 종류별 타일 색 (안쪽 단계는 1단계 색을 따라감) */
+  const kids = node.kids.length || popTile || newTile ? '<div class="cats">' + newTile + popTile + node.kids.map(k => '<button class="' + (O.path.length ? kindCls(O.path[0]) : kindCls(k.name)) + '" data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
   /* 검색 + 분류 경로는 카드 밖 sticky — 아래로 아무리 내려가도 맨 위에 붙어 있어 바로 상위로 돌아감 */
   $('eTop').innerHTML = '<div class="ordtop"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
     '<button type="button" class="b-ghost ib" id="eQX" title="' + esc(bt('검색어 지우기', 'Clear search')) + '" style="' + (O.q ? '' : 'display:none') + '">✕</button><button class="b-ghost ib" id="eVM" title="보기 바꾸기">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost ib" id="eShow" title="손님 보기">🖼</button></div>' + crumbs + '</div>';
@@ -1101,7 +1114,7 @@ async function saveOrder(st) {
   const base = { id: O.id, no: O.no, d: O.d || today(), ym: ym(O.d || today()), sm: O.sm, acct: O.acct || '', store: O.store, st, memo: O.memo || '', req: reqClean(O.req), updatedAt: now,
     createdBy: O.createdBy || S.user.email, createdAt: O.createdAt || now, catVer: catalog().ver || '' };
   if (st === 'sent') base.sentAt = O.sentAt || now;
-  const lines = O.lines.filter(l => l.q > 0).map(l => { const x = { c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }; if (l.pq != null) x.pq = l.pq; if (l.note) x.note = l.note; if (l.kit) x.kit = l.kit; return x; });
+  const lines = flexTypes(O.lines.filter(l => l.q > 0).map(l => { const x = { c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }; if (l.pq != null) x.pq = l.pq; if (l.note) x.note = l.note; if (l.kit) x.kit = l.kit; return x; }));
   /* 매니저가 이미 처리 중인 주문 — 상태 · 픽킹 기록은 그대로 두고 바로 저장 */
   if (isStaff() && O.st !== 'draft' && O.st !== 'sent') {
     busy(true);
