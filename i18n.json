@@ -1566,6 +1566,7 @@
 "할당":["Assign","Atribuir"],
 "할당할 직원이 없습니다 — 관리 → 사용자에서 일을 \"창고 직원\" 으로 등록하세요":["No pickers — register users with the Warehouse Staff job",""],
 "할인":["disc","Desconto"],
+"할인 % 는 종류마다 바로 고칠 수 있습니다 — 이 주문의 인보이스에만 적용되고 가게 기본 할인은 그대로입니다":["Discount % can be changed per type here — applies to this order only; the store default stays","O desconto % pode ser alterado por tipo aqui — vale só para este pedido; o padrão da loja continua"],
 "할인 없음":["no discount","sem desconto"],
 "합계":["Total","Total"],
 "합치기":["Merge","Mesclar"],

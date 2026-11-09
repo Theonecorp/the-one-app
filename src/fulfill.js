@@ -11,7 +11,7 @@ import { reqText, reqCount } from './reqs.js';
 import { narrow, crow, cgrp } from './ui.js';
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts, itabs, footBtns } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
-import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort } from './catalog.js';
+import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort, prefixRank, cleanName } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, monthsOf, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip, sendStamp } from './orders.js';
@@ -137,16 +137,18 @@ export function manage(o, lines) {
   const paint = () => {
     const q = $('mFind').value.trim().toUpperCase();
     let rows = lines.map((l, i) => Object.assign({ _i: i }, l));
-    if (picking) rows.sort(pickSort);   // 픽킹 중에는 창고 통로 순
+    if (picking) rows.sort(pickSortGrouped);   // 픽킹 중에는 종류 → 분류 → 창고 통로 순 (인쇄와 같게)
     if (q) rows = rows.filter(l => hasWords(l.c + ' ' + l.d, q));
     if (MF === 'bo') rows = rows.filter(l => (l.pq || 0) < l.q);
     if (MF === 'u') rows = rows.filter(l => !l.ok);
     if (MF === 'p') rows = rows.filter(l => l.lp != null && Math.abs(l.lp - l.p) > 0.0001);
+    let lastG = null;
     $('mLines').innerHTML = '<table class="pk"><tr><th>코드</th><th class="r">주문</th>' + (picking ? '<th class="r">픽</th>' : '') + '<th class="r">가격</th><th class="r">금액</th></tr>' + rows.slice(0, 2500).map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001, bo = picking && l.ok && (l.pq || 0) < l.q;
+      let sep = ''; if (picking && !q) { const g = pickGroup(l); if (g.key !== lastG) { lastG = g.key; sep = '<tr class="pkg"><td colspan="5"><span class="tag t-g">' + esc(g.t) + '</span> ' + esc(catLabel(g)) + '</td></tr>'; } }
       const qq = picking ? (l.pq || 0) : l.q;
       const loc = picking ? locOf(l.c) : '';
-      return '<tr class="' + (bo ? 'bo' : '') + (picking && l.ok && !bo ? ' okd' : '') + '"><td>' + (loc ? '<span class="loc">📍' + esc(loc) + '</span> ' : '') + '<b>' + esc(l.c) + '</b> ' + (office ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
+      return sep + '<tr class="' + (bo ? 'bo' : '') + (picking && l.ok && !bo ? ' okd' : '') + '"><td>' + (loc ? '<span class="loc">📍' + esc(loc) + '</span> ' : '') + '<b>' + esc(l.c) + '</b> ' + (office ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
         '<div class="muted" style="font-size:11.5px">' + esc(l.d) + '</div>' + (l.kit ? '<div class="muted" style="font-size:11px">🧩 ' + l.kit.map(k => esc(k.c) + '×' + k.q).join(', ') + (picking ? ' <button class="b-ghost b-sm" data-brk="' + l._i + '" style="padding:2px 7px">세트 풀기</button>' : '') + '</div>' : '') + (picking ? '<input class="sm" data-note="' + l._i + '" value="' + esc(l.note || '') + '" placeholder="메모" style="margin-top:3px;padding:4px 7px;font-size:12px">' : (l.note ? '<div class="muted">📝 ' + esc(l.note) + '</div>' : '')) + '</td>' +
         '<td class="r"><b>' + l.q + '</b></td>' +
         (picking ? '<td class="r pkc">' + pkBtn(l) + '</td>' : '') +
@@ -176,6 +178,7 @@ export function manage(o, lines) {
   };
   let dirty = false;
   sumNow(); paint(); typeBar();
+  if (picking && !catalog()) loadCatalog(S).then(() => { if ($('mLines')) paint(); }).catch(() => {});   // 분류 구분줄(종류 → 분류 순)은 카탈로그가 있어야 — 아직 없으면 읽은 뒤 다시 그림
   $('mFind').oninput = debounce(paint, 150);
   $('mFind').onkeydown = e => { if (e.key !== 'Enter' || !picking) return; e.preventDefault(); const v = $('mFind').value.trim().toUpperCase(); const i = lines.findIndex(l => l.c === v || (catalog() && exactItem(v) && exactItem(v).c === l.c)); if (i < 0) return toast('이 주문에 없는 코드입니다', 'bad'); lines[i].pq = (lines[i].ok ? (lines[i].pq || 0) : 0) + 1; lines[i].ok = true; dirty = true; $('mFind').value = ''; sumNow(); paint(); toast(lines[i].c + ' 픽 ' + lines[i].pq + ' / ' + lines[i].q, 'good'); };
   document.querySelectorAll('[data-mf]').forEach(b => b.onclick = () => { MF = b.dataset.mf; document.querySelectorAll('[data-mf]').forEach(x => x.classList.toggle('on', x === b)); paint(); });
@@ -425,11 +428,22 @@ async function printPicking(o, lines) {
   if (lines.some(l => l.kit)) { try { await loadCatalog(S); } catch (e) {} }
   printOpen(pickingHtml(o, lines));
 }
+/** 픽킹 줄 묶음 키 — [종류 순서, 분류 순위, 분류 1, 분류 2] (v0.8.174: 알파벳 순으로만 찍혀 정신없다는 창고 의견 → 종류 → 분류별로 나눠 찍음) */
+function pickGroup(l) {
+  const C = catalog(), it = C && C.byCode[l.c], T = invTypes(S), ti = T.findIndex(x => x.c === (l.t || DT()));
+  const l1 = it ? (it.l1 || it.g || '') : '', l2 = it ? (it.l2 || '') : '';
+  return { ti: ti < 0 ? 99 : ti, t: l.t || DT(), rank: it ? prefixRank(l1) : 9, l1, l2, key: (l.t || DT()) + '\u0001' + l1 };   // 머리는 분류 1단계마다 (2단계까지 나누면 줄이 너무 많아 장수가 늘어남)
+}
+const COLLP = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+export function pickSortGrouped(a, b) { const A = pickGroup(a), B = pickGroup(b); return (A.ti - B.ti) || (A.rank - B.rank) || COLLP.compare(A.l1, B.l1) || COLLP.compare(A.l2, B.l2) || pickSort(a, b); }
+const catLabel = g => g.l1 ? cleanName(g.l1) : 'NO CATEGORY';
 export function pickingHtml(o, lines) {
   const acc = acctOf(o.acct);
-  const rows = lines.slice().sort(pickSort);   // 📍 통로 · 선반 순 — 위치 없는 것은 맨 뒤 코드 순
-  let lastA = null;
-  const aisleRow = l => { const a = aisleOf(locOf(l.c)) || ''; if (a === lastA) return ''; lastA = a; return '<tr class="pkaisle"><td colspan="8">' + (a ? '📍 AISLE ' + esc(a) : '📍 위치 미지정 · NO LOCATION') + '</td></tr>'; };
+  const rows = lines.slice().sort(pickSortGrouped);   // 종류(A · P …) → 분류(세트 먼저) → 📍 통로 · 선반 → 코드
+  let lastT = null, lastK = null;
+  const typeRow = l => { const g = pickGroup(l); let h = ''; if (g.t !== lastT) { lastT = g.t; lastK = null; const n = rows.filter(x => (x.t || DT()) === g.t); h += '<tr class="pktype"><td colspan="8">' + esc(typeName(g.t).toUpperCase()) + ' — TYPE ' + esc(g.t) + ' · ' + n.length + ' lines · ' + n.reduce((a, x) => a + x.q, 0) + ' pcs</td></tr>'; }
+    if (g.key !== lastK) { lastK = g.key; h += '<tr class="pkcat"><td colspan="8">' + esc(catLabel(g)) + '</td></tr>'; } return h; };
+  const aisleRow = typeRow;
   /* 🖨 한 장에 머리 → 바로 아래 표 (예전엔 머리 칸이 인보이스용 "다음 장으로 넘김" 을 가져가 첫 장에 머리만 나오고 표는 둘째 장부터였음)
    *   표 머리는 장마다 다시 · 줄은 장 사이에서 안 잘림 · 용지는 인보이스 설정(Letter / A4) · 여러 장 묶어 찍으면 주문마다 새 장 */
   const paper = ((invView(S).paper || company(S).paper) === 'a4') ? 'A4' : 'letter';   // 인보이스 인쇄와 같은 용지
@@ -459,13 +473,16 @@ async function confirmInvoice(o, lines) {
   if (!groups.length) return toast('픽킹된 수량이 없습니다 — 주문을 취소하거나 수량을 넣으세요', 'bad');
   const types = invTypes(S);
   openModal('<h2>🧾 인보이스 확정 — ' + esc(o.store) + '</h2><div class="muted">종류별로 인보이스 번호가 하나씩 나옵니다. 확정하면 고칠 수 없습니다 (취소 후 다시).</div>' +
-    '<table style="margin-top:8px"><tr><th>종류</th><th class="r">수량</th><th class="r">금액</th><th class="r">할인</th><th class="r">합계</th></tr>' + groups.map(g => '<tr><td>' + sel('', types.map(t => [t.c, t.c]), g.t, 'class="tsel" data-ivt="' + esc(g.t) + '" title="' + esc(bt('이 묶음 전체를 다른 종류로', 'Move this group to another type')) + '"') + ' ' + esc(typeName(g.t)) + '</td><td class="r">' + g.qty + '</td><td class="r">' + money(g.sub) + '</td><td class="r">' + (g.disc ? g.disc + '%' : '—') + '</td><td class="r"><b>' + money(g.total) + '</b></td></tr>').join('') + '</table>' +
+    '<table style="margin-top:8px"><tr><th>종류</th><th class="r">수량</th><th class="r">금액</th><th class="r">할인</th><th class="r">합계</th></tr>' + groups.map(g => '<tr><td>' + sel('', types.map(t => [t.c, t.c]), g.t, 'class="tsel" data-ivt="' + esc(g.t) + '" title="' + esc(bt('이 묶음 전체를 다른 종류로', 'Move this group to another type')) + '"') + ' ' + esc(typeName(g.t)) + '</td><td class="r">' + g.qty + '</td><td class="r">' + money(g.sub) + '</td><td class="r"><input type="number" inputmode="decimal" min="0" max="100" step="0.5" data-ivd="' + esc(g.t) + '" value="' + (g.disc || 0) + '" style="width:64px;text-align:right;padding:6px 8px;font-weight:800" title="' + esc(bt('이 종류의 할인 % — 이 주문에만', 'Discount % for this type — this order only')) + '">%</td><td class="r"><b>' + money(g.total) + '</b></td></tr>').join('') + '</table>' +
+    '<div class="muted" style="margin-top:4px">🏷 ' + bt('할인 % 는 종류마다 바로 고칠 수 있습니다 — 이 주문의 인보이스에만 적용되고 가게 기본 할인은 그대로입니다', 'Discount % can be changed per type here — applies to this order only; the store default stays') + '</div>' +
     (bo.length ? '<div class="alert a-amb">⏳ 백오더 ' + bo.length + '줄 · ' + bo.reduce((a, l) => a + l.q, 0) + '개 — 백오더 목록에 남겨 두고 나중에 결정합니다</div>' : '') +
     '<div class="fg" style="margin-top:8px"><label>인보이스 메모 (선택)</label><input id="ivMemo" value="' + esc(o.memo || '') + '"></div>' +
     '<div class="btns"><button class="b-ghost" id="ivX">닫기</button><button class="b-green" id="ivOk">확정 · 인쇄</button></div>');
   $('ivX').onclick = closeModal;
   /* 🏷 묶음의 종류 바꾸기 (예: W 로 잡힌 줄을 A 로) — 줄의 종류를 바꾸고 창을 다시 그림 · 확정 때 같이 저장 */
   document.querySelectorAll('[data-ivt]').forEach(x => x.onchange = () => { const from = x.dataset.ivt, to = x.value; if (from === to) return; lines.forEach(l => { if ((l.t || DT()) === from) l.t = to; }); closeModal(); confirmInvoice(o, lines); });
+  /* 🏷 종류별 할인 바꾸기 — o.disc 에 적고 창을 다시 그림 · 확정 때 주문(disc · discChg) 과 인보이스(disc) 에 같이 저장 */
+  document.querySelectorAll('[data-ivd]').forEach(x => x.onchange = () => { const t = x.dataset.ivd, v = Math.max(0, Math.min(100, Number(x.value) || 0)); o.disc = Object.assign({}, o.disc || {}); if (v) o.disc[t] = v; else delete o.disc[t]; o.discChg = true; closeModal(); confirmInvoice(o, lines); });
   $('ivOk').onclick = async () => {
     const memo = $('ivMemo').value.trim(); closeModal(); busy(true);
     try {
