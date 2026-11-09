@@ -22,6 +22,7 @@ export const STAGES = [
   ['picked', '✅', '검수 · 인보이스 대기', 'Review · Invoice', o => o.st === 'picked', o => o.pickDoneAt || o.pickAt, 3],
   ['done', '🧾', '포장 대기', 'To pack', o => o.st === 'done', o => o.doneAt, 24],
   ['packed', '📮', 'UPS 픽업 대기', 'Awaiting pickup', o => o.st === 'packed', o => o.packAt, 30],
+  ['dlv', '🚗', '딜리버리 대기', 'Awaiting delivery', o => o.st === 'dlv', o => o.dlvAt, 72],
   ['shipped', '📬', '오늘 출고', 'Shipped today', o => o.st === 'shipped', o => o.shipAt, 0]
 ];
 const stageOf = o => STAGES.find(s => s[4](o));
@@ -33,7 +34,7 @@ export function stageAge(o) {
   const ms = Math.max(0, Date.now() - new Date(since).getTime()), m = Math.round(ms / 60000);
   return { key: st[0], since, ms, t: m < 60 ? m + bt('분', 'm') : m < 1440 ? Math.floor(m / 60) + bt('시간', 'h') : Math.floor(m / 1440) + bt('일째', 'd'), late: !!(st[6] && ms > st[6] * 3600000), day: ms > 86400000 };
 }
-const LIVE = ['sent', 'pick', 'ok', 'picked', 'done', 'packed'];
+const LIVE = ['sent', 'pick', 'ok', 'picked', 'done', 'packed', 'dlv'];
 
 export function register(state) {
   S = state; Router.on('flow', page);
