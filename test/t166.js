@@ -1,5 +1,5 @@
 /* v0.8.175 시험 — 🔒 Item Master 엑셀 "전체 바꾸기" 는 관리자만 (2026-11-09 디자인 담당이 옛 파일로 올려 관리자 분류 작업 · 세트 코드 · 새 아이템이 통째로 되돌아간 일)
- *   ① 디자인 · 카탈로그 담당(catalog job): 📥 올리기 탭에 SmartBee 맞추기 파일 칸(#sbFile)은 있고, Item Master 파일 칸(#catFile)은 없고 🔒 안내만
+ *   ① 디자인 · 카탈로그 담당(catalog job): 📥 올리기 탭에 SmartBee 맞추기(#sbFile) · Item Master(#catFile) 파일 칸이 없고 🔒 안내만 · 🗂 분류 탭도 없음
  *   ② 관리자: #catFile 이 있음 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
@@ -13,7 +13,7 @@ const path = require('path');
     await pg.evaluate(() => { location.hash = '#/catmg/cat'; }); await pg.waitForSelector('#sbFile, #catFile, .none', { timeout: 8000 }).catch(() => {}); await pg.waitForTimeout(500); return pg; };
   const jn = await open('jenny@theonefl.com', 'catalog');
   const a = await jn.evaluate(() => ({ sb: !!document.getElementById('sbFile'), cat: !!document.getElementById('catFile'), lock: /관리자만 올릴 수 있습니다/.test(document.body.textContent) })); log('① catalog job:', JSON.stringify(a));
-  if (!a.sb) errs.push('① catalog job still has the SmartBee sync upload'); if (a.cat) errs.push('① catalog job must not get the Item Master full-replace upload'); if (!a.lock) errs.push('① the admin-only notice is shown');
+  if (a.sb) errs.push('① catalog job must not get the SmartBee bulk sync either'); if (await jn.$('[data-ct2="tree"]')) errs.push('① catalog job must not see the 🗂 분류 tab'); if (a.cat) errs.push('① catalog job must not get the Item Master full-replace upload'); if (!a.lock) errs.push('① the admin-only notice is shown');
   await jn.context().close();
   const ad = await open('luke@theonefl.com', '');
   const b = await ad.evaluate(() => ({ sb: !!document.getElementById('sbFile'), cat: !!document.getElementById('catFile') })); log('② admin:', JSON.stringify(b));

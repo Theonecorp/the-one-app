@@ -19,12 +19,13 @@ const path = require('path');
   if (nv.parent !== 'HEADER' || nv.pos !== 'static' || nv.top > 60) errs.push('① wide: nav lives inside the header bar');
   await pc.click('#nav button[data-go="hub/look"]'); await pc.waitForTimeout(400); if (!/#\/hub\/look/.test(await pc.evaluate(() => location.hash))) errs.push('① nav buttons in the header still navigate');
   await pc.evaluate(() => { location.hash = '#/order'; }); await pc.waitForTimeout(900);
-  let st = await pc.evaluate(() => ({ on: document.body.classList.contains('omenu-on'), left: Math.round(document.getElementById('page').getBoundingClientRect().left), mtop: Math.round((document.querySelector('.omenu') || { getBoundingClientRect: () => ({ top: -1 }) }).getBoundingClientRect().top), hdr: Math.round(document.querySelector('header').getBoundingClientRect().bottom) })); log('② order home:', JSON.stringify(st));
-  if (!st.on || st.left < 210) errs.push('② staff order home: body.omenu-on and the page shifted right of the 210px column');
+  const dkw = () => document.body.classList.contains('dock') ? Math.round(document.getElementById('drawer').getBoundingClientRect().width) : 0;
+  let st = await pc.evaluate(() => ({ dock: document.body.classList.contains('dock') ? Math.round(document.getElementById('drawer').getBoundingClientRect().width) : 0, on: document.body.classList.contains('omenu-on'), left: Math.round(document.getElementById('page').getBoundingClientRect().left), mtop: Math.round((document.querySelector('.omenu') || { getBoundingClientRect: () => ({ top: -1 }) }).getBoundingClientRect().top), hdr: Math.round(document.querySelector('header').getBoundingClientRect().bottom) })); log('② order home:', JSON.stringify(st));
+  if (!st.on || st.left < st.dock + 210) errs.push('② staff order home: body.omenu-on and the page shifted right of the 210px column (+ docked drawer ' + st.dock + ') — got ' + st.left);
   if (st.mtop < st.hdr - 2 || st.mtop > st.hdr + 4) errs.push('② the staff menu column starts right under the header (menu top ' + st.mtop + ', header bottom ' + st.hdr + ')');
   await pc.evaluate(() => { location.hash = '#/order/new'; }); await pc.waitForSelector('#eStoreQ'); await pc.waitForTimeout(400);
-  st = await pc.evaluate(() => ({ on: document.body.classList.contains('omenu-on'), left: Math.round(document.getElementById('page').getBoundingClientRect().left) })); log('② editor:', JSON.stringify(st));
-  if (st.on || st.left !== 0) errs.push('② the order editor has no left column (omenu-on off)');
+  st = await pc.evaluate(() => ({ dock: document.body.classList.contains('dock') ? Math.round(document.getElementById('drawer').getBoundingClientRect().width) : 0, on: document.body.classList.contains('omenu-on'), left: Math.round(document.getElementById('page').getBoundingClientRect().left) })); log('② editor:', JSON.stringify(st));
+  if (st.on || st.left !== st.dock) errs.push('② the order editor has no staff column (omenu-on off) — page starts right after the docked drawer, got ' + st.left + ' vs ' + st.dock);
   /* ③ 목록 보기 한 줄 */
   await pc.fill('#eStoreQ', 'ali'); await pc.waitForTimeout(250); await pc.click('#eStoreHits [data-ac]'); await pc.waitForTimeout(900); if (await pc.$('#modal.on')) { await pc.click('#modal .mclose'); await pc.waitForTimeout(200); }
   await pc.click('[data-ck="Earrings · Hoops & Pincatch"]'); await pc.waitForTimeout(200); await pc.click('[data-ck="Aluminum"]'); await pc.waitForTimeout(150); await pc.click('[data-ck="Gold"]'); await pc.waitForTimeout(400);

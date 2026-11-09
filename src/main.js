@@ -45,7 +45,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.175';
+export const VER = 'v0.8.176';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -70,14 +70,13 @@ const NAV = {
   pick:     [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],
   catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['labels', '🖨', '라벨', 'Labels'], ['cat', '📒', '카탈로그', 'Catalog']],
   /* 🏷 아이템 · 재고 관리 (v0.8.169) — 아이템 등록 · 분류 · 사진 · 세트 · 올리기 + 📦 재고 · 위치. 주문 흐름 · 수금 · 정산 · 경영은 안 봄 */
-  itemmgr:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], HUB_WH, ['photos', '📷', '사진', 'Photos'], ['cat', '📒', '카탈로그', 'Catalog']],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 사진 · 라벨 · 카탈로그 (분류는 홈 안의 탭) — 주문 · 수금 없음
   /* 오너 · 관리자 (v0.8.135) — 🏠 홈(대시보드) · 📚 조회(인보이스 · 거래처 · 배송 · 카탈로그) · 💼 경영(매출 · 경영 · 정산 · 미수금 · 수금 현황 · 리포트) · (관리자) 📦 재고 · ⚙️ 관리 */
   owner:    [['own', '🏠', '홈', 'Home'], HUB_LOOK, HUB_BIZ],   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
   admin:    [['own', '🏠', '홈', 'Home'], HUB_LOOK, HUB_BIZ, HUB_WH, ['admin', '⚙️', '관리', 'Admin']]   // 관리자: 오너와 같은 대시보드 + 정산 · 관리 · 🔁 모드(오너 · 담당자 · 세일즈) — 미수금 · 수금은 홈 칸에서
 };
 NAV.manager = NAV.office;
 /* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자는 전부 */
-export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct', '회계 담당', 'Accounting'], ['pickinv', '출고 · 인보이스', 'Fulfillment & Invoicing'], ['invoice', '인보이스 담당', 'Invoicing'], ['whmgr', '창고 매니저', 'Warehouse Manager'], ['pick', '창고 직원', 'Warehouse Staff'], ['catalog', '디자인 · 카탈로그', 'Design & Catalog'], ['itemmgr', '아이템 · 재고 관리', 'Items & Inventory']];
+export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct', '회계 담당', 'Accounting'], ['pickinv', '출고 · 인보이스', 'Fulfillment & Invoicing'], ['invoice', '인보이스 담당', 'Invoicing'], ['whmgr', '창고 매니저', 'Warehouse Manager'], ['pick', '창고 직원', 'Warehouse Staff'], ['catalog', '디자인 · 카탈로그', 'Design & Catalog']];
 /** 일별 할 수 있는 것 — flow 🧭 전체 주문 흐름 감독 · newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
  *  · verify 수금 확인 · cod COD·카드 · ach ACH · items 아이템 · 재고 위치 · bo 백오더 */
 export const CAN = {
@@ -87,8 +86,7 @@ export const CAN = {
   invoice: ['newOrder', 'invoice', 'void', 'items', 'bo'],
   whmgr:   ['flow', 'assign', 'pick', 'ship', 'items', 'bo'],
   pick:    ['pick', 'ship', 'items'],
-  catalog: ['items', 'catalog'],   // 🎨 디자인 · 카탈로그 담당: 아이템 · 분류 · 사진 · 세트 · 바코드 (주문 · 수금은 안 봄)
-  itemmgr: ['items', 'catalog']    // 🏷 아이템 · 재고 관리: 위와 같고 📦 재고 묶음이 메뉴에 있음 (주문 흐름 · 수금 · 정산 · 경영은 안 봄)
+  catalog: ['items', 'catalog']   // 🎨 디자인 · 카탈로그 담당: 아이템 · 분류 · 사진 · 세트 · 바코드 (주문 · 수금은 안 봄)
 };
 export const jobCan = (job, cap) => (CAN[job] || CAN.office).includes(cap);
 /** 지금 사용자가 이걸 할 수 있나 — 관리자는 전부, 세일즈맨은 없음 */
@@ -187,7 +185,24 @@ function waitScreen(email) {
   $('btnOut').onclick = () => { Push.disable().finally(() => S.AUTH.signOut()); };   // 로그아웃 → 이 기기 팝업 등록도 지움
 }
 /* ☰ 서랍 메뉴 — 왼쪽에서 밀려 나오는 메뉴 (회사 · 역할별 묶음 화면 · 설정 · 사용자 · 언어). 아래 메뉴 "모드" · 헤더 ☰ · 이름 누르기 모두 여기로 */
+/* 🧭 ☰ 서랍 — 폰 · 태블릿은 팝업, 데스크탑(1200px 이상)은 왼쪽에 고정(dock · 본문이 그만큼 오른쪽으로). ☰ 는 데스크탑에서 고정 켜기 · 끄기 (이 컴퓨터에 기억)
+ *   서랍 내용은 한 곳(drawerRender)에서 만들고, 고정 상태에서는 닫기(close)가 아무것도 안 함 · 주소가 바뀌면 켜진 줄만 다시 칠함 (v0.8.175) */
+const DOCK_MQ = '(min-width:1200px)';
+const dockPref = () => { try { return localStorage.getItem('theone.dock') !== '0'; } catch (e) { return true; } };
+export const dockWanted = () => !!(S && S.user) && matchMedia(DOCK_MQ).matches && dockPref();
+export function dockDrawer() {
+  const want = dockWanted(), d = $('drawer');
+  if (!want) { if (d && d.classList.contains('dock')) { d.classList.remove('dock', 'on'); document.body.classList.remove('dock', 'drawer-on'); } else document.body.classList.remove('dock'); return; }
+  if (d && d.classList.contains('dock') && d.classList.contains('on')) { dockMark(); return; }
+  drawerRender(true);
+}
+/** 고정 서랍에서 지금 주소의 줄만 켜기 (다시 안 그림) */
+function dockMark() { const d = $('drawer'); if (!d || !d.classList.contains('dock')) return; d.querySelectorAll('[data-dgo]').forEach(b => b.classList.toggle('on', location.hash.indexOf('#/' + b.dataset.dgo) === 0)); }
 function userMenu() {
+  if (matchMedia(DOCK_MQ).matches) { try { localStorage.setItem('theone.dock', dockPref() ? '0' : '1'); } catch (e) {} dockDrawer(); if (!dockWanted()) drawerRender(false); return; }   // 데스크탑: ☰ = 고정 켜기 · 끄기 (끄면 이번엔 팝업으로 열어 줌)
+  drawerRender(false);
+}
+function drawerRender(dock) {
   if (!S.user) return;
   const isAdm = S.me && S.me.role === 'admin';
   const vs = viewsOf(S.me), roles = vs.length > 1 ? vs : [];
@@ -207,8 +222,8 @@ function userMenu() {
     '<div class="dbody">' + main + secs + settings + '</div>' +
     '<div class="dfoot"><div class="dav">' + esc(ini) + '</div><div class="dwho"><b>' + esc(name) + '</b><small>' + esc(S.role === 'manager' ? jobLabel(jobOf()) : roleLabel(S.role)) + ' · ' + VER + '</small></div><button type="button" class="hb" id="mOut" title="' + esc(bt('로그아웃', 'Sign out')) + '">⎋</button></div>' +
     '<div class="dlang seg" translate="no">' + LANGS.map(l => '<button type="button" class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '">' + ({ ko: 'KR', en: 'EN', pt: 'PT' }[l[0]] || l[0].toUpperCase()) + '</button>').join('') + '</div></aside>';
-  d.classList.add('on'); document.body.classList.add('drawer-on');
-  const close = () => { d.classList.remove('on'); document.body.classList.remove('drawer-on'); };
+  d.classList.toggle('dock', !!dock); d.classList.add('on'); document.body.classList.toggle('dock', !!dock); document.body.classList.toggle('drawer-on', !dock);
+  const close = () => { if (d.classList.contains('dock')) return; d.classList.remove('on'); document.body.classList.remove('drawer-on'); };
   $('dBack').onclick = close; $('dX').onclick = close;
   d.querySelectorAll('[data-dgo]').forEach(b => b.onclick = () => { close(); const g = b.dataset.dgo, [r, a] = g.split('/'); if (a) Router.go(r, a); else Router.go(g); });
   $('mDiag').onclick = diag;
@@ -348,7 +363,8 @@ function navH() {
   if (h > 140) h = 140;   // 잘못 잰 큰 값(세로 메뉴 · 겹침)으로 고정 바가 공중에 뜨지 않게
   document.documentElement.style.setProperty('--navh', h + 'px');
   const pg = $('page'); if (pg && pg.clientWidth) document.documentElement.style.setProperty('--cw', pg.clientWidth + 'px');   /* 📐 본문 너비 — 타일 칸 수는 화면이 아니라 본문 너비로 (왼쪽 메뉴가 있는 컴퓨터에서도 줄지 않게) */ const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
-window.addEventListener('resize', () => setTimeout(navH, 50));
+window.addEventListener('resize', () => setTimeout(() => { navH(); dockDrawer(); }, 50));
+window.addEventListener('hashchange', () => setTimeout(dockMark, 0));
 /* 위 고정 메뉴(주문 상태 아이콘) 작게 · 크게 — 버튼으로만 (스크롤에 따라 저절로 접고 펴면 메뉴 높이가 바뀌어 아이폰에서 목록이 튕김) */
 try { if (localStorage.getItem('theone.ocompact') === '1') document.body.classList.add('oscr'); } catch (e) {}
 function paintNav() {
@@ -358,7 +374,7 @@ function paintNav() {
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { const g = b.dataset.go, [r, a] = g.split('/'); if (g === 'view/menu') return modePicker(); Router.navTap = r; if (location.hash === '#/' + g) { const f = Router.routes[r]; if (f) f(a || ''); } else if (a) Router.go(r, a); else Router.go(g); });   // 같은 탭을 다시 누르면 그 탭 첫 화면
   /* 🗂 묶음 안의 화면 — ‹ 뒤로 · 폰 뒤로가기는 그 묶음으로, 아래 메뉴도 그 묶음이 켜짐 */
   Router.parent = {}; items.filter(x => /^hub\//.test(x[0])).forEach(x => Hub.hubItems(x[0].split('/')[1]).forEach(c => { const r = c[0].split('/')[0]; if (!items.some(y => y[0] === c[0] || y[0] === r)) Router.parent[r] = x[0]; }));
-  navH();
+  navH(); dockDrawer();
   $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
   const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? modePicker : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
 }

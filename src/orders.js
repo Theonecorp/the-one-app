@@ -326,7 +326,7 @@ async function staffHome() {
   if (can('verify')) A.push(tile('bounce', '↩️', bi('바운스 체크', 'Bounced checks'), bt('등록 · 세일즈맨 알림 · 해결', 'register · notify · clear'), 'amber'));
   if (can('items')) A.push(tile('items', '🏷', bi('아이템 · 재고 위치', 'Items · Inventory'), '찾기 · 위치 · 등록'));
   /* 🏷 오피스 · 인보이스 담당도 아이템을 바로 등록 — 홈에서 한 번에 (v0.8.172) */
-  if (can('items') && (can('newOrder') || can('invoice'))) A.push(tile('items/new', '＋', bi('아이템 등록', 'New item'), bt('코드 · 이름 · 가격 · 분류', 'code · name · price · category')), tile('items/bulk', '📋', bi('아이템 일괄 등록', 'Bulk add items'), bt('엑셀처럼 칸에 쭉 입력 · 붙여넣기', 'spreadsheet cells · paste')));
+  if (can('items')) A.push(tile('items/new', '＋', bi('아이템 등록', 'New item'), bt('코드 · 이름 · 가격 · 분류', 'code · name · price · category')), (S.me && S.me.role === 'admin' ? tile('items/bulk', '📋', bi('아이템 일괄 등록', 'Bulk add items'), bt('엑셀처럼 칸에 쭉 입력 · 붙여넣기', 'spreadsheet cells · paste')) : ''));
   A.push(tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 바코드 라벨 · 엑셀'));
   A.push(tile('track', '🚚', bi('배송 조회', 'Tracking'), '가게 · 인보이스 · 트래킹'));
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
@@ -842,7 +842,7 @@ function paintAdd() {
   const newN = O.path.length ? 0 : newItems([], catStart(S), 30).length;   /* 🆕 새로 나온 — 1단계(전체)에서만 */
   const newTile = newN ? '<button class="newt' + (O.nw ? ' on' : '') + '" data-new="1"><b>🆕 새로 나온 <span class="en">New</span></b><span>' + bt('최근 30일에 등록', 'added in the last 30 days') + ' · ' + newN + '</span></button>' : '';
   const popTile = '';   /* ✨ 자주 나가는 묶음은 v0.8.174 에서 뺌 (모든 단계에 보여 번거로움) */
-  const kindCls = n => { const r = prefixRank(n); return r <= 1 ? 'k-set' : r === 2 ? 'k-jew' : r === 3 ? 'k-oth' : 'k-last'; };   /* 1단계 종류별 타일 색 (안쪽 단계는 1단계 색을 따라감) */
+  const kindCls = n => { const r = prefixRank(n); return r <= 1 ? 'k-set' : r === 2 ? 'k-jew' : r === 3 ? 'k-oth' : r === 3.5 ? 'k-disp' : 'k-last'; };   /* 1단계 종류별 타일 색 (안쪽 단계는 1단계 색을 따라감) */
   const kids = node.kids.length || popTile || newTile ? '<div class="cats">' + newTile + popTile + node.kids.map(k => '<button class="' + (O.path.length ? kindCls(O.path[0]) : kindCls(k.name)) + '" data-ck="' + esc(k.name) + '"><b>' + esc(k.name) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
   /* 검색 + 분류 경로는 카드 밖 sticky — 아래로 아무리 내려가도 맨 위에 붙어 있어 바로 상위로 돌아감 */
   $('eTop').innerHTML = '<div class="ordtop"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +

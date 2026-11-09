@@ -48,8 +48,14 @@ export const kvSet = (k, v) => idbSet('kv.' + k, v);
 export function pickSort(a, b) { const x = locOf(a.c), y = locOf(b.c); if (!x !== !y) return x ? -1 : 1; return COLL.compare(x, y) || COLL.compare(a.c, b.c); }
 export function setPins(p) {
   PINS = { top: ((p && p.top) || []).map(String), bottom: ((p && p.bottom) || []).map(String) };
-  if (CAT) { sortTree(CAT.tree); sortTree(CAT.tree1); }
+  if (CAT) { sortTree(CAT.tree, 'G'); sortTree(CAT.tree1, 'L1'); }
 }
+/* 🗂 관리자가 정한 순서 — settings.app.catOrder = { 부모키: [이름 …] }. 부모키: 'L1' (1단계 전체) · 'L1\u0001ANKLET' (ANKLET 의 2단계) · 'L1\u0001ANKLET\u0001GOLD' (3단계)
+ *   목록에 있는 이름이 그 순서대로 먼저, 없는 이름은 뒤에 보통 규칙(기호 → ABC)으로. 📌 위 · 아래 고정은 그보다 우선 (v0.8.175) */
+let ORDER = {};
+export function setCatOrder(o) { ORDER = o && typeof o === 'object' ? o : {}; if (CAT) { sortTree(CAT.tree, 'G'); sortTree(CAT.tree1, 'L1'); } }
+export const catOrderKey = under => under.length <= 1 ? (under.length ? 'L1' : 'G') : ['L1'].concat(under.slice(1)).join('\u0001');   // treeAdmin 의 경로 [Group, L1, L2 …] → 그 아래 자식들의 부모키
+export const catOrderOf = key => (ORDER[key] || []).map(String);
 /* 이전 시스템에서 쓰던 앞글자 규칙 (세일즈맨이 익숙한 순서):
  *   ""  → 맨 앞 (SET ORDER"")   "  → 그 다음 (디스플레이 · 인서트)   보통 이름 → 주얼리 ABC
  *   [   → 그 외 제품 ([NEXONE] [PERFUME] …)   < * z → 맨 뒤 (<GIFT> *SUPPLY* zCREDIT) */
@@ -57,7 +63,7 @@ export function prefixRank(name) {
   const s = String(name || '').trim();
   if (s.startsWith('""') || s.endsWith('""')) return 0;
   if (s.startsWith('"')) return 1;
-  if (s.startsWith('[')) return 3;
+  if (s.startsWith('[')) return /DISPLAY/i.test(s) ? 3.5 : 3;   // [DISPLAYS, GIFT & SUPPLY] 는 그 외 뒤 · 맨 뒤(<DISCONTINUE>) 바로 앞 (v0.8.175)
   if (/^[<*#]/.test(s) || /^zz?[A-Z]/.test(s)) return 4;
   return 2;
 }
@@ -66,10 +72,10 @@ export function familyOf(l1) { const r = prefixRank(l1); return r <= 1 ? 'Set & 
 /** 깨끗한 이름 — 화면에 보일 때는 "" [ ] < > 를 뗌 */
 export function cleanName(name) { return String(name || '').replace(/^""|""$/g, '').replace(/^["\[<*]+|["\]>*]+$/g, '').replace(/^zz?(?=[A-Z])/, '').trim() || String(name || ''); }
 const COLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
-function rank(name) { const k = pinKey(name); const t = PINS.top.findIndex(x => pinKey(x) === k); if (t >= 0) return [0, t]; const b = PINS.bottom.findIndex(x => pinKey(x) === k); if (b >= 0) return [2, b]; return [1, prefixRank(name)]; }
-function sortTree(node) {
-  node.kids.sort((a, b) => { const x = rank(a.name), y = rank(b.name); return x[0] - y[0] || x[1] - y[1] || COLL.compare(a.cn || (a.cn = cleanName(a.name)), b.cn || (b.cn = cleanName(b.name))); });
-  node.kids.forEach(sortTree);
+function rank(name, key) { const k = pinKey(name); const t = PINS.top.findIndex(x => pinKey(x) === k); if (t >= 0) return [0, t]; const b = PINS.bottom.findIndex(x => pinKey(x) === k); if (b >= 0) return [3, b]; const m = key && ORDER[key] ? ORDER[key].findIndex(x => pinKey(x) === k) : -1; if (m >= 0) return [1, m]; return [2, prefixRank(name)]; }
+function sortTree(node, key) {
+  node.kids.sort((a, b) => { const x = rank(a.name, key), y = rank(b.name, key); return x[0] - y[0] || x[1] - y[1] || COLL.compare(a.cn || (a.cn = cleanName(a.name)), b.cn || (b.cn = cleanName(b.name))); });
+  node.kids.forEach(k => sortTree(k, key === 'G' ? 'L1' : key ? key + '\u0001' + k.name : ''));
 }
 /* ---------- ✨ 자주 나가는 아이템 (catalog/pop = 이전 시스템 아이템별 판매 수량에서 올림) ---------- */
 let POP = [];   // [code, qty] 많이 나간 순
@@ -235,6 +241,7 @@ const todayStr = () => new Date().toISOString().substring(0, 10);
 
 export async function loadCatalog(S, force) {
   if (S && S.settings && S.settings.catPins) setPins(S.settings.catPins);
+  if (S && S.settings && S.settings.catOrder) setCatOrder(S.settings.catOrder);
   if (S && S.settings) setLocs(S.settings.catLoc);
   if (!POP.length || force) loadPop(S);
   DRIVE_ON = !!(S && S.settings && S.settings.photoDrive);
@@ -331,7 +338,7 @@ function index(pack) {
   });
   const prune = n => { n.kids = n.kids.filter(k => k.n > 0); n.kids.forEach(prune); };
   const pruneA = n => { n.kids = n.kids.filter(k => k.n + k.nh > 0); n.kids.forEach(pruneA); };
-  prune(tree); prune(tree1); pruneA(treeA); sortTree(tree); sortTree(tree1); sortTree(treeA);
+  prune(tree); prune(tree1); pruneA(treeA); sortTree(tree, 'G'); sortTree(tree1, 'L1'); sortTree(treeA, '');
   const vis = items.filter(x => !x.h);
   const tmp = { items }; fixPhotos(tmp);
   return { photoStat: tmp.photoStat, ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, vis, byCode, byBar, byNorm, tree, tree1, treeA, sets, rows: pack.rows, cats: pack.cats || [] };

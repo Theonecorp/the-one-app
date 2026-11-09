@@ -1,7 +1,7 @@
 /* v0.8.174 시험 — 🎁 디스플레이 · 선물 · 소모품 줄은 인보이스 종류를 주문의 나머지 줄에 맞춤 · 주문 화면 분류 타일을 종류별 색으로
  *   ① 'DISPLAYS, GIFT & SUPPLY' 1단계([ ] 기호 · 그 외 → 원래는 P) 아이템을 주얼리(A) 줄과 같이 담아 임시 저장하면 그 줄의 t 가 A — 주얼리 인보이스에 같이 찍힘
  *   ② 그 외 제품(P) 줄과 같이 담으면 P · 혼자만 담으면 기본 A
- *   ③ 분류 타일: 세트("" → k-set) · 주얼리(k-jew) · 그 외([ ] → k-oth) · 맨 뒤(< > → k-last) 색 클래스 · 1단계 안으로 들어가면 1단계 색을 따라감 */
+ *   ③ 분류 타일: 세트("" → k-set) · 주얼리(k-jew) · 그 외([ ] → k-oth) · 디스플레이 · 선물([DISPLAYS…] → k-disp, v0.8.175) · 맨 뒤(< > → k-last) 색 클래스 · 1단계 안으로 들어가면 1단계 색을 따라감 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -21,7 +21,7 @@ const path = require('path');
   const tiles = await pg.$$eval('.cats button[data-ck]', e => e.map(x => [x.dataset.ck, x.className])); log('③ tiles:', tiles.map(t => t[0].slice(0, 12) + ':' + t[1]).join(' | '));
   const cls = Object.fromEntries(tiles);
   if (!/k-set/.test(cls['SET ORDER""'] || '')) errs.push('③ SET ORDER tile is k-set');
-  if (!/k-oth/.test(cls['[DISPLAYS, GIFT & SUPPLY]'] || '')) errs.push('③ [DISPLAYS…] tile is k-oth');
+  if (!/k-disp/.test(cls['[DISPLAYS, GIFT & SUPPLY]'] || '')) errs.push('③ [DISPLAYS…] tile is k-disp (v0.8.175: 디스플레이 · 선물 · 소모품은 제 색)');
   if (!/k-last/.test(cls['<DISCONTINUE ITEM>'] || '')) errs.push('③ <DISCONTINUE ITEM> tile is k-last');
   const jew = tiles.find(t => t[0] === 'Chains' || t[0] === 'Wax'); if (!jew || !/k-jew/.test(jew[1])) errs.push('③ plain jewelry tile is k-jew');
   const order = tiles.map(t => t[0]); if (order[order.length - 1] !== '<DISCONTINUE ITEM>') errs.push('③ <DISCONTINUE ITEM> is the last tile (got last: ' + order[order.length - 1] + ')');

@@ -15,12 +15,12 @@ const path = require('path');
     await pg.goto('http://127.0.0.1:8826/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
     await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(800); return pg;
   };
-  const menuInfo = pg => pg.evaluate(() => { const m = document.querySelector('.omenu'); if (!m) return null; const r = m.getBoundingClientRect(), cs = getComputedStyle(m); const bs = document.querySelectorAll('#nav button'), last = bs[bs.length - 1]; return { pos: cs.position, vis: cs.display !== 'none' && r.width > 0, left: r.left, top: r.top, w: r.width, navbtm: last ? last.getBoundingClientRect().bottom : 0, groups: [...m.querySelectorAll('[data-og]')].map(g => g.dataset.og), chips: [...m.querySelectorAll('[data-lf]')].map(b => b.dataset.lf), on: [...m.querySelectorAll('[data-lf].on')].map(b => b.dataset.lf), lg: document.querySelectorAll('[data-lg]').length, head: (document.querySelector('.ohead') || {}).className, sticky: document.querySelector('.ohead') ? getComputedStyle(document.querySelector('.ohead')).position : '' }; });
+  const menuInfo = pg => pg.evaluate(() => { const m = document.querySelector('.omenu'); if (!m) return null; const r = m.getBoundingClientRect(), cs = getComputedStyle(m); const bs = document.querySelectorAll('#nav button'), last = bs[bs.length - 1]; const dk = document.body.classList.contains('dock') ? document.getElementById('drawer').getBoundingClientRect().width : 0; return { dock: dk, pos: cs.position, vis: cs.display !== 'none' && r.width > 0, left: r.left, top: r.top, w: r.width, navbtm: last ? last.getBoundingClientRect().bottom : 0, groups: [...m.querySelectorAll('[data-og]')].map(g => g.dataset.og), chips: [...m.querySelectorAll('[data-lf]')].map(b => b.dataset.lf), on: [...m.querySelectorAll('[data-lf].on')].map(b => b.dataset.lf), lg: document.querySelectorAll('[data-lg]').length, head: (document.querySelector('.ohead') || {}).className, sticky: document.querySelector('.ohead') ? getComputedStyle(document.querySelector('.ohead')).position : '' }; });
   /* ① ② 컴퓨터 · 관리자(오피스처럼 전체 칸) → 홈에 메뉴 · 칸 누르면 목록 */
   const pc = await open('luke@theonefl.com', '', 1200, 800);
   let m = await menuInfo(pc); log('② pc home:', JSON.stringify(m));
   if (!m || !m.vis) errs.push('② pc home shows the menu'); else {
-    if (m.pos !== 'fixed' || m.left !== 0 || m.w !== 210) errs.push('② pc menu is fixed at the left, 210px wide');
+    if (m.pos !== 'fixed' || m.left !== m.dock || m.w !== 210) errs.push('② pc menu is fixed at the left (after the docked drawer, ' + m.dock + 'px), 210px wide — got left ' + m.left);
     if (m.top < m.navbtm) errs.push('② pc menu sits below the last nav button (top ' + m.top + ' < navbtm ' + m.navbtm + ')');
     if (m.on.join() !== 'home') errs.push('② home chip is on at the staff home, got ' + m.on.join());
     if (m.groups.join() !== 'recv,ship,fin,etc') errs.push('① 4 groups, got ' + m.groups.join());
