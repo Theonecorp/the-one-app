@@ -140,7 +140,7 @@ body.kb nav#nav,body.kb .sticky,body.kb .bulkbar{display:none!important}body.kb{
 .ochips button{border-radius:14px;box-shadow:var(--sh)}
 .stk{color:#15803d;font-weight:700}.stk.s0{color:#b91c1c}.stk.slow{color:#b45309}.gstk{position:absolute;right:3px;bottom:3px;background:rgba(21,128,61,.88);color:#fff;font-size:10px;font-weight:800;border-radius:6px;padding:0 4px;line-height:15px;pointer-events:none}.gstk:empty{display:none}.gstk.s0{background:rgba(185,28,28,.9)}.gstk.slow{background:rgba(180,83,9,.9)}
 .cpcard.hid,.pr.hid{opacity:.6}.cpcard.hid b{text-decoration:line-through;text-decoration-color:#94a3b8}
-.ochips.ogrp{margin-bottom:4px}.ochips.ogrp button.on{background:var(--navy);color:#fff;border-color:var(--navy)}.ochips.osub{background:#f8fafc;border-radius:12px;padding:4px}
+.omenu .og{display:grid;grid-template-columns:46px 1fr;gap:4px;align-items:start;margin:2px 0;background:#f8fafc;border-radius:12px;padding:3px 4px}.omenu .og.otop{grid-template-columns:1fr;background:none;padding:0}.omenu .otop .ochips{display:flex;gap:5px}.omenu .otop .ochips button{flex:none;flex-direction:row;min-height:0;padding:6px 10px;gap:5px}.omenu .otop .ochips .ci{font-size:16px}.omenu .otop .ochips .en{display:none}body:not(.oscr) .ohead:not(.ohome){position:static;box-shadow:none}.omenu .ogl{display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--ink3);padding-top:6px;line-height:1.1;text-align:center;word-break:keep-all}.omenu .ogl .ci{font-size:18px}.omenu .ogl .en{display:none}.omenu .ochips{margin:0}body.oscr .omenu .ogl .cl{display:none}body.oscr .omenu .ogl{padding-top:8px}.ohead.ohome{display:none}
 .snapbar{font-size:12px;color:#1e40af;background:#eff6ff;border-radius:8px;padding:5px 10px;margin:0 0 8px;animation:snp 1.4s ease-in-out infinite}@keyframes snp{50%{opacity:.55}}
 .irow.zero{opacity:.55;background:#f8fafc}.irow.zero .ct b::after{content:' · 0';color:#b91c1c;font-weight:800}.irow .rmx{flex:0 0 auto;margin-left:4px;padding:4px 8px;min-height:32px}
 .ckw{flex:0 0 44px;min-height:44px;display:flex;align-items:center;justify-content:center;margin:-8px 0 -8px -10px;cursor:pointer;border-radius:10px}.ckw:active{background:#e0e7ff}.ckw .ck-big{width:24px;height:24px;pointer-events:none}.tybar .tag{font-size:12px}
@@ -345,6 +345,13 @@ input.past{border-color:var(--amber);background:#fffbeb}input.later{border-color
   nav button{flex:none;text-align:left;display:flex;align-items:center;gap:10px;font-size:15px;padding:12px 12px;border-radius:12px;white-space:nowrap;color:var(--ink2)}
   nav button .i{display:inline;font-size:20px}nav button.on{background:var(--blue2);color:var(--blue)}nav button .en{display:inline;margin-left:6px;font-size:11px}
   header{padding-left:224px}
+  nav{overflow-y:auto}
+  /* 📌 담당자 주문 메뉴 — 왼쪽 메뉴 단추들 바로 아래에 세로로 고정 (--navbtm 은 main.js navH 가 마지막 메뉴 단추 아래 위치로 잼) */
+  .ohead{position:static;z-index:auto;box-shadow:none;margin:0 0 6px;padding:0}.ohead.ohome{display:block;height:0;margin:0;padding:0;overflow:visible}
+  .ohead .omenu{position:fixed;left:0;top:var(--navbtm,330px);bottom:0;width:210px;box-sizing:border-box;overflow-y:auto;padding:0 12px 12px;background:#fff;border-right:1px solid var(--line);z-index:51}
+  .omenu .og,.omenu .og.otop{display:block;background:none;padding:0;margin:4px 0 0;border-top:1px solid var(--line);padding-top:4px}.omenu .og.otop{border-top:none}.omenu .ogl{flex-direction:row;justify-content:flex-start;gap:6px;font-size:11px;padding:4px 10px 2px;text-align:left}.omenu .ogl .ci{font-size:14px}.omenu .ogl .en{display:inline;font-weight:600}
+  .omenu .ochips,body.oscr .omenu .ochips{display:flex;flex-direction:column;gap:1px;margin:0}.omenu .ochips button,body.oscr .omenu .ochips button{flex-direction:row;justify-content:flex-start;gap:8px;min-height:0;padding:6px 10px;text-align:left;font-size:13px;border:0;box-shadow:none;border-radius:10px;background:none;white-space:normal}.omenu .ochips button.on{background:var(--navy);color:#fff}.omenu .ochips .ci,body.oscr .omenu .ochips .ci{font-size:18px;width:22px;text-align:center}.omenu .ochips .cl,body.oscr .omenu .ogl .cl,body.oscr .omenu .ochips .cl{display:block}.omenu .ochips .en{display:none}
+  .omenu [data-ocmp]{display:none}
   .sticky{bottom:0}
   #modal{align-items:center}#modal .box{border-radius:16px}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
@@ -439,6 +446,7 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 }
 /* 🔄 가로로 눕힌 태블릿(넓고 낮음: 900+ × 높이 820 이하) — 위 · 아래 고정 영역을 더 줄여 아이템이 두 줄 이상 보이게: 검색과 분류 경로를 한 줄에, 아래 바(프리셋 · 합계 · 저장)를 한 줄에, 카드 사진은 낮게 */
 @media (min-width:900px) and (max-height:820px){
+  nav{padding-top:62px;gap:2px}nav button{padding:8px 12px;font-size:14px}.omenu .ochips button,body.oscr .omenu .ochips button{padding:4px 10px;font-size:12.5px}.omenu .ogl{padding:2px 10px 1px}.omenu .og{margin-top:2px;padding-top:2px}
   .ehead{margin-bottom:4px;padding-top:4px}
   .ehead .ordtop{display:flex;gap:8px;align-items:center;margin-top:4px}.ehead .ordtop>div:first-child{flex:0 1 40%;min-width:260px}.ehead .ordtop .chips.crumbs{flex:1 1 auto;min-width:0;margin:0;flex-wrap:nowrap;overflow-x:auto;padding:0}
   .ehead .ordtop input{padding:8px 10px}.ehead .ordtop .ib{flex:0 0 40px;height:40px;font-size:18px}

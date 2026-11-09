@@ -346,6 +346,7 @@ function navH() {
   let h = cs && cs.position === 'fixed' && cs.flexDirection !== 'column' ? n.offsetHeight : 0;   // 넓은 화면의 왼쪽 세로 메뉴는 0 (아래 여백 없음)
   if (h > 140) h = 140;   // 잘못 잰 큰 값(세로 메뉴 · 겹침)으로 고정 바가 공중에 뜨지 않게
   document.documentElement.style.setProperty('--navh', h + 'px');
+  if (cs && cs.flexDirection === 'column') { const bs = n.querySelectorAll('button'), last = bs[bs.length - 1]; document.documentElement.style.setProperty('--navbtm', (last ? Math.round(last.getBoundingClientRect().bottom) + 6 : 70) + 'px'); }   /* 📌 담당자 주문 메뉴(.omenu)가 왼쪽 메뉴 단추들 바로 아래에 붙도록 */
   const pg = $('page'); if (pg && pg.clientWidth) document.documentElement.style.setProperty('--cw', pg.clientWidth + 'px');   /* 📐 본문 너비 — 타일 칸 수는 화면이 아니라 본문 너비로 (왼쪽 메뉴가 있는 컴퓨터에서도 줄지 않게) */ const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
 window.addEventListener('resize', () => setTimeout(navH, 50));
 /* 위 고정 메뉴(주문 상태 아이콘) 작게 · 크게 — 버튼으로만 (스크롤에 따라 저절로 접고 펴면 메뉴 높이가 바뀌어 아이폰에서 목록이 튕김) */

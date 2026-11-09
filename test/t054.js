@@ -88,7 +88,7 @@ const path = require('path'), fs = require('fs');
   await pg.click('[data-lf="cfok"]'); await pg.waitForSelector('[data-ckall="1"]');
   await pg.click('[data-ckall="1"]'); await pg.click('#bkAssign'); await pg.waitForSelector('#pkOk'); log('picker opts:', await pg.$$eval('[data-pk]', e => e.map(x => x.textContent.trim())));
   await pg.evaluate(() => { document.getElementById('pkPrint').checked = false; }); await pg.click('#pkOk'); await pg.waitForTimeout(900);
-  /* 📦 출고 단계 → 출고 작업 칩 */ await pg.click('[data-lg="ship"]'); await pg.waitForTimeout(300); await pg.click('[data-lf="pick"]'); await pg.waitForTimeout(700); const pk = await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid)); log('picking list:', pk);
+  /* 📦 출고 단계 → 출고 작업 칩 */ await pg.click('[data-lf="pick"]'); await pg.waitForTimeout(700); const pk = await pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid)); log('picking list:', pk);
   await pg.evaluate(id => { location.hash = '#/order/' + id; }, pk[0]); await pg.waitForSelector('#mPickDone');
   /* 두드려서 픽킹: 1번 줄 — 한 번 = ✓ 통과, 두 번째 = ⏳ 백오더(0) */
   await pg.click('[data-pkt="1"]'); await pg.waitForTimeout(80); await pg.click('[data-pkt="1"]'); await pg.waitForTimeout(80); await pg.click('[data-pkt="0"]'); await pg.waitForTimeout(80);

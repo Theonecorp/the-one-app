@@ -1,4 +1,4 @@
-/* v0.8.160 시험 — 📋 백오더 목록 · 📄 인보이스 조회 목록에서도 위 단계 단추(📥 접수 · 📦 출고 · ✅ 완료 · ⏳ 기타)가 눌린다
+/* v0.8.160 시험 — 📋 백오더 목록 · 📄 인보이스 조회 목록에서도 위 메뉴의 다른 묶음 칸(📥 접수 · 📦 출고 · ✅ 완료)이 눌린다 (v0.8.174 부터 단계 단추 대신 모든 칸이 항상 보임)
  *   v0.8.125 단계 묶음 도입 때 두 목록의 bind() 가 [data-lg] 를 묶지 않아 그 두 화면에서는 단계 단추가 반응이 없었음 (홈을 거쳐야 했음) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
@@ -16,14 +16,14 @@ const path = require('path');
     await pg.evaluate(k => { const t = document.querySelector('[data-hg="' + k + '"]'), g = t && t.closest('.hgrp'); if (g) g.classList.add('open'); }, k); await pg.click('[data-hg="' + k + '"]');
     await pg.waitForTimeout(600);
   };
-  const stageOn = () => pg.$eval('[data-lg].on', b => b.dataset.lg).catch(() => '');
+  /* v0.8.174: 단계 단추가 없어지고 모든 칸이 항상 보임 — 그 목록에서 다른 묶음의 칸(data-lf)이 바로 눌리는지 */
+  const chipOn = () => pg.$eval('.omenu [data-lf].on', b => b.dataset.lf).catch(() => '');
   const check = async (list, toStage, chipInStage) => {
-    await goList(list); const before = await stageOn(); log(list, 'list — stage on:', before);
-    if (!(await pg.$('[data-lg="' + toStage + '"]'))) { errs.push(list + ': stage button ' + toStage + ' not rendered'); return; }
-    await pg.click('[data-lg="' + toStage + '"]'); await pg.waitForTimeout(700);
-    const after = await stageOn(); const chip = !!(await pg.$('[data-lf="' + chipInStage + '"]')); log(list, '→ clicked', toStage, '— stage on:', after, '· chip', chipInStage, 'visible:', chip);
-    if (after !== toStage) errs.push(list + ' list: stage button ' + toStage + ' should switch the stage (was ' + before + ', now ' + after + ')');
-    if (!chip) errs.push(list + ' list: after switching to ' + toStage + ' the ' + chipInStage + ' chip should be visible');
+    await goList(list); const before = await chipOn(); log(list, 'list — chip on:', before);
+    if (!(await pg.$('.omenu [data-og="' + toStage + '"] [data-lf="' + chipInStage + '"]'))) { errs.push(list + ': chip ' + chipInStage + ' (stage ' + toStage + ') not rendered'); return; }
+    await pg.click('.omenu [data-og="' + toStage + '"] [data-lf="' + chipInStage + '"]'); await pg.waitForTimeout(700);
+    const after = await chipOn(); log(list, '→ clicked', chipInStage, '— chip on:', after);
+    if (after !== chipInStage) errs.push(list + ' list: chip ' + chipInStage + ' should open that list (was ' + before + ', now ' + after + ')');
   };
   await check('bo', 'recv', 'sent');     // 📋 백오더 목록(⏳ 기타) → 📥 접수
   await check('inv', 'ship', 'pick');    // 📄 인보이스 조회(✅ 완료 · 조회) → 📦 출고

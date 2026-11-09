@@ -41,6 +41,7 @@ export function register(state) {
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-ocmp]'); if (!b) return; const on = document.body.classList.toggle('oscr'); try { localStorage.setItem('theone.ocompact', on ? '1' : '0'); } catch (x) {} b.querySelector('.ci').textContent = on ? '🔽' : '🔼'; b.querySelector('.cl').textContent = on ? bt('크게', 'Full') : bt('작게', 'Compact'); });
   window.addEventListener('theone:list', e => { LF.st = e.detail; LF.list = true; pageOrder(''); });
   window.addEventListener('theone:stage', e => { goStage(e.detail); pageOrder(''); });
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-orf]'); if (b && isStaff()) { LF.list = true; pageOrder(''); } });   // 🔄 새로 고침 — 지금 칸을 서버에서 다시 읽음 (어느 목록에서든)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncOutbox(true); });
 }
 
@@ -212,6 +213,7 @@ async function pageOrder(arg) {
   if (wip) h += '<div class="alert a-amb tap" id="oWip" style="margin:0 0 12px">✏️ 작성 중인 주문 — ' + esc(wip.store || '가게 미선택') + ' · ' + wip.lines.length + '줄 <b>이어서 하기 ›</b></div>';
   if (out.length) h += '<div class="card" style="border:2px solid #fecaca"><h2>📤 아직 회사로 안 간 주문 ' + out.length + '건</h2><div class="muted">폰에 안전하게 저장돼 있습니다. 인터넷이 되면 자동으로 보내고, 아래 버튼으로 바로 보낼 수도 있습니다.</div>' +
     oTbl(out.map(x => orderRow(x.o, true, x.err)).join('')) + '<button class="b-blue" id="oSync" style="margin-top:8px">📤 지금 모두 보내기</button></div>';
+  if (isStaff() && S.DB.cacheAt && Date.now() - S.DB.cacheAt < 3000) h += '<div class="alert a-amb" id="oStale">🐢 ' + bi('연결이 느려 <b>폰에 저장된 옛 목록</b>을 보여주고 있습니다 — 새 주문이 빠져 있을 수 있습니다.', 'Slow connection — showing the list saved on this phone; new orders may be missing.') + ' <button class="b-blue b-sm" data-orf="1" style="margin-left:6px">🔄 ' + bt('다시 읽기', 'Reload') + '</button></div>';   // 창고 매니저 폰에 새 주문 2건이 안 보였던 일 (v0.8.174)
   if (err) h += '<div class="alert a-amb">회사 기록을 읽지 못했습니다 (' + esc(err) + ') — 인터넷이 안 되면 폰에 저장된 것만 보입니다.</div>';
   if (!isStaff()) h += '<div id="dayCfL"></div>';
   const cfs = isStaff() ? [] : rows.filter(o => o.cfReq && !o.cfOk && o.st !== 'x');
@@ -339,10 +341,11 @@ async function staffHome() {
   if (openG.includes('recv')) openG = openG.map(g => g === 'recv' ? 'sale' : g);   /* 옛 이름(📥 주문 접수) 기억 → 세일 */
   let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + g[1] + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">▾</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
     allT.filter(h => !GRP.some(g => g[4].includes(keyOf(h)))).join('');
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">' + (j === 'whmgr' ? '🏭 ' + bi('창고', 'Warehouse') : '📦 ' + bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
+  $('page').innerHTML = (matchMedia('(min-width:900px)').matches ? '<div class="ohead ohome">' + menuHtml(document.body.classList.contains('oscr'), true) + '</div>' : '') + '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">' + (j === 'whmgr' ? '🏭 ' + bi('창고', 'Warehouse') : '📦 ' + bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
     '<div id="naBanH"></div><div id="hOld"></div>' + grids +
     '<div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div>';
   document.querySelectorAll('[data-hp]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp; staffHome(); });
+  document.querySelectorAll('.ohome [data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') return staffHome(); LF.st = b.dataset.lf; LF.list = true; pageOrder(''); });
   /* ◀ ▶ — 같은 길이만큼 앞뒤로 (달 단위 기간은 달로) */
   const shift = dir => { const isMonth = from.endsWith('-01') && (to === today() || to === Fulfill.monthEnd(from)); if (LF.hp === 'month' || LF.hp === 'lastm' || (LF.hp === 'custom' && isMonth && daysBetween(from, to) >= 27)) { const f = Fulfill.addMonths(from, dir); LF.hfrom = f; LF.hto = Fulfill.monthEnd(f); } else { LF.hfrom = addDays(from, dir * days); LF.hto = addDays(to, dir * days); } LF.hp = 'custom'; staffHome(); };
   $('hPrev').onclick = () => shift(-1); $('hNext').onclick = () => shift(1);
@@ -417,6 +420,17 @@ async function staffHome() {
     document.querySelectorAll('[data-ivsm]').forEach(b => b.onclick = () => { LF.im = 'date'; LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; LF.sm = b.dataset.ivsm; LF.st = 'inv'; LF.list = true; pageOrder(''); });
   } catch (e) { if ($('hSales')) $('hSales').innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; }
 }
+/* 📌 담당자 메뉴 — 접수 · 출고 · 완료 · 기타 묶음의 모든 칸이 항상 보임 (단계를 누를 때마다 생겼다 없어지지 않게 · v0.8.174).
+ *   폰: 목록 위 고정 머리 · 컴퓨터(≥900px): 왼쪽 메뉴 아래에 세로로 고정 (style.js .omenu). 홈 화면(staffHome)에도 같은 메뉴 — 홈 칸이 켜짐.
+ *   🔄 새로 고침 = 지금 칸을 다시 읽음 (연결이 느려 폰에 저장된 옛 목록이 먼저 보였을 때) */
+export function menuHtml(cmp, home) {
+  const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '" title="' + esc(ko + ' · ' + en) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + ' <span class="en">' + en + '</span></span></button>';
+  const chipOf = c => { const i = c[1].indexOf(' '); return chip(c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2], !home && LF.st === c[0]); };
+  const av = chipsFor(), groups = STG.map(g => [g, av.filter(c => g[4].includes(c[0]))]).filter(x => x[1].length);
+  return '<div class="omenu"><div class="og otop"><div class="ochips">' + chip('home', '🏠', '홈', 'Home', !!home) + (home ? '' : '<button data-orf="1" title="' + esc('새로 고침 · Refresh') + '"><span class="ci">🔄</span><span class="cl">새로 고침 <span class="en">Refresh</span></span></button>') +
+    '<button data-ocmp="1" title="' + esc(bt('메뉴 작게 · 크게', 'Compact / full menu')) + '"><span class="ci">' + (cmp ? '🔽' : '🔼') + '</span><span class="cl">' + (cmp ? bt('크게', 'Full') : bt('작게', 'Compact')) + '</span></button></div></div>' +
+    groups.map(([g, cs]) => '<div class="og" data-og="' + g[0] + '"><div class="ogl" title="' + esc(g[2] + ' · ' + g[3]) + '"><span class="ci">' + g[1] + '</span><span class="cl">' + g[2] + ' <span class="en">' + g[3] + '</span></span></div><div class="ochips">' + cs.map(chipOf).join('') + '</div></div>').join('') + '</div>';
+}
 function listHead() {
   if (!isStaff()) return pageHead('🛒 ' + bi('세일', 'Sales'), bt('새 주문 · 보낼 주문 · 사무실 확인 · 최근 주문', 'new order · to send · office confirmations · recent orders')) +
     '<div class="qgrid sale" style="margin-bottom:12px"><button type="button" class="qb blue" id="oNew"><span class="i">🛒</span><b>' + bi('새 주문', 'New order') + '</b></button><button type="button" class="qb" data-hg="credit/new"><span class="i">↩</span><b>' + bi('크레딧 · 리턴', 'Credit') + '</b></button><button type="button" class="qb" data-hg="invs"><span class="i">📄</span><b>' + bi('인보이스', 'Invoices') + '</b></button><button type="button" class="qb" data-hg="mysales"><span class="i">📈</span><b>' + bi('내 매출', 'My sales') + '</b></button></div>';
@@ -424,12 +438,8 @@ function listHead() {
   const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto);
   const per = (LF.st === 'all' || LF.st === 'done' || LF.st === 'x' || LF.st === 'shipped') ? '<div class="chips" style="margin-top:0">' + Fulfill.PERIODS.filter(c => ['today', 'week', 'month', 'quarter', 'year'].includes(c[0])).map(c => '<button class="' + ((LF.hp || 'today') === c[0] ? 'on' : '') + '" data-hp2="' + c[0] + '">' + c[1] + '</button>').join('') + '<button class="' + (['today', 'week', 'month', 'quarter', 'year'].includes(LF.hp || 'today') ? '' : 'on') + '" id="hCal2">📅 ' + esc(md(pr[0]) + (pr[0] !== pr[1] ? ' ~ ' + md(pr[1]) : '')) + '</button></div>' : '';
   /* 위쪽 메뉴(상태 아이콘 · 기간)는 화면 위에 고정 — 아이콘은 옆으로 밀리지 않고 한눈에 다 보이는 격자 */
-  const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '" title="' + esc(ko + ' · ' + en) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + ' <span class="en">' + en + '</span></span></button>';
   const cmp = document.body.classList.contains('oscr');
-  /* 🗂 단계(접수 · 출고 · 완료 · 기타)를 먼저 고르고, 그 단계의 세부 칸만 — 칩 15개를 한 번에 보이지 않게 */
-  const av = chipsFor(), gs = STG.filter(g => av.some(c => g[4].includes(c[0]))), cur = gs.find(g => g[4].includes(LF.st)) || gs[0];
-  const sub = av.filter(c => cur && cur[4].includes(c[0]));
-  return statusStrip() + '<div class="ohead"><div class="ochips ogrp">' + chip('home', '🏠', '홈', 'Home', false) + gs.map(g => '<button class="' + (g === cur ? 'on' : '') + '" data-lg="' + g[0] + '" title="' + esc(g[2] + ' · ' + g[3]) + '"><span class="ci">' + g[1] + '</span><span class="cl">' + g[2] + ' <span class="en">' + g[3] + '</span></span></button>').join('') + '</div><div class="ochips osub">' + sub.map(c => { const i = c[1].indexOf(' '); return chip(c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2], LF.st === c[0]); }).join('') + '<button data-ocmp="1" title="' + esc(bt('메뉴 작게 · 크게', 'Compact / full menu')) + '"><span class="ci">' + (cmp ? '🔽' : '🔼') + '</span><span class="cl">' + (cmp ? bt('크게', 'Full') : bt('작게', 'Compact')) + '</span></button></div>' + per + '</div>' +
+  return statusStrip() + '<div class="ohead">' + menuHtml(cmp) + per + '</div>' +
     (j === 'pick' ? '' : '<div style="margin-bottom:10px">' + sel('lfSm', [['', '세일즈맨 전체 · All salesmen']].concat(S.sms.map(s => [s.code, s.code])), LF.sm) + '</div>');
 }
 function bindHead() {
@@ -438,7 +448,6 @@ function bindHead() {
   if ($('hCal2')) $('hCal2').onclick = async () => { const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto), r = await pickDates({ from: pr[0], to: pr[1], quick: Fulfill.quickRanges() }); if (!r) return; LF.hp = 'custom'; LF.hfrom = r[0]; LF.hto = r[1]; pageOrder(''); };
   if ($('oNew')) $('oNew').onclick = () => { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); Router.go('order', 'new'); };
   document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') { LF.list = false; return pageOrder(''); } LF.st = b.dataset.lf; pageOrder(''); });
-  document.querySelectorAll('[data-lg]').forEach(b => b.onclick = () => { goStage(b.dataset.lg); pageOrder(''); });
   if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageOrder(''); };
 }
 /** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */

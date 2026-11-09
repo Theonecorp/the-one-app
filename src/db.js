@@ -111,7 +111,7 @@ async function makeFirestoreDB() {
    *   캐시에 없으면 그대로 서버를 기다림. 1분에 한 번 'theone:slow' 로 알림 (main.js 가 토스트) */
   const SLOW_MS = 8000; let slowAt = 0;
   const slowNote = () => { const now = Date.now(); if (now - slowAt > 60000) { slowAt = now; try { window.dispatchEvent(new CustomEvent('theone:slow')); } catch (e) {} } };
-  const raceCache = (serverP, cacheFn) => new Promise((res, rej) => { let done = false; const t = setTimeout(async () => { if (done) return; try { const r = await cacheFn(); if (r != null && !done) { done = true; slowNote(); res(r); } } catch (e) {} }, SLOW_MS); serverP.then(v => { if (!done) { done = true; clearTimeout(t); res(v); } }, e => { if (!done) { done = true; clearTimeout(t); rej(e); } }); });
+  const raceCache = (serverP, cacheFn) => new Promise((res, rej) => { let done = false; const t = setTimeout(async () => { if (done) return; try { const r = await cacheFn(); if (r != null && !done) { done = true; DB.cacheAt = Date.now(); slowNote(); res(r); } } catch (e) {} }, SLOW_MS); serverP.then(v => { if (!done) { done = true; clearTimeout(t); res(v); } }, e => { if (!done) { done = true; clearTimeout(t); rej(e); } }); });
   const DB = {
     kind: 'firestore',
     async get(c, id) { const ref = fs.doc(db, c, id); const s = await raceCache(fs.getDoc(ref), async () => { const x = await fs.getDocFromCache(ref); return x.exists() ? x : null; }); return s.exists() ? Object.assign({ id: s.id }, s.data()) : null; },
