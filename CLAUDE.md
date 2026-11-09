@@ -36,6 +36,11 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 6. 커밋 → 푸시 → PR → GitHub Actions `check` 가 ① app.js 가 src 와 같은지 ② 버전 세 곳 ③ 시험 전부를 확인 → 머지.
 7. **머지 뒤 main 을 다시 받아 `sh build.sh` 를 한 번 더** — 두 브랜치의 src 가 합쳐졌으면 app.js 도 다시 빌드돼야 한다 (충돌을 한쪽으로 풀면 상대 기능이 빠진 app.js 가 배포되는 사고의 원인).
 
+## GitHub 이 막혔을 때 (2026-11 계정 정지 때 겪은 일)
+- 앱 배포는 Firebase Hosting(https://app.theonefl.com · 스크립트는 관리자 세션의 fbhost.mjs, 서비스 계정 `FIREBASE_*` 필요) 이라 GitHub 과 무관하게 올릴 수 있다. GitHub Pages 는 예비.
+- 코드 거울: GitLab https://gitlab.com/theonecorp-group/the-one-app — `sh tools/mirror.sh` 로 푸시 (환경 변수 `GITLAB_TOKEN`). GitHub 이 돌아오면 그대로 origin 에 푸시 → PR → check → 머지.
+- 세션이 끝나기 전에 `git bundle create … --all` 로 번들을 남겨 두면 커밋을 잃지 않는다.
+
 ## 되돌리기
 - 어느 버전으로든: `git log --oneline` 에서 `vX.Y.Z` 커밋을 찾아 `git revert` (버전 세 곳은 다시 올림). 데이터는 매일 새벽 2시 드라이브 "THE ONE 백업" (30일 + 월 1일 12달, `apps-script/Backup.gs`).
 
