@@ -30,15 +30,16 @@ export async function storeInfo(acct, force) {
   if (c && !force && Date.now() - c.at < 600000) { if (!(c.access && c.access.k === 'none') || (await acctAccess(acct)).k === 'none') return c; }   // 그사이 허락을 받았으면 새로 읽음
   const a = S.accounts.byCode ? S.accounts.byCode[acct] : null;
   const sm = isStaff() ? String((a && a.sm) || mySm() || '').toUpperCase() : mySm();
-  const out = { at: Date.now(), acct, sm, ar: null, invs: [], bk: [0, 0, 0, 0, 0], bal: 0, asOf: '', orders: [], pays: [], hist: {}, invHist: [], err: '' };
+  const out = { at: Date.now(), acct, sm, ar: null, invs: [], bk: [0, 0, 0, 0, 0], bal: 0, asOf: '', orders: [], pays: [], cods: [], pdc: 0, hist: {}, invHist: [], err: '' };
   const wh = [['acct', '==', acct]]; if (!isStaff()) wh.push(['sm', '==', mySm()]);
   /* 인보이스는 가게 기준 — 내 담당 가게 · 관리자가 허락한 가게는 다른 세일즈맨이 발행한 것까지 전부 (firestore.rules ownAcct · granted) */
   /* 왕복을 줄이려고 권한 · AR · 주문 · 수금을 한꺼번에 (권한은 세일즈맨만 읽기가 있음) */
-  const [acc, arDoc, orders, pays] = await Promise.all([
+  const [acc, arDoc, orders, pays, cods] = await Promise.all([
     acctAccess(acct),
     sm ? arDocOf(sm) : null,
     S.DB.list('orders', { where: wh }).catch(() => []),
-    S.DB.list('entries', { where: wh.concat([['ym', 'in', recentYms(6)]]) }).catch(() => [])
+    S.DB.list('entries', { where: wh.concat([['ym', 'in', recentYms(12)]]) }).catch(() => []),   /* 📒 인보이스 · 수금 창 — 수금은 12달 (전엔 6달) */
+    S.DB.list('cod', { where: wh }).catch(() => [])   /* COD · ACH · 카드 (사무실에서 받은 돈) */
   ]);
   out.access = acc;
   const whInv = acc.k === 'none' ? wh : [['acct', '==', acct]];
@@ -82,7 +83,10 @@ export async function storeInfo(acct, force) {
       if (!allInv.length && !nAll && isStaff() && a && a.store) { try { const byName = await S.DB.list('invoices', { where: [['store', '==', a.store]] }); if (byName.length) { allInv = byName; out.invByName = true; } } catch (e) {} }
       out.invHist = sortBy(allInv.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 60); out.invHistN = out.invByName || nAll == null ? allInv.length : Math.max(nAll, allInv.length); out.whInv = whInv; out.invPartial = !out.invByName && allInv.length < out.invHistN; out.invHistAmt = R2(allInv.filter(x => x.st !== 'x' && x.d >= today().substring(0, 4) + '-01-01').reduce((a, x) => a + (x.total || 0), 0)); } catch (e) {}
     out.orders = sortBy(orders.filter(o => o.st !== 'x'), o => o.d + (o.createdAt || ''), true).slice(0, 30);
-    out.pays = sortBy(pays.filter(e => !e.void), e => e.d + (e.createdAt || ''), true).slice(0, 30);
+    out.pays = sortBy(pays.filter(e => !e.void), e => e.d + (e.createdAt || ''), true).slice(0, 80);
+    out.cods = sortBy((cods || []).filter(c => !c.void), c => c.d + (c.createdAt || ''), true).slice(0, 80);
+    /* 💵 후일 수표(Postdate check) — 아직 입금일이 안 된 수표 (바운스 · 대체 · 취소 빼고) */
+    const td = today(); out.pdc = R2(pays.filter(e => !e.void && !e.repl && !e.bounced).reduce((a, e) => a + (e.pays || []).filter(p => p.m === 'CHECK' && p.dep && p.dep > td).reduce((b, p) => b + num(p.amt), 0), 0));
     /* 🕘 아이템별 이 가게 구매 기록 — 주문 화면에 "9/16(3) · 7/20(6)" 로 보임
      *   ① 앱에서 발행한 인보이스 줄 (실제 나간 수량 · 가격) 전부   ② 아직 인보이스가 안 난 주문(접수 · 작업 중 · 확인)의 줄 — 최근 12건
      *   이전 시스템 인보이스는 줄이 없어 안 잡힘 (아이템별 판매 내역을 가져오면 들어옴) */
@@ -206,6 +210,37 @@ function invhHtml(info) {
   return '<div class="muted" style="margin:4px 0 6px">' + bt('올해 매출', 'This year') + ' <b>' + money(info.invHistAmt || 0) + '</b> · ' + bt('전체', 'All') + ' ' + (info.invHistN || 0) + bt('장', '') + (info.invPartial ? ' (' + bt('최근 12달 · 60장까지', 'last 12 months, up to 60') + ') <button type="button" class="b-ghost b-sm" id="ihAll" style="padding:3px 9px">📜 ' + bt('전체 읽기', 'Load all') + '</button>' : info.invHistN > (info.invHist || []).length ? ' (' + bt('최근 60장', 'latest 60') + ')' : '') + ' · ' + bt('미결 · 완납은 AR 기준', 'open/paid from A/R') + (info.asOf ? ' ' + esc(info.asOf) : '') + '</div>' +
     rows.map(r => { const x = r.x; return '<div class="pr tap" data-si="' + esc(x.no) + '"><div class="ct"><b>' + esc(x.no) + ' <span class="tag t-g">' + esc(x.t || '') + '</span>' + (x.arOnly ? ' <span class="tag t-c">AR</span>' : x.src === 'legacy' ? '' : ' <span class="tag t-b">' + bt('앱', 'App') + '</span>') + '</b><small>' + esc(md(x.d)) + (x.sm ? ' · ' + esc(x.sm) : '') + (x.terms ? ' · ' + esc(x.terms) : '') + (x.order ? ' · ' + esc(x.order) : '') + '</small>' + (x.memo ? '<small class="hist" style="color:#b45309">📝 ' + esc(x.memo) + '</small>' : '') + '</div><div class="pa"><b>' + money(x.total) + '</b><small>' + st(r) + '</small></div></div>'; }).join('');
 }
+/** 📒 인보이스 줄 — 인보이스 기록(이전 시스템 + 앱) 과 AR 미결을 번호로 합침 · 날짜 최근 순. bal 은 AR 기준 (AR 에 없고 기준일 전이면 0) */
+function invRows(info) {
+  const ar = {}; (info.invs || []).forEach(v => { ar[invNo(v.no)] = v; });
+  const rows = (info.invHist || []).map(x => { const v = ar[invNo(x.no)]; const bal = v ? v.bal : (x.src !== 'legacy' && x.st === 'open') ? num(x.bal != null ? x.bal : x.total) : (info.asOf && x.d <= info.asOf) ? 0 : num(x.bal || 0);
+    return { no: x.no, d: x.d, total: num(x.total), bal: R2(bal), memo: x.memo || '', bk: v ? v.bk : 0, lines: x.lines || [], legacy: x.src === 'legacy', t: x.t || String(x.no).charAt(0) }; });
+  const have = {}; rows.forEach(r => { have[invNo(r.no)] = 1; });
+  (info.invs || []).forEach(v => { if (!have[invNo(v.no)]) rows.push({ no: v.no, d: v.d, total: num(v.amt), bal: R2(v.bal), memo: '', bk: v.bk || 0, lines: [], arOnly: true, t: String(v.no).charAt(0) }); });
+  return rows.sort((a, b) => String(b.d).localeCompare(String(a.d)) || String(b.no).localeCompare(String(a.no)));
+}
+/** 📒 수금 줄 — 세일즈맨 수금(체크 · 캐쉬 · Zelle, 수표마다 한 줄) + COD · ACH · 카드 · 날짜 최근 순 */
+function payRows(info) {
+  const R = [];
+  (info.pays || []).forEach(e => (e.pays || []).forEach(p => R.push({ m: p.m === 'ZELLE' ? 'ZELLE' : p.m === 'CASH' ? 'CASH' : 'CHECK', d: e.d, amt: num(p.amt), ty: e.bounced ? 'BOUNCE' : 'PAY', ref: p.m === 'CHECK' ? (p.ref ? '#' + p.ref : '') : (p.ref || ''), dep: p.dep || '', invs: (e.invs || []).map(v => v.no).filter(Boolean), sm: e.sm || '' })));
+  (info.cods || []).forEach(c => R.push({ m: c.method || 'COD', d: c.d, amt: num(c.amt), ty: c.method || 'COD', ref: c.ref || '', dep: '', invs: (c.invs || []).map(v => v.no).concat(c.inv ? [c.inv] : []).filter(Boolean), sm: c.sm || '' }));
+  return R.sort((a, b) => String(b.d).localeCompare(String(a.d)));
+}
+let IP = { sel: '', open: false };
+function ipHtml(info) {
+  const wide = matchMedia('(min-width:900px)').matches, rows = invRows(info).filter(r => !IP.open || Math.abs(r.bal) > 0.005), P = payRows(info), td = today();
+  const items = r => r.lines.length ? '<table class="iptbl"><tr><th>' + bt('아이템', 'Item #') + '</th><th>' + bt('이름', 'Description') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('가격', 'Price') + '</th></tr>' + r.lines.map(l => '<tr><td><b>' + esc(l.c) + '</b></td><td>' + esc(l.d || '') + '</td><td class="r">' + num(l.q) + '</td><td class="r">' + money(l.p) + '</td></tr>').join('') + '</table>'
+    : '<div class="muted" style="padding:8px">' + (r.legacy ? bt('이전 시스템(SmartBee) 인보이스 — 품목 줄이 앱에 없습니다', 'SmartBee invoice — no line items in the app') : r.arOnly ? bt('AR 에만 있는 인보이스 — 품목 없음', 'Only in A/R — no line items') : bt('품목 없음', 'No line items')) + '</div>';
+  const sel = rows.find(r => r.no === IP.sel);
+  const invT = '<table class="iptbl ipinv"><tr><th>' + bt('인보이스', 'Invoice #') + '</th><th>' + bt('날짜', 'Date') + '</th><th class="r">' + bt('합계', 'Total') + '</th><th class="r">' + bt('잔액', 'Balance') + '</th><th>' + bt('메모', 'Remark') + '</th></tr>' +
+    (rows.length ? rows.map(r => '<tr class="tap' + (r.no === IP.sel ? ' on' : '') + (r.bal > 0.005 && r.bk >= 3 ? ' late' : '') + '" data-ipi="' + esc(r.no) + '"><td><b>' + esc(r.no) + '</b>' + (r.memo ? '<small class="ipm2">' + esc(r.memo) + '</small>' : '') + '</td><td>' + esc(md(r.d)) + '</td><td class="r">' + money(r.total) + '</td><td class="r' + (r.bal > 0.005 ? ' warn' : r.bal < -0.005 ? ' ok' : '') + '">' + (Math.abs(r.bal) > 0.005 ? money(r.bal) : '.00') + '</td><td class="ipmemo">' + esc(r.memo) + '</td></tr>' + (!wide && r.no === IP.sel ? '<tr class="ipsub"><td colspan="5">' + items(r) + '<button class="b-ghost b-sm" data-ipd="' + esc(r.no) + '">📄 ' + bt('자세히', 'Details') + '</button></td></tr>' : '')).join('') : '<tr><td colspan="5"><div class="none">' + bt('인보이스 없음', 'No invoices') + '</div></td></tr>') + '</table>';
+  const payT = '<table class="iptbl"><tr><th>' + bt('종류', 'Pay type') + '</th><th>' + bt('날짜', 'Date') + '</th><th class="r">' + bt('금액', 'Amount') + '</th><th>Type</th><th>' + bt('번호', 'Ref #') + '</th></tr>' +
+    (P.length ? P.map(p => '<tr' + (p.ty === 'BOUNCE' ? ' class="late"' : '') + ' title="' + esc(p.invs.join(', ')) + '"><td>' + esc(p.m) + '</td><td>' + esc(md(p.d)) + '</td><td class="r">' + money(p.amt) + '</td><td>' + esc(p.ty) + '</td><td>' + esc(p.ref) + (p.dep && p.dep > td ? ' <span class="tag t-c">' + bt('후일', 'PDC') + ' ' + esc(md(p.dep)) + '</span>' : '') + '</td></tr>').join('') : '<tr><td colspan="5"><div class="none">' + bt('최근 12달 수금 기록 없음', 'No payments in 12 months') + '</div></td></tr>') + '</table>';
+  const head = '<div class="chips" style="margin:2px 0 6px"><button class="' + (IP.open ? '' : 'on') + '" data-ipf="all">' + bt('전체', 'All') + '</button><button class="' + (IP.open ? 'on' : '') + '" data-ipf="open">' + bt('잔액 있는 것만', 'With balance') + '</button>' + (info.invPartial ? '<button id="ihAll">📜 ' + bt('옛 인보이스까지', 'Load older') + '</button>' : '') + '</div>';
+  return head + '<div class="ipw' + (wide ? ' wide' : '') + '"><div class="ipl">' + invT + '</div><div class="ipr">' +
+    (wide ? '<div class="ipitems">' + (sel ? '<div class="iphd"><b>' + esc(sel.no) + '</b> · ' + esc(md(sel.d)) + ' · ' + money(sel.total) + ' <button class="b-ghost b-sm" data-ipd="' + esc(sel.no) + '">📄 ' + bt('자세히', 'Details') + '</button></div>' + items(sel) : '<div class="muted" style="padding:10px">' + bt('왼쪽 인보이스를 누르면 나간 아이템이 여기 보입니다', 'Tap an invoice to see its items here') + '</div>') + '</div>' : '') +
+    '<div class="ippays"><div class="iphd"><b>💵 ' + bt('수금 기록', 'Payments') + '</b> <span class="muted">' + P.length + '</span></div>' + payT + '</div></div></div>';
+}
 /** 📄 인보이스 한 장 — 인보이스(앱 · 이전 시스템) + AR 잔액 + 이 인보이스에 넣은 수금, 한 화면에. back 이 있으면 ‹ 로 돌아감 */
 export async function invDetail(no, acct, back) {
   if (!back) openModal('<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>', { wide: true }); else $('mbox').innerHTML = '<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>';
@@ -325,10 +360,12 @@ export async function storeSheet(acct, onPick, opt0) {
   let notes = notes0;
   const live = info.invs.filter(v => v.bal > 0.005), credits = info.invs.filter(v => v.bal < -0.005);
   const stale = info.asOf ? daysBetween(info.asOf, today()) : 0;
-  let tab = 'inv';
+  let tab = 'ip'; IP = { sel: '', open: false };
   const paint = () => {
+    const bw = $('modal') && $('modal').querySelector('.bwrap'); if (bw) bw.classList.add('ssw');   /* 📒 넓은 창 — 인보이스 · 수금을 나란히 (다른 창을 열었다 돌아와도) */
     let body = '';
-    if (tab === 'inv') body = live.length || credits.length ?
+    if (tab === 'ip') body = ipHtml(info);
+    else if (tab === 'inv') body = live.length || credits.length ?
       live.concat(credits).map(v => '<div class="pr tap" data-si="' + esc(v.no) + '"' + (v.bk >= 3 ? ' style="background:#fef2f2;border-radius:10px;padding-left:8px;padding-right:8px"' : '') + '><span class="tb" style="flex:0 0 34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;background:' + (v.bal < 0 ? '#15803d' : v.bk >= 3 ? '#b91c1c' : v.bk >= 1 ? '#b45309' : '#64748b') + '">' + esc(String(v.no).charAt(0)) + '</span>' + (v.hold ? '<span class="tag t-r" style="margin-right:6px">↩️ ' + bt('바운스 홀드', 'Bounce hold') + '</span>' : '') + '<div class="ct"><b>' + esc(v.no) + (v.app ? ' <span class="tag t-b">앱</span>' : '') + '</b><small>' + esc(md(v.d)) + (v.pdd > 0 ? ' · ' + v.pdd + '일 지남 overdue' : ' · 기한 전') + ' · ' + money(v.amt) + '</small></div><div class="pa"><b>' + money(v.bal) + '</b><small>' + (v.bal < 0 ? '크레딧' : '잔액 due') + '</small></div></div>').join('') : '<div class="none">미결 인보이스 없음 · No open invoices' + (info.asOf ? '' : ' (AR 아직 안 올라옴 · AR not uploaded yet)') + '</div>';
     else if (tab === 'invh') body = invhHtml(info);
     else if (tab === 'ord') body = info.orders.length ? info.orders.map(o => '<div class="pr tap" data-so="' + esc(o.id) + '"><div class="ct"><b>' + esc(o.no) + ' ' + stTag(o.st) + '</b><small>' + esc(o.d) + ' · ' + esc(o.sm) + (o.invs && o.invs.length ? ' · ' + esc(o.invs.join(', ')) : '') + (o.memo ? ' · ' + esc(o.memo) : '') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b><small>' + (o.n || 0) + '줄 · ' + (o.qty || 0) + '개</small></div></div>').join('') : '<div class="none">앱으로 넣은 주문이 아직 없습니다 · No app orders yet</div>';
@@ -340,12 +377,12 @@ export async function storeSheet(acct, onPick, opt0) {
       (a ? '<div class="btns" style="margin-top:6px;justify-content:flex-start;flex-wrap:wrap"><a class="b-ghost b-sm lnk" href="' + esc(Notes.gmapUrl(a)) + '" target="_blank" rel="noopener">🗺 ' + bi('구글 지도', 'Google Maps') + '</a><a class="b-ghost b-sm lnk" href="' + esc(Notes.gmapUrl(a, true)) + '" target="_blank" rel="noopener">🧭 ' + bi('길찾기', 'Directions') + '</a>' + (a.tel ? '<a class="b-ghost b-sm lnk" href="tel:' + esc(String(a.tel).replace(/[^0-9+]/g, '')) + '">📞 ' + bi('전화', 'Call') + '</a>' : '') + '</div>' : '') +
       (tab !== 'note' && notes.some(n => n.pin) ? '<div style="margin-top:6px">' + Notes.notesHtml(notes.filter(n => n.pin), { limit: 3 }) + '</div>' : '') + '' +
       '<div class="kpi" style="grid-template-columns:repeat(5,1fr);margin-top:10px">' + info.bk.map((v, i) => '<div' + (i >= 3 && v > 0.005 ? ' style="background:#fef2f2"' : '') + '><b style="font-size:12px">' + money(v) + '</b><span>' + BK[i] + '</span></div>').join('') + '</div>' +
-      '<div class="sumbox" style="display:flex;justify-content:space-between"><span>' + bi('미수금 합계', 'Balance due') + (info.asOf ? ' <span class="muted">기준 as of ' + esc(info.asOf) + (stale > 10 ? ' (' + stale + '일 전)' : '') + '</span>' : '') + '</span><b class="' + (info.bal > 0.005 ? 'warn' : 'ok') + '">' + money(info.bal) + '</b></div>' +
+      '<div class="sumbox" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px"><span>' + bi('미수금 합계', 'Balance due') + (info.asOf ? ' <span class="muted">기준 as of ' + esc(info.asOf) + (stale > 10 ? ' (' + stale + '일 전)' : '') + '</span>' : '') + '</span><span>' + (info.pdc > 0.005 ? '<span class="muted">' + bt('후일 수표', 'Postdate check') + '</span> <b style="color:#1d4ed8;margin-right:12px">' + money(info.pdc) + '</b>' : '') + '<b class="' + (info.bal > 0.005 ? 'warn' : 'ok') + '">' + money(info.bal) + '</b></span></div>' +
       (info.err ? '<div class="alert a-amb">일부를 읽지 못했습니다 (' + esc(info.err) + ')</div>' : '') +
       (info.access && info.access.k === 'none' ? '<div class="alert a-amb">🔒 ' + bt('다른 세일즈맨 담당 가게입니다', 'Another salesman\'s store') + (info.access.owner ? ' (' + esc(info.access.owner) + ')' : '') + ' — ' + bt('내가 발행한 것만 보입니다', 'only your own invoices show') + ' <button class="b-ghost b-sm" id="ssReq">🔐 ' + bt('전체 조회 요청', 'Request access') + '</button></div>' : '') +
       (info.access && info.access.k === 'grant' ? '<div class="alert a-grn">✅ ' + bt('관리자 허락으로 조회 중', 'Viewing with admin approval') + ' ~' + esc(untilTxt(info.access.until)) + '</div>' : '') +
-      '<div class="seg" style="flex-wrap:wrap">' + [['inv', bi('미결', 'Open') + ' ' + live.length], ['invh', bi('인보이스', 'Invoices') + ' ' + (info.invHistN || 0)], ['ord', bi('주문', 'Orders') + ' ' + info.orders.length], ['pay', bi('수금', 'Payments') + ' ' + info.pays.length], ['ship', '🚚 ' + bi('배송', 'Shipments') + ' ' + ships.length], ['note', '📝 ' + bi('노트', 'Notes') + ' ' + notes.length]].map(t => '<button class="' + (tab === t[0] ? 'on' : '') + '" data-ss="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
-      '<div style="max-height:45vh;overflow:auto">' + body + '</div>' +
+      '<div class="seg" style="flex-wrap:wrap">' + [['ip', '📒 ' + bi('인보이스 · 수금', 'Invoices & payments')], ['inv', bi('미결', 'Open') + ' ' + live.length], ['invh', bi('인보이스', 'Invoices') + ' ' + (info.invHistN || 0)], ['ord', bi('주문', 'Orders') + ' ' + info.orders.length], ['pay', bi('수금', 'Payments') + ' ' + info.pays.length], ['ship', '🚚 ' + bi('배송', 'Shipments') + ' ' + ships.length], ['note', '📝 ' + bi('노트', 'Notes') + ' ' + notes.length]].map(t => '<button class="' + (tab === t[0] ? 'on' : '') + '" data-ss="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
+      (tab === 'ip' ? body : '<div style="max-height:45vh;overflow:auto">' + body + '</div>') +
       '<div class="btns"><button class="b-ghost" id="ssStmt">🖨 ' + bi('손님용 스테이트먼트', 'Customer statement') + '</button>' + (onPick ? '<button class="b-blue" id="ssPick">' + bi('이 가게로 주문', 'Order for this store') + '</button>' : '') + '</div>';
     $('ssX').onclick = closeModal;
     /* ✏️ 가게 이름 · 주소 · 전화 · 담당 … — 담당자 · 관리자는 바로 고침, 세일즈맨은 사무실에 고쳐 달라고 요청 */
@@ -360,6 +397,10 @@ export async function storeSheet(acct, onPick, opt0) {
     if ($('ihAll')) $('ihAll').onclick = async () => { $('ihAll').disabled = true; $('ihAll').textContent = '…'; try { const all = await S.DB.list('invoices', { where: info.whInv || [['acct', '==', acct]] }); info.invHist = sortBy(all.filter(x => x.st !== 'x'), x => x.d + x.no, true).slice(0, 200); info.invHistN = Math.max(info.invHistN || 0, all.length); info.invPartial = false; } catch (e) { toast(bt('읽지 못했습니다', 'Could not load') + ': ' + (e.code || e.message), 'bad'); } paint(); };
     document.querySelectorAll('[data-so]').forEach(el => el.onclick = () => { closeModal(); goHash('#/order/' + encodeURIComponent(el.dataset.so)); });
     document.querySelectorAll('[data-si]').forEach(el => el.onclick = () => invDetail(el.dataset.si, acct, paint));
+    /* 📒 인보이스를 누르면 나간 아이템 (넓은 화면: 오른쪽 · 폰: 그 줄 밑) · 다시 누르면 접힘 · 📄 자세히 = 인보이스 한 장 */
+    document.querySelectorAll('[data-ipi]').forEach(el => el.onclick = () => { IP.sel = IP.sel === el.dataset.ipi ? '' : el.dataset.ipi; const y = $('mbox').querySelector('.ipl') ? $('mbox').querySelector('.ipl').scrollTop : 0; paint(); const l = $('mbox').querySelector('.ipl'); if (l) l.scrollTop = y; });
+    document.querySelectorAll('[data-ipd]').forEach(el => el.onclick = e => { e.stopPropagation(); invDetail(el.dataset.ipd, acct, paint); });
+    document.querySelectorAll('[data-ipf]').forEach(b => b.onclick = () => { IP.open = b.dataset.ipf === 'open'; paint(); });
     if ($('ssReq')) $('ssReq').onclick = () => requestAccess({ acct });
     if ($('ssPick')) $('ssPick').onclick = () => { closeModal(); onPick(acct); };
     const back = L => { notes = L; tab = 'note'; openModal(''); paint(); };
