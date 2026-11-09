@@ -386,7 +386,12 @@ async function afterLogin(user) {
   let me = null, healed = false;
   if (snap) me = snap.me;
   else {
-    try { me = await meP; } catch (e) { loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ') · ' + email + (String(e.code || '').includes('permission') ? ' — 회사 구글 계정(@theonefl.com)으로 로그인했는지 확인하고, 아니면 로그아웃 뒤 다시 로그인하세요' : '')); try { await S.AUTH.signOut(); } catch (e2) {} return; }
+    try { me = await meP; }
+    catch (e) {
+      /* 권한 오류면 토큰이 늦게 붙었을 수 있어 1.5초 뒤 한 번 더 — 그래도 안 되면 토큰 내용(로그인 방식 · 이메일 확인)을 같이 보여 줌 */
+      let ok = false; if (String(e.code || '').includes('permission')) { await new Promise(r => setTimeout(r, 1500)); try { me = await S.DB.get('users', email); ok = true; } catch (e2) { e = e2; } }
+      if (!ok) { const info = S.AUTH.claims ? await S.AUTH.claims() : ''; loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ') · ' + email + (info ? ' · ' + info : '') + (String(e.code || '').includes('permission') ? ' — 이 화면을 찍어 관리자에게 보내 주세요' : '')); try { await S.AUTH.signOut(); } catch (e3) {} return; }
+    }
     if (!me && ADMIN_EMAILS.includes(email)) {
       me = { id: email, email, name: user.name, role: 'admin', active: true, createdAt: today() };
       try { await S.DB.set('users', email, me); } catch (e) { loginScreen('관리자 기록을 만들지 못했습니다: ' + e.message); return; }

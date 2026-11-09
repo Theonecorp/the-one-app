@@ -173,7 +173,9 @@ async function makeFirestoreDB() {
     },
     async signOut() { await au.signOut(auth); },
     onChange(f) { au.getRedirectResult(auth).catch(() => {}); au.onAuthStateChanged(auth, u => f(u ? { email: (u.email || '').toLowerCase(), name: u.displayName || '' } : null)); },
-    current() { const u = auth.currentUser; return u ? { email: (u.email || '').toLowerCase(), name: u.displayName || '' } : null; }
+    current() { const u = auth.currentUser; return u ? { email: (u.email || '').toLowerCase(), name: u.displayName || '' } : null; },
+    /* 진단: 토큰의 로그인 방식 · 이메일 확인 여부 · 프로젝트 (규칙 signedIn() 이 보는 것) */
+    async claims() { try { const u = auth.currentUser; if (!u) return 'no-user'; const r = await u.getIdTokenResult(true); return (r.signInProvider || '?') + ' · verified=' + r.claims.email_verified + ' · aud=' + r.claims.aud; } catch (e) { return 'claims-error ' + (e.code || e.message); } }
   };
   return { DB, AUTH };
 }
