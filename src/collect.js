@@ -380,7 +380,7 @@ async function paintToday() {
   $('rPhotoCam').onchange = e => { addPhotos(e.target.files); e.target.value = ''; }; $('rPhotoLib').onchange = e => { addPhotos(e.target.files); e.target.value = ''; };
   renderPhotos();
   document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => Router.go('entry', b.dataset.ed));
-  document.querySelectorAll('[data-vd]').forEach(b => b.onclick = async () => { if (!(await confirmBox('이 건을 취소하시겠습니까? · Void this entry?', '취소 Void'))) return; busy(true); try { await S.DB.update('entries', b.dataset.vd, { void: true, updatedAt: new Date().toISOString() }); clearEntryCache(); toast('취소 처리됨 · Voided', 'good'); paintToday(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
+  document.querySelectorAll('[data-vd]').forEach(b => b.onclick = async () => { if (!(await confirmBox('이 건을 취소하시겠습니까? · Void this entry?', '네, 취소합니다 · Yes, void'))) return; busy(true); try { await S.DB.update('entries', b.dataset.vd, { void: true, updatedAt: new Date().toISOString() }); clearEntryCache(); toast('취소 처리됨 · Voided', 'good'); paintToday(); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); });
   PEND_N = pend.length; sendBtnState();
   $('btnSend').onclick = () => sendReport(pend);
 }
