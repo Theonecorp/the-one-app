@@ -63,7 +63,7 @@ export function manage(o, lines) {
     (acc && acc.note ? '<div class="alert a-blu">🏬 ' + esc(acc.note) + '</div>' : '') + '<div id="mNotes"></div>' +
     (o.cfIssueOpen ? '<div class="alert a-red">⚠️ ' + bi('세일즈맨이 이 주문에 문제가 있다고 알렸습니다', 'The salesman flagged this order') + ': <b>' + esc(o.cfIssue || '') + '</b> <span class="muted">' + esc(String(o.cfIssueAt || '').substring(5, 16).replace('T', ' ')) + '</span><div class="btns" style="justify-content:flex-start;margin-top:6px"><button class="b-ghost b-sm" id="mIssueOk">✅ ' + bt('해결', 'Resolved') + '</button></div></div>' : '') + (o.cfReq && !o.cfOk && o.cfNote ? '<div class="alert a-amb">❓ ' + bt('세일즈맨에게 물어본 것', 'Asked the salesman') + ': ' + esc(o.cfNote) + '</div>' : '') +
     (o.st === 'x' ? cancelledBox(o) : '') +
-    (reqCount(o.req) ? '<div class="alert a-amb">🎁 <b>' + bi('인서트 · 디스플레이 요청', 'Insert · display request') + '</b>: <b>' + reqText(o.req) + '</b> — ' + bt('같이 포장', 'pack together') + '</div>' : '') +
+    (reqCount(o.req) ? '<div class="alert a-amb">🎁 <b>' + bi('인서트 · 디스플레이 요청', 'Insert · display request') + '</b>: <b>' + reqText(o.req, false, o.reqNote) + '</b> — ' + bt('같이 포장', 'pack together') + '</div>' : '') +
     (o.memo ? '<div class="alert a-blu">📝 ' + esc(o.memo) + '</div>' : '') +
     '<div id="mSum"></div>' +
     (S.role !== 'salesman' ? timelineHtml(o) : '');
@@ -234,7 +234,7 @@ export function manage(o, lines) {
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 주문으로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mStoreI')) $('mStoreI').onclick = () => storeSheet(o.acct);
   /* 🖼 이 주문으로 새 디스플레이가 나가야 하면 — 가게 · 요청한 디스플레이(o.req) 를 채워 디스플레이 출고 목록에 */
-  if ($('mDisp')) { import('./displays.js').then(D => { D.countForOrder(o.id).then(n => { if (n && $('mDispN')) $('mDispN').textContent = '(' + n + ')'; }); $('mDisp').onclick = () => D.form({ acct: o.acct || '', store: o.store, sm: o.sm, req: o.req || null, orderId: o.id, orderNo: o.no, after: () => { D.countForOrder(o.id).then(n => { if ($('mDispN')) $('mDispN').textContent = n ? '(' + n + ')' : ''; }); } }); }); }
+  if ($('mDisp')) { import('./displays.js').then(D => { D.countForOrder(o.id).then(n => { if (n && $('mDispN')) $('mDispN').textContent = '(' + n + ')'; }); $('mDisp').onclick = () => D.form({ acct: o.acct || '', store: o.store, sm: o.sm, req: o.req || null, reqNote: o.reqNote || null, orderId: o.id, orderNo: o.no, after: () => { D.countForOrder(o.id).then(n => { if ($('mDispN')) $('mDispN').textContent = n ? '(' + n + ')' : ''; }); } }); }); }
   if ($('mStoreChg')) $('mStoreChg').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 가게를 바꿀까요? (픽킹 입력은 사라집니다)')) return; changeStore(o, () => goOrder(o.id)); };
   if ($('mEdit')) $('mEdit').onclick = () => { if (dirty && !confirm('픽킹 결과를 저장하지 않았습니다. 그래도 수정 화면으로 갈까요?')) return; openEditor(o, null, lines); };
   if ($('mCsv')) $('mCsv').onclick = () => csv(o, lines);
@@ -435,7 +435,7 @@ export function pickingHtml(o, lines) {
   const paper = ((invView(S).paper || company(S).paper) === 'a4') ? 'A4' : 'letter';   // 인보이스 인쇄와 같은 용지
   return ('<style>@page{size:' + paper + ';margin:.4in}</style><div class="pk"><div class="iv pkhd">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
     '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
-    '<br>Rep. ' + esc(o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true)) : '') + '</div></div>' +
+    '<br>Rep. ' + esc(o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true, o.reqNote)) : '') + '</div></div>' +
     '<table class="pktbl"><thead><tr><th style="width:26px">#</th><th style="width:52px">LOC</th><th style="width:82px">CODE</th><th>DESCRIPTION</th><th style="width:40px">TYPE</th><th class="r" style="width:52px">ORDER</th><th class="r" style="width:56px">PICKED</th><th style="width:70px">NOTE</th></tr></thead><tbody>' +
     rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td></td><td>' + esc(l.note || '') + '</td></tr>' +
       (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td>' + esc(locOf(k.c)) + '</td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
@@ -477,7 +477,7 @@ async function confirmInvoice(o, lines) {
         const no = await nextInvoiceNo(S, t);
         const C = catalog();
         const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, shipTo: o.shipTo || null, sm: o.sm, d, ym: ym(d), lines: g.lines.map(l => { const it = C && C.byCode[l.c]; return Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, g: it ? (it.l1 || it.g || '') : '' }, l.kit ? { kit: l.kit } : {}); }),
-          qty: g.qty, sub: g.sub, list: g.list, disc: g.disc, total: g.total, bal: g.total, terms: (acc && acc.terms) || '', st: 'open', memo, req: o.req || null, createdBy: S.user.email, createdAt: now };
+          qty: g.qty, sub: g.sub, list: g.list, disc: g.disc, total: g.total, bal: g.total, terms: (acc && acc.terms) || '', st: 'open', memo, req: o.req || null, reqNote: o.reqNote || null, createdBy: S.user.email, createdAt: now };
         invs.push(inv); ops.push({ op: 'set', col: 'invoices', id: no, data: inv });
       }
       if (bo.length) ops.push({ op: 'set', col: 'backorders', id: o.id, data: { order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, sm: o.sm, d, lines: bo, qty: bo.reduce((a, l) => a + l.q, 0), amt: R2(bo.reduce((a, l) => a + l.q * l.p, 0)), st: 'open', newOrders: [], createdAt: now } });

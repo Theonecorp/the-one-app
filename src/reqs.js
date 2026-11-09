@@ -33,9 +33,14 @@ export function reqLabel(key, en) { const k = REQ_KINDS.find(x => x[0] === key);
 /** 0 이하는 빼고 { 코드: 수량 } — 모르는 키도 수량이 있으면 남김 (옛 주문) · 하나도 없으면 null */
 export function reqClean(r) { const o = {}; Object.keys(r || {}).forEach(k => { if (!/^[A-Z0-9_]{1,16}$/.test(k)) return; const n = Math.floor(Number(r[k]) || 0); if (n > 0) o[k] = n; }); return Object.keys(o).length ? o : null; }
 /** "C4 Insert ×2 · Wall Short ×1" — 목록 순서, 목록에 없는 옛 키는 뒤에 (en: 영어만 — 인쇄 문서용) */
-export function reqText(r, en) {
+export function reqText(r, en, notes) {
   r = reqClean(r); if (!r) return '';
   const keys = REQ_KINDS.map(k => k[0]).filter(k => r[k]).concat(Object.keys(r).filter(k => !REQ_KINDS.some(x => x[0] === k)));
-  return keys.map(k => reqLabel(k, en) + ' ×' + r[k]).join(' · ');
+  const N = reqNoteClean(notes);
+  return keys.map(k => reqLabel(k, en) + ' ×' + r[k] + (N && N[k] ? ' (' + N[k] + ')' : '')).join(' · ');
 }
+/** 종류별 설명 — 어떤 인서트 · 세트인지 (세일즈맨이 적음 · 세트 코드 포함) · 빈 것은 빼고 · 하나도 없으면 null */
+export function reqNoteClean(n) { const o = {}; Object.keys(n || {}).forEach(k => { if (!/^[A-Z0-9_]{1,16}$/.test(k)) return; const t = String(n[k] || '').trim().slice(0, 300); if (t) o[k] = t; }); return Object.keys(o).length ? o : null; }
+/** 인서트처럼 "무엇을 채울지" 설명이 필요한 종류 — 디스플레이 받침(BCB · LB · LD · Wall)은 아님 */
+export const reqNeedsNote = key => !/^(BCB|LB|LD|WALL)/.test(String(key || ''));
 export const reqCount = r => { r = reqClean(r); return r ? Object.values(r).reduce((a, b) => a + b, 0) : 0; };

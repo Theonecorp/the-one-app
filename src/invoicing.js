@@ -268,7 +268,7 @@ export function invoiceHtml(inv, acc, opt) {
   const total = R2(net + (Number(inv.ship) || 0));
   return '<div class="iv' + (co.paper === 'a4' ? ' pa4' : '') + '">' + docHead(co, 'INVOICE', [['Acct. No.', inv.acct || ''], ['Date', fmtD(inv.d)], ['Invoice #', inv.no]]) +
     (inv.order ? '<div class="ivso">Sales Order # ' + esc(inv.order) + '</div>' : '') +
-    (inv.req && reqText(inv.req, true) ? '<div class="ivreq">DISPLAY / INSERT REQUEST : ' + esc(reqText(inv.req, true)) + '</div>' : '') +
+    (inv.req && reqText(inv.req, true) ? '<div class="ivreq">DISPLAY / INSERT REQUEST : ' + esc(reqText(inv.req, true, inv.reqNote)) + '</div>' : '') +
     '<div class="ivparties">' + party('Bill To') + party('Ship To') + '</div>' +
     '<table class="ivinfo"><tr><th>Terms</th><th>Due Date</th><th>Rep.</th><th>Ship Date</th><th>Shipping Method</th><th>Shipping Memo</th></tr>' +
     '<tr><td>' + esc(terms) + '</td><td>' + esc(fmtD(due)) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS Ground') + '</td><td>' + esc(inv.memo || (inv.boxes ? inv.boxes + ' BX' : '')) + '</td></tr></table>' +

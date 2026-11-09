@@ -4,7 +4,9 @@
  *    ② 준비 대기 → 창고가 [준비 시작] → 상품마다 ☑ → [완료] → 단위(개)마다 UPS 박스 한 개 (상품의 무게 · 크기 그대로) → 🚚 UPS 라벨
  *    화면: 대기 · 준비 중 · 완료(24시간) 숫자 + 새 요청 · 두 칸 (준비 대기 | 완료 — 최근 24시간, 취소됨 포함)
  *  displays/{id} = { id, acct, store, sm, items:[{ n, q, w, l, wd, h, ok }], qty, due, note, orderId, orderNo,
- *                    st: 'open' | 'prep' | 'done' | 'shipped' | 'x', prepAt, prepBy, doneAt, doneBy, shippedAt, track, shipVia, boxes,
+ *                    st: 'open' | 'prep' | 'hold' | 'done' | 'shipped' | 'x', prepAt, prepBy, doneAt, doneBy, shippedAt, track, shipVia, boxes,
+ *                    holdAt, holdBy, holdNote(보류 이유 — 물건 없음 · 확인 필요), log:[{ at, by, text }] (⚠️ 문제 · 메모 기록 · 되돌림)
+ *    상품(items[].n)은 ⚙️ 설정 상품(무게 · 크기 있음) · 카탈로그의 디스플레이 · 세트(c: 코드) · 직접 입력(특별 제작, note 로 설명) — v0.8.174
  *                    createdBy, createdByName, createdAt, updatedAt, cancelAt, cancelBy }
  *  디스플레이 상품 목록(무게 lb · 상자 크기 in)은 settings/app.displayItems — 관리자가 화면의 ⚙️ 에서 고침 (없으면 아래 기본값)
  *  UPS 라벨은 ship.js 출고 창을 { col: 'displays', boxSpec } 로 열어 박스마다 무게 · 크기가 들어가고 트래킹이 이 문서에 붙음 (주문 문서는 안 건드림)
@@ -13,7 +15,8 @@ import { $, esc, toast, busy, openModal, closeModal, confirmBox, Router, today, 
 import { can } from './main.js';
 import { newId } from './db.js';
 import { searchAccounts } from './accounts.js';
-import { reqText } from './reqs.js';
+import { reqText, reqLabel, reqClean, reqNoteClean } from './reqs.js';
+import { loadCatalog, catalog } from './catalog.js';
 import * as Msg from './msg.js';
 
 let S = null;
@@ -49,29 +52,37 @@ async function list(openNew) {
   const box = $('page'); if (!box.querySelector('#dvWrap')) box.innerHTML = '<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>';
   let L = []; try { L = await S.DB.list('displays'); } catch (e) { box.innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; }
   if (openNew) NEWOPEN = true;
-  const wait = sortBy(L.filter(d => d.st === 'open' || d.st === 'prep'), d => (d.st === 'prep' ? '0' : '1') + (d.due || '9999') + (d.createdAt || ''));
+  const wait = sortBy(L.filter(d => d.st === 'open' || d.st === 'prep' || d.st === 'hold'), d => (d.st === 'prep' ? '0' : d.st === 'open' ? '1' : '2') + (d.due || '9999') + (d.createdAt || ''));
   const done = sortBy(L.filter(d => (d.st === 'done') || ((d.st === 'shipped') && in24(d.shippedAt || d.doneAt)) || (d.st === 'x' && in24(d.cancelAt))), d => d.st === 'done' ? '1' + (d.doneAt || '') : '0' + (d.shippedAt || d.cancelAt || ''), true);
-  const nOpen = L.filter(d => d.st === 'open'), nPrep = L.filter(d => d.st === 'prep'), n24 = L.filter(d => (d.st === 'done' || d.st === 'shipped') && in24(d.doneAt || d.shippedAt));
+  const nOpen = L.filter(d => d.st === 'open'), nPrep = L.filter(d => d.st === 'prep'), nHold = L.filter(d => d.st === 'hold'), n24 = L.filter(d => (d.st === 'done' || d.st === 'shipped') && in24(d.doneAt || d.shippedAt));
   const kpi = (ic, cls, ko, en, n, sub) => '<div class="dvk ' + cls + '"><span class="dvki">' + ic + '</span><div><small>' + bi(ko, en) + '</small><b>' + n + '</b>' + (sub != null ? '<small>' + sub + ' ' + bt('박스', 'boxes') + '</small>' : '') + '</div></div>';
-  const item = (d, x, i, live) => '<div class="dvit' + (x.ok ? ' ok' : '') + '">' + (live ? '<label class="ckw"><input type="checkbox" class="ck-big" data-dvok="' + esc(d.id) + '|' + i + '"' + (x.ok ? ' checked' : '') + (d.st === 'prep' ? '' : ' disabled') + '></label>' : '') + '<div><b>' + esc(x.n) + ' ×' + (Number(x.q) || 0) + '</b><small>' + esc(specTxt(x)) + '</small></div></div>';
+  const item = (d, x, i, live) => '<div class="dvit' + (x.ok ? ' ok' : '') + '">' + (live ? '<label class="ckw"><input type="checkbox" class="ck-big" data-dvok="' + esc(d.id) + '|' + i + '"' + (x.ok ? ' checked' : '') + (d.st === 'prep' ? '' : ' disabled') + '></label>' : '') + '<div><b>' + (x.c ? '<span class="tag t-k">' + esc(x.c) + '</span> ' : x.custom ? '✏️ ' : '') + esc(x.n) + ' ×' + (Number(x.q) || 0) + '</b><small>' + esc(specTxt(x)) + (x.note ? (specTxt(x) ? ' · ' : '') + '📝 ' + esc(x.note) : '') + '</small></div></div>';
   const card = d => {
-    const live = d.st === 'open' || d.st === 'prep', allOk = (d.items || []).length && (d.items || []).every(x => x.ok);
-    return '<div class="dvcard' + (d.st === 'prep' ? ' prep' : '') + (d.st === 'x' ? ' dim' : '') + '" data-dv="' + esc(d.id) + '">' +
-      '<div class="dvhd"><b>' + esc(d.store || '') + (d.acct ? ' · ' + esc(d.acct) : '') + '</b>' + (d.st === 'x' ? '<span class="tag t-r">' + bt('취소됨', 'Cancelled') + '</span>' : d.st === 'shipped' ? '<span class="tag t-g">🚚 ' + bt('출고됨', 'Shipped') + '</span>' : d.st === 'done' ? '<span class="tag t-a">📦 ' + bt('UPS 대기', 'Awaiting UPS') + '</span>' : d.st === 'prep' ? '<span class="tag t-b">' + bt('준비 중', 'Preparing') + '</span>' : '') + '</div>' +
+    const live = d.st === 'open' || d.st === 'prep' || d.st === 'hold', allOk = (d.items || []).length && (d.items || []).every(x => x.ok);
+    const logs = (d.log || []).slice(-3);
+    return '<div class="dvcard' + (d.st === 'prep' ? ' prep' : '') + (d.st === 'hold' ? ' hold' : '') + (d.st === 'x' ? ' dim' : '') + '" data-dv="' + esc(d.id) + '">' +
+      '<div class="dvhd"><b>' + esc(d.store || '') + (d.acct ? ' · ' + esc(d.acct) : '') + '</b>' + (d.st === 'x' ? '<span class="tag t-r">' + bt('취소됨', 'Cancelled') + '</span>' : d.st === 'shipped' ? '<span class="tag t-g">🚚 ' + bt('출고됨', 'Shipped') + '</span>' : d.st === 'done' ? '<span class="tag t-a">📦 ' + bt('UPS 대기', 'Awaiting UPS') + '</span>' : d.st === 'prep' ? '<span class="tag t-b">' + bt('준비 중', 'Preparing') + '</span>' : d.st === 'hold' ? '<span class="tag t-a">⏸ ' + bt('보류', 'On hold') + (d.holdNote ? ' · ' + esc(d.holdNote) : '') + '</span>' : '') + '</div>' +
       '<div class="muted dvsub">' + bt('상품', 'Items') + ' ' + (d.items || []).length + bt('개', '') + ' · ' + bt('박스', 'Boxes') + ' ' + boxesOf(d) + bt('개', '') + '</div>' +
       '<div class="dvrow"><div class="dvits">' + (d.items || []).map((x, i) => item(d, x, i, live && canShip())).join('') + '</div>' +
       '<div class="dvbtn">' + (d.st === 'open' && canShip() ? '<button class="b-blue b-sm" data-dvgo="' + esc(d.id) + '">' + bi('준비 시작', 'Start') + '</button>' : '') +
       (d.st === 'prep' && canShip() ? '<button class="b-green b-sm" data-dvdone="' + esc(d.id) + '"' + (allOk ? '' : ' disabled title="' + esc(bt('상품을 모두 ☑ 한 뒤', 'Tick every item first')) + '"') + '>' + bi('완료', 'Done') + '</button>' : '') +
+      /* ⏸ 보류(물건 없음 · 확인 필요) · ↩ 되돌리기(잘못 시작 → 대기) · ▶ 다시 진행 · ↩ 다시 준비(완료 취소) · ⚠️ 문제 기록 — 중간에 잘못되거나 막혔을 때 (v0.8.174) */
+      ((d.st === 'open' || d.st === 'prep') && canShip() ? '<button class="b-ghost b-sm" data-dvhold="' + esc(d.id) + '">⏸ ' + bt('보류', 'Hold') + '</button>' : '') +
+      (d.st === 'prep' && canShip() ? '<button class="b-ghost b-sm" data-dvback="' + esc(d.id) + '" title="' + esc(bt('준비를 취소하고 대기로', 'Undo start — back to waiting')) + '">↩ ' + bt('대기로', 'Undo') + '</button>' : '') +
+      (d.st === 'hold' && canShip() ? '<button class="b-blue b-sm" data-dvresume="' + esc(d.id) + '">▶ ' + bt('다시 진행', 'Resume') + '</button>' : '') +
+      (d.st === 'done' && canShip() ? '<button class="b-ghost b-sm" data-dvredo="' + esc(d.id) + '" title="' + esc(bt('완료를 취소하고 다시 준비', 'Undo done — prepare again')) + '">↩ ' + bt('다시 준비', 'Redo') + '</button>' : '') +
+      ((live || d.st === 'done') && canShip() ? '<button class="b-ghost b-sm" data-dvlog="' + esc(d.id) + '">⚠️ ' + bt('문제 기록', 'Log issue') + '</button>' : '') +
       ((d.st === 'done' || d.st === 'shipped') && canShip() ? '<button class="b-green b-sm" data-dvu="' + esc(d.id) + '">🚚 ' + bi(d.st === 'done' ? 'UPS 라벨' : '라벨 · 트래킹', d.st === 'done' ? 'UPS label' : 'Labels · tracking') + '</button>' : '') +
       (live && canWrite() ? '<button class="b-ghost b-sm" data-dve="' + esc(d.id) + '">✏️</button>' : '') +
       (live && canWrite() ? '<button class="b-ghost b-sm" data-dvx="' + esc(d.id) + '" style="color:#b91c1c">' + bt('취소', 'Cancel') + '</button>' : '') + '</div></div>' +
       (live ? dueTag(d) : '') + (d.note ? '<div class="dvnote">📝 ' + esc(d.note) + '</div>' : '') +
+      (logs.length ? '<div class="dvlog">' + logs.map(l => '<div>' + esc(String(l.at || '').substring(5, 16).replace('T', ' ')) + ' ' + esc(String(l.byName || l.by || '').toUpperCase()) + ' — ' + esc(l.text) + '</div>').join('') + '</div>' : '') +
       '<div class="muted dvby">' + esc(String(d.createdByName || d.createdBy || '').toUpperCase()) + ' · ' + esc(fmtDay(d.createdAt)) + (d.orderNo ? ' · 🔗 <a href="#/order/' + esc(d.orderId) + '">' + esc(d.orderNo) + '</a>' : '') +
       (d.st === 'prep' && d.prepByName ? ' · ' + bt('준비', 'prep') + ' ' + esc(d.prepByName) : '') + (d.track ? ' · ' + esc(d.track) : '') + '</div></div>';
   };
   box.innerHTML = '<div id="dvWrap"><div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap"><div><h2 style="margin:0">Notes Display <span class="tag t-a">UPS</span></h2><div class="muted" style="margin-top:4px">' + bt('Empty Display 를 등록하고 준비한 뒤 완료하세요. 단위(개)마다 UPS 박스 한 개가 됩니다.', 'Register empty displays, prepare them, then complete. Each unit becomes one UPS box.') + '</div></div>' +
     (S.role === 'admin' ? '<button class="b-ghost b-sm" id="dvCfg">⚙️ ' + bi('상품 · 무게 · 크기', 'Items · weight · size') + '</button>' : '') + '</div>' +
-    '<div class="dvkpi">' + kpi('🕒', 'k1', '대기', 'Waiting', nOpen.length, nOpen.reduce((a, d) => a + boxesOf(d), 0)) + kpi('🗃', 'k2', '준비 중', 'Preparing', nPrep.length, nPrep.reduce((a, d) => a + boxesOf(d), 0)) + kpi('✓', 'k3', '완료 24시간', 'Done 24h', n24.length, null) +
+    '<div class="dvkpi">' + kpi('🕒', 'k1', '대기', 'Waiting', nOpen.length, nOpen.reduce((a, d) => a + boxesOf(d), 0)) + kpi('🗃', 'k2', '준비 중', 'Preparing', nPrep.length, nPrep.reduce((a, d) => a + boxesOf(d), 0)) + kpi('⏸', 'k4', '보류', 'On hold', nHold.length, nHold.reduce((a, d) => a + boxesOf(d), 0)) + kpi('✓', 'k3', '완료 24시간', 'Done 24h', n24.length, null) +
     (canWrite() ? '<button class="dvnew" id="dvNew"><span>🗃</span><b>' + bi('새 요청', 'New request') + '</b></button>' : '') + '</div></div>' +
     '<div id="dvForm"></div>' +
     '<div class="dvcols"><div class="card"><h2 class="dvh"><i class="dot">●</i> ' + bi('준비 대기', 'To prepare') + ' <span class="dvn">' + wait.length + '</span></h2><div class="muted" style="margin:-4px 0 8px">' + bt('시작하고 박스를 준비한 뒤 완료하면 UPS 로 갑니다.', 'Start, prepare the boxes and complete — then it goes to UPS.') + '</div>' + (wait.length ? wait.map(card).join('') : '<div class="none">' + bt('준비할 디스플레이가 없습니다', 'Nothing to prepare') + '</div>') + '</div>' +
@@ -81,6 +92,13 @@ async function list(openNew) {
   if ($('dvCfg')) $('dvCfg').onclick = cfg;
   const upd = async (id, patch, msg) => { try { await S.DB.update('displays', id, Object.assign(patch, { updatedAt: new Date().toISOString() })); if (msg) toast(msg, 'good'); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } list(); };
   box.querySelectorAll('[data-dvgo]').forEach(b => b.onclick = () => upd(b.dataset.dvgo, { st: 'prep', prepAt: new Date().toISOString(), prepBy: me(), prepByName: myName() }, bt('준비 시작', 'Started')));
+  const logOf = (d, text) => (d.log || []).concat([{ at: new Date().toISOString(), by: me(), byName: myName(), text }]).slice(-20);
+  const tell = (d, text) => { try { Msg.sendMsg({ to: 'u:' + (d.createdBy || ''), toLabel: d.createdByName || d.createdBy || '', text: '🖼 Notes Display ' + d.store + ' — ' + text, ref: { id: 'displays', label: '🖼 Notes Display' }, quiet: true }); } catch (e) {} };   // 요청한 사무실 담당에게 (앱 안 메시지)
+  box.querySelectorAll('[data-dvhold]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvhold); if (!d) return; const why = await askText('⏸ ' + bi('보류', 'Hold'), bt('이유 — 예: 물건 없음 · 사무실 확인 필요 · 상품 잘못됨', 'Reason — e.g. out of stock · need office to confirm · wrong item')); if (why == null) return; tell(d, '⏸ ' + bt('보류', 'on hold') + ': ' + why); upd(d.id, { st: 'hold', holdAt: new Date().toISOString(), holdBy: me(), holdNote: why, log: logOf(d, '⏸ ' + bt('보류', 'Hold') + ': ' + why) }, bt('보류했습니다', 'On hold')); });
+  box.querySelectorAll('[data-dvresume]').forEach(b => b.onclick = () => { const d = L.find(x => x.id === b.dataset.dvresume); if (!d) return; upd(d.id, { st: 'open', holdNote: '', log: logOf(d, '▶ ' + bt('다시 진행', 'Resumed')) }, bt('다시 진행', 'Resumed')); });
+  box.querySelectorAll('[data-dvback]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvback); if (!d) return; if (!(await confirmBox(bt('준비를 취소하고 대기로 되돌릴까요? (☑ 표시는 지워집니다)', 'Undo the start and return to waiting? Ticks are cleared.'), '↩'))) return; upd(d.id, { st: 'open', items: (d.items || []).map(x => Object.assign({}, x, { ok: false })), log: logOf(d, '↩ ' + bt('대기로 되돌림', 'Back to waiting')) }, bt('대기로 되돌렸습니다', 'Back to waiting')); });
+  box.querySelectorAll('[data-dvredo]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvredo); if (!d) return; if (!(await confirmBox(bt('완료를 취소하고 다시 준비할까요?', 'Undo done and prepare again?'), '↩'))) return; upd(d.id, { st: 'prep', items: (d.items || []).map(x => Object.assign({}, x, { ok: false })), log: logOf(d, '↩ ' + bt('완료 취소 · 다시 준비', 'Done undone — preparing again')) }, bt('다시 준비', 'Preparing again')); });
+  box.querySelectorAll('[data-dvlog]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvlog); if (!d) return; const t = await askText('⚠️ ' + bi('문제 기록', 'Log an issue'), bt('무엇이 잘못됐나 — 예: 상품 1개 파손 · 수량 부족 · 주소 확인 필요', 'What went wrong — e.g. 1 damaged · short qty · check address')); if (!t) return; tell(d, '⚠️ ' + t); upd(d.id, { log: logOf(d, '⚠️ ' + t) }, bt('기록했습니다', 'Logged')); });
   box.querySelectorAll('[data-dvok]').forEach(c => c.onchange = () => { const [id, i] = c.dataset.dvok.split('|'), d = L.find(x => x.id === id); if (!d) return; const items = (d.items || []).map((x, k) => k === Number(i) ? Object.assign({}, x, { ok: c.checked }) : x); upd(id, { items }); });
   box.querySelectorAll('[data-dvdone]').forEach(b => b.onclick = async () => {
     const d = L.find(x => x.id === b.dataset.dvdone); if (!d) return;
@@ -104,24 +122,38 @@ async function ups(d) {
 
 /* ---------- 새 요청 · 고치기 (화면 위 칸 — 직원 앱처럼) ---------- */
 /** pre: 고칠 문서 또는 { acct, store, sm, orderId, orderNo, req } (주문에서 열 때) · inline: 목록 위 칸으로 (아니면 창) */
-export function form(pre, inline) {
+export async function form(pre, inline) {
   pre = pre || {};
   const host = inline && $('dvForm');
   const F = { id: pre.id || '', acct: pre.acct || '', store: pre.store || '', sm: pre.sm || '', items: (pre.items || []).map(x => Object.assign({}, x)), due: pre.due || '', note: pre.note || '', orderId: pre.orderId || '', orderNo: pre.orderNo || '' };
+  /* 주문에서 열면 세일즈맨이 요청한 종류 · 개수 · 설명("어떤 것")이 상품 줄로 미리 들어옴 — 사무실은 보고 고치기만 */
+  if (!F.items.length && !F.id) { const rq = reqClean(pre.req), rn = reqNoteClean(pre.reqNote) || {}; if (rq) Object.keys(rq).forEach(k => F.items.push({ n: reqLabel(k, true), q: rq[k], note: rn[k] || '', custom: true })); }
   if (!F.items.length) F.items.push({ n: '', q: 1 });
   const C = catalogItems();
+  /* 카탈로그의 디스플레이 · 세트 · 인서트 (Set & Display 묶음 · [DISPLAYS …] 분류) — 전체에서 고를 수 있게 */
+  try { await loadCatalog(S); } catch (e) {}
+  const K = catalog() ? catalog().items.filter(it => !it.h && (/SET|DISPLAY/i.test(it.g || '') || /SET ORDER|DISPLAY/i.test(it.l1 || ''))) : [];
+  const CUSTOM = '__custom__';
+  const optFor = x => '<option value="">' + bt('— 상품 —', '— item —') + '</option><optgroup label="' + esc(bt('디스플레이 (무게 · 크기 있음)', 'Displays (weight · size)')) + '">' + C.map(c => '<option value="' + esc(c.n) + '"' + (!x.c && !x.custom && c.n === x.n ? ' selected' : '') + '>' + esc(c.n) + ' · ' + esc(specTxt(c)) + '</option>').join('') + '</optgroup>' +
+    '<optgroup label="' + esc(bt('✏️ 직접 입력 · 특별 제작', '✏️ Custom / special build')) + '"><option value="' + CUSTOM + '"' + (x.custom ? ' selected' : '') + '>✏️ ' + esc(bt('직접 입력 (아래에 이름 · 설명)', 'Type it in (name · note below)')) + '</option></optgroup>' +
+    (K.length ? '<optgroup label="' + esc(bt('카탈로그 디스플레이 · 세트 · 인서트', 'Catalog displays · sets · inserts')) + ' (' + K.length + ')">' + K.map(it => '<option value="c:' + esc(it.c) + '"' + (x.c === it.c ? ' selected' : '') + '>' + esc(it.c) + ' · ' + esc(it.d) + '</option>').join('') + '</optgroup>' : '');
   const html = () => '<div class="dvform"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">' + (F.id ? bi('요청 고치기', 'Edit request') : bi('새 요청', 'New request')) + '</h2><button type="button" class="b-ghost b-sm" id="dvX">✕ ' + bt('닫기', 'Close') + '</button></div>' +
     (F.orderNo ? '<div class="alert a-blu" style="margin:8px 0 0">🔗 ' + bt('주문', 'Order') + ' <b>' + esc(F.orderNo) + '</b>' + (pre.req && reqText(pre.req) ? ' · ' + bt('요청', 'requested') + ': ' + esc(reqText(pre.req)) : '') + '</div>' : '') +
-    '<div class="fg" style="margin-top:8px"><label>' + bt('고객', 'Customer') + '</label><div style="display:flex;gap:6px"><input id="dvStore" style="flex:1;min-width:0" value="' + esc(F.store ? (F.acct ? F.acct + ' ' : '') + F.store : '') + '" autocomplete="off" placeholder="' + esc(bt('이름, 주소 또는 계정 번호', 'Name, address or account #')) + '"><button type="button" class="b-ghost" id="dvNewAcct">＋ ' + bt('고객 등록', 'New customer') + '</button></div><div id="dvHits" class="hits" style="display:none"></div></div>' +
-    '<div class="fg"><label>' + bt('디스플레이 상품 · 개수', 'Display items · qty') + '</label><div id="dvItems">' + F.items.map((x, i) => '<div class="dvirow"><select data-dvi="' + i + '"><option value="">' + bt('— 상품 —', '— item —') + '</option>' + C.map(c => '<option value="' + esc(c.n) + '"' + (c.n === x.n ? ' selected' : '') + '>' + esc(c.n) + ' · ' + esc(specTxt(c)) + '</option>').join('') + '</select><input type="number" inputmode="numeric" min="1" data-dvq="' + i + '" value="' + esc(x.q || 1) + '" style="width:76px;text-align:right;font-weight:800"><button type="button" class="b-ghost b-sm" data-dvdel="' + i + '">✕</button></div>').join('') + '</div><button type="button" class="b-ghost b-sm" id="dvAdd">＋ ' + bt('상품 추가', 'Add item') + '</button></div>' +
+    '<div class="fg" style="margin-top:8px"><label>' + bt('고객', 'Customer') + '</label><div class="dvcust"><input id="dvStore" value="' + esc(F.store ? (F.acct ? F.acct + ' ' : '') + F.store : '') + '" autocomplete="off" placeholder="' + esc(bt('이름, 주소 또는 계정 번호', 'Name, address or account #')) + '"><button type="button" class="b-ghost" id="dvNewAcct">＋ ' + bt('고객 등록', 'New customer') + '</button></div><div id="dvHits" class="hits" style="display:none"></div></div>' +
+    '<div class="fg"><label>' + bt('디스플레이 상품 · 개수', 'Display items · qty') + ' <span class="muted">' + bt('— 설정 상품 · 카탈로그 전체 · 직접 입력(특별 제작)', '— configured · whole catalog · custom') + '</span></label><div id="dvItems">' + F.items.map((x, i) => '<div class="dvirow"><select data-dvi="' + i + '">' + optFor(x) + '</select><input type="number" inputmode="numeric" min="1" data-dvq="' + i + '" value="' + esc(x.q || 1) + '" style="width:76px;text-align:right;font-weight:800"><button type="button" class="b-ghost b-sm" data-dvdel="' + i + '">✕</button></div>' +
+      '<div class="dvirow dvsub2"><input data-dvc="' + i + '" value="' + esc(x.custom ? x.n : '') + '" placeholder="' + esc(bt('✏️ 직접 입력 — 이름 (예: C13 Insert 앵클렛용)', '✏️ Custom — name (e.g. C13 insert for anklets)')) + '"' + (x.custom ? '' : ' style="display:none"') + '><input data-dvn="' + i + '" value="' + esc(x.note || '') + '" placeholder="' + esc(bt('설명 · 어떤 것 (예: 앵클렛 13" · 세트 코드 · 특별 제작 내용)', 'Note · which one (e.g. anklet 13" · set code · special build)')) + '"></div>').join('') + '</div><button type="button" class="b-ghost b-sm" id="dvAdd">＋ ' + bt('상품 추가', 'Add item') + '</button></div>' +
     '<div class="two"><div class="fg"><label>' + bt('나갈 날짜', 'Ship date') + '</label><input type="date" id="dvDue" value="' + esc(F.due || today()) + '"></div><div class="fg"><label>' + bt('메모', 'Note') + '</label><input id="dvNote" value="' + esc(F.note) + '" placeholder="' + esc(bt('창고에 전할 말', 'Note for the warehouse')) + '"></div></div>' +
     '<div class="btns"><button type="button" class="b-blue" id="dvSave">💾 ' + bt('저장', 'Save') + '</button></div></div>';
-  const keep = () => { F.items = Array.from(document.querySelectorAll('[data-dvi]')).map(s => ({ n: s.value, q: Math.max(1, Math.floor(Number(document.querySelector('[data-dvq="' + s.dataset.dvi + '"]').value) || 1)) })); F.due = $('dvDue').value; F.note = $('dvNote').value; };
+  const keep = () => { F.items = Array.from(document.querySelectorAll('[data-dvi]')).map(s => { const i = s.dataset.dvi, q = Math.max(1, Math.floor(Number(document.querySelector('[data-dvq="' + i + '"]').value) || 1)), note = (document.querySelector('[data-dvn="' + i + '"]') || {}).value || '', cv = (document.querySelector('[data-dvc="' + i + '"]') || {}).value || '';
+    if (s.value === CUSTOM) return { n: cv.trim(), q, note, custom: true };
+    if (s.value.indexOf('c:') === 0) { const it = catalog() && catalog().byCode[s.value.substring(2)]; return { n: it ? it.d : s.value.substring(2), c: s.value.substring(2), q, note }; }
+    return { n: s.value, q, note }; }); F.due = $('dvDue').value; F.note = $('dvNote').value; };
   const close = () => { NEWOPEN = false; if (host) host.innerHTML = ''; else closeModal(); };
   const paint = () => {
     if (host) { host.innerHTML = '<div class="card">' + html() + '</div>'; } else openModal(html());
     $('dvX').onclick = close;
     $('dvAdd').onclick = () => { keep(); F.items.push({ n: '', q: 1 }); paint(); };
+    document.querySelectorAll('[data-dvi]').forEach(s => s.onchange = () => { const c = document.querySelector('[data-dvc="' + s.dataset.dvi + '"]'); if (c) { c.style.display = s.value === CUSTOM ? '' : 'none'; if (s.value === CUSTOM) c.focus(); } });
     document.querySelectorAll('[data-dvdel]').forEach(b => b.onclick = () => { keep(); F.items.splice(Number(b.dataset.dvdel), 1); if (!F.items.length) F.items.push({ n: '', q: 1 }); paint(); });
     $('dvNewAcct').onclick = async () => { keep(); const NA = await import('./newacct.js'); NA.newAcctForm($('dvStore').value.trim(), a => { F.acct = a.acct; F.store = a.store; F.sm = a.sm || F.sm; paint(); }); };
     const hits = $('dvHits');
@@ -134,7 +166,8 @@ export function form(pre, inline) {
     };
     $('dvSave').onclick = async () => {
       keep();
-      const items = F.items.filter(x => x.n).map(x => { const c = C.find(y => y.n === x.n) || {}; return { n: x.n, q: x.q, w: c.w || 0, l: c.l || 0, wd: c.wd || 0, h: c.h || 0, ok: false }; });
+      const items = F.items.filter(x => x.n).map(x => { const c = !x.c && !x.custom ? (C.find(y => y.n === x.n) || {}) : {}; const o = { n: x.n, q: x.q, w: c.w || 0, l: c.l || 0, wd: c.wd || 0, h: c.h || 0, ok: false }; if (x.c) o.c = x.c; if (x.custom) o.custom = true; if (x.note && x.note.trim()) o.note = x.note.trim(); return o; });
+      if (F.items.some(x => x.custom && !x.n)) return toast(bt('직접 입력 상품의 이름을 적으세요', 'Type a name for the custom item'), 'bad');
       if (!F.store) return toast(bt('고객을 고르세요', 'Pick the customer'), 'bad');
       if (!items.length) return toast(bt('디스플레이 상품을 고르세요', 'Pick the display items'), 'bad');
       if (!F.due) return toast(bt('나갈 날짜를 넣으세요', 'Enter the ship date'), 'bad');
@@ -156,6 +189,15 @@ export function form(pre, inline) {
     };
   };
   paint();
+}
+/** 글 한 줄 묻기 — 취소하면 null */
+function askText(title, ph) {
+  return new Promise(res => {
+    openModal('<h2>' + title + '</h2><textarea id="atT" rows="3" placeholder="' + esc(ph) + '" style="margin-top:8px"></textarea><div class="btns"><button type="button" class="b-ghost" id="atX">' + bt('취소', 'Cancel') + '</button><button type="button" class="b-blue" id="atOk">' + bt('저장', 'Save') + '</button></div>');
+    let done = false; const fin = v => { if (done) return; done = true; closeModal(); res(v); };
+    $('atX').onclick = () => fin(null); $('atOk').onclick = () => { const v = $('atT').value.trim(); if (!v) return toast(bt('내용을 적으세요', 'Type something'), 'bad'); fin(v); };
+    $('modal')._onClose = () => fin(null); setTimeout(() => $('atT') && $('atT').focus(), 50);
+  });
 }
 /* ---------- ⚙️ 상품 · 무게 · 크기 (관리자) ---------- */
 function cfg() {
