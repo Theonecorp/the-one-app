@@ -41,6 +41,7 @@ export function register(state) {
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-ocmp]'); if (!b) return; const on = document.body.classList.toggle('oscr'); try { localStorage.setItem('theone.ocompact', on ? '1' : '0'); } catch (x) {} b.querySelector('.ci').textContent = on ? '🔽' : '🔼'; b.querySelector('.cl').textContent = on ? bt('크게', 'Full') : bt('작게', 'Compact'); });
   window.addEventListener('theone:list', e => { LF.st = e.detail; LF.list = true; pageOrder(''); });
   window.addEventListener('theone:stage', e => { goStage(e.detail); pageOrder(''); });
+  try { new MutationObserver(() => document.body.classList.toggle('omenu-on', !!document.querySelector('#page .omenu'))).observe($('page'), { childList: true }); } catch (e) {}   // 📌 왼쪽 기둥(담당자 주문 메뉴)이 있을 때만 본문을 오른쪽으로
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-orf]'); if (b && isStaff()) { LF.list = true; pageOrder(''); } });   // 🔄 새로 고침 — 지금 칸을 서버에서 다시 읽음 (어느 목록에서든)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncOutbox(true); });
 }
@@ -880,8 +881,29 @@ function fillStock(root, codes) {
 export function photoPop(c) {
   const it = catalog().byCode[c]; if (!it || !it.ph) return;
   let p = $('ppop'); if (!p) { p = document.createElement('div'); p.id = 'ppop'; document.body.appendChild(p); }
-  p.innerHTML = '<div class="ppbox"><img src="' + esc(thumb(it.ph, 900)) + '" alt=""><div class="ppt"><b>' + esc(it.c) + '</b> ' + esc(it.k ? (it.kn || it.d) : it.d) + ' <span class="muted">' + money(it.p) + (it.s ? ' · SRP ' + money(it.s) : '') + '</span></div><button type="button" class="mclose" id="ppX">✕</button></div>';
-  p.classList.add('on'); p.onclick = () => p.classList.remove('on');
+  const big = window.innerWidth >= 900 ? 1600 : 900;
+  p.innerHTML = '<div class="ppbox"><div class="ppz"><img src="' + esc(thumb(it.ph, big)) + '" alt="" draggable="false"><div class="ppzb"><button type="button" data-pz="-" title="축소 · Zoom out">−</button><button type="button" class="ppzs" data-pz="0" title="원래 크기 · Reset">100%</button><button type="button" data-pz="+" title="확대 · Zoom in">＋</button></div></div><div class="ppt"><b>' + esc(it.c) + '</b> ' + esc(it.k ? (it.kn || it.d) : it.d) + ' <span class="muted">' + money(it.p) + (it.s ? ' · SRP ' + money(it.s) : '') + '</span></div><button type="button" class="mclose" id="ppX">✕</button></div>';
+  p.classList.remove('zoomed'); p.classList.add('on'); p.onclick = e => { if (e.target === p || e.target.id === 'ppX') p.classList.remove('on'); };
+  photoZoom(p);
+}
+/** 🔍 사진 확대 · 축소 · 이동 — 휠(컴퓨터) · 두 손가락(폰) · 두 번 누르기 · ＋ － 단추 · 확대한 뒤 끌어서 이동. 1배 ~ 8배 */
+function photoZoom(p) {
+  const box = p.querySelector('.ppz'), img = box.querySelector('img'), lab = box.querySelector('.ppzs'); const z = { s: 1, x: 0, y: 0 }; const PT = new Map(); let pinch = null, moved = false;
+  const paint = () => { img.style.transform = z.s === 1 ? '' : 'translate(' + z.x + 'px,' + z.y + 'px) scale(' + z.s + ')'; p.classList.toggle('zoomed', z.s > 1); lab.textContent = Math.round(z.s * 100) + '%'; };
+  const clamp = () => { const r = box.getBoundingClientRect(), w = img.offsetWidth * z.s, h = img.offsetHeight * z.s; const mx = Math.max(0, (w - r.width) / 2), my = Math.max(0, (h - r.height) / 2); z.x = Math.min(mx, Math.max(-mx, z.x)); z.y = Math.min(my, Math.max(-my, z.y)); };
+  /* 가리킨 점(cx, cy — 화면 좌표)이 제자리에 있도록 그 점을 중심으로 배율 바꿈 */
+  const setS = (s, cx, cy) => { s = Math.min(8, Math.max(1, s)); const r = box.getBoundingClientRect(); const px = cx == null ? 0 : cx - (r.left + r.width / 2), py = cy == null ? 0 : cy - (r.top + r.height / 2); const k = s / z.s; z.x = px - (px - z.x) * k; z.y = py - (py - z.y) * k; z.s = s; if (s === 1) { z.x = 0; z.y = 0; } clamp(); paint(); };
+  box.addEventListener('wheel', e => { e.preventDefault(); setS(z.s * (e.deltaY < 0 ? 1.2 : 1 / 1.2), e.clientX, e.clientY); }, { passive: false });
+  box.querySelectorAll('[data-pz]').forEach(b => b.onclick = e => { e.stopPropagation(); const k = b.dataset.pz; setS(k === '+' ? z.s * 1.5 : k === '-' ? z.s / 1.5 : 1); });
+  box.addEventListener('dblclick', e => { e.preventDefault(); setS(z.s > 1 ? 1 : 2.5, e.clientX, e.clientY); });
+  box.addEventListener('pointerdown', e => { if (e.target.closest('[data-pz]')) return; PT.set(e.pointerId, { x: e.clientX, y: e.clientY }); moved = false; try { box.setPointerCapture(e.pointerId); } catch (x) {} if (PT.size === 2) { const [a, b] = [...PT.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: z.s }; } else if (z.s > 1) p.classList.add('drag'); });
+  box.addEventListener('pointermove', e => { const q = PT.get(e.pointerId); if (!q) return; const dx = e.clientX - q.x, dy = e.clientY - q.y; q.x = e.clientX; q.y = e.clientY; if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+    if (PT.size === 2 && pinch) { const [a, b] = [...PT.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); setS(pinch.s * d / pinch.d, (a.x + b.x) / 2, (a.y + b.y) / 2); z.x += dx / 2; z.y += dy / 2; clamp(); paint(); }
+    else if (z.s > 1) { z.x += dx; z.y += dy; clamp(); paint(); } });
+  const up = e => { PT.delete(e.pointerId); if (PT.size < 2) pinch = null; if (!PT.size) p.classList.remove('drag'); };
+  box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+  box.addEventListener('click', e => { e.stopPropagation(); });   // 사진을 눌러도 닫히지 않음 — 닫기는 ✕ 또는 바깥
+  paint();
 }
 /** 사진 카드 — 누르면 1개 담김, 숫자를 누르면 수량 입력, − 로 빼기 */
 /** 세트 사진이 없을 때 — 구성품 사진 4장 모자이크 (세트라는 표시와 함께) */
