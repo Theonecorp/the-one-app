@@ -30,7 +30,7 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 ## 변경 한 번의 순서
 1. `sh tools/sync-main.sh` — **먼저 최신 main 을 합친다** (다른 세션의 변경을 잃지 않기 위해). 버전 세 곳 · app.js · i18n.json 은 이 스크립트가 충돌 없이 처리하고, 남는 충돌은 진짜 src 충돌뿐이다.
 2. `src/` 수정 → `sh build.sh` (app.js 다시 빌드. src 를 고쳤으면 반드시). build.sh 는 package-lock 에 고정된 esbuild(node_modules)만 쓴다 — `npx esbuild` 를 직접 부르지 않는다 (버전이 다르면 app.js 가 통째로 달라져 CI 가 막는다).
-3. 버전 세 곳을 같이 올린다: `src/main.js` 의 `VER`, `index.html` 의 `app.js?v=`, `sw.js` 의 `CACHE` 이름(`theone-shell-vNNN`). 하나라도 빠지면 폰이 옛 앱을 계속 쓴다. 손으로 고치지 말고 `node tools/version.js bump origin/main` (main 다음 번호) — `sh tools/sync-main.sh` 도 src 가 바뀐 브랜치면 알아서 올린다.
+3. 버전 세 곳을 같이 올린다 (**Firebase 에 올릴 때마다** — 같은 번호로 다시 올리면 app.js?v= 주소가 같아 폰 · 컴퓨터가 보관해 둔 옛 app.js 를 계속 씀, 2026-11-09): `src/main.js` 의 `VER`, `index.html` 의 `app.js?v=`, `sw.js` 의 `CACHE` 이름(`theone-shell-vNNN`). 하나라도 빠지면 폰이 옛 앱을 계속 쓴다. 손으로 고치지 말고 `node tools/version.js bump origin/main` (main 다음 번호) — `sh tools/sync-main.sh` 도 src 가 바뀐 브랜치면 알아서 올린다.
 4. 새 UI 문구가 있으면 `i18n.json` 에 EN · PT 를 넣는다: `node tools/i18n.js add '한글' 'English' 'Português'` 또는 i18n.json 에 한 줄 추가. i18n.json 은 **한 줄에 한 문구 · 정렬** 형식이고 `sh build.sh` 가 매번 정리한다 (CI 가 형식을 확인).
 5. 시험: 새 시험 + 관련 시험 `node test/tNNN.js`. **푸시 전에는 반드시 `sh test/run-par.sh`(전체 시험 4조각 동시, 약 7분)로 전부 통과를 확인한다.** 하나라도 ❌ 이면 고칠 때까지 푸시하지 않는다 — PR 의 CI 실패는 관리자에게 메일로 간다. 화면을 바꿨으면 그 화면을 쓰는 옛 시험도 같이 고친다.
 6. 커밋 → 푸시 → PR → GitHub Actions `check` 가 ① app.js 가 src 와 같은지 ② 버전 세 곳 ③ 시험 전부를 확인 → 머지.
