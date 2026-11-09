@@ -168,6 +168,7 @@ function arAlloc() {
   let manual = 0; const auto = [];
   F.invs.forEach(v => { if (v.ar && !v.manual) auto.push(v); else manual += amtOf(v.amt); });
   let left = R2(total - manual);
+  auto.sort((a, b) => (Number(a.bal) < 0 ? 0 : 1) - (Number(b.bal) < 0 ? 0 : 1));   /* ↩ 크레딧 먼저 (화면 순서는 그대로 · 배분 순서만) */
   auto.forEach(v => {
     const bal = Number(v.bal) || 0; let amt = bal;
     if (bal > 0) { amt = Math.max(0, Math.min(bal, left)); left = R2(left - amt); } else left = R2(left - bal);
@@ -176,7 +177,7 @@ function arAlloc() {
 }
 function paintInvSum() {
   arAlloc();
-  F.invs.forEach((v, i) => { const el = document.querySelector('[data-iamt="' + i + '"]'); if (el && v.ar && !v.manual) { el.value = centsFmt(v.amt); } const row = document.querySelector('[data-ii="' + i + '"]'); if (row) { row.classList.toggle('zero', !!v.zero); const pt = row.querySelector('.part'); if (pt) { pt.style.display = v.partial ? 'inline-block' : 'none'; pt.textContent = v.zero ? '받은 돈 부족 — 이 인보이스엔 $0 · not covered' : '파샬 · partial'; } else if (v.partial && row.querySelector('.ibal')) row.querySelector('.ibal').insertAdjacentHTML('beforeend', '<span class="part">' + (v.zero ? '받은 돈 부족 · not covered' : '파샬 · partial') + '</span>'); } });
+  F.invs.forEach((v, i) => { const el = document.querySelector('[data-iamt="' + i + '"]'); if (el && v.ar && !v.manual) { el.value = centsFmt(v.amt, Number(v.bal) < 0); } const row = document.querySelector('[data-ii="' + i + '"]'); if (row) { row.classList.toggle('zero', !!v.zero); const pt = row.querySelector('.part'); if (pt) { pt.style.display = v.partial ? 'inline-block' : 'none'; pt.textContent = v.zero ? '받은 돈 부족 — 이 인보이스엔 $0 · not covered' : '파샬 · partial'; } else if (v.partial && row.querySelector('.ibal')) row.querySelector('.ibal').insertAdjacentHTML('beforeend', '<span class="part">' + (v.zero ? '받은 돈 부족 · not covered' : '파샬 · partial') + '</span>'); } });
   const box = $('invSum'); if (!box) return;
   const list = F.invs.filter(v => !v.zero && (v.no || amtOf(v.amt)));
   if (!list.length) { box.className = ''; box.innerHTML = ''; return; }
@@ -283,7 +284,7 @@ async function paintArPick() {
   const list = F.arList;
   if (!list.length) { box.innerHTML = '<div class="arpick"><div class="aph"><span>📋 AR 에 미결 인보이스 없음 · No open invoices</span><span>' + (F.arAsOf ? '기준일 ' + esc(F.arAsOf) : '') + '</span></div><div class="hint" style="margin:0">새로 발행된 인보이스는 아래 [＋ 목록에 없는 인보이스] 로 넣으세요.</div></div>'; return; }
   box.innerHTML = '<div class="arpick"><div class="aph"><span>📋 미결 인보이스 ' + list.length + '건 — 탭해서 고르기 · Tap to pick</span><span>' + (F.arAsOf ? 'AR 기준일 ' + esc(F.arAsOf) : '') + '</span></div>' +
-    list.map((x, i) => { const on = F.picked.includes(x.no); return '<div class="apr' + (on ? ' on' : '') + '" data-pk="' + i + '"><div class="cb">' + (on ? '✓' : '') + '</div><div class="ai"><b>' + esc(x.no) + (x.app ? ' <span class="tag t-b">앱</span>' : '') + '</b><small>' + esc(md(x.d)) + ' · ' + (x.pdd > 0 ? x.pdd + '일 연체' : x.pdd === 0 || x.pdd == null ? '기한 전' : 'D' + x.pdd) + (x.paid ? ' · 이미 받음 ' + money(x.paid) : '') + '</small></div><div class="ab">' + money(x.bal) + '<small>' + (x.paid ? '남은 잔액 · remaining' : '잔액 · balance') + '</small></div></div>'; }).join('') + '</div>';
+    list.map((x, i) => { const on = F.picked.includes(x.no); return '<div class="apr' + (on ? ' on' : '') + '" data-pk="' + i + '"><div class="cb">' + (on ? '✓' : '') + '</div><div class="ai"><b>' + esc(x.no) + (x.bal < 0 ? ' <span class="tag t-k">↩ ' + bt('크레딧', 'Credit') + '</span>' : '') + (x.app ? ' <span class="tag t-b">앱</span>' : '') + '</b><small>' + esc(md(x.d)) + ' · ' + (x.pdd > 0 ? x.pdd + '일 연체' : x.pdd === 0 || x.pdd == null ? '기한 전' : 'D' + x.pdd) + (x.paid ? ' · 이미 받음 ' + money(x.paid) : '') + '</small></div><div class="ab">' + money(x.bal) + '<small>' + (x.paid ? '남은 잔액 · remaining' : '잔액 · balance') + '</small></div></div>'; }).join('') + '</div>';
   box.querySelectorAll('[data-pk]').forEach(d => d.onclick = () => { collectForm(); const x = list[+d.dataset.pk]; if (F.picked.includes(x.no)) { F.picked = F.picked.filter(k => k !== x.no); F.invs = F.invs.filter(v => !(v.ar && v.no === x.no && !v.other)); } else { F.invs = F.invs.filter(v => v.ar || v.other || v.no || amtOf(v.amt)); F.picked.push(x.no); F.invs.push({ no: x.no, t: invType(x.no), amt: '', bal: x.bal, paid: x.paid, ar: true }); } arAlloc(); paintEntry(); });
 }
 /* ---- 🏬 다른 가게 ---- */

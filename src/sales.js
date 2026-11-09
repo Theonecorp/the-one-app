@@ -224,8 +224,8 @@ function arAlloc() {
   const got = payTotal();
   const manual = F.invs.filter(v => !v.ar || v.manual).reduce((a, v) => a + num(v.amt), 0);
   let left = R2(got - manual);
-  const auto = F.invs.filter(v => v.ar && !v.manual);
-  auto.forEach((v, i) => { const take = Math.min(v.bal, Math.max(0, left)); v.amt = take ? take.toFixed(2) : '0.00'; v.partial = take > 0 && take < v.bal - 0.005; left = R2(left - take); });
+  const auto = F.invs.filter(v => v.ar && !v.manual).sort((a, b) => (Number(a.bal) < 0 ? 0 : 1) - (Number(b.bal) < 0 ? 0 : 1));   /* ↩ 크레딧 먼저 */
+  auto.forEach((v, i) => { const take = v.bal < 0 ? v.bal : Math.min(v.bal, Math.max(0, left)); v.amt = take ? take.toFixed(2) : '0.00'; v.partial = take > 0 && take < v.bal - 0.005; left = R2(left - take); });
   document.querySelectorAll('[data-iamt]').forEach(el => { const v = F.invs[+el.dataset.iamt]; if (v && v.ar && !v.manual) el.value = v.amt; });
 }
 async function otherStoreDialog() {

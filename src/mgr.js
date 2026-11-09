@@ -38,7 +38,8 @@ export async function applyToInvoices(key, invs, on) {
     const pays = Object.assign({}, inv.pays || {});
     if (on) pays[key] = R2(num(v.amt)); else delete pays[key];
     const paid = R2(Object.values(pays).reduce((a, x) => a + (Number(x) || 0), 0));
-    try { await S.DB.update('invoices', inv.id || no, { pays, paid, bal: R2(Math.max(0, (inv.total || 0) - paid)), paidAt: on ? today() : inv.paidAt || '' }); n++; } catch (e) {}
+    const raw = R2((inv.total || 0) - paid), bal = (inv.total || 0) < 0 ? Math.min(0, raw) : Math.max(0, raw);   /* ↩ 크레딧 메모(합계 마이너스)는 일부만 써도 남은 크레딧이 남음 */
+    try { await S.DB.update('invoices', inv.id || no, { pays, paid, bal, paidAt: on ? today() : inv.paidAt || '' }); n++; } catch (e) {}
   }
   return n;
 }

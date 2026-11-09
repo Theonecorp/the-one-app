@@ -247,6 +247,7 @@ export async function invDetail(no, acct, back) {
   let x = null, denied = false;
   no = invNo(no);
   try { x = await getInvoice(S, no); } catch (e) { denied = /permission/i.test(String(e.code || e.message)); }
+  if (x && x.src === 'credit') { closeModal(); goHash('#/credit/' + encodeURIComponent(x.no)); return; }   /* ↩ 크레딧 메모는 크레딧 화면(남은 크레딧 · 확인 · VOID · 할인 백 · 인쇄)으로 */
   acct = acct || (x && x.acct) || '';
   if (!acct && !x && !isStaff()) { /* 내 AR 에서 찾기 */ try { const ar = await S.DB.get('ar', mySm()); const st = ar && (ar.stores || []).find(s => (s.invs || []).some(v => invNo(v.inv) === no)); if (st) acct = st.acct; } catch (e) {} }
   if (!acct && !x && isStaff()) { try { for (const d of await S.DB.list('ar')) { const st = (d.stores || []).find(s => (s.invs || []).some(v => invNo(v.inv) === no)); if (st) { acct = st.acct; break; } } } catch (e) {} }
