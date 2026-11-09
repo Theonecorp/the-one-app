@@ -543,13 +543,17 @@ async function importMain(file) {
     if (ent) {
       /* 🔒 앱에서 이미 정산한 수금은 파일을 다시 올려도 그대로 · 있는 건은 set 대신 merge — 앱에서 한 ① 접수 확인 · ② 수령 · ✓ · 정산 · 취소 표시가 파일로 풀리지 않게 */
       const list = parseEntriesSheet(ent), old = {}; (await S.DB.list('entries', { where: [['imported', '==', true]] })).forEach(e => { old[e.id] = e; });
-      let nDone = 0, nKeep = 0;
+      /* 🔁 세일즈맨이 앱에서 이미 보낸 수금(같은 거래처 + 수표번호)은 파일에 또 있어도 건너뜀 — 11/5 가져오기 때 17건이 두 번 잡혔던 일 (v0.8.174) */
+      const yms = Array.from(new Set(list.map(e => e.ym).filter(Boolean))).slice(0, 10), appRefs = {};
+      if (yms.length) { try { (await S.DB.list('entries', { where: [['ym', 'in', yms]] })).forEach(e => { if (e.imported || e.void) return; (e.pays || []).forEach(p => { if (p.m === 'CHECK' && p.ref) appRefs[(e.acct || '') + '#' + String(p.ref).trim()] = e.id; }); }); } catch (e) {} }
+      let nDone = 0, nKeep = 0, nSkip = 0;
       const cut = settleCut(); let nCut = 0;
       list.forEach(e => { const o = old[e.id]; if (o && o.settled) { nDone++; return; }
+        if (!o && (e.pays || []).some(p => p.m === 'CHECK' && p.ref && appRefs[(e.acct || '') + '#' + p.ref])) { nSkip++; return; }
         if (o) { ['sb', 'rc', 'v', 'void', 'settled', 'settledAt', 'vn', 'disc', 'mismatch', 'env'].forEach(k => { if (o[k]) delete e[k]; }); nKeep++; }
         if (cut && e.d <= cut) { e.settled = 'sheet:' + cut; e.settledAt = cut; e.sb = true; e.rc = true; e.v = true; nCut++; }   /* 📌 마감일까지 = 정산 완료 (수령 · 확인도 끝난 것으로) */
         ops.push({ op: o ? 'merge' : 'set', col: 'entries', id: e.id, data: e }); });
-      nE = list.length - nDone; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list.filter(e => !(old[e.id] && old[e.id].settled)), e => e.total)) + (nKeep ? ' · 있던 ' + nKeep + '건은 적은 칸만' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : ''));
+      nE = list.length - nDone - nSkip; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list.filter(e => !(old[e.id] && old[e.id].settled)), e => e.total)) + (nSkip ? ' · 🔁 앱에서 이미 보낸 수표 ' + nSkip + '건 건너뜀' : '') + (nKeep ? ' · 있던 ' + nKeep + '건은 적은 칸만' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : ''));
     }
     await S.DB.batch(ops);
     if (acc) await bumpAccountsVer();
