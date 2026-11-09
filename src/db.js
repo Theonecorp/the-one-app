@@ -5,9 +5,12 @@
  *    DB.update(col, id, patch) · DB.del(col, id) · DB.batch([{op:'set'|'merge'|'update'|'del',col,id,data}])  (merge = 있으면 칸만 덧씀) · DB.newId(prefix)
  *  AUTH.signIn() · AUTH.signOut() · AUTH.onChange(fn) → {email, name}
  * ============================================================ */
+/* 로그인 도메인(authDomain): Firebase Hosting(web.app · 회사 도메인)에서 열었으면 앱과 같은 주소를 씀 — 폰 Safari 가 다른 주소(firebaseapp.com)의 저장소를 막아
+ *  "missing initial state" 로 로그인이 끊기던 일 (v0.8.174). GitHub Pages · 로컬에서는 전처럼 firebaseapp.com */
+const AUTH_HOST = typeof location !== 'undefined' && /\.web\.app$|\.firebaseapp\.com$|(^|\.)theonefl\.com$/.test(location.hostname) ? location.hostname : 'the-one-app-ff40e.firebaseapp.com';
 export const firebaseConfig = {
   apiKey: "AIzaSyAEvQhEi6H0pPiIRpKRNRXt5m348aU8i24",
-  authDomain: "the-one-app-ff40e.firebaseapp.com",
+  authDomain: AUTH_HOST,
   projectId: "the-one-app-ff40e",
   storageBucket: "the-one-app-ff40e.firebasestorage.app",
   messagingSenderId: "235028136448",
