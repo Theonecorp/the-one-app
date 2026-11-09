@@ -386,7 +386,7 @@ async function afterLogin(user) {
   let me = null, healed = false;
   if (snap) me = snap.me;
   else {
-    try { me = await meP; } catch (e) { loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ')'); return; }
+    try { me = await meP; } catch (e) { loginScreen('데이터베이스를 읽지 못했습니다 (' + (e.code || e.message) + ') · ' + email + (String(e.code || '').includes('permission') ? ' — 회사 구글 계정(@theonefl.com)으로 로그인했는지 확인하고, 아니면 로그아웃 뒤 다시 로그인하세요' : '')); try { await S.AUTH.signOut(); } catch (e2) {} return; }
     if (!me && ADMIN_EMAILS.includes(email)) {
       me = { id: email, email, name: user.name, role: 'admin', active: true, createdAt: today() };
       try { await S.DB.set('users', email, me); } catch (e) { loginScreen('관리자 기록을 만들지 못했습니다: ' + e.message); return; }
