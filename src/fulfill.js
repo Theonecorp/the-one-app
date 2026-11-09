@@ -86,6 +86,10 @@ export function manage(o, lines) {
   if (o.st === 'picked') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('수량 저장', 'Save') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 발행', 'Issue invoice') + '</button>' : '<span class="muted" style="align-self:center">' + bi('인보이스 발행은 사무실에서 합니다', 'Office issues the invoice') + '</span>'));
   if (o.st === 'sent' && !o.cfOk) B.push('<button class="b-ghost" id="mCfOk">👍 ' + bi('확인 완료로 (전화 등)', 'Mark confirmed') + '</button>');
   if (o.st === 'done' && can('ship')) B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · UPS 라벨', 'Pack · UPS label') + '</button>');
+  /* 🚗 UPS 가 아니라 세일즈맨 · 다른 직원이 가져가거나 손님이 픽업 — 딜리버리 대기로 (UPS 출고 목록에서 빠짐) */
+  if (o.st === 'done' && (can('ship') || can('invoice'))) B.push('<button class="b-ghost" id="mDlv">🚗 ' + bi('딜리버리로 (UPS 아님)', 'Delivery (not UPS)') + '</button>');
+  if (o.st === 'dlv') B.push('<div class="alert a-amb" style="flex-basis:100%;margin:0">🚗 ' + bi('딜리버리 대기', 'Awaiting delivery') + ' — <b>' + esc(DLVK[o.dlvKind] ? bt(DLVK[o.dlvKind][0], DLVK[o.dlvKind][1]) : '') + (o.dlvBy ? ' · ' + esc(o.dlvBy) : '') + '</b>' + (o.dlvNote ? ' · 📝 ' + esc(o.dlvNote) : '') + ' <span class="muted">' + esc(String(o.dlvAt || '').substring(5, 16).replace('T', ' ')) + '</span></div>' +
+    (can('ship') || can('invoice') ? '<button class="b-green" id="mDlvDone">✅ ' + bi('배달 완료', 'Delivered') + '</button><button class="b-ghost" id="mDlvEdit">✏️ ' + bi('누가 · 메모', 'Who · note') + '</button>' : ''));
   if (o.st === 'packed') B.push('<button class="b-blue" id="mPickup">📮 ' + bi('UPS 픽업 화면', 'UPS pickup') + '</button>' + (can('ship') ? '<button class="b-ghost" id="mShip">🚚 ' + bi('라벨 · 박스 보기', 'Labels · boxes') + '</button>' : ''));
   h += '<div class="card"><div class="btns" style="margin-top:0;flex-wrap:wrap">' +
     (picking ? '<button class="b-ghost b-sm" id="mPickPrint">🖨 ' + bi('픽킹 인보이스', 'Picking list') + '</button>' : '') +
@@ -95,7 +99,7 @@ export function manage(o, lines) {
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
     (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
     (o.st === 'picked' ? '<button class="b-ghost b-sm" id="mRepick">↩️ ' + bi('출고 작업으로 되돌리기', 'Return to Fulfillment') + '</button>' : '') +
-    (o.st === 'packed' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('포장 대기로 되돌리기', 'Back to packing') + '</button>' : '') +
+    (o.st === 'packed' || o.st === 'dlv' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('포장 대기로 되돌리기', 'Back to packing') + '</button>' : '') +
     (o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('출고 취소', 'Undo shipping') + '</button><button class="b-ghost b-sm" id="mTrk">📦 ' + bi('배송 조회', 'Tracking') + '</button>' : '') +
     ((o.st === 'sent' || o.st === 'pick' || o.st === 'ok') && !o.cfOk ? '<button class="b-ghost b-sm" id="mCfReq">❓ ' + bi(o.cfReq ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman') + '</button>' : '') +
     '<button class="b-ghost b-sm" id="mAsk">💬 ' + bi('구글 챗으로 묻기', 'Ask on Google Chat') + '</button>' + ((S.settings && S.settings.chatUrl) ? '<button class="b-ghost b-sm" id="mChat">💬 ' + bi('챗 열기', 'Open Chat') + '</button>' : '') +
@@ -229,10 +233,13 @@ export function manage(o, lines) {
   if ($('mChat')) $('mChat').onclick = async () => { const N = await import('./notify.js'); window.open(N.chatUrl(), '_blank', 'noopener'); };
   if ($('mIssueOk')) $('mIssueOk').onclick = async () => { busy(true); try { await S.DB.update('orders', o.id, { cfIssueOpen: false, cfIssueDoneAt: new Date().toISOString(), cfIssueDoneBy: S.user.email }); toast('✅ ' + bt('해결로 표시했습니다', 'Marked resolved'), 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mShip')) $('mShip').onclick = () => shipModal(o);
+  if ($('mDlv')) $('mDlv').onclick = () => dlvModal(o);
+  if ($('mDlvEdit')) $('mDlvEdit').onclick = () => dlvModal(o);
+  if ($('mDlvDone')) $('mDlvDone').onclick = () => dlvDone(o);
   if ($('mPickup')) $('mPickup').onclick = () => { Router.go('order'); setTimeout(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'packed' })), 0); };
   if ($('mCfOk')) $('mCfOk').onclick = async () => { if (!(await confirmBox(bt('세일즈맨 확인 완료로 바꿀까요? (전화 · 문자로 확인한 경우)', 'Mark as confirmed by the salesman?'), '👍'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { cfReq: true, cfOk: true, cfAt: now, cfBy: S.user.email, cfHow: 'staff' }); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mTrk')) $('mTrk').onclick = () => Router.go('track', o.no);
-  if ($('mUnship')) $('mUnship').onclick = async () => { const back = o.st === 'shipped' && o.pickupId ? 'packed' : 'done'; if (!(await confirmBox(back === 'packed' ? bt('UPS 인계를 취소할까요? (픽업 대기로 돌아감)', 'Undo handover? (back to awaiting pickup)') : bt('포장 · 출고를 취소할까요? (포장 대기로 돌아감)', 'Undo packing/shipping? (back to packing)'), bt('되돌리기', 'Undo')))) return; busy(true); try { await S.DB.update('orders', o.id, Object.assign({ st: back, updatedAt: new Date().toISOString() }, back === 'packed' ? { pickupId: '' } : {})); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mUnship')) $('mUnship').onclick = async () => { const back = o.st === 'shipped' && o.pickupId ? 'packed' : o.st === 'shipped' && o.dlvAt ? 'dlv' : 'done'; if (!(await confirmBox(back === 'packed' ? bt('UPS 인계를 취소할까요? (픽업 대기로 돌아감)', 'Undo handover? (back to awaiting pickup)') : bt('포장 · 출고를 취소할까요? (포장 대기로 돌아감)', 'Undo packing/shipping? (back to packing)'), bt('되돌리기', 'Undo')))) return; busy(true); try { await S.DB.update('orders', o.id, Object.assign({ st: back, updatedAt: new Date().toISOString() }, back === 'packed' ? { pickupId: '' } : {})); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mPickPrint')) $('mPickPrint').onclick = () => printPicking(o, lines);
   if ($('mPickSave')) $('mPickSave').onclick = async () => { busy(true); try { await saveLines(); dirty = false; toast('픽킹 저장', 'good'); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mUnpick')) $('mUnpick').onclick = async () => { busy(true); try { await saveLines({ st: 'sent' }); toast('들어온 주문으로 되돌림'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
@@ -465,6 +472,49 @@ function csv(o, lines) {
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
+/* ---- 🚗 딜리버리 — UPS 라벨 없이 세일즈맨 · 다른 직원이 가져가거나 손님이 픽업 (v0.8.178) ----
+ *  done → dlv(딜리버리 대기: dlvKind sm | staff | pickup · dlvBy · dlvNote · dlvAt) → 배달 완료 → shipped(shipVia DELIVERY | PICKUP · deliveredAt · receivedBy) */
+const DLVK = { sm: ['세일즈맨이 배달', 'Salesman delivers'], staff: ['직원이 배달', 'Staff delivers'], pickup: ['손님 픽업', 'Customer pickup'] };
+function dlvModal(o) {
+  const memo = String(o.memo || '');
+  const F = { kind: o.dlvKind || (/customer pickup|픽업/i.test(memo) ? 'pickup' : /salesman deliver|세일즈맨 직접 배달/i.test(memo) ? 'sm' : 'sm'), by: o.dlvBy || '', note: o.dlvNote || '' };
+  const defBy = k => k === 'sm' ? (o.sm || '') : k === 'pickup' ? (o.store || '') : '';
+  if (!F.by) F.by = defBy(F.kind);
+  const paint = () => {
+    openModal('<h2>🚗 ' + bi('딜리버리로', 'Delivery') + ' — ' + esc(o.store || '') + '</h2><div class="muted">' + bt('UPS 라벨 없이 나가는 주문 — 딜리버리 대기에 두었다가, 가져가면 ✅ 배달 완료. UPS 출고 목록에서는 빠집니다.', 'Goes out without a UPS label — waits in Awaiting delivery until marked ✅ Delivered. Leaves the UPS list.') + '</div>' +
+      (memo ? '<div class="alert a-blu" style="margin-top:8px">📝 ' + esc(memo) + '</div>' : '') +
+      '<div class="seg" style="margin-top:8px">' + Object.keys(DLVK).map(k => '<button class="' + (F.kind === k ? 'on' : '') + '" data-dk="' + k + '">' + (k === 'sm' ? '🧑‍💼 ' : k === 'staff' ? '👷 ' : '🏬 ') + bt(DLVK[k][0], DLVK[k][1]) + '</button>').join('') + '</div>' +
+      '<div class="fg" style="margin-top:8px"><label>' + (F.kind === 'pickup' ? bt('누가 가져가나 (가게 · 사람)', 'Who picks up') : bt('누가 배달하나', 'Who delivers')) + '</label><input id="dkBy" value="' + esc(F.by) + '" placeholder="' + esc(F.kind === 'sm' ? bt('세일즈맨 코드', 'Salesman code') : bt('이름', 'Name')) + '"></div>' +
+      '<div class="fg"><label>' + bt('메모 (선택)', 'Note (optional)') + '</label><input id="dkNote" value="' + esc(F.note) + '" placeholder="' + esc(bt('예: 금요일 방문 때 · 박스 2개', 'e.g. Friday visit · 2 boxes')) + '"></div>' +
+      '<div class="btns"><button class="b-ghost" id="dkX">' + bt('닫기', 'Close') + '</button><button class="b-blue" id="dkOk">🚗 ' + bi('딜리버리 대기로', 'Set awaiting delivery') + '</button></div>');
+    document.querySelectorAll('[data-dk]').forEach(b => b.onclick = () => { const was = F.kind; F.note = $('dkNote').value; const cur = $('dkBy').value.trim(); F.kind = b.dataset.dk; if (!cur || cur === defBy(was)) F.by = defBy(F.kind); else F.by = cur; paint(); });
+    $('dkX').onclick = closeModal;
+    $('dkOk').onclick = async () => {
+      const by = $('dkBy').value.trim(), note = $('dkNote').value.trim(); if (!by) return toast(bt('누가 배달하는지 적으세요', 'Who delivers?'), 'bad');
+      const now = new Date().toISOString(); busy(true);
+      try {
+        await S.DB.update('orders', o.id, { st: 'dlv', dlvKind: F.kind, dlvBy: by, dlvNote: note, dlvAt: o.dlvAt && o.st === 'dlv' ? o.dlvAt : now, dlvSetBy: S.user.email, shipVia: F.kind === 'pickup' ? 'PICKUP' : 'DELIVERY', updatedAt: now });
+        /* 🧑‍💼 세일즈맨이 배달하면 그 세일즈맨 앱에 알림 (메일 · 단톡방 없이) */
+        if (F.kind === 'sm' && o.sm) { try { const M = await import('./msg.js'); await M.sendMsg({ to: 'sm:' + String(by || o.sm).toUpperCase(), toLabel: by || o.sm, text: '🚗 ' + bt('배달할 주문', 'Order to deliver') + ': ' + (o.store || '') + ' · ' + (o.no || '') + ((o.invs || []).length ? ' · ' + o.invs.join(', ') : '') + (note ? '\n📝 ' + note : ''), ref: { kind: 'order', id: o.id, label: (o.no || '') + ' · ' + (o.store || '') }, quiet: true }); } catch (e) {} }
+        closeModal(); toast('🚗 ' + bt('딜리버리 대기로', 'Awaiting delivery'), 'good'); goOrder(o.id);
+      } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  };
+  paint();
+}
+function dlvDone(o) {
+  openModal('<h2>✅ ' + bi('배달 완료', 'Delivered') + ' — ' + esc(o.store || '') + '</h2><div class="muted">' + esc(DLVK[o.dlvKind] ? bt(DLVK[o.dlvKind][0], DLVK[o.dlvKind][1]) : '') + (o.dlvBy ? ' · ' + esc(o.dlvBy) : '') + '</div>' +
+    '<div class="two" style="margin-top:8px"><div class="fg"><label>' + bt('배달한 날', 'Delivered on') + '</label><input type="date" id="ddD" value="' + esc(today()) + '"></div><div class="fg"><label>' + bt('받은 사람 (선택)', 'Received by (optional)') + '</label><input id="ddR" placeholder="' + esc(bt('가게에서 받은 사람', 'Who received it')) + '"></div></div>' +
+    '<div class="btns"><button class="b-ghost" id="ddX">' + bt('닫기', 'Close') + '</button><button class="b-green" id="ddOk">✅ ' + bi('배달 완료 → 출고 완료', 'Delivered → Shipped') + '</button></div>');
+  $('ddX').onclick = closeModal;
+  $('ddOk').onclick = async () => {
+    const d = $('ddD').value || today(), now = new Date().toISOString(), at = d === today() ? now : d + 'T12:00:00.000Z'; busy(true);
+    try { await S.DB.update('orders', o.id, { st: 'shipped', shipAt: at, shipBy: S.user.email, shipVia: o.dlvKind === 'pickup' ? 'PICKUP' : 'DELIVERY', deliveredAt: at, deliveredBy: o.dlvBy || '', receivedBy: $('ddR').value.trim(), updatedAt: now }); closeModal(); toast('✅ ' + bt('배달 완료 · 출고 완료', 'Delivered · shipped'), 'good'); goOrder(o.id); }
+    catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+}
 /* ---- 🧾 인보이스 확정 ---- */
 async function confirmInvoice(o, lines) {
   if (/^N\d{6}-/.test(String(o.acct || ''))) { const NA = await import('./newacct.js'); toast('🆕 ' + bt('신규 거래처라 아직 코드가 없습니다 — 코드를 먼저 붙여 주세요', 'New account has no code yet — assign the code first'), 'bad'); if (NA.canAssign()) NA.pendingModal(() => goOrder(o.id)); return; }
