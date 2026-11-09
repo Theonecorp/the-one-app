@@ -236,6 +236,7 @@
 "기간 안 인보이스 전부는 기간을 고르세요 (전체 기간이면 인보이스가 아주 많을 수 있음)":["Pick a period for “all invoices”","Escolha um período para “todas as faturas”"],
 "기간 직접":["Custom","Personalizado"],
 "기간별":["By date","Por período"],
+"기간별 수금 기록":["Collections by period","Recebimentos por período"],
 "기다리는 봉투가 없습니다":["No envelopes waiting","Nenhum envelope aguardando"],
 "기다리는 신규 거래처가 없습니다":["No new accounts waiting","Nenhum cliente novo aguardando"],
 "기다리는 중":["Waiting","Aguardando"],

@@ -5,7 +5,7 @@
  *          받은 날짜 · Pay Type(CHECK/ZELLE/CASH) · Check # · 금액(센트 자동) · 📱 모바일 디파짓 · 🔁 대체 체크
  *          Deposit Date · 결제 추가 · 갚는 인보이스(AR 목록 탭 → 자동 배분 · 파샬 · 크레딧 ± · 🏬 다른 가게) · 메모 · 저장
  *    오늘 내역: 합계 · 전송 대기 · 수정/취소 · 📧 Daily Report (사진 첨부) 전송
- *    기록: 계정코드 / 가게 / 체크번호 검색 · 가게 요약 · 기간 리포트(인쇄 · 이메일)
+ *    기록: 계정코드 / 가게 / 체크번호 검색 · 가게 요약 · 📅 기간별 조회(날짜별 소계) · 기간 리포트(인쇄 · 이메일)
  *    미수금: 내 담당 AR (오래된 순 · 구간 · 💤 · ✅) → 가게 → 바로 수금 입력
  *  자료는 Firestore entries (기존 모양 그대로) + reports (Daily Report · 체크 사진)
  * ============================================================ */
@@ -490,13 +490,50 @@ async function paintHist() {
   if ($('hubBody')) $('hubBody').innerHTML = '<div class="card"><label>기록 조회 <span class="en">Collection history</span></label><div class="pdrow"><input id="hQ" autocomplete="off" placeholder="계정코드 / 가게 이름 / 체크번호" value="' + esc(HQ) + '"><button type="button" class="pdclr" id="hGo" style="background:var(--blue);color:#fff;border-color:var(--blue)">검색 Search</button></div>' +
     '<div class="hint">예) <b>4001</b> (계정코드) · <b>ali fl</b> (가게 이름) · <b>10432</b> (체크번호). 가게 이름은 <b>일부만 쳐도</b> 됩니다. 그 가게의 수금 · COD · ACH · 카드 기록이 모두 나오고, 합계 · 마지막 수금일이 위에 표시됩니다.<br><span class="en">e.g. account #, store name words, or check #</span></div>' +
     '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600"><input type="checkbox" id="hOther" style="width:20px;height:20px" checked> COD · ACH · 카드도 같이 <span class="en">incl. COD / ACH / card</span></label></div>' +
+    /* 📅 기간별 — 받은 날짜 기준으로 그 기간의 내 수금(COD · ACH · 카드 포함 가능)을 날짜별 소계와 함께 · 🖨 인쇄 · 📧 메일 (v0.8.174: 세일즈맨 요청으로 다시) */
+    '<div class="card"><label>📅 기간별 수금 기록 <span class="en">Collections by period</span></label><div class="chips" style="margin-top:6px">' + [['week', '이번 주', 'This week'], ['month', '이번 달', 'This month'], ['lastm', '지난 달', 'Last month'], ['d30', '최근 30일', 'Last 30 days']].map(c => '<button type="button" data-pq="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '</div>' +
+    '<div class="two" style="margin-top:6px"><div class="fg"><label>시작 From</label><input id="pFrom" type="date" value="' + from + '"></div><div class="fg"><label>끝 To</label><input id="pTo" type="date" value="' + today() + '"></div></div>' +
+    '<div class="btns"><button type="button" class="b-blue" id="pGo">📅 기간 조회 · Search</button><button type="button" class="b-ghost" id="pPrev">🖨 인쇄 · Print</button><button type="button" class="b-ghost" id="pMail">📧 이메일 · Email</button></div>' +
+    '<div class="hint">받은 날짜 기준 · 날짜별 소계와 CHECK · CASH · ZELLE 합계 · 인쇄 · 메일은 수금(체크 · 캐쉬 · Zelle)만 · 서명란 포함<br><span class="en">By received date — daily subtotals and totals by type; print and email cover field collections only.</span></div></div>' +
     '<div id="hSum"></div><div id="hList"></div>' +
     '<div class="card"><details id="rpBox"><summary><label style="display:inline">📧 보낸 Daily Report <span class="en">Sent daily reports</span></label> <span class="muted">— 최근 10일 · 메일이 안 갔으면 다시 보내기</span></summary><div id="rpList" style="margin-top:8px"></div></details></div>';
   /* 🧾 기간 리포트(회사에 체크 보낼 때 인쇄)는 📦 체크 보내기의 발송 목록과 같은 일이라 화면에서 뺌 — periodReport() 는 코드로만 (v0.8.131) */
   void from;
   $('hGo').onclick = histSearch; $('hQ').onkeydown = e => { if (e.key === 'Enter') histSearch(); }; $('hOther').onchange = () => { if ($('hQ').value.trim()) histSearch(); };
   $('rpBox').ontoggle = () => { if ($('rpBox').open) sentReports(); };
+  $('pGo').onclick = periodSearch; $('pPrev').onclick = () => periodReport(false); $('pMail').onclick = () => periodReport(true);
+  document.querySelectorAll('[data-pq]').forEach(b => b.onclick = () => { const r = quickRange(b.dataset.pq); $('pFrom').value = r[0]; $('pTo').value = r[1]; periodSearch(); });
   if (HQ) histSearch();
+}
+/** 빠른 기간 — [시작, 끝] */
+function quickRange(k) {
+  const t = new Date(today() + 'T12:00:00'), iso = d => d.toISOString().slice(0, 10), T = today();
+  if (k === 'week') { const d = new Date(t); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return [iso(d), T]; }   // 월요일부터
+  if (k === 'month') return [T.slice(0, 8) + '01', T];
+  if (k === 'lastm') { const a = new Date(t.getFullYear(), t.getMonth() - 1, 1, 12), b = new Date(t.getFullYear(), t.getMonth(), 0, 12); return [iso(a), iso(b)]; }
+  const d = new Date(t); d.setDate(d.getDate() - 29); return [iso(d), T];
+}
+const srcOf = c => c.method === 'ACH' ? 'ACH' : c.method === 'COD' ? 'COD' : 'CARD';
+const SRC = { FIELD: ['수금', '#e0f2fe', '#075985'], COD: ['COD', '#fef3c7', '#92400e'], ACH: ['ACH', '#ede9fe', '#5b21b6'], CARD: ['카드', '#dcfce7', '#14532d'] };
+/** 기록 한 줄 (가게 · 금액 · 받은 날 · 결제 · 인보이스 · 세일즈맨 · 상태) */
+const entHtml = x => { const sd = SRC[x.src] || SRC.FIELD; return '<div class="hent"><div class="t"><span><span class="tag" style="background:' + sd[1] + ';color:' + sd[2] + '">' + sd[0] + '</span> ' + esc(x.store) + (x.acct ? '<span class="code">' + esc(x.acct) + '</span>' : '') + '</span><span class="amt">' + money(x.total) + '</span></div>' +
+  '<div class="meta"><span class="kv2"><b>받은 날 Rcvd</b> ' + esc(x.d) + '</span>' + (x.src === 'FIELD' ? (x.pays || []).map(p => '<span class="kv2"><b>' + esc(p.m) + '</b>' + (p.ref ? ' #' + esc(p.ref) : '') + ' ' + money(p.amt) + (p.mob ? ' 📱' : '') + (p.repl ? ' 🔁' : '') + '</span>').join('') : '<span class="kv2"><b>' + esc(x.method || '') + '</b>' + (x.ref ? ' ' + esc(x.ref) : '') + '</span>') +
+  ((x.invs || []).length ? '<br>📄 ' + x.invs.map(v => esc(v.no) + ' ' + money(v.amt)).join(' · ') : '') + '<br><span class="kv2">👤 ' + esc(x.sm) + '</span><span class="kv2">' + (x.src === 'FIELD' ? (x.rep ? '리포트 전송됨 Sent' : '전송 대기 Pending') + ' · ' + esc(stageText(x)) : (x.v ? '확인됨' : '입력됨')) + '</span></div></div>'; };
+/** 📅 기간 조회 — 받은 날짜가 기간 안인 내 기록 (COD · ACH · 카드 포함 체크 시) · 날짜별 소계 · 종류별 합계 */
+async function periodSearch() {
+  const f = $('pFrom').value, t = $('pTo').value; if (!f || !t || f > t) return toast('기간을 선택하세요. · Choose a date range.', 'bad');
+  $('hSum').innerHTML = '<div class="hsum">검색 중… Searching</div>'; $('hList').innerHTML = '';
+  const rows = (await allMine()).filter(e => !e.void && e.d >= f && e.d <= t).map(e => Object.assign({ src: 'FIELD' }, e));
+  let cods = []; if ($('hOther').checked) { try { const wh = isSales() ? [['sm', '==', me()]] : []; cods = (await S.DB.list('cod', wh.length ? { where: wh } : {})).filter(c => !c.void && c.d >= f && c.d <= t).map(c => Object.assign({ src: srcOf(c) }, c, { total: c.amt })); } catch (e) {} }
+  const items = sortBy(rows.concat(cods), x => x.d + (x.createdAt || ''), true);
+  if (!items.length) { $('hSum').innerHTML = '<div class="hsum">📅 ' + esc(f) + ' ~ ' + esc(t) + ' — 기록 없음 · No records</div>'; return; }
+  const by = { CHECK: 0, CASH: 0, ZELLE: 0, other: 0 };
+  items.forEach(x => { if (x.src !== 'FIELD') by.other += num(x.total); else (x.pays || []).forEach(p => { by[p.m === 'CASH' ? 'CASH' : p.m === 'ZELLE' ? 'ZELLE' : 'CHECK'] += num(p.amt); }); });
+  const stores = Object.keys(groupBy(items, x => (x.acct || '') + '|' + x.store)).length;
+  $('hSum').innerHTML = '<div class="hsum">📅 ' + esc(f) + ' ~ ' + esc(t) + ' — ' + items.length + '건 · ' + stores + '곳 · 합계 Total ' + money(sum(items, x => x.total)) + '</div>' +
+    '<div class="card"><div class="kpi" style="grid-template-columns:repeat(' + (by.other ? 4 : 3) + ',1fr)"><div><b>' + money(by.CHECK) + '</b><span>CHECK</span></div><div><b>' + money(by.CASH) + '</b><span>CASH</span></div><div><b>' + money(by.ZELLE) + '</b><span>ZELLE</span></div>' + (by.other ? '<div><b>' + money(by.other) + '</b><span>COD · ACH · 카드</span></div>' : '') + '</div></div>';
+  const days = groupBy(items, x => x.d);
+  $('hList').innerHTML = Object.keys(days).sort().reverse().map(d => '<div class="hday"><b>' + esc(dlabel ? dlabel(d) : d) + '</b><span>' + days[d].length + '건 · ' + money(sum(days[d], x => x.total)) + '</span></div>' + days[d].map(entHtml).join('')).join('');
 }
 /** 📧 내가 보낸 Daily Report — 메일 상태 (⏳ 보내는 중 · ✅ 보냄 · ⚠️ 실패) 와 다시 보내기 · 이메일 앱으로 */
 async function sentReports() {
@@ -557,12 +594,9 @@ async function histSearch() {
   }
   $('hSum').innerHTML = head;
   document.querySelectorAll('[data-hs]').forEach(el => el.onclick = () => { $('hQ').value = el.dataset.hs; histSearch(); });
-  const SRC = { FIELD: ['수금', '#e0f2fe', '#075985'], COD: ['COD', '#fef3c7', '#92400e'], ACH: ['ACH', '#ede9fe', '#5b21b6'], CARD: ['카드', '#dcfce7', '#14532d'] };
-  $('hList').innerHTML = items.map(x => { const sd = SRC[x.src] || SRC.FIELD; return '<div class="hent"><div class="t"><span><span class="tag" style="background:' + sd[1] + ';color:' + sd[2] + '">' + sd[0] + '</span> ' + esc(x.store) + (x.acct ? '<span class="code">' + esc(x.acct) + '</span>' : '') + '</span><span class="amt">' + money(x.total) + '</span></div>' +
-    '<div class="meta"><span class="kv2"><b>받은 날 Rcvd</b> ' + esc(x.d) + '</span>' + (x.src === 'FIELD' ? (x.pays || []).map(p => '<span class="kv2"><b>' + esc(p.m) + '</b>' + (p.ref ? ' #' + esc(p.ref) : '') + ' ' + money(p.amt) + (p.mob ? ' 📱' : '') + (p.repl ? ' 🔁' : '') + '</span>').join('') : '<span class="kv2"><b>' + esc(x.method || '') + '</b>' + (x.ref ? ' ' + esc(x.ref) : '') + '</span>') +
-    ((x.invs || []).length ? '<br>📄 ' + x.invs.map(v => esc(v.no) + ' ' + money(v.amt)).join(' · ') : '') + '<br><span class="kv2">👤 ' + esc(x.sm) + '</span><span class="kv2">' + (x.src === 'FIELD' ? (x.rep ? '리포트 전송됨 Sent' : '전송 대기 Pending') + ' · ' + esc(stageText(x)) : (x.v ? '확인됨' : '입력됨')) + '</span></div></div>'; }).join('');
+  $('hList').innerHTML = items.map(entHtml).join('');
 }
-/* (화면에서 뺌 — 필요하면 periodReport(false) 로 인쇄 · periodReport(true) 로 메일) */
+/* 🖨 기간 리포트 — 📅 기간별 카드의 인쇄 · 메일 (수금만 · 날짜별 · 서명란) */
 export async function periodReport(mail) {
   const f = $('pFrom').value, t = $('pTo').value; if (!f || !t) return toast('기간을 선택하세요. · Choose a date range.', 'bad');
   const rows = sortBy((await allMine()).filter(e => !e.void && e.d >= f && e.d <= t), e => e.d + (e.createdAt || ''));
