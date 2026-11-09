@@ -1,5 +1,5 @@
 /* v0.8.131 시험 — 🔎 가게 검색 순위(ORLANDO BEAUTY → 이름에 ORLANDO → ORLANDO 에 있는 가게) · 📦 체크 보내기 오래된 것부터 + 🔎 빠진 것 확인(미도착 → ↩ 다시 보내기)
- *   · 기록 탭에서 기간 리포트 뺌 · 숫자만 친 인보이스 번호 찾기 · 관리 설정의 EXCHANGE 칸 숨김 */
+ *   · 기록 탭의 기간 리포트는 v0.8.131 에 뺐다가 v0.8.174 에 📅 기간별 조회로 다시 (t164) · 숫자만 친 인보이스 번호 찾기 · 관리 설정의 EXCHANGE 칸 숨김 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -37,7 +37,7 @@ const path = require('path');
   const st = await pg.evaluate(() => ({ env: window.__MOCK_STORE__.entries.EM1.env, re: window.__MOCK_STORE__.entries.EM1.envRe, n: document.querySelectorAll('.evck').length })); log('after ↩:', JSON.stringify(st));
   if (st.env !== '' || st.re !== 'VMISS') errs.push('↩ should clear env and remember the old envelope'); if (st.n !== order.length + 1) errs.push('the missing check should be back on the send list');
   /* 기록 탭 — 기간 리포트 없음 */
-  await pg.evaluate(() => { location.hash = '#/hist'; }); await pg.waitForSelector('#hQ'); if (await pg.$('#pPrev')) errs.push('period report should be gone from 기록');
+  await pg.evaluate(() => { location.hash = '#/hist'; }); await pg.waitForSelector('#hQ'); if (!(await pg.$('#pPrev')) || !(await pg.$('#pGo'))) errs.push('v0.8.174: 📅 period card is back on 기록 (salesman request, t164)');   // v0.8.131 에 뺐다가 v0.8.174 에 다시
   /* ---------- 📄 숫자만 친 인보이스 번호 ---------- */
   await pg.evaluate(() => { location.hash = '#/invs'; }); await pg.waitForSelector('#ivQ', { timeout: 8000 }); await pg.fill('#ivQ', '77002'); await pg.waitForSelector('[data-ivd="A77002"]', { timeout: 6000 }).catch(() => errs.push('typing 77002 should find A77002'));
   if (await pg.$('[data-ivd="A77002"]')) { await pg.click('[data-ivd="A77002"]'); await pg.waitForTimeout(800); const t = (await pg.textContent('#mbox')).replace(/\s+/g, ' '); log('inv detail:', t.slice(0, 60)); if (!/A77002|77002/.test(t)) errs.push('invoice detail should open'); }

@@ -1,4 +1,4 @@
-/* v0.8.110 시험 — ❓ 확인 → 👷 배정 순서 · 체크 칸 · 🏷 인보이스 종류(W) 사무실 판단
+/* v0.8.110 시험 — ❓ 확인 → 👷 배정 순서 · 체크 칸 · 🏷 인보이스 종류(W) 사무실 판단 · (v0.8.174: 목록 기본이 📅 날짜별이라 👤 세일즈맨별로 바꾼 뒤 ❓ 요청)
  *   ① 담당자 📥 신규: 줄을 누르면 주문이 열림(배정 팝업 아님) · 체크 칸(.ckw) 누르면 선택만 · 👤 묶음의 ❓ 전체 확인 요청 → cfReq + notifyq(cfreq, order/cf)
  *   ② 세일즈맨: 홈 ❓ 카드 → #/order/cf 검토 화면(아이템 보임) → ✅ 전체 → cfOk/cfHow 'req' + notifyq(cfok)
  *   ③ 담당자: 접수 주문에서 🏷 모두 W → orderLines t='W' 저장 · 목록 🏷 W 태그 · 인보이스 확정 창에서 묶음 종류 바꾸기 */
@@ -17,6 +17,7 @@ const path = require('path');
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(600);
   await pg.evaluate(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'sent' }))); await pg.waitForSelector('[data-ck]', { timeout: 8000 }).catch(() => errs.push('new-orders list with checkboxes missing'));
   const bar = await txt(pg, '#bulkBar'); log('bulk:', bar.slice(0, 90)); if (!/확인 요청/.test(bar)) errs.push('bulk bar should explain confirm-first flow');
+  if (await pg.$('[data-grp="sm"]')) { await pg.click('[data-grp="sm"]'); await pg.waitForTimeout(600); }   /* v0.8.174: 기본 📅 날짜별 → 👤 세일즈맨별 */
   const smcf = await pg.$$('[data-smcf]'); log('smcf buttons:', smcf.length); if (smcf.length < 2) errs.push('per-salesman ask buttons missing');
   /* 체크 칸 — 선택만 되고 주문이 열리지 않아야 */
   await pg.click('[data-ckw="O261014-AAAA"]'); await pg.waitForTimeout(300);
@@ -35,7 +36,7 @@ const path = require('path');
   if (ol.join() !== 'W,W') errs.push('all lines should be W after 모두 W'); if (!od || od.W !== 2) errs.push('order.ty.W should be 2');
   if (!/W 2/.test(await txt(pg, '#mTypes'))) errs.push('type bar should update to W 2');
   /* 목록 🏷 태그 · ❓ 전체 확인 요청 (ALEX) */
-  await pg.click('#mBack'); await pg.waitForTimeout(600); await pg.evaluate(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'sent' }))); await pg.waitForSelector('[data-smcf="ALEX"]', { timeout: 8000 }).catch(() => errs.push('ALEX ask button missing'));
+  await pg.click('#mBack'); await pg.waitForTimeout(600); await pg.evaluate(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'sent' }))); await pg.waitForSelector('[data-grp="sm"]', { timeout: 8000 }); await pg.click('[data-grp="sm"]'); await pg.waitForTimeout(500);   /* v0.8.174: 기본은 📅 날짜별 — ❓ 세일즈맨별 확인 요청은 👤 세일즈맨별로 바꾼 뒤 */ await pg.waitForSelector('[data-smcf="ALEX"]', { timeout: 8000 }).catch(() => errs.push('ALEX ask button missing'));
   const row = await txt(pg, '[data-oid="O261015-BBBB"]'); log('row:', row.slice(0, 100)); if (!/🏷 W 2/.test(row)) errs.push('list row should show 🏷 W 2 tag');
   await pg.click('[data-smcf="ALEX"]'); await pg.waitForSelector('#cfOk'); const ask = await txt(pg, '#mbox, .ovr'); log('ask:', ask.slice(0, 100)); if (!/ALEX/.test(ask) || !/2건/.test(ask)) errs.push('ask confirm should name ALEX and 2 orders');
   await pg.click('#cfOk'); await pg.waitForTimeout(1200);

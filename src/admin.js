@@ -14,7 +14,7 @@ import { dropBossCache } from './boss.js';
 import { levelTool } from './lvtool.js';
 import { acctImportCard, bindAcctImport, acctFile, parseAcctList } from './acctimp.js';
 import { achBookFile } from './achimp.js';
-import { parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs, parseSmartBeeItems, smartbeeDiff, applySmartBee, codeFamily, photoStats } from './catalog.js';
+import { setCatOrder, catOrderKey, parseItemMaster, publishCatalog, loadCatalog, catalog, parseSetBook, publishSets, exactItem, editCatalog, renameCat, ensureCats, moveCatTo, parseBulkSheet, applyBulk, catalogCsv, catStart, pins, setPins, popularCodes, photoIndex, driveUrl, cleanName, sbmLevelRows, sbmGroupRows, catLocs, setLocs, locKey, parseLocSheet, suggestCatLocs, parseSmartBeeItems, smartbeeDiff, applySmartBee, codeFamily, photoStats } from './catalog.js';
 import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM, getInvoice, FOOTER_DEFAULT } from './invoicing.js';
 
 let S = null, TAB = 'users';
@@ -38,8 +38,9 @@ async function pageCatMg(arg) {
   const C = catalog() || { items: [] }, vis = C.items.filter(x => !x.h), st = photoStats(C);
   const noLv = vis.filter(x => !x.l1 && !x.virt).length, noPr = vis.filter(x => !(x.p > 0)).length, hid = C.items.filter(x => x.h).length, sets = C.items.filter(x => x.k).length, noBar = vis.filter(x => !x.b && !x.virt).length;
   const tile = (go, n, label, warn) => '<button data-cg="' + go + '" class="' + (warn && n ? 'warn' : '') + '"><b>' + n.toLocaleString() + '</b><small>' + label + '</small></button>';
-  const tabs = [['', '🏠 ' + bt('할 일', 'To do')], ['cat', '📥 ' + bt('올리기 · 세트 · 사진 설정', 'Upload · Sets · Photo settings')], ['tree', '🗂 ' + bt('분류', 'Categories')]];
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px"><h2 style="margin:0 0 6px">' + (S.role === 'manager' && jobOf() === 'itemmgr' ? '🏷 ' + bi('아이템 · 재고 관리', 'Items & Inventory') : '🎨 ' + bi('디자인 · 카탈로그', 'Design & Catalog')) + ' <span class="muted" style="font-weight:400;font-size:12px">' + bt('아이템', 'items') + ' ' + vis.length.toLocaleString() + (C.updatedAt ? ' · ' + esc(String(C.updatedAt).substring(0, 10)) : '') + '</span></h2>' +
+  /* 🔒 🗂 분류(이름 · 순서 · 옮기기 · 레벨 일괄)는 관리자만 — 담당자는 아이템 등록 · 사진 · 분류에 넣기까지 (2026-11-09) */
+  const tabs = [['', '🏠 ' + bt('할 일', 'To do')], ['cat', '📥 ' + bt('올리기 · 세트 · 사진 설정', 'Upload · Sets · Photo settings')]].concat(S.role === 'admin' ? [['tree', '🗂 ' + bt('분류', 'Categories')]] : []);
+  $('page').innerHTML = '<div class="card" style="padding:12px 14px"><h2 style="margin:0 0 6px">' + ('🎨 ' + bi('디자인 · 카탈로그', 'Design & Catalog')) + ' <span class="muted" style="font-weight:400;font-size:12px">' + bt('아이템', 'items') + ' ' + vis.length.toLocaleString() + (C.updatedAt ? ' · ' + esc(String(C.updatedAt).substring(0, 10)) : '') + '</span></h2>' +
     '<div class="seg">' + tabs.map(t => '<button class="' + (CTAB === t[0] ? 'on' : '') + '" data-ct2="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>' +
     (CTAB ? '' : '<div class="cdash">' + tile('photos/noph', st.miss.length, '📷✕ ' + bt('사진 없음', 'No photo'), true) + tile('items/nolv', noLv, '🗂 ' + bt('분류 없음', 'No category'), true) + tile('items/nopr', noPr, '💲 ' + bt('가격 없음', 'No price'), true) + tile('items/nobar', noBar, '🏷 ' + bt('바코드 없음', 'No barcode'), false) + tile('items/hid', hid, '🙈 ' + bt('숨김', 'Hidden'), false) + tile('catmg/cat', sets, '🧩 ' + bt('세트', 'Sets'), false) + '</div>' +
     '<div class="btns" style="justify-content:flex-start;margin:10px 0 0;flex-wrap:wrap"><button class="b-blue b-sm" data-cg="items/new">＋ ' + bt('새 아이템', 'New item') + '</button><button class="b-ghost b-sm" data-cg="items/bulk">📋 ' + bt('일괄 등록 · 삭제 (붙여넣기)', 'Bulk add · delete (paste)') + '</button><button class="b-ghost b-sm" data-cg="photos">📷 ' + bt('사진 작업대', 'Photo workbench') + '</button><button class="b-ghost b-sm" data-cg="photos/bulk">📁 ' + bt('사진 일괄 등록', 'Bulk photos') + '</button><button class="b-ghost b-sm" data-cg="labels">🖨 ' + bt('라벨 인쇄', 'Print labels') + '</button><button class="b-ghost b-sm" data-cg="items">🏷 ' + bt('아이템 전체', 'All items') + '</button><button class="b-ghost b-sm" data-cg="cat">📒 ' + bt('카탈로그 · 바코드 라벨', 'Catalog · labels') + '</button></div>') + '</div>' +
@@ -47,6 +48,7 @@ async function pageCatMg(arg) {
   document.querySelectorAll('[data-ct2]').forEach(b => b.onclick = () => pageCatMg(b.dataset.ct2));
   document.querySelectorAll('[data-cg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.cg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
   if (!CTAB) { photoMissingCard(); return; }
+  if (CTAB === 'tree' && S.role !== 'admin') CTAB = '';
   try { if (CTAB === 'tree') await treeAdmin(); else await catalogAdmin(); }
   catch (e) { $('adminBody').innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; }
 }
@@ -543,13 +545,17 @@ async function importMain(file) {
     if (ent) {
       /* 🔒 앱에서 이미 정산한 수금은 파일을 다시 올려도 그대로 · 있는 건은 set 대신 merge — 앱에서 한 ① 접수 확인 · ② 수령 · ✓ · 정산 · 취소 표시가 파일로 풀리지 않게 */
       const list = parseEntriesSheet(ent), old = {}; (await S.DB.list('entries', { where: [['imported', '==', true]] })).forEach(e => { old[e.id] = e; });
-      let nDone = 0, nKeep = 0;
+      /* 🔁 세일즈맨이 앱에서 이미 보낸 수금(같은 거래처 + 수표번호)은 파일에 또 있어도 건너뜀 — 11/5 가져오기 때 17건이 두 번 잡혔던 일 (v0.8.174) */
+      const yms = Array.from(new Set(list.map(e => e.ym).filter(Boolean))).slice(0, 10), appRefs = {};
+      if (yms.length) { try { (await S.DB.list('entries', { where: [['ym', 'in', yms]] })).forEach(e => { if (e.imported || e.void) return; (e.pays || []).forEach(p => { if (p.m === 'CHECK' && p.ref) appRefs[(e.acct || '') + '#' + String(p.ref).trim()] = e.id; }); }); } catch (e) {} }
+      let nDone = 0, nKeep = 0, nSkip = 0;
       const cut = settleCut(); let nCut = 0;
       list.forEach(e => { const o = old[e.id]; if (o && o.settled) { nDone++; return; }
+        if (!o && (e.pays || []).some(p => p.m === 'CHECK' && p.ref && appRefs[(e.acct || '') + '#' + p.ref])) { nSkip++; return; }
         if (o) { ['sb', 'rc', 'v', 'void', 'settled', 'settledAt', 'vn', 'disc', 'mismatch', 'env'].forEach(k => { if (o[k]) delete e[k]; }); nKeep++; }
         if (cut && e.d <= cut) { e.settled = 'sheet:' + cut; e.settledAt = cut; e.sb = true; e.rc = true; e.v = true; nCut++; }   /* 📌 마감일까지 = 정산 완료 (수령 · 확인도 끝난 것으로) */
         ops.push({ op: o ? 'merge' : 'set', col: 'entries', id: e.id, data: e }); });
-      nE = list.length - nDone; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list.filter(e => !(old[e.id] && old[e.id].settled)), e => e.total)) + (nKeep ? ' · 있던 ' + nKeep + '건은 적은 칸만' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : ''));
+      nE = list.length - nDone - nSkip; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list.filter(e => !(old[e.id] && old[e.id].settled)), e => e.total)) + (nSkip ? ' · 🔁 앱에서 이미 보낸 수표 ' + nSkip + '건 건너뜀' : '') + (nKeep ? ' · 있던 ' + nKeep + '건은 적은 칸만' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : ''));
     }
     await S.DB.batch(ops);
     if (acc) await bumpAccountsVer();
@@ -628,7 +634,7 @@ async function invStat() {
 export function parseInvoiceList(aoa, fromD) {
   let hi = -1, ix = {};
   /* 이전 시스템 내보내기마다 머리글이 조금씩 다름 — sales_invoice(invoice · customer# · customer name) · invoice_list(trans # → "trans 3", cusomer # → "cusomer 3", name, slaes order) · 2026-11 sales_invoice("CUSOMTER #") → 고객 번호 열은 cus… 로 시작하고 # · 3 · no 로 끝나면 됨 */
-  const want = { no: /^(invoice|trans)\s*(#|no|3)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /^cus\w*\s*(#|3|no)?$|acct|account/i, store: /customer\s*name|store|^name$/i, sm: /sales?\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /s[a-z]*\s*order|^s\.?o\.?$/i };
+  const want = { no: /^(invoice|trans)\s*(#|no|3)?$/i, d: /trans\s*date|invoice\s*date|^date$/i, type: /^type$/i, acct: /^cus\w*\s*(#|3|no)?$|acct|account/i, store: /customer\s*name|store|^name$/i, sm: /sales?\s*rep|rep/i, terms: /^terms?$/i, via: /ship\s*via/i, frt: /freight|s\s*&\s*h/i, disc: /^discount/i, total: /^total$/i, bal: /^balance/i, so: /s[a-z]*\s*order|^s\.?o\.?$/i, memo: /^memo|^note|^comment|메모/i };   /* 📝 Memo 열 (2026-11 sales_invoice_with_memo) — 할인 · 외상 조건 같은 인보이스 메모 (v0.8.174) */
   for (let r = 0; r < Math.min(aoa.length, 8) && hi < 0; r++) {
     const row = aoa[r].map(x => String(x == null ? '' : x).trim()); const m = {};
     Object.keys(want).forEach(k => { const c = row.findIndex(h => h && want[k].test(h)); if (c >= 0) m[k] = c; });
@@ -649,7 +655,7 @@ export function parseInvoiceList(aoa, fromD) {
     const total = R2(num(row[ix.total])), frt = ix.frt != null ? R2(num(row[ix.frt])) : 0, discAmt = ix.disc != null ? R2(num(row[ix.disc])) : 0, bal = ix.bal != null ? R2(num(row[ix.bal])) : 0;
     const t = (no.match(/^[A-Z]+/) || ['A'])[0].replace(/^CM$/, 'CM');
     out.push({ id: no, no, t: t.length > 2 ? t.charAt(0) : t, d, ym: d.substring(0, 7), acct: ix.acct != null ? pad4(row[ix.acct]) : '', store: String(row[ix.store] || '').trim(), sm: String(row[ix.sm] || '').trim().toUpperCase(), terms: String(row[ix.terms] || '').trim(), shipVia: String(row[ix.via] || '').trim(),
-      ship: frt, discAmt, sub: R2(total - frt + discAmt), disc: 0, total: R2(total - frt), bal, st: bal > 0.005 ? 'open' : 'paid', order: ix.so != null ? String(row[ix.so] || '').trim() : '', qty: 0, lines: [], src: 'legacy' });
+      ship: frt, discAmt, sub: R2(total - frt + discAmt), disc: 0, total: R2(total - frt), bal, st: bal > 0.005 ? 'open' : 'paid', order: ix.so != null ? String(row[ix.so] || '').trim() : '', memo: ix.memo != null ? String(row[ix.memo] || '').trim() : '', qty: 0, lines: [], src: 'legacy' });
   }
   const hdr = aoa[hi].map(x => String(x == null ? '' : x).trim()), cols = {}; Object.keys(ix).forEach(k => { cols[k] = hdr[ix[k]]; });
   const noLetter = out.filter(r => !/^[A-Z]{1,2}-?\d{3,}$/.test(r.no)).length;
@@ -867,17 +873,18 @@ async function catalogAdmin() {
   $('adminBody').innerHTML = '<div class="card"><h2>📦 아이템 목록 (주문용)</h2>' +
     (meta ? '<div class="sumbox">지금: <b>' + (meta.count || 0).toLocaleString() + '개</b> · ' + esc(String(meta.updatedAt || '').substring(0, 16).replace('T', ' ')) + ' · ' + esc(meta.by || '') + '</div>' : '<div class="alert a-amb">아직 올린 아이템 목록이 없습니다</div>') +
     '<div class="btns" style="justify-content:flex-start;margin-top:8px"><button class="b-ghost" data-hash="#/items">🏷 아이템 전체 보기 · 등록 · 숨기기 · 분류 옮기기</button><button class="b-ghost" data-cg="items/bulk">📋 일괄 등록 · 삭제 (엑셀 붙여넣기)</button></div><div class="hint">분류별로 훑어보며 여러 개를 체크해 한 번에 숨기기 · 보이기 · 옮기기 · 삭제 (담당자도 가능). 엑셀은 대량 변경용.</div></div>' +
-    '<div class="card" style="border:2px solid #fcd34d"><h2>🐝 SmartBee ALL ITEMS 로 맞추기 <span class="en">Sync from SmartBee export</span></h2>' +
+    (S.role === 'admin' ? '<div class="card" style="border:2px solid #fcd34d"><h2>🐝 SmartBee ALL ITEMS 로 맞추기 <span class="en">Sync from SmartBee export</span></h2>' +
     '<div class="muted">SmartBee 에서 <b>ALL ITEMS</b>(CATEGORY · ITEM 3 · DESCRIPTION · PRICE · BARCODE)를 엑셀로 뽑아 <b>그대로</b> 올리세요 — Item Master 모양으로 고칠 필요 없습니다. 새 코드는 비슷한 코드 · 이름으로 분류를 추정해 추가하고(미리보기에서 고쳐 쓸 수 있음), 이미 있는 코드는 <b>이름 · 가격 · 바코드가 바뀐 것만</b> 고칩니다. 앱에서 정한 분류 · 숨김 · 창고 위치 · 사진 · SRP 는 그대로 둡니다. 관리 → 📥 가져오기의 "파일 올리기"에 넣어도 같은 결과입니다.</div>' +
-    '<div class="fg" style="margin-top:10px"><input type="file" id="sbFile" accept=".xlsx,.xls,.csv"></div><div id="sbOut"></div></div>' +
-    '<div class="card"><h2>📦 Item Master 엑셀 — 전체 바꾸기</h2><div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽습니다. Hide 에 x 표시된 것은 <b>숨김</b>으로 올립니다. <b>목록 전체가 파일대로 바뀝니다</b> — 앱에서 고친 숨김 · 위치 · 분류가 시트에 없으면 사라지니, 새 아이템만 넣을 때는 위 🐝 SmartBee 파일을 쓰세요.</div>' +
-    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' +
+    '<div class="fg" style="margin-top:10px"><input type="file" id="sbFile" accept=".xlsx,.xls,.csv"></div><div id="sbOut"></div></div>' : '') +
+    /* 🔒 전체 바꾸기는 관리자만 — 2026-11-09 디자인 담당이 옛 Item Master 파일로 올려 관리자 분류 작업 · 세트 코드 · 새 아이템이 통째로 되돌아간 일. 담당자는 SmartBee 맞추기(분류 · 숨김 · 위치 유지) · 아이템 화면만 */
+    (S.role === 'admin' ? '<div class="card"><h2>📦 Item Master 엑셀 — 전체 바꾸기</h2><div class="muted">구글 시트 <b>THE ONE Item Master</b> 를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받아 그대로 고르세요. Items 탭과 Categories 탭을 읽습니다. Hide 에 x 표시된 것은 <b>숨김</b>으로 올립니다. <b>목록 전체가 파일대로 바뀝니다</b> — 앱에서 고친 숨김 · 위치 · 분류가 시트에 없으면 사라지니, 새 아이템만 넣을 때는 위 🐝 SmartBee 파일을 쓰세요.</div>' +
+    '<div class="fg" style="margin-top:10px"><input type="file" id="catFile" accept=".xlsx"></div><div id="catOut"></div></div>' : '<div class="card"><h2>📦 Item Master 엑셀 — 전체 바꾸기</h2><div class="alert a-amb">🔒 ' + bt('관리자만 올릴 수 있습니다 — 파일의 아이템 · 분류로 전체가 바뀌어 다른 사람의 작업이 사라질 수 있습니다. 새 아이템 · 이름 · 가격은 위 SmartBee 맞추기나 아이템 화면으로.', 'Admin only — this replaces every item and category and can wipe other people\'s work. Use the SmartBee sync or the Items screen instead.') + '</div></div>') +
     '<div class="card"><h2>🧩 세트 · 인서트 구성</h2><div id="setBox"><div class="load">읽는 중…</div></div></div>' +
     photoCard();
   setAdmin();
   document.querySelectorAll('#adminBody [data-cg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.cg.split('/'); if (a) Router.go(r, a); else Router.go(r); });   /* 📋 일괄 등록 · 삭제 */
-  $('sbFile').onchange = () => { const f = $('sbFile').files[0]; if (f) smartbeeFile(f, $('sbOut'), catalogAdmin); };
-  $('catFile').onchange = () => { const f = $('catFile').files[0]; if (f) itemMasterFile(f, $('catOut'), catalogAdmin); };
+  if ($('sbFile')) $('sbFile').onchange = () => { const f = $('sbFile').files[0]; if (f) smartbeeFile(f, $('sbOut'), catalogAdmin); };
+  if ($('catFile')) $('catFile').onchange = () => { const f = $('catFile').files[0]; if (f) itemMasterFile(f, $('catOut'), catalogAdmin); };
   $('phDrive').onclick = async () => {
     const on = !S.settings.photoDrive;
     busy(true);
@@ -910,6 +917,7 @@ async function itemMasterFile(file, out, after) {
       (lost || locs ? '<div class="alert a-amb">⚠️ 전체 바꾸기입니다 — ' + (lost ? '지금 목록에 있는데 파일에 없는 아이템 <b>' + lost.toLocaleString() + '개</b>가 빠지고, ' : '') + (locs ? '📍 창고 위치가 있는 아이템 ' + locs.toLocaleString() + '개는 파일의 Location 열이 없으면 위치가 비며, ' : '') + '앱에서 바꾼 숨김 · 분류도 파일대로 됩니다. 새 아이템만 넣으려면 🐝 SmartBee ALL ITEMS 로 올리세요.</div>' : '') +
       '<button class="b-blue" id="catGo" style="margin-top:10px">이대로 전체 바꾸기</button>';
     $('catGo').onclick = async () => {
+      if (S.role !== 'admin') return toast('관리자만 올릴 수 있습니다', 'bad');
       if (lost && !(await confirmBox(lost.toLocaleString() + '개 아이템이 목록에서 빠집니다. 그래도 파일대로 전체를 바꿀까요?', '전체 바꾸기'))) return;
       busy(true);
       try { const r = await publishCatalog(S, p); await loadCatalog(S, true); toast('아이템 ' + p.rows.length + '개 올림 (' + r.chunks + '묶음)', 'good'); out.innerHTML = '<div class="alert a-grn">올렸습니다 — ' + p.rows.length.toLocaleString() + '개</div>'; (after || catalogAdmin)(); }
@@ -1200,6 +1208,7 @@ async function treeAdmin() {
     '<div class="fg" style="margin-top:8px"><label>주문 화면 시작 단계</label><div class="seg"><button class="' + (start === 'l1' ? 'on' : '') + '" data-cs="l1">Level 1 부터 (ANKLET · EARRING … SBMGo 처럼)</button><button class="' + (start === 'g' ? 'on' : '') + '" data-cs="g">Group 부터 (Jewelry · Beauty …)</button></div></div>' +
     crumbs + '<div class="muted" style="margin:4px 0">' + esc(LV[depth]) + ' · ' + kids.length + '개</div>' +
     kids.map(k => { const pt = pinOf(k.name); return '<div class="pr"><div class="ct tap" data-tin="' + esc(k.name) + '"><b>' + (pt === 'top' ? '📌 ' : pt === 'bottom' ? '📍 ' : '') + esc(k.name) + '</b><small>' + k.n.toLocaleString() + '개' + (k.kids.length ? ' · 하위 ' + k.kids.length : '') + (pt === 'top' ? ' · 위에 고정' : pt === 'bottom' ? ' · 아래에 고정' : '') + '</small></div>' +
+      '<button class="b-ghost b-sm" data-tmu="' + esc(k.name) + '" title="' + esc(bt('위로', 'Move up')) + '">▲</button><button class="b-ghost b-sm" data-tmd="' + esc(k.name) + '" title="' + esc(bt('아래로', 'Move down')) + '">▼</button>' +
       '<button class="b-ghost b-sm' + (pt === 'top' ? ' on' : '') + '" data-tup="' + esc(k.name) + '" title="위에 고정" style="' + (pt === 'top' ? 'background:#fef3c7' : '') + '">📌↑</button><button class="b-ghost b-sm" data-tdn="' + esc(k.name) + '" title="아래에 고정" style="' + (pt === 'bottom' ? 'background:#fef3c7' : '') + '">📍↓</button>' + (depth >= 1 ? '<button class="b-ghost b-sm" data-tloc="' + esc(k.name) + '" title="창고 위치 (통로)">📍' + esc(catLocs()[locKey(under.slice(1).concat([k.name]))] || '') + '</button>' : '') + '<button class="b-ghost b-sm" data-tren="' + esc(k.name) + '" title="이름 바꾸기">✏️</button>' + (depth >= 1 ? '<button class="b-ghost b-sm" data-tmv="' + esc(k.name) + '" title="다른 곳으로 옮기기">➡️</button>' : '') + '</div>'; }).join('') + '</div>' +
     (depth >= 1 ? '<div class="btns"><button class="b-ghost" id="tItems">📋 이 분류의 아이템 ' + node.n.toLocaleString() + '개 보기 · 하나씩 바꾸기</button></div><div id="tItemList"></div>' : '') + '</div>' +
     '<div class="card"><h2>🔎 코드로 아이템 분류 바꾸기</h2><div class="muted">아이템 코드(또는 바코드)를 치면 지금 분류가 보이고 Group · Level 1 · 2 · 3 을 바로 고칠 수 있습니다. 아이템을 다른 Level 1 로 옮기거나, 새 Level 이름을 만들 때 쓰세요.</div><div class="fg" style="margin-top:8px"><input id="tCode" placeholder="예: AHG103" autocomplete="off" style="text-transform:uppercase"></div><div id="tCodeOut"></div>' +
@@ -1253,6 +1262,20 @@ async function treeAdmin() {
   };
   document.querySelectorAll('[data-tup]').forEach(b => b.onclick = () => pin(b.dataset.tup, 'top'));
   document.querySelectorAll('[data-tdn]').forEach(b => b.onclick = () => pin(b.dataset.tdn, 'bottom'));
+  /* ▲ ▼ 같은 부모 안에서 위 · 아래로 — 지금 보이는 순서 전체를 settings.app.catOrder[부모키] 로 저장 (주문 화면 타일 · 아이템 화면 분류별이 이 순서) */
+  const moveBy = async (name, d) => {
+    /* 1단계는 묶음(Group)에 상관없이 주문 화면의 전체 1단계 순서(tree1)에서 — 같은 묶음의 이웃과 자리를 바꿈 (다른 묶음 이름은 건너뜀) */
+    const key = catOrderKey(under), mine = new Set(kids.map(k => k.name));
+    const names = key === 'L1' ? catalog().tree1.kids.map(k => k.name) : kids.map(k => k.name); const i = names.indexOf(name); if (i < 0) return;
+    let j = i + d; while (j >= 0 && j < names.length && !mine.has(names[j])) j += d; if (j < 0 || j >= names.length) return;
+    names.splice(i, 1); names.splice(j, 0, name);
+    busy(true);
+    try { const c = (await S.DB.get('settings', 'app')) || {}; c.catOrder = Object.assign({}, c.catOrder || {}); c.catOrder[key] = names; await S.DB.update('settings', 'app', { catOrder: c.catOrder }); S.settings.catOrder = c.catOrder; setCatOrder(c.catOrder); toast('↕ ' + bt('순서 저장', 'Order saved'), 'good'); }
+    catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
+    busy(false); treeAdmin();
+  };
+  document.querySelectorAll('[data-tmu]').forEach(b => b.onclick = () => moveBy(b.dataset.tmu, -1));
+  document.querySelectorAll('[data-tmd]').forEach(b => b.onclick = () => moveBy(b.dataset.tmd, 1));
   $('popFile').onchange = () => { const file = $('popFile').files[0]; if (file) popFileImport(file, $('popOut'), treeAdmin); };
   /* ➡️ 분류 옮기기 — 같은 단계의 다른 상위를 고름 (Level 1 은 Group 으로, Level 2 는 다른 Level 1 로 …) */
   const parents = (() => { const out = []; const walk = (nd, path) => { if (path.length === depth) { out.push(path); return; } nd.kids.forEach(k => walk(k, path.concat([k.name]))); }; walk(C.tree, []); return out; })();

@@ -5,9 +5,12 @@
  *    DB.update(col, id, patch) · DB.del(col, id) · DB.batch([{op:'set'|'merge'|'update'|'del',col,id,data}])  (merge = 있으면 칸만 덧씀) · DB.newId(prefix)
  *  AUTH.signIn() · AUTH.signOut() · AUTH.onChange(fn) → {email, name}
  * ============================================================ */
+/* 로그인 도메인(authDomain): Firebase Hosting(web.app · 회사 도메인)에서 열었으면 앱과 같은 주소를 씀 — 폰 Safari 가 다른 주소(firebaseapp.com)의 저장소를 막아
+ *  "missing initial state" 로 로그인이 끊기던 일 (v0.8.174). GitHub Pages · 로컬에서는 전처럼 firebaseapp.com */
+const AUTH_HOST = typeof location !== 'undefined' && /\.web\.app$|\.firebaseapp\.com$|(^|\.)theonefl\.com$/.test(location.hostname) ? location.hostname : 'the-one-app-ff40e.firebaseapp.com';
 export const firebaseConfig = {
   apiKey: "AIzaSyAEvQhEi6H0pPiIRpKRNRXt5m348aU8i24",
-  authDomain: "the-one-app-ff40e.firebaseapp.com",
+  authDomain: AUTH_HOST,
   projectId: "the-one-app-ff40e",
   storageBucket: "the-one-app-ff40e.firebasestorage.app",
   messagingSenderId: "235028136448",
@@ -108,7 +111,7 @@ async function makeFirestoreDB() {
    *   캐시에 없으면 그대로 서버를 기다림. 1분에 한 번 'theone:slow' 로 알림 (main.js 가 토스트) */
   const SLOW_MS = 8000; let slowAt = 0;
   const slowNote = () => { const now = Date.now(); if (now - slowAt > 60000) { slowAt = now; try { window.dispatchEvent(new CustomEvent('theone:slow')); } catch (e) {} } };
-  const raceCache = (serverP, cacheFn) => new Promise((res, rej) => { let done = false; const t = setTimeout(async () => { if (done) return; try { const r = await cacheFn(); if (r != null && !done) { done = true; slowNote(); res(r); } } catch (e) {} }, SLOW_MS); serverP.then(v => { if (!done) { done = true; clearTimeout(t); res(v); } }, e => { if (!done) { done = true; clearTimeout(t); rej(e); } }); });
+  const raceCache = (serverP, cacheFn) => new Promise((res, rej) => { let done = false; const t = setTimeout(async () => { if (done) return; try { const r = await cacheFn(); if (r != null && !done) { done = true; DB.cacheAt = Date.now(); slowNote(); res(r); } } catch (e) {} }, SLOW_MS); serverP.then(v => { if (!done) { done = true; clearTimeout(t); res(v); } }, e => { if (!done) { done = true; clearTimeout(t); rej(e); } }); });
   const DB = {
     kind: 'firestore',
     async get(c, id) { const ref = fs.doc(db, c, id); const s = await raceCache(fs.getDoc(ref), async () => { const x = await fs.getDocFromCache(ref); return x.exists() ? x : null; }); return s.exists() ? Object.assign({ id: s.id }, s.data()) : null; },
@@ -170,7 +173,9 @@ async function makeFirestoreDB() {
     },
     async signOut() { await au.signOut(auth); },
     onChange(f) { au.getRedirectResult(auth).catch(() => {}); au.onAuthStateChanged(auth, u => f(u ? { email: (u.email || '').toLowerCase(), name: u.displayName || '' } : null)); },
-    current() { const u = auth.currentUser; return u ? { email: (u.email || '').toLowerCase(), name: u.displayName || '' } : null; }
+    current() { const u = auth.currentUser; return u ? { email: (u.email || '').toLowerCase(), name: u.displayName || '' } : null; },
+    /* 진단: 토큰의 로그인 방식 · 이메일 확인 여부 · 프로젝트 (규칙 signedIn() 이 보는 것) */
+    async claims() { try { const u = auth.currentUser; if (!u) return 'no-user'; const r = await u.getIdTokenResult(true); return (r.signInProvider || '?') + ' · verified=' + r.claims.email_verified + ' · aud=' + r.claims.aud; } catch (e) { return 'claims-error ' + (e.code || e.message); } }
   };
   return { DB, AUTH };
 }

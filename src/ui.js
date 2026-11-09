@@ -229,7 +229,9 @@ export function askOver(msg, okLabel) {
 }
 export function confirmBox(msg, okLabel) {
   return new Promise(res => {
-    openModal('<h2>' + esc(msg) + '</h2><div class="btns"><button class="b-ghost" id="cfNo">취소</button><button class="b-red" id="cfOk">' + esc(okLabel || '확인') + '</button></div>');
+    /* 하는 일 자체가 "취소"(void) 면 닫는 단추를 "아니요" 로 — 취소 · 취소 두 개가 나란히 나오지 않게 (v0.8.174) */
+    const noLabel = /취소|void/i.test(okLabel || '') ? '아니요 · No' : '취소';
+    openModal('<h2>' + esc(msg) + '</h2><div class="btns"><button class="b-ghost" id="cfNo">' + noLabel + '</button><button class="b-red" id="cfOk">' + esc(okLabel || '확인') + '</button></div>');
     $('cfNo').onclick = () => { closeModal(); res(false); };
     $('cfOk').onclick = () => { closeModal(); res(true); };
   });

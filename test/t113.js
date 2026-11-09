@@ -25,7 +25,9 @@ const path = require('path');
   pg = await mk('list');
   if (await pg.$('#eRes .pedit, #eRes [data-pe]')) errs.push('list rows should not have the price pen');
   const qc = await pg.$eval('#eRes tr.irow td.qc', td => { const b = td.querySelector('button'); return { w: Math.round(td.getBoundingClientRect().width), bw: Math.round(b.getBoundingClientRect().width), bh: Math.round(b.getBoundingClientRect().height) }; }); log('qty cell:', qc); if (qc.bw < 28 || qc.bh < 34) errs.push('stepper buttons should be at least 28x34');
-  await pg.click('#eRes tr[data-frow="AHG101"] td.pc'); await pg.waitForTimeout(200); if ((await pg.textContent('#eN')).trim() !== '1') errs.push('tapping the price cell should add 1');
+  /* v0.8.174: 가격 칸은 담기가 아니라 가격 · 수량 창 (SBM GO 의 Cust Price 칸처럼) — 담기는 이름 칸 */
+  await pg.click('#eRes tr[data-frow="AHG101"] td.pc'); await pg.waitForTimeout(300); if (!(await pg.$('#qpPr'))) errs.push('tapping the price cell should open the price pad'); else { await pg.click('#qpX'); await pg.waitForTimeout(150); }
+  await pg.click('#eRes tr[data-frow="AHG101"] td.ct'); await pg.waitForTimeout(200); if ((await pg.textContent('#eN')).trim() !== '1') errs.push('tapping the name cell should add 1');
   await pg.click('#eRes tr[data-frow="AHG101"] td.ct'); await pg.waitForTimeout(200); if ((await pg.textContent('#eN')).trim() !== '1' || (await pg.$eval('[data-qi="AHG101"]', e => e.value)) !== '2') errs.push('tapping the name again should add again (qty 2)');
   await pg.click('#eRes tr[data-frow="AHG101"] td.qc'); await pg.waitForTimeout(200); { const v = await pg.$eval('[data-qi="AHG101"]', e => e.value); log('after qc tap:', v, 'eN', (await pg.textContent('#eN')).trim()); if (v !== '2') errs.push('tapping the qty cell background should not add (got ' + v + ')'); }
   /* 길게 누르기 → 수량 · 가격 창 */

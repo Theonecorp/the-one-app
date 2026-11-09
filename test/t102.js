@@ -31,10 +31,11 @@ const path = require('path');
   await pg.click('#nav button[data-go="hub/look"]'); await pg.waitForSelector('[data-hub]'); const look = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('look hub:', look.join(' ')); if (!look.includes('invs') || !look.includes('stores')) errs.push('lookup hub should have invoices and customers');
   await pg.click('#nav button[data-go="hub/wh"]'); await pg.waitForTimeout(400); const wh = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('wh hub:', wh.join(' ')); if (!wh.includes('stock') || !wh.includes('items')) errs.push('inventory hub should have stock and items');
   /* 주문 처리 단계 칩 */
-  await pg.click('#nav button[data-go="order"]'); await pg.waitForSelector('[data-lg]', { timeout: 8000 }).catch(() => errs.push('stage chips missing'));
-  const stg = await pg.$$eval('[data-lg]', b => b.map(x => x.dataset.lg + (x.classList.contains('on') ? '*' : ''))), sub = await pg.$$eval('.osub [data-lf]', b => b.map(x => x.dataset.lf)); log('stages:', stg.join(' '), '| sub:', sub.join(' '));
-  if (stg.length !== 4) errs.push('4 stage buttons expected'); if (sub.length > 6) errs.push('only the current stage chips should show');
-  await pg.click('[data-lg="ship"]'); await pg.waitForTimeout(700); const sub2 = await pg.$$eval('.osub [data-lf]', b => b.map(x => x.dataset.lf)); log('ship sub:', sub2.join(' ')); if (!sub2.includes('pick') || sub2.includes('sent')) errs.push('ship stage should show fulfillment chips only');
+  await pg.click('#nav button[data-go="order"]'); await pg.waitForSelector('.omenu [data-og]', { timeout: 8000 }).catch(() => errs.push('stage groups missing'));
+  /* v0.8.174: 단계 단추 대신 모든 칸이 묶음(접수 · 출고 · 완료 · 기타)별로 항상 보임 */
+  const stg = await pg.$$eval('.omenu [data-og]', b => b.map(x => x.dataset.og + ':' + x.querySelectorAll('[data-lf]').length)); log('groups:', stg.join(' '));
+  if (stg.length !== 4) errs.push('4 stage groups expected'); if (await pg.$('[data-lg]')) errs.push('no stage toggle buttons any more');
+  const all = await pg.$$eval('.omenu [data-lf]', b => b.map(x => x.dataset.lf)); if (!all.includes('pick') || !all.includes('sent') || !all.includes('inv')) errs.push('chips of every stage visible at once');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();

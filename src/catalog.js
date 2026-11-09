@@ -48,8 +48,14 @@ export const kvSet = (k, v) => idbSet('kv.' + k, v);
 export function pickSort(a, b) { const x = locOf(a.c), y = locOf(b.c); if (!x !== !y) return x ? -1 : 1; return COLL.compare(x, y) || COLL.compare(a.c, b.c); }
 export function setPins(p) {
   PINS = { top: ((p && p.top) || []).map(String), bottom: ((p && p.bottom) || []).map(String) };
-  if (CAT) { sortTree(CAT.tree); sortTree(CAT.tree1); }
+  if (CAT) { sortTree(CAT.tree, 'G'); sortTree(CAT.tree1, 'L1'); }
 }
+/* 🗂 관리자가 정한 순서 — settings.app.catOrder = { 부모키: [이름 …] }. 부모키: 'L1' (1단계 전체) · 'L1\u0001ANKLET' (ANKLET 의 2단계) · 'L1\u0001ANKLET\u0001GOLD' (3단계)
+ *   목록에 있는 이름이 그 순서대로 먼저, 없는 이름은 뒤에 보통 규칙(기호 → ABC)으로. 📌 위 · 아래 고정은 그보다 우선 (v0.8.175) */
+let ORDER = {};
+export function setCatOrder(o) { ORDER = o && typeof o === 'object' ? o : {}; if (CAT) { sortTree(CAT.tree, 'G'); sortTree(CAT.tree1, 'L1'); } }
+export const catOrderKey = under => under.length <= 1 ? (under.length ? 'L1' : 'G') : ['L1'].concat(under.slice(1)).join('\u0001');   // treeAdmin 의 경로 [Group, L1, L2 …] → 그 아래 자식들의 부모키
+export const catOrderOf = key => (ORDER[key] || []).map(String);
 /* 이전 시스템에서 쓰던 앞글자 규칙 (세일즈맨이 익숙한 순서):
  *   ""  → 맨 앞 (SET ORDER"")   "  → 그 다음 (디스플레이 · 인서트)   보통 이름 → 주얼리 ABC
  *   [   → 그 외 제품 ([NEXONE] [PERFUME] …)   < * z → 맨 뒤 (<GIFT> *SUPPLY* zCREDIT) */
@@ -57,7 +63,7 @@ export function prefixRank(name) {
   const s = String(name || '').trim();
   if (s.startsWith('""') || s.endsWith('""')) return 0;
   if (s.startsWith('"')) return 1;
-  if (s.startsWith('[')) return 3;
+  if (s.startsWith('[')) return /DISPLAY/i.test(s) ? 3.5 : 3;   // [DISPLAYS, GIFT & SUPPLY] 는 그 외 뒤 · 맨 뒤(<DISCONTINUE>) 바로 앞 (v0.8.175)
   if (/^[<*#]/.test(s) || /^zz?[A-Z]/.test(s)) return 4;
   return 2;
 }
@@ -66,10 +72,10 @@ export function familyOf(l1) { const r = prefixRank(l1); return r <= 1 ? 'Set & 
 /** 깨끗한 이름 — 화면에 보일 때는 "" [ ] < > 를 뗌 */
 export function cleanName(name) { return String(name || '').replace(/^""|""$/g, '').replace(/^["\[<*]+|["\]>*]+$/g, '').replace(/^zz?(?=[A-Z])/, '').trim() || String(name || ''); }
 const COLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
-function rank(name) { const k = pinKey(name); const t = PINS.top.findIndex(x => pinKey(x) === k); if (t >= 0) return [0, t]; const b = PINS.bottom.findIndex(x => pinKey(x) === k); if (b >= 0) return [2, b]; return [1, prefixRank(name)]; }
-function sortTree(node) {
-  node.kids.sort((a, b) => { const x = rank(a.name), y = rank(b.name); return x[0] - y[0] || x[1] - y[1] || COLL.compare(a.cn || (a.cn = cleanName(a.name)), b.cn || (b.cn = cleanName(b.name))); });
-  node.kids.forEach(sortTree);
+function rank(name, key) { const k = pinKey(name); const t = PINS.top.findIndex(x => pinKey(x) === k); if (t >= 0) return [0, t]; const b = PINS.bottom.findIndex(x => pinKey(x) === k); if (b >= 0) return [3, b]; const m = key && ORDER[key] ? ORDER[key].findIndex(x => pinKey(x) === k) : -1; if (m >= 0) return [1, m]; return [2, prefixRank(name)]; }
+function sortTree(node, key) {
+  node.kids.sort((a, b) => { const x = rank(a.name, key), y = rank(b.name, key); return x[0] - y[0] || x[1] - y[1] || COLL.compare(a.cn || (a.cn = cleanName(a.name)), b.cn || (b.cn = cleanName(b.name))); });
+  node.kids.forEach(k => sortTree(k, key === 'G' ? 'L1' : key ? key + '\u0001' + k.name : ''));
 }
 /* ---------- ✨ 자주 나가는 아이템 (catalog/pop = 이전 시스템 아이템별 판매 수량에서 올림) ---------- */
 let POP = [];   // [code, qty] 많이 나간 순
@@ -224,8 +230,18 @@ export function popularItems(path, start, hist, limit) {
   return out;
 }
 
+/** 🆕 새로 나온 — 최근 days 일 안에 앱에 등록된 아이템 (분류 경로 안에서) · 새 순 */
+export function newItems(path, start, days) {
+  if (!CAT) return [];
+  const d = new Date(); d.setDate(d.getDate() - (days || 30)); const from = d.toISOString().substring(0, 10);
+  const inPath = x => { if (!path || !path.length) return true; const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); };
+  return CAT.items.filter(x => x.at && x.at >= from && !x.h && !x.virt && inPath(x)).sort((a, b) => b.at.localeCompare(a.at) || COLL.compare(a.c, b.c));
+}
+const todayStr = () => new Date().toISOString().substring(0, 10);
+
 export async function loadCatalog(S, force) {
   if (S && S.settings && S.settings.catPins) setPins(S.settings.catPins);
+  if (S && S.settings && S.settings.catOrder) setCatOrder(S.settings.catOrder);
   if (S && S.settings) setLocs(S.settings.catLoc);
   if (!POP.length || force) loadPop(S);
   DRIVE_ON = !!(S && S.settings && S.settings.photoDrive);
@@ -271,7 +287,7 @@ function setKind(x, byCode) {
 }
 const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 function index(pack) {
-  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', sup: r[12] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
+  const items = pack.rows.map((r, i) => ({ c: r[0], d: r[1], p: r[2], s: r[3], b: r[4], g: r[5], l1: r[6], l2: r[7], l3: r[8], ph: r[9], h: !!r[10], loc: r[11] || '', sup: r[12] || '', at: r[13] || '', _i: i, _n: norm(r[0]) + ' ' + String(r[1] || '').toUpperCase() }));
   const byCode = {}, byBar = {}, byNorm = {};
   items.forEach(x => { byCode[x.c] = x; if (x.b) byBar[x.b] = byBar[x.b] || x; const n = norm(x.c); if (!byNorm[n]) byNorm[n] = x; });
   /* 세트: 아이템 목록에 있으면 그 아이템에 구성을 붙이고, 없으면 세트 아이템을 새로 만듦 (가격 = 구성품 합) */
@@ -322,7 +338,7 @@ function index(pack) {
   });
   const prune = n => { n.kids = n.kids.filter(k => k.n > 0); n.kids.forEach(prune); };
   const pruneA = n => { n.kids = n.kids.filter(k => k.n + k.nh > 0); n.kids.forEach(pruneA); };
-  prune(tree); prune(tree1); pruneA(treeA); sortTree(tree); sortTree(tree1); sortTree(treeA);
+  prune(tree); prune(tree1); pruneA(treeA); sortTree(tree, 'G'); sortTree(tree1, 'L1'); sortTree(treeA, '');
   const vis = items.filter(x => !x.h);
   const tmp = { items }; fixPhotos(tmp);
   return { photoStat: tmp.photoStat, ver: pack.ver, setsVer: pack.setsVer || '', updatedAt: pack.updatedAt, items, vis, byCode, byBar, byNorm, tree, tree1, treeA, sets, rows: pack.rows, cats: pack.cats || [] };
@@ -401,6 +417,7 @@ export function parseItemMaster(items, cats) {
 }
 /** 묶음으로 나눠 저장 → meta 의 ver 를 바꿔 모든 폰이 새로 받게 함 */
 export async function publishCatalog(S, parsed) {
+  if (CAT && CAT.rows && CAT.rows.length) { const prev = CAT.byCode || {}; parsed.rows.forEach(r => { while (r.length < 14) r.push(''); if (!r[13]) r[13] = prev[r[0]] ? (prev[r[0]].at || '') : todayStr(); }); }
   const chunks = []; let cur = [], size = 0;
   parsed.rows.forEach(r => { const s = JSON.stringify(r).length + 1; if (size + s > CHUNK_BYTES && cur.length) { chunks.push(cur); cur = []; size = 0; } cur.push(r); size += s; });
   if (cur.length) chunks.push(cur);
@@ -472,7 +489,7 @@ export function parseSetBook(compRows, listRows, which) {
  *  분류 · 아이템 일괄 변경 (관리) — SBM 의 "레벨 정리 · 디스크립션 변경 · 코드 변경 · 일괄 업데이트" 파일 역할
  *  rows 한 줄 = [code, desc, price, srp, barcode, group, l1, l2, l3, photo]
  * ============================================================ */
-const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9, h: 10, loc: 11 };
+const COL = { c: 0, d: 1, p: 2, s: 3, b: 4, g: 5, l1: 6, l2: 7, l3: 8, ph: 9, h: 10, loc: 11, sup: 12, at: 13 };   // at = 앱에 등록된 날 (yyyy-mm-dd) — 🆕 새로 나온 묶음
 /** 위치 일괄 — codes 의 아이템 위치를 loc 로 (빈 값 = 분류 기본 위치 따름) */
 export function setLoc(rows, codes, loc) { const set = new Set(codes.map(c => String(c).toUpperCase())); let k = 0; rows.forEach(r => { if (set.has(r[0])) { while (r.length < 11) r.push(r.length === 10 ? 0 : ''); r[11] = loc; k++; } }); return k; }
 /** 숨김 · 보임 일괄 — codes 의 아이템을 on(true=숨김) 으로. 돌려주는 값: 바뀐 수 */
@@ -627,7 +644,7 @@ export function applyBulk(rows, cats, sets, patches) {
     let i = at[pt.code];
     if (i == null) {
       /* 없는 코드 — 디스크립션 · 가격이 다 있으면 새 아이템으로 추가 */
-      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0, pt.set.loc || '']; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; return; }
+      if (pt.set.d && pt.set.p != null) { const r = [pt.code, pt.set.d, pt.set.p, pt.set.s || 0, pt.set.b || '', pt.set.g || '', pt.set.l1 || '', pt.set.l2 || '', pt.set.l3 || '', pt.set.ph || '', pt.set.h ? 1 : 0, pt.set.loc || '', '', todayStr()]; rows.push(r); at[pt.code] = rows.length - 1; sum.added++; return; }
       /* 세트북 세트 — Level 1 을 줄 때만 줄을 만듦 (빈 Level 1 = 숨김 뜻이라 그대로 두면 세트가 사라지지 않게) */
       const vr = pt.set.l1 ? virtRow(pt.code) : null;
       if (!vr) { if (!(CAT && CAT.byCode[pt.code] && CAT.byCode[pt.code].virt)) sum.missing.push(pt.code); return; }
@@ -765,7 +782,7 @@ export function applySmartBee(rows, cats, plan) {
   const F = Object.assign({ d: true, p: true, b: true }, plan.fields || {});
   const sum = { changed: 0, added: 0, addedHidden: 0, hidden: 0 };
   (plan.chg || []).forEach(x => { const r = rows[at[x.c]]; if (!r) return; let ch = false; if (F.d && x.ch.d != null && r[1] !== x.ch.d) { r[1] = x.ch.d; ch = true; } if (F.p && x.ch.p != null && r[2] !== x.ch.p) { r[2] = x.ch.p; ch = true; } if (F.b && x.ch.b != null && r[4] !== x.ch.b) { r[4] = x.ch.b; ch = true; } if (ch) sum.changed++; });
-  (plan.add || []).forEach(x => { if (at[x.c] != null) return; const L = (x.lv || []).concat(['', '', '', '']).slice(0, 4); rows.push([x.c, x.d, x.p || 0, 0, x.b || '', L[0], L[1], L[2], L[3], '', x.h ? 1 : 0, '']); at[x.c] = rows.length - 1; sum.added++; if (x.h) sum.addedHidden++; });
+  (plan.add || []).forEach(x => { if (at[x.c] != null) return; const L = (x.lv || []).concat(['', '', '', '']).slice(0, 4); rows.push([x.c, x.d, x.p || 0, 0, x.b || '', L[0], L[1], L[2], L[3], '', x.h ? 1 : 0, '', '', todayStr()]); at[x.c] = rows.length - 1; sum.added++; if (x.h) sum.addedHidden++; });
   (plan.hide || []).forEach(c => { const r = rows[at[c]]; if (!r) return; while (r.length < 11) r.push(r.length === 10 ? 0 : ''); if (!r[10]) { r[10] = 1; sum.hidden++; } });
   ensureCats(rows, cats);
   return sum;

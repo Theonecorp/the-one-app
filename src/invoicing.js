@@ -7,7 +7,7 @@
  * ============================================================ */
 import { esc, money, R2, addDays, invNo, invNoOld } from './ui.js';
 import { reqText } from './reqs.js';
-import { catalog, kvGet, kvSet } from './catalog.js';
+import { catalog, kvGet, kvSet, prefixRank } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
  *  comm: 커미션 계산 때 어느 칸으로 셀지 (A 기본 · P · W) */
@@ -65,8 +65,8 @@ export function dcPrice(p, dc) { return R2(Number(p) * (1 - (Number(dc) || 0) / 
 export function lineTotal(q, p, dc) { return R2((Number(q) || 0) * dcPrice(p, dc)); }
 /* ---------- 인보이스 보기 방식 (설정 기본값 + 인쇄할 때 바꿀 수 있음) ----------
  *  sort: 'group' 분류별로 묶고 소계 (기본) · 'abc' 코드 ABC 순 · 'order' 주문에 담은 순서
- *  kits: 'open' 세트 구성품을 아래에 풀어서 (기본 — 손님이 상자 열고 하나씩 맞춰 보기 좋음) · 'closed' 세트 한 줄만 */
-export const INV_VIEW_DEFAULT = { sort: 'group', kits: 'open' };
+ *  kits: 'closed' 세트 한 줄 + 작은 글씨로 구성 (기본 — v0.8.174: 펼치면 "세트를 풀었다" 로 보여 직원이 헷갈림) · 'open' 구성품을 아래에 ↳ 줄로 */
+export const INV_VIEW_DEFAULT = { sort: 'group', kits: 'closed' };
 export function invView(S) {
   let v = Object.assign({}, INV_VIEW_DEFAULT, (S && S.settings && S.settings.invView) || {});
   try { const l = JSON.parse(localStorage.getItem('theone.invView') || 'null'); if (l) v = Object.assign(v, l); } catch (e) {}
@@ -239,7 +239,8 @@ export function invoiceHtml(inv, acc, opt) {
   /* 손님 보기 순서 — 제품 라인(Level 1)별로 묶고, 그 안에서 세부 라인(Level 2 · 3) → 코드 순 */
   const subOf = l => { const it = C && C.byCode[l.c]; return it ? [it.l2 || '', it.l3 || ''].join('\u0001') : ''; };
   const COLL2 = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
-  const rows = view.sort === 'order' ? inv.lines.slice() : view.sort === 'abc' ? inv.lines.slice().sort((a, b) => COLL2.compare(a.c, b.c)) : inv.lines.slice().sort((a, b) => COLL2.compare(grpOf(a), grpOf(b)) || COLL2.compare(subOf(a), subOf(b)) || COLL2.compare(a.c, b.c));
+  /* 묶음 순서는 앱 분류 순서와 같게: 세트("") 가 맨 위 → 주얼리 → [그 외] → <맨 뒤> (v0.8.174: 직원 요청 "세트 오더가 위에") */
+  const rows = view.sort === 'order' ? inv.lines.slice() : view.sort === 'abc' ? inv.lines.slice().sort((a, b) => COLL2.compare(a.c, b.c)) : inv.lines.slice().sort((a, b) => (prefixRank(grpOf(a)) - prefixRank(grpOf(b))) || COLL2.compare(grpOf(a), grpOf(b)) || COLL2.compare(subOf(a), subOf(b)) || COLL2.compare(a.c, b.c));
   const dc = Number(inv.disc) || 0;
   const A = inv.shipTo ? Object.assign({}, acc || {}, inv.shipTo) : acc;   // 🏬 이 주문만 고친 이름 · 주소가 있으면 그걸로
   const addr = A ? [A.addr, [A.city, A.state].filter(Boolean).join(', ') + (A.zip ? ' ' + A.zip : '')].filter(Boolean) : [];
@@ -268,7 +269,7 @@ export function invoiceHtml(inv, acc, opt) {
   const total = R2(net + (Number(inv.ship) || 0));
   return '<div class="iv' + (co.paper === 'a4' ? ' pa4' : '') + '">' + docHead(co, 'INVOICE', [['Acct. No.', inv.acct || ''], ['Date', fmtD(inv.d)], ['Invoice #', inv.no]]) +
     (inv.order ? '<div class="ivso">Sales Order # ' + esc(inv.order) + '</div>' : '') +
-    (inv.req && reqText(inv.req, true) ? '<div class="ivreq">DISPLAY / INSERT REQUEST : ' + esc(reqText(inv.req, true)) + '</div>' : '') +
+    (inv.req && reqText(inv.req, true) ? '<div class="ivreq">DISPLAY / INSERT REQUEST : ' + esc(reqText(inv.req, true, inv.reqNote)) + '</div>' : '') +
     '<div class="ivparties">' + party('Bill To') + party('Ship To') + '</div>' +
     '<table class="ivinfo"><tr><th>Terms</th><th>Due Date</th><th>Rep.</th><th>Ship Date</th><th>Shipping Method</th><th>Shipping Memo</th></tr>' +
     '<tr><td>' + esc(terms) + '</td><td>' + esc(fmtD(due)) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS Ground') + '</td><td>' + esc(inv.memo || (inv.boxes ? inv.boxes + ' BX' : '')) + '</td></tr></table>' +

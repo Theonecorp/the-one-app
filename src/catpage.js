@@ -48,13 +48,13 @@ function paint() {
   let node = treeFor(S); const under = [];
   for (const p of CP.path) { if (node.map[p]) { node = node.map[p]; under.push(p); } else break; }
   CP.path = under;
-  const crumbs = '<div class="chips crumbs" style="margin-top:8px">' + (under.length ? '<button class="up" data-cpp="' + (under.length - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (under.length ? '' : 'on') + '" data-cpp="0">' + bi('전체', 'All') + '</button>' + under.map((p, i) => '<button class="' + (i === under.length - 1 ? 'on' : '') + '" data-cpp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
+  const crumbs = '<div class="chips crumbs" style="margin-top:8px">' + (under.length ? '<button class="up" data-cpp="' + (under.length - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (under.length ? '' : 'on') + '" data-cpp="0">' + bi('전체', 'All') + '</button>' + under.map((p, i) => '<button class="' + (i === under.length - 1 ? 'on' : '') + '" data-cpp=\"' + (i + 1) + '\">' + esc(p) + '</button>').join('') + '</div>';
   const kids = CP.q.trim() ? [] : node.kids;
   $('page').innerHTML = '<div class="card"><h2>📒 ' + bi('아이템 · 카탈로그', 'Items · Catalog') + ' <span class="muted" style="font-weight:400;font-size:12px">' + C.vis.length.toLocaleString() + '</span></h2>' +
     '<div class="muted">' + bi('코드 · 이름 · 바코드로 찾고, 누르면 사진 · 가격 · 분류 · 바코드 · 📦 재고 · 📍 위치가 보입니다. 체크해서 카탈로그 인쇄 · 라벨 · 엑셀 · 주문 담기. 📷 로 바코드를 찍어도 됩니다.', 'Search by code, name or barcode; tap for photo, price, category, barcode, stock and location. Check items to print a catalog, labels, export or add to an order. 📷 scans a barcode.') + '</div>' +
     '<div style="display:flex;gap:6px;margin-top:10px"><input id="cpQ" placeholder="' + esc(bt('코드 · 이름 · 바코드', 'Code · name · barcode')) + '" value="' + esc(CP.q) + '" autocomplete="off" autocapitalize="characters" style="flex:1"><button class="b-blue" id="cpScan" style="flex:0 0 auto;width:auto">📷 ' + bi('스캔', 'Scan') + '</button></div>' +
     itabs([['grid', '🖼', '사진', 'Photos'], ['list', '☰', '목록', 'List']], CP.view, 'cpv') +
-    crumbs + (kids.length ? '<div class="chips itcats">' + kids.map(k => '<button data-cpk="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + k.n + '</span></button>').join('') + '</div>' : '') + '</div>' +
+    crumbs + (kids.length ? '<div class="chips itcats">' + kids.map(k => '<button data-cpk="' + esc(k.name) + '">' + esc(k.name) + ' <span class="en">' + k.n + '</span></button>').join('') + '</div>' : '') + '</div>' +
     '<div class="card"><div id="cpList"></div></div><div class="bulkbar" id="cpBulk" style="display:none"></div>';
   Router.refreshBack();
   document.querySelectorAll('[data-cpp]').forEach(b => b.onclick = () => { CP.path = CP.path.slice(0, +b.dataset.cpp); CP.lim = 60; paint(); });

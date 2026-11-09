@@ -189,7 +189,7 @@ async function paintFind() {
 /** 재고 상태 — 0 이하 없음 · 12 미만 부족 · 그 외 정상 */
 export const stStatus = (n, mn) => n <= 0 ? ['out', bt('재고 없음', 'Out of stock')] : n < (mn == null ? 12 : mn) ? ['low', bt('재고 부족', 'Low stock')] : ['ok', bt('재고 정상', 'In stock')];
 const stBadge = (n, mn) => { const [k, t] = stStatus(n, mn); return '<span class="sbadge ' + k + '">● ' + t + '</span>'; };
-const catOf = it => { const L = levelsOf(it, catStart(S)).filter(Boolean); return L.length ? cleanName(L[L.length - 1]) : ''; };
+const catOf = it => { const L = levelsOf(it, catStart(S)).filter(Boolean); return L.length ? L[L.length - 1] : ''; };
 /** 아이템 목록 — 폰에서는 직원 재고 프로그램 모양의 카드 줄(번호 · 코드 · 통로 · 분류 · 상태 · 수량 · ›), 넓은 화면에서는 표 */
 export function stList(items, st, opt) {
   opt = opt || {};

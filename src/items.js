@@ -26,7 +26,7 @@ export function register(state) {
   Router.upHas.items = () => !!(IT.path.length || IT.aisle);
 }
 const isStaff = () => S.role !== 'salesman';
-const isAdmin = () => S.role === 'admin';
+const isAdmin = () => S.role === 'admin' || !!(S.me && S.me.role === 'admin');
 /** 창고 매니저 · 창고 직원 — 아이템은 찾아보고 📍 위치만 바꿈 (가격 · 이름 · 숨김 · 등록은 오피스 · 인보이스 쪽) */
 const locOnly = () => S.role !== 'admin' && !can('newOrder') && !can('invoice') && !can('catalog');
 const LV = ['Group', 'Level 1', 'Level 2', 'Level 3'];
@@ -35,6 +35,7 @@ const inPath = (x, path) => { const L = x.lv1 == null ? [x.g, x.l1, x.l2, x.l3] 
 
 async function page(arg) {
   if (!isStaff()) { $('page').innerHTML = '<div class="card"><div class="none">담당자 · 관리자만 쓰는 화면입니다</div></div>'; return; }
+  if ((arg === 'bulk' || arg === 'bulk:del') && !isAdmin()) { $('page').innerHTML = '<div class="card"><div class="alert a-amb">🔒 ' + bt('일괄 등록 · 삭제는 관리자만 — 아이템은 ＋ 새 아이템으로 하나씩 등록하세요', 'Bulk add/delete is admin only — add items one at a time with ＋ New item') + '</div></div>'; return; }
   if (arg === 'bulk' || arg === 'bulk:del') { const M = await import('./itembulk.js'); M.register(S); return M.page(arg === 'bulk:del' ? 'del' : 'add'); }   /* 📋 일괄 등록 · 🗑 일괄 삭제 */
   if (arg === 'new') { IT.q = ''; IT.path = []; IT.mode = 'all'; setTimeout(() => form(null, ''), 400); }
   else if (arg === 'nolv' || arg === 'nopr' || arg === 'nobar' || arg === 'hid' || arg === 'noloc') { IT.q = ''; IT.path = []; IT.mode = arg; }   // 🎨 할 일: 분류 없음 · 가격 없음 · 바코드 없음 · 숨김
@@ -72,9 +73,9 @@ function paint() {
   for (const p of IT.path) { if (node.map[p]) { node = node.map[p]; under.push(p); } else break; }
   IT.path = under;
   const depth = under.length;
-  const crumbs = '<div class="chips crumbs" style="margin-top:8px">' + (depth ? '<button class="up" data-ip="' + (depth - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (depth ? '' : 'on') + '" data-ip="0">' + bi('전체', 'All') + '</button>' + under.map((p, i) => '<button class="' + (i === depth - 1 ? 'on' : '') + '" data-ip="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
+  const crumbs = '<div class="chips crumbs" style="margin-top:8px">' + (depth ? '<button class="up" data-ip="' + (depth - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (depth ? '' : 'on') + '" data-ip="0">' + bi('전체', 'All') + '</button>' + under.map((p, i) => '<button class="' + (i === depth - 1 ? 'on' : '') + '" data-ip="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
   const kids = node.kids.filter(k => IT.mode === 'hid' ? k.nh > 0 : IT.mode !== 'all' ? k.n > 0 : true);
-  const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(cleanName(k.name)) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
+  const tiles = kids.length ? '<div class="muted" style="margin:6px 0 2px">' + esc(LV[depth]) + ' · ' + kids.length + '개 분류</div><div class="chips itcats">' + kids.map(k => '<button data-ik="' + esc(k.name) + '">' + esc(k.name) + ' <span class="en">' + (IT.mode === 'hid' ? k.nh : IT.mode === 'vis' ? k.n : k.n + k.nh) + (k.nh && IT.mode === 'all' ? ' · 🙈' + k.nh : '') + '</span></button>').join('') + '</div>' : '';
   /* 🗂 분류별 · 📍 통로별은 그 보기에서만 칩이 나옴 — 기본(📋 목록)은 검색 + 걸러보기만, 목록은 바로 (v0.8.139) */
   const view = IT.view || 'list';
   $('page').innerHTML = pageHead('🏷 ' + bi('아이템 관리', 'Items'), nAll.toLocaleString() + bt('개', ' items') + ' · 👁 ' + (nAll - nHid).toLocaleString() + ' · 🙈 ' + nHid.toLocaleString() + ' · 📦 ' + bt('재고 있음', 'in stock') + ' ' + nStk.in.toLocaleString(), locOnly() ? '' : '<button class="b-ghost" id="itBulkGo">📋 ' + bi('일괄 등록 · 삭제', 'Bulk') + '</button><button class="b-blue" id="itNew">＋ ' + bi('신규 아이템', 'New item') + '</button>') +
@@ -86,7 +87,7 @@ function paint() {
     '<div class="card"><div id="itList"></div></div>' + (isAdmin() ? '<div id="itSbm"></div>' : '') +
     '<div class="bulkbar" id="itBulk" style="display:none"></div>';
   Router.refreshBack();
-  if ($('itLv')) $('itLv').onclick = e => { e.preventDefault(); levelTool(S, paint); };
+  if ($('itLv')) $('itLv').onclick = e => { e.preventDefault(); if (!isAdmin()) return toast('🔒 ' + bt('레벨 일괄 변경은 관리자만', 'Admin only'), 'bad'); levelTool(S, paint); };
   document.querySelectorAll('[data-im]').forEach(b => b.onclick = () => { IT.mode = b.dataset.im; IT.page = 100; paint(); });
   document.querySelectorAll('[data-iv]').forEach(b => b.onclick = () => { IT.view = b.dataset.iv; if (IT.view !== 'aisle') IT.aisle = ''; if (IT.view !== 'tree') IT.path = []; IT.page = 100; paint(); });
   document.querySelectorAll('[data-ip]').forEach(b => b.onclick = () => { IT.path = IT.path.slice(0, Number(b.dataset.ip)); IT.page = 100; paint(); });

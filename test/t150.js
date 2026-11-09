@@ -1,4 +1,4 @@
-/* v0.8.172 시험 — 🏷 오피스 매니저 홈에서 아이템 등록 · 📋 일괄 등록은 엑셀처럼 셀 격자 (#/items/bulk)
+/* v0.8.172 시험 — 🏷 담당자 홈에서 아이템 등록(오피스 · 인보이스 · 창고 매니저) · 📋 일괄 등록은 관리자만, 엑셀처럼 셀 격자 (#/items/bulk) — 2026-11-09 권한 정리
  *   ① 오피스 매니저 홈 📚 묶음에 ＋ 아이템 등록 · 📋 아이템 일괄 등록 타일 → 누르면 새 아이템 창(#fC) → 등록하면 목록에 들어감. 인보이스 담당도 같음, 창고 매니저 홈엔 없음
  *   ② 셀 격자: 기본 8줄 · 한 칸 textarea(#ibTxt) 없음 · 줄마다 상태 🆕(새) ✏️(있는 코드 — 지금 값이 placeholder) ⚠️(이름 · 가격 없음) · Enter = 아래 칸 · 마지막 줄에 적으면 줄이 늘어남 · ✕ 줄 지우기 · 같은 코드 두 줄이면 ‼
  *   ③ 붙여넣기: 머리글 있는 표(SmartBee)를 아무 칸에 붙이면 이름으로 열을 찾아 0열부터 · 머리글 없는 표는 붙인 칸부터 순서대로 (#ibSum 에 어떻게 읽었는지)
@@ -14,9 +14,9 @@ const path = require('path');
   const cat = pg => pg.evaluate(() => { const M = window.__MOCK_STORE__; const rows = [].concat(...Object.values(M.catalog).filter(d => /^c\d+$/.test(d.id)).map(d => JSON.parse(d.j))); const by = {}; rows.forEach(r => { by[r[0]] = r; }); return { n: rows.length, by }; });
   const tiles = pg => pg.$$eval('[data-hg]', b => b.map(x => x.dataset.hg).filter(k => /^items/.test(k)));
   /* ① 오피스 매니저 홈 타일 → 새 아이템 창 → 등록 */
-  const pg = await mk('office@x.com', 'office');
+  let pg = await mk('office@x.com', 'office');
   const t1 = await tiles(pg); log('① office tiles:', t1.join(' '));
-  if (!t1.includes('items/new') || !t1.includes('items/bulk')) errs.push('① office home has ＋ 아이템 등록 · 📋 아이템 일괄 등록 tiles');
+  if (!t1.includes('items/new') || t1.includes('items/bulk')) errs.push('① office home has ＋ 아이템 등록 but not 📋 일괄 등록 (admin only since 2026-11-09)');
   const c0 = await cat(pg);
   await pg.$eval('[data-hg="items/new"]', e => e.click()); await pg.waitForSelector('#fC', { timeout: 8000 }).catch(() => errs.push('① 아이템 등록 tile opens the new item form'));
   if (await pg.$('#fC')) {
@@ -25,9 +25,11 @@ const path = require('path');
     if (!c1.by['OFF-NEW1'] || c1.by['OFF-NEW1'][2] !== 15) errs.push('① office manager registers an item from the home tile');
   }
   const inv = await mk('inv@x.com', 'invoice'); const t2 = await tiles(inv); if (!t2.includes('items/new')) errs.push('① invoice staff also gets the 아이템 등록 tile'); await inv.close();
-  const wh = await mk('wh@x.com', 'whmgr'); const t3 = await tiles(wh); log('① whmgr tiles:', t3.join(' ')); if (t3.includes('items/new') || t3.includes('items/bulk')) errs.push('① warehouse manager home has no 아이템 등록 tiles (location only)'); await wh.close();
+  const wh = await mk('wh@x.com', 'whmgr'); const t3 = await tiles(wh); log('① whmgr tiles:', t3.join(' ')); if (!t3.includes('items/new') || t3.includes('items/bulk')) errs.push('① warehouse manager home has ＋ 아이템 등록 (2026-11-09: 창고 매니저도 등록) but no 📋 일괄 등록'); await wh.close();
   /* ② 셀 격자 */
-  await pg.evaluate(() => { location.hash = '#/shome'; }); await pg.waitForSelector('[data-hg="items/bulk"]', { timeout: 8000, state: 'attached' });   /* 📚 묶음은 접혀 있어 보이진 않음 */ await pg.$eval('[data-hg="items/bulk"]', e => e.click()); await pg.waitForSelector('#ibGrid', { timeout: 8000 }).catch(() => errs.push('② 일괄 등록 tile opens the grid'));
+  /* 📋 일괄 등록은 관리자만 (2026-11-09) — 오피스로는 🔒, 관리자로 격자 */
+  await pg.evaluate(() => { location.hash = '#/items/bulk'; }); await pg.waitForTimeout(800); if (await pg.$('#ibGrid')) errs.push('② office manager must not get the bulk grid'); if (!/관리자만/.test(await pg.evaluate(() => document.getElementById('page').textContent))) errs.push('② office sees the admin-only notice');
+  await pg.close(); pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; }); await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button'); const c0b = await cat(pg); await pg.evaluate(() => { location.hash = '#/items/bulk'; }); await pg.waitForSelector('#ibGrid', { timeout: 8000 }).catch(() => errs.push('② 일괄 등록 tile opens the grid'));
   if (await pg.$('#ibTxt')) errs.push('② no single textarea any more');
   const cell = (r, c) => '#ibGrid input[data-r="' + r + '"][data-c="' + c + '"]';
   /* 시험 기계가 바쁘면 Playwright 의 글자 입력이 통째로 빠질 때가 있어 — 쓴 뒤 값을 확인하고 안 들어갔으면 다시 씀 */
@@ -65,7 +67,7 @@ const path = require('path');
   if (c2.by['NOPRICE1']) errs.push('④ NOPRICE1 not added');
   const sb = c2.by['SB-TEST1']; if (!sb || sb[2] !== 7 || sb[3] !== 10 || sb[7] !== 'DRESUP' || sb[4] !== '840500800002') errs.push('④ SB-TEST1 from the SmartBee paste');
   const nh = c2.by['NOHDR1']; if (!nh || nh[2] !== 3.5 || nh[8] !== 'CROCHET HAT') errs.push('④ NOHDR1 from the headerless paste');
-  if (c2.n !== c0.n + 4) errs.push('④ four items added in total (got ' + (c2.n - c0.n) + ')');
+  if (c2.n !== c0b.n + 3) errs.push('④ three items added on the admin page (got ' + (c2.n - c0b.n) + ')');
   if (await nrow() !== 8) errs.push('④ grid is empty again after apply');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
