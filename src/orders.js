@@ -811,12 +811,12 @@ function paintAdd() {
   const T = treeFor(S);
   let node = T; O.path.forEach(p => { node = (node && node.map[p]) || null; });
   if (!node) { O.path = []; node = T; }
-  const crumbs = '<div class="chips crumbs">' + (O.path.length ? '<button class="up" data-cp="' + (O.path.length - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">' + bi('전체', 'All') + '</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(cleanName(p)) + '</button>').join('') + '</div>';
+  const crumbs = '<div class="chips crumbs">' + (O.path.length ? '<button class="up" data-cp="' + (O.path.length - 1) + '">‹ ' + bi('상위', 'Up') + '</button>' : '') + '<button class="' + (O.path.length ? '' : 'on') + '" data-cp="0">' + bi('전체', 'All') + '</button>' + O.path.map((p, i) => '<button class="' + (i === O.path.length - 1 ? 'on' : '') + '" data-cp="' + (i + 1) + '">' + esc(p) + '</button>').join('') + '</div>';
   const newN = O.path.length ? 0 : newItems([], catStart(S), 30).length;   /* 🆕 새로 나온 — 1단계(전체)에서만 */
   const newTile = newN ? '<button class="newt' + (O.nw ? ' on' : '') + '" data-new="1"><b>🆕 새로 나온 <span class="en">New</span></b><span>' + bt('최근 30일에 등록', 'added in the last 30 days') + ' · ' + newN + '</span></button>' : '';
   const popTile = '';   /* ✨ 자주 나가는 묶음은 v0.8.174 에서 뺌 (모든 단계에 보여 번거로움) */
   const kindCls = n => { const r = prefixRank(n); return r <= 1 ? 'k-set' : r === 2 ? 'k-jew' : r === 3 ? 'k-oth' : 'k-last'; };   /* 1단계 종류별 타일 색 (안쪽 단계는 1단계 색을 따라감) */
-  const kids = node.kids.length || popTile || newTile ? '<div class="cats">' + newTile + popTile + node.kids.map(k => '<button class="' + (O.path.length ? kindCls(O.path[0]) : kindCls(k.name)) + '" data-ck="' + esc(k.name) + '"><b>' + esc(cleanName(k.name)) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
+  const kids = node.kids.length || popTile || newTile ? '<div class="cats">' + newTile + popTile + node.kids.map(k => '<button class="' + (O.path.length ? kindCls(O.path[0]) : kindCls(k.name)) + '" data-ck="' + esc(k.name) + '"><b>' + esc(k.name) + '</b><span>' + k.n + '</span></button>').join('') + '</div>' : '';
   /* 검색 + 분류 경로는 카드 밖 sticky — 아래로 아무리 내려가도 맨 위에 붙어 있어 바로 상위로 돌아감 */
   $('eTop').innerHTML = '<div class="ordtop"><div style="display:flex;gap:6px"><input id="eQ1" placeholder="코드 · 이름 · 바코드 / Code · Name · Barcode" autocomplete="off" autocapitalize="characters" enterkeyhint="done" value="' + esc(O.q) + '" style="flex:1">' +
     '<button type="button" class="b-ghost ib" id="eQX" title="' + esc(bt('검색어 지우기', 'Clear search')) + '" style="' + (O.q ? '' : 'display:none') + '">✕</button><button class="b-ghost ib" id="eVM" title="보기 바꾸기">' + (VM === 'grid' ? '☰' : '▦') + '</button><button class="b-ghost ib" id="eShow" title="손님 보기">🖼</button></div>' + crumbs + '</div>';
@@ -966,7 +966,7 @@ function qtyPad(c, focusPrice) {
   const cur = IDX[c] ? IDX[c].q : 0;
   /* 📂 같은 분류(Group › Level 1 › 2 › 3) · 같은 목록가 아이템 — 이전 프로그램처럼 한 번 바꾸면 같은 폴더의 같은 가격 아이템이 같이 바뀜 (v0.8.174) */
   const sib = catalog().items.filter(x => x.c !== it.c && !x.virt && !x.h && x.g === it.g && x.l1 === it.l1 && x.l2 === it.l2 && x.l3 === it.l3 && Math.abs(x.p - it.p) < 0.0001);
-  const sibIn = sib.filter(x => IDX[x.c]).length, folder = cleanName(it.l3 || it.l2 || it.l1 || it.g || '');
+  const sibIn = sib.filter(x => IDX[x.c]).length, folder = it.l3 || it.l2 || it.l1 || it.g || '';
   const curP = IDX[c] ? IDX[c].p : (O.pov && O.pov[c] != null ? O.pov[c] : it.p);
   openModal('<h2>' + esc(it.c) + '</h2><div class="muted">' + esc(it.d) + ' · ' + money(it.p) + '</div>' +
     '<div class="qty" style="justify-content:center;margin:14px 0"><button id="qpM" style="width:56px;height:56px">−</button><input id="qpV" type="number" inputmode="numeric" min="0" value="' + cur + '" style="width:110px;font-size:26px"><button id="qpP" style="width:56px;height:56px">＋</button></div>' +
