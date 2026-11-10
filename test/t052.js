@@ -10,7 +10,7 @@ const path = require('path'), fs = require('fs');
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
   const txt = async sel => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; window.__AFTER_SEED__ = s => { /* 6개월+ 미수 후보: BRANDON 의 JIM DANDY A8800 (200일) */ s.deductions = []; }; });
-  await pg.goto('http://127.0.0.1:8775/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8775/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   /* 1. 현황 */
   await pg.evaluate(() => { location.hash = '#/now'; }); await pg.waitForSelector('#estBox .hero, #estBox .none'); await shot('b0_now');
   log('now:', (await txt('#page')).slice(0, 160)); log('est:', (await txt('#estBox')).slice(0, 120));

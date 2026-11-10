@@ -15,7 +15,7 @@ const path = require('path');
   /* 헤드리스 브라우저는 알림 허락을 '막힘'으로 답함 — 브라우저의 허락 답만 대신 (앱 로직은 그대로) */
   await pg.addInitScript(() => { try { Object.defineProperty(Notification, 'permission', { get: () => 'granted' }); Notification.requestPermission = async () => 'granted'; if (!('PushManager' in window)) window.PushManager = function () {}; } catch (e) {} });
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = s => { s.users.forEach(u => { if (u.email === 'acct@theonefl.com') u.job = 'office'; }); s.users.push({ id: 'wh@x.com', email: 'wh@x.com', name: 'Warehouse Mgr', role: 'manager', job: 'whmgr', active: true }); }; });
-  await pg.goto('http://127.0.0.1:8884/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(500);
+  await pg.goto('http://127.0.0.1:8884/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(500);
   /* ① */
   await pg.click('#hMenu'); await pg.waitForSelector('#drawer #mPush'); const lab = (await pg.textContent('#drawer #mPush')).trim(); log('drawer button:', lab); if (!/켜짐|on/i.test(lab)) errs.push('granted device should show 팝업 알림 켜짐');
   await pg.click('#drawer #mPush'); await pg.waitForTimeout(800);

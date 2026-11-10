@@ -13,7 +13,7 @@ const path = require('path');
       s.factoryInvoices = [I('S1', 'SX', '2025-02-01', 1000, { seed: true }), I('S2', 'SX', '2025-03-01', 500, { seed: true }), I('M1', 'SX', '2025-04-01', 200), I('T1', 'SX', '2025-02-01', 1000, { src: 'stmt' }), I('T2', 'SX', '2025-03-01', 500, { src: 'stmt' }), I('T3', 'SX', '2025-04-01', 200, { src: 'stmt' }), I('K1', 'SX', '2024-06-01', 300, { seed: true }), I('N1', 'SHEN', '2026-01-10', 777, { src: 'stmt' }), I('T1b', 'SX', '2025-02-01', 1000, { src: 'stmt', createdAt: 'z' }), I('O1', 'SX', '2023-05-01', 400, { src: 'stmt', file: 'OLD.xlsx' }), I('O2', 'SX', '2024-03-01', 600, { src: 'stmt', file: 'OLD.xlsx' })];
       s.factoryPayments = [{ id: 'P1', f: 'SX', d: '2025-02-20', amt: 900, seed: true }, { id: 'O3', f: 'SX', d: '2023-06-01', amt: 400, src: 'stmt', file: 'OLD.xlsx' }, { id: 'Q1', f: 'SX', d: '2025-02-20', amt: 900, src: 'stmt' }, { id: 'P0', f: 'SX', d: '2024-07-01', amt: 300, seed: true }, { id: 'R1', f: 'SHEN', d: '2026-02-01', amt: 100, src: 'stmt' }];
     }; });
-  await pg.goto('http://127.0.0.1:8811/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8811/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/mg/fac'; }); await pg.waitForSelector('#facClean', { timeout: 8000 });
   await pg.click('[data-fc="SX"]'); await pg.waitForTimeout(800);
   const t = (await pg.textContent('#page')).replace(/\s+/g, ' '); log('fac:', t.slice(0, 200));

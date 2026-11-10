@@ -22,7 +22,7 @@ const path = require('path'), fs = require('fs');
       s.invoices = [mk('G00001', 'G', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 100), mk('P00001', 'P', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 50), mk('G00002', 'G', d1, '1049', 'ELEGANT BEAUTY', 'SOO', 80), mk('G00003', 'G', d40, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 70), mk('H00001', 'H', d1, '1049', 'ELEGANT BEAUTY', 'SOO', 30, 'x')];
     };
   }, [d0, d1, d40]);
-  await pg.goto('http://127.0.0.1:8770/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8770/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   /* 1. 오더 화면 분류 순서 */
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');
   await pg.fill('#eStoreQ', 'beauty ex'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(400); await pg.waitForTimeout(700); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(150); }

@@ -7,7 +7,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
   const txt = async (pg, q) => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
-  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.type() === 'prompt' ? d.accept('다음 주로') : d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed || ''); }, { email, seed }); await pg.goto('http://127.0.0.1:8816/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.type() === 'prompt' ? d.accept('다음 주로') : d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed || ''); }, { email, seed }); await pg.goto('http://127.0.0.1:8816/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const acctJob = "s.users.forEach(u => { if (u.email === 'acct@theonefl.com') u.job = 'acct'; });";
   /* 세일즈맨: 날짜 변경 요청 (E2 체크 #2201, dep 5일 전 → 10일 뒤) */
   let pg = await mk('brandon@x.com');

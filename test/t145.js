@@ -10,7 +10,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 900, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8896/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8896/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const cat = () => pg.evaluate(() => { const M = window.__MOCK_STORE__; const rows = [].concat(...Object.values(M.catalog).filter(d => /^c\d+$/.test(d.id)).map(d => JSON.parse(d.j))); const by = {}; rows.forEach(r => { by[r[0]] = r; }); return { n: rows.length, by }; });
   const c0 = await cat(); log('catalog before:', c0.n);
   /* v0.8.172: 셀 격자 — 0행 0열 칸에 붙여넣기 (엑셀 복사와 같은 paste 이벤트) */

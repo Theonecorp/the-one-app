@@ -15,7 +15,7 @@ const path = require('path');
     s.settings[0].stockAlertTo = 'office@theonefl.com, luke@theonefl.com';
   };
   await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); }, '(' + seed.toString() + ')(s)');
-  await pg.goto('http://127.0.0.1:8879/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(400);
+  await pg.goto('http://127.0.0.1:8879/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(400);
   /* ① 세트 · 디스플레이 아이템도 A */
   await pg.evaluate(() => { location.hash = '#/items'; }); await pg.waitForSelector('#itQ', { timeout: 8000 }); await pg.fill('#itQ', 'FLSIDE52'); await pg.waitForTimeout(500);
   await pg.click('#itList [data-it="FLSIDE52"] .ct'); await pg.waitForSelector('#isEd', { timeout: 5000 }); await pg.click('#isEd'); await pg.waitForSelector('#fType', { timeout: 5000 }); await pg.waitForTimeout(200);

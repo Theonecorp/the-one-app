@@ -8,7 +8,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   const pg = await ctx.newPage(); const wait = ms => pg.waitForTimeout(ms); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; localStorage.setItem('theone.numpad', '1'); });   // v0.8.120: 패드는 켠 사람만
-  await pg.goto('http://127.0.0.1:8831/test/demo.html#/home'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8831/test/demo.html#/home'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const coarse = await pg.evaluate(() => matchMedia('(pointer: coarse)').matches); log('coarse pointer:', coarse); if (!coarse) errs.push('test context should emulate a touch device');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', '1271'); await pg.waitForSelector('[data-ac="1271"]'); await pg.tap('[data-ac="1271"]'); await pg.waitForTimeout(1200);
   if (await pg.$('#modal.on')) { await pg.tap('#modal .mclose'); await pg.waitForTimeout(300); }

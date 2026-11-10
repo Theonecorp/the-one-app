@@ -13,7 +13,7 @@ const path = require('path');
     [['OLD1', 70], ['OLD2', 62], ['NEW1', 1], ['NEW2', 0]].forEach(([id, n], i) => { const e = JSON.parse(JSON.stringify(base)); e.id = id; e.d = day(n); e.ym = e.d.slice(0, 7); e.v = false; e.settled = ''; e.deferred = ''; e.sb = true; e.rc = true; e.env = ''; e.mismatch = ''; e.store = 'ST ' + id; e.pays = [{ m: 'CHECK', ref: '8' + i, amt: 100 }]; e.refs = ['8' + i]; e.invs = [{ no: 'A-0200' + i, t: 'A', amt: 100 }]; e.total = 100; s.entries.push(e); });
     window.__DAYS = { old: day(70), recent: day(0) };`;
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { seed });
-  await pg.goto('http://127.0.0.1:8892/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8892/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/pay'; }); await pg.waitForSelector('#pSm', { timeout: 8000 }); await pg.selectOption('#pSm', 'BRANDON'); await pg.waitForSelector('[data-pl]', { timeout: 8000 }).catch(() => errs.push('① lines missing'));
   const ids = () => pg.$$eval('[data-pl]', e => e.map(x => x.dataset.pl).filter(x => /\|(OLD|NEW)/.test(x)).sort());
   const allOn = () => pg.evaluate(() => document.querySelector('[data-pall]').classList.contains('on'));

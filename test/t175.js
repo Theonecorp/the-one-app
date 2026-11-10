@@ -15,7 +15,7 @@ const path = require('path');
     await pg.addInitScript(x => { window.__MOCK_USER__ = { email: x.email, name: 'X' };
       try { if (!sessionStorage.getItem('t175')) { sessionStorage.setItem('t175', '1'); localStorage.removeItem('theone.offline.photos'); if (x.agoMin == null) localStorage.removeItem('theone.offline.at'); else localStorage.setItem('theone.offline.at', new Date(Date.now() - x.agoMin * 60000).toISOString()); } } catch (e) {}
       if (x.conn) Object.defineProperty(navigator, 'connection', { get: () => Object.assign({ effectiveType: '4g', addEventListener() {} }, x.conn) }); }, o);
-    await pg.goto('http://127.0.0.1:8840/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+    await pg.goto('http://127.0.0.1:8840/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const stamp = pg => pg.evaluate(() => localStorage.getItem('theone.offline.at'));
   const age = s => s ? Math.round((Date.now() - new Date(s).getTime()) / 60000) : null;
   /* ① 앱을 열 때 */
@@ -25,7 +25,7 @@ const path = require('path');
   const ph = await pg.evaluate(() => localStorage.getItem('theone.offline.photos')); log('⑦ cellular photos:', ph); if (ph) errs.push('⑦ no automatic photos on mobile data');
   /* ② 5분 안에 다시 열기 */
   await pg.evaluate(() => localStorage.setItem('theone.offline.at', new Date(Date.now() - 2 * 60000).toISOString()));
-  await pg.reload(); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(6000); a = await stamp(pg); log('② reopen (2분 전):', age(a)); if (age(a) !== 2) errs.push('② reopening within 5 minutes skips');
+  await pg.reload(); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(6000); a = await stamp(pg); log('② reopen (2분 전):', age(a)); if (age(a) !== 2) errs.push('② reopening within 5 minutes skips');
   /* ③ 다시 연결 */
   await pg.evaluate(() => { localStorage.setItem('theone.offline.at', new Date(Date.now() - 10 * 60000).toISOString()); window.dispatchEvent(new Event('online')); });
   await pg.waitForTimeout(5000); a = await stamp(pg); log('③ online (10분 전):', age(a)); if (age(a) !== 0) errs.push('③ coming back online prepares');

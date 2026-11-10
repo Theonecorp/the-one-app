@@ -8,7 +8,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
   const seed = `s.accounts.forEach(a => { if (a.acct === '1111') a.disc = { A: 10 }; });
     s.invoices = (s.invoices || []).concat([{ id: 'A-000500', no: 'A-000500', t: 'A', d: '2026-10-01', ym: '2026-10', acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', lines: [{ c: 'AHG100', d: 'x', q: 6, p: 2.5, lp: 2.5 }], qty: 6, sub: 15, list: 15, disc: 20, total: 12, bal: 12, st: 'open' }]);`;
-  const mk = async (email) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const txt = async (pg, q) => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   /* 세일즈맨 */
   let pg = await mk('brandon@x.com');
@@ -40,7 +40,7 @@ const path = require('path');
   /* 담당자 — 시험 화면은 페이지마다 자료가 새로 시작하므로 CM 을 미리 넣어 둠 */
   pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'A' }; window.__AFTER_SEED__ = s => { s.invoices = (s.invoices || []).concat([{ id: 'CM-000001', no: 'CM-000001', t: 'CM', kind: 'credit', src: 'credit', d: '2026-10-28', ym: '2026-10', acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', why: '대미지', note: '', lines: [{ c: 'AHG100', d: 'x', q: -3, p: 2, lp: 2.5, dc: 10, src: 'manual' }], qty: -3, sub: -6, list: -7.5, disc: 0, total: -6, bal: -6, flags: ['가격을 직접 바꿈 1줄'], st: 'open', reviewed: false, createdBy: 'brandon@x.com' }]); }; });
-  await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.click('#nav button[data-go="shome"]'); await pg.waitForTimeout(1000);
   if (!(await pg.$('[data-hg="credit"]'))) errs.push('staff home should have a credits tile'); else { if (!(await pg.$('.hgrp[data-grp="money"].open'))) await pg.click('[data-ghd="money"]'); await pg.waitForTimeout(200); await pg.click('[data-hg="credit"]'); await pg.waitForTimeout(1200); }   // v0.8.125: 홈 묶음(수금) 안
   const sl = await txt(pg, '#page'); log('staff list:', sl.slice(0, 160)); if (!/확인 대기 1/.test(sl) || !/⚠️ 1/.test(sl)) errs.push('staff list should show 1 waiting with a flag');

@@ -18,7 +18,7 @@ const path = require('path');
     s.orders = (s.orders || []).concat([o('OX1', 'done', 44, { invs: ['A77001'] }), o('OX2', 'sent', 2, { qty: 12, amt: 30 })]);
     s.orderLines = (s.orderLines || []).concat([{ id: 'OX1', sm: 'BRANDON', lines: [{ c: 'AHG100', d: 'x', q: 3, p: 2.5 }] }, { id: 'OX2', sm: 'BRANDON', lines: [{ c: 'AHG100', d: 'x', q: 12, p: 2.5 }] }]);`;
   await pg.addInitScript(sd => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', sd); }, seed);
-  await pg.goto('http://127.0.0.1:8853/test/demo.html#/home'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8853/test/demo.html#/home'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', '1271'); await pg.waitForSelector('[data-ac="1271"]'); await pg.tap('[data-ac="1271"]'); await pg.waitForTimeout(1500);
   if (await pg.$('#modal.on')) { await pg.tap('#modal .mclose'); await pg.waitForTimeout(300); }
   const md = n => { const x = new Date(); x.setDate(x.getDate() - n); return String(x.getMonth() + 1).padStart(2, '0') + '/' + String(x.getDate()).padStart(2, '0'); };

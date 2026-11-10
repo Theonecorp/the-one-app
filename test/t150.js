@@ -10,7 +10,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 1100, height: 900 } });
-  const mk = async (email, job) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', "s.users.push({ id: '" + o.email + "', email: '" + o.email + "', name: 'X', role: 'manager', job: '" + o.job + "', active: true });"); }, { email, job }); await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email, job) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', "s.users.push({ id: '" + o.email + "', email: '" + o.email + "', name: 'X', role: 'manager', job: '" + o.job + "', active: true });"); }, { email, job }); await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const cat = pg => pg.evaluate(() => { const M = window.__MOCK_STORE__; const rows = [].concat(...Object.values(M.catalog).filter(d => /^c\d+$/.test(d.id)).map(d => JSON.parse(d.j))); const by = {}; rows.forEach(r => { by[r[0]] = r; }); return { n: rows.length, by }; });
   const tiles = pg => pg.$$eval('[data-hg]', b => b.map(x => x.dataset.hg).filter(k => /^items/.test(k)));
   /* ① 오피스 매니저 홈 타일 → 새 아이템 창 → 등록 */
@@ -29,7 +29,7 @@ const path = require('path');
   /* ② 셀 격자 */
   /* 📋 일괄 등록은 관리자만 (2026-11-09) — 오피스로는 🔒, 관리자로 격자 */
   await pg.evaluate(() => { location.hash = '#/items/bulk'; }); await pg.waitForTimeout(800); if (await pg.$('#ibGrid')) errs.push('② office manager must not get the bulk grid'); if (!/관리자만/.test(await pg.evaluate(() => document.getElementById('page').textContent))) errs.push('② office sees the admin-only notice');
-  await pg.close(); pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; }); await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button'); const c0b = await cat(pg); await pg.evaluate(() => { location.hash = '#/items/bulk'; }); await pg.waitForSelector('#ibGrid', { timeout: 8000 }).catch(() => errs.push('② 일괄 등록 tile opens the grid'));
+  await pg.close(); pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; }); await pg.goto('http://127.0.0.1:8812/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); const c0b = await cat(pg); await pg.evaluate(() => { location.hash = '#/items/bulk'; }); await pg.waitForSelector('#ibGrid', { timeout: 8000 }).catch(() => errs.push('② 일괄 등록 tile opens the grid'));
   if (await pg.$('#ibTxt')) errs.push('② no single textarea any more');
   const cell = (r, c) => '#ibGrid input[data-r="' + r + '"][data-c="' + c + '"]';
   /* 시험 기계가 바쁘면 Playwright 의 글자 입력이 통째로 빠질 때가 있어 — 쓴 뒤 값을 확인하고 안 들어갔으면 다시 씀 */

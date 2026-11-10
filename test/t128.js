@@ -11,7 +11,7 @@ const path = require('path'), fs = require('fs');
   const mk = async (job, extra) => {
     const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(job + ': ' + e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', 's.users.forEach(u => { if (u.email === "acct@theonefl.com") u.job = "' + o.job + '"; });' + (o.extra || '')); }, { job, extra });
-    await pg.goto('http://127.0.0.1:8882/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300); return pg;
+    await pg.goto('http://127.0.0.1:8882/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300); return pg;
   };
   /* ① 주문 · 크레딧 */
   for (const job of ['pickinv', 'invoice']) {

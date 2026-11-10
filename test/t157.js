@@ -17,7 +17,7 @@ const path = require('path');
     "s.shipq = (s.shipq || []).concat([{ id: 'O261104-TEST', st: 'done', labels: [{ trk: '1ZY9620E0300000007', img: 'R0lGODdhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=' }] }]);";
   const pg = await (await br.newContext({ viewport: { width: 430, height: 900 } })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { seed });
-  await pg.goto('http://127.0.0.1:8822/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8822/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/track'; }); await pg.waitForSelector('#tkQ'); await pg.fill('#tkQ', '3001'); await pg.waitForTimeout(400); await pg.click('[data-tka="3001"]'); await pg.waitForSelector('[data-shp]');
   await pg.click('[data-shp]'); await pg.waitForSelector('#shGo');
   const txt = () => pg.$eval('#mbox', e => e.textContent.replace(/\s+/g, ' '));

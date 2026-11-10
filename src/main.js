@@ -198,7 +198,9 @@ export function dockDrawer() {
   drawerRender(true);
 }
 /** 고정 서랍에서 지금 주소의 줄만 켜기 (다시 안 그림) */
-function dockMark() { const d = $('drawer'); if (!d || !d.classList.contains('dock')) return; d.querySelectorAll('[data-dgo]').forEach(b => b.classList.toggle('on', location.hash.indexOf('#/' + b.dataset.dgo) === 0)); }
+export function dockMark() { const d = $('drawer'); if (!d || !d.classList.contains('dock')) return; const sNow = Orders.stageNow ? Orders.stageNow() : '';
+  d.querySelectorAll('[data-dgo]').forEach(b => b.classList.toggle('on', !(sNow && sNow !== 'home') && location.hash.indexOf('#/' + b.dataset.dgo) === 0));
+  d.querySelectorAll('[data-dlf]').forEach(b => b.classList.toggle('on', sNow === b.dataset.dlf)); }
 function userMenu() {
   if (matchMedia(DOCK_MQ).matches) { try { localStorage.setItem('theone.dock', dockPref() ? '0' : '1'); } catch (e) {} dockDrawer(); if (!dockWanted()) drawerRender(false); return; }   // 데스크탑: ☰ = 고정 켜기 · 끄기 (끄면 이번엔 팝업으로 열어 줌)
   drawerRender(false);
@@ -208,9 +210,15 @@ function drawerRender(dock) {
   const isAdm = S.me && S.me.role === 'admin';
   const vs = viewsOf(S.me), roles = vs.length > 1 ? vs : [];
   const items = navFor(S.role).filter(x => !/^view\//.test(x[0]));
-  const row = x => '<button type="button" data-dgo="' + esc(x[0]) + '"' + (location.hash.indexOf('#/' + x[0]) === 0 ? ' class="on"' : '') + '><span class="i">' + x[1] + '</span><span class="t">' + esc(x[2]) + '<small>' + esc(x[3] || '') + '</small></span></button>';
-  let secs = '', plain = [];
-  items.forEach(x => { if (/^hub\//.test(x[0])) { const k = x[0].split('/')[1], H = Hub.HUBS[k], L = Hub.hubItems(k); if (L.length) secs += '<div class="dsec"><small>' + (H ? H.icon + ' ' : '') + esc(x[2]) + ' · ' + esc(x[3] || '') + '</small>' + L.map(c => row([c[0], c[1], c[2], c[3]])).join('') + '</div>'; } else plain.push(x); });
+  const row = x => '<button type="button" data-dgo="' + esc(x[0]) + '"' + (location.hash.indexOf('#/' + x[0]) === 0 && !(sNow && sNow !== 'home') ? ' class="on"' : '') + '><span class="i">' + x[1] + '</span><span class="t">' + esc(x[2]) + '<small>' + esc(x[3] || '') + '</small></span></button>';
+  /* 🧾 주문 칸 (담당자) — 주문 화면 안에 따로 있던 왼쪽 기둥 메뉴를 이 서랍 하나로 (고정 서랍이면 그 기둥은 숨김) */
+  const stages = S.role === 'manager' && Orders.stageMenu ? Orders.stageMenu() : [], sNow = stages.length ? Orders.stageNow() : '';
+  const srow = (k, ic, ko, en) => '<button type="button" data-dlf="' + esc(k) + '"' + (sNow === k ? ' class="on"' : '') + '><span class="i">' + ic + '</span><span class="t">' + esc(ko) + '<small>' + esc(en) + '</small></span></button>';
+  const ord = stages.length ? stages.map(([g, cs]) => '<div class="dsec dord"><small>' + g[1] + ' ' + esc(g[2]) + ' · ' + esc(g[3]) + '</small>' + cs.map(c => srow(c[0], c[1], c[2], c[3])).join('') + '</div>').join('') : '';
+  /* 한 화면은 한 번만 (배송 조회가 재고 · 조회 두 묶음에 다 있어도 서랍에는 처음 나온 곳에만) — v0.8.181 */
+  let secs = '', plain = []; const seen = new Set();
+  items.forEach(x => { if (!/^hub\//.test(x[0])) { plain.push(x); seen.add(x[0]); } });
+  items.forEach(x => { if (/^hub\//.test(x[0])) { const k = x[0].split('/')[1], H = Hub.HUBS[k], L = Hub.hubItems(k).filter(c => !seen.has(c[0]) && seen.add(c[0])); if (L.length) secs += '<div class="dsec"><small>' + (H ? H.icon + ' ' : '') + esc(x[2]) + ' · ' + esc(x[3] || '') + '</small>' + L.map(c => row([c[0], c[1], c[2], c[3]])).join('') + '</div>'; } });
   const main = plain.length ? '<div class="dsec"><small>' + bt('주요 화면', 'Main') + '</small>' + plain.map(row).join('') + '</div>' : '';
   const seg = (arr, attr, cur, lab) => '<div class="seg dseg">' + arr.map(a => '<button type="button" class="' + (cur === a[0] ? 'on' : '') + '" data-' + attr + '="' + esc(a[0]) + '">' + lab(a) + '</button>').join('') + '</div>';
   const settings = '<div class="dsec dset"><small>⚙️ ' + bt('설정', 'Settings') + '</small>' +
@@ -220,13 +228,14 @@ function drawerRender(dock) {
   const name = S.user.name || S.user.email, ini = String(name).split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase();
   let d = $('drawer'); if (!d) { d = document.createElement('div'); d.id = 'drawer'; document.body.appendChild(d); }
   d.innerHTML = '<div class="dback" id="dBack"></div><aside class="dpanel"><div class="dhead"><img src="logo-96.png" alt=""><b>THE ONE CORP</b><button type="button" class="hb" id="dX">✕</button></div>' +
-    '<div class="dbody">' + main + secs + settings + '</div>' +
+    '<div class="dbody">' + main + ord + secs + settings + '</div>' +
     '<div class="dfoot"><div class="dav">' + esc(ini) + '</div><div class="dwho"><b>' + esc(name) + '</b><small>' + esc(S.role === 'manager' ? jobLabel(jobOf()) : roleLabel(S.role)) + ' · ' + VER + '</small></div><button type="button" class="hb" id="mOut" title="' + esc(bt('로그아웃', 'Sign out')) + '">⎋</button></div>' +
     '<div class="dlang seg" translate="no">' + LANGS.map(l => '<button type="button" class="' + (LANG === l[0] ? 'on' : '') + '" data-lang="' + l[0] + '">' + ({ ko: 'KR', en: 'EN', pt: 'PT' }[l[0]] || l[0].toUpperCase()) + '</button>').join('') + '</div></aside>';
   d.classList.toggle('dock', !!dock); d.classList.add('on'); document.body.classList.toggle('dock', !!dock); document.body.classList.toggle('drawer-on', !dock);
   const close = () => { if (d.classList.contains('dock')) return; d.classList.remove('on'); document.body.classList.remove('drawer-on'); };
   $('dBack').onclick = close; $('dX').onclick = close;
   d.querySelectorAll('[data-dgo]').forEach(b => b.onclick = () => { close(); const g = b.dataset.dgo, [r, a] = g.split('/'); if (a) Router.go(r, a); else Router.go(g); });
+  d.querySelectorAll('[data-dlf]').forEach(b => b.onclick = () => { close(); Orders.openStage(b.dataset.dlf); dockMark(); });
   $('mDiag').onclick = diag;
   if ($('mNet')) $('mNet').onclick = () => { close(); netSheet(); };
   /* 🔔 팝업 알림 — 컴퓨터 · 폰 화면에 (앱을 닫아도). 이미 켜져 있으면 이 기기 등록을 새로 하고 시험 팝업 */

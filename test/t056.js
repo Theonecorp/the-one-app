@@ -16,7 +16,7 @@ const path = require('path'), fs = require('fs');
         const mk = (no, t, d, acct, store, sm, total, lines) => ({ id: no, no, t, d, ym: d.substring(0, 7), acct, store, sm, order: 'O1', orderId: 'O1', qty: lines.reduce((a, l) => a + l.q, 0), sub: total, disc: 0, total, bal: total, terms: 'N30', st: 'open', lines, createdAt: d + 'T12:00:00Z' });
         s.invoices = [mk('A00001', 'A', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 100, [{ c: 'AHG100', d: 'ITEM 0', q: 20, p: 2.5, lp: 2.5, g: 'EARRING' }, { c: 'AHG101', d: 'ITEM 1', q: 10, p: 5, lp: 5, g: 'EARRING' }]), mk('P00001', 'P', d0, '3001', 'BEAUTY EXCHANGE ORLANDO', 'ALEX', 50, [{ c: 'EB103', d: 'EDGE', q: 10, p: 5, lp: 5, g: 'HAIR' }]), mk('A00002', 'A', d1, '1111', 'ALI B/S # 1', 'BRANDON', 80, [{ c: 'AHG100', d: 'ITEM 0', q: 32, p: 2.5, lp: 2.5, g: 'EARRING' }])]; };
     }, [email, d0, d1]);
-    await pg.goto('http://127.0.0.1:8784/test/demo.html'); await pg.waitForSelector('#nav button'); return pg;
+    await pg.goto('http://127.0.0.1:8784/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg;
   };
   const txt = async (pg, sel) => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();
   const shot = (pg, n) => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });

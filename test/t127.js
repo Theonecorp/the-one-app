@@ -7,7 +7,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = s => { s.users.forEach(u => { if (u.email === 'acct@theonefl.com') u.job = 'office'; }); }; });
-  await pg.goto('http://127.0.0.1:8881/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
+  await pg.goto('http://127.0.0.1:8881/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(800);
   /* 홈 묶음의 📥 신규 타일로 접수 목록 열기 (접힌 묶음은 펴서) */
   await pg.evaluate(() => { const t = document.querySelector('[data-hg="sent"]'), g = t && t.closest('.hgrp'); if (g) g.classList.add('open'); }); await pg.click('[data-hg="sent"]'); await pg.waitForTimeout(700);

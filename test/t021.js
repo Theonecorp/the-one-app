@@ -8,7 +8,7 @@ const path = require('path');
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); const errs = [];
   pg.on('pageerror', e => errs.push(e.message));
   await pg.addInitScript(u => { window.__MOCK_USER__ = u; }, { email: 'luke@theonefl.com', name: 'Luke Hur' });
-  await pg.goto('http://127.0.0.1:8766/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8766/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/admin/users'; }); await pg.waitForTimeout(500);
   await pg.click('#uNew'); await pg.waitForTimeout(200);
   await pg.fill('#uEmail', 'daniel@gmail.com'); await pg.fill('#uName', 'Daniel'); await pg.fill('#uSm', 'zz new');

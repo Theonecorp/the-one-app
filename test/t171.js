@@ -12,9 +12,9 @@ const path = require('path');
   const seed = `const o = s.orders[0]; o.st = 'done'; o.doneAt = new Date().toISOString(); o.invs = ['A-000600']; o.memo = 'Salesman delivers';
     s.orders.push(Object.assign(JSON.parse(JSON.stringify(o)), { id: 'O261014-BBBB', no: 'O261014-BBBB', memo: 'Customer pickup', invs: ['A-000601'] }));
     s.orderLines.push(Object.assign(JSON.parse(JSON.stringify(s.orderLines[0])), { id: 'O261014-BBBB' }));`;
-  const pg = await br.newPage({ viewport: { width: 1200, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
+  const pg = await br.newPage({ viewport: { width: 1100, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'office@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', 'let u = s.users.find(x => x.id === "office@theonefl.com"); if (!u) { u = { id: "office@theonefl.com", email: "office@theonefl.com", name: "X", active: true }; s.users.push(u); } u.role = "manager"; u.job = "office";' + o.seed); }, { seed });
-  await pg.goto('http://127.0.0.1:8836/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
+  await pg.goto('http://127.0.0.1:8836/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
   const ord = id => pg.evaluate(id => window.__MOCK_STORE__.orders[id], id);
   /* ① */
   await pg.evaluate(() => { location.hash = '#/order/O261014-AAAA'; }); await pg.waitForSelector('#mDlv', { timeout: 8000 }).catch(() => errs.push('① invoiced order has 🚗 딜리버리로'));

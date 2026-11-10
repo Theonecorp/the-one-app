@@ -8,7 +8,7 @@ const FILES = process.argv.slice(2).filter(f => fs.existsSync(f)); if (!FILES.le
   const pg = await br.newPage({ viewport: { width: 900, height: 1000 } }); const errs = [], log = (...a) => console.log(...a);
   pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; window.__AFTER_SEED__ = s => { s.entries = []; s.cod = []; s.accounts = []; s.ar = []; s.invoices = []; }; });
-  await pg.goto('http://127.0.0.1:8791/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8791/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#fAll');
   await pg.fill('#allArD', '2026-10-17'); await pg.setInputFiles('#fAll', FILES);
   await pg.waitForFunction(() => /끝\./.test((document.getElementById('allLog') || {}).textContent || ''), null, { timeout: 900000 });

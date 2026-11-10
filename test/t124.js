@@ -13,7 +13,7 @@ const path = require('path');
     s.settings[0].suppliers = [{ code: 'JD', alias: 'China 1', name: 'ZHEJIANG JUDA SUPPLY CHAIN' }, { code: 'RM', alias: 'China 2', name: 'QINGDAO RUMINO' }];
   };
   await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); }, '(' + seed.toString() + ')(s)');
-  await pg.goto('http://127.0.0.1:8878/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(400);
+  await pg.goto('http://127.0.0.1:8878/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(400);
   const msgs = () => pg.evaluate(() => Object.values(window.__MOCK_STORE__.msgs || {}).filter(m => m.to === 'g:office' && /기준|minimum|부족|Low/i.test(m.text)).map(m => m.text));
   const nq = () => pg.evaluate(() => Object.values(window.__MOCK_STORE__.notifyq || {}).filter(n => n.kind === 'lowstock').length);   // v0.8.162: 이메일 · 챗은 kind lowstock (받는 사람 = 설정 stockAlertTo, 없으면 담당자 알림 이메일)
   /* ① ☰ 서랍에 📡 연결 · 보낼 함 */

@@ -21,7 +21,7 @@ const path = require('path'), fs = require('fs');
         s.orders[0].sentAt = new Date().toISOString();
       };
     }, [email, d0, d1]);
-    await pg.goto('http://127.0.0.1:8779/test/demo.html'); await pg.waitForSelector('#nav button');
+    await pg.goto('http://127.0.0.1:8779/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
     return pg;
   };
   const txt = async (pg, sel) => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();

@@ -7,7 +7,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; try { localStorage.removeItem('theone.offline.at'); } catch (e) {} });
-  await pg.goto('http://127.0.0.1:8817/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8817/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.waitForSelector('#ofGo', { timeout: 8000 }).catch(() => errs.push('offline card missing on salesman home'));
   const t0 = (await pg.textContent('#offCard')).replace(/\s+/g, ' '); log('card:', t0.slice(0, 120));
   await pg.waitForTimeout(11000);   /* 아직 안 했으면 8초 뒤 자동 준비 */

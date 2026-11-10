@@ -8,7 +8,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const mk = async (email, seed) => { const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(([e, sd]) => { window.__MOCK_USER__ = { email: e, name: 'X' }; const fn = sd ? new Function('s', sd) : null; window.__AFTER_SEED__ = s => { s.settings[0].ordersOn = true; if (fn) fn(s); }; }, [email, seed || '']);
-    await pg.goto('http://127.0.0.1:8798/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+    await pg.goto('http://127.0.0.1:8798/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   /* 1. 세일즈맨: 새 주문에서 새 거래처 열기 → 주문 저장 */
   let pg = await mk('brandon@x.com');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');

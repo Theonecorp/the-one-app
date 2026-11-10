@@ -29,7 +29,7 @@ const path = require('path'), fs = require('fs');
   const viol = [];
   const mk = async (email) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); pg.on('console', m => { if (/Content Security Policy/i.test(m.text())) viol.push(m.text().slice(0, 160)); });
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); window.__CSPV__ = []; document.addEventListener('securitypolicyviolation', e => window.__CSPV__.push(e.violatedDirective + ' ' + (e.blockedURI || '') + ' ' + (e.sourceFile || '') + ':' + e.lineNumber)); }, { email, seed });
-    await pg.goto('http://127.0.0.1:8848/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+    await pg.goto('http://127.0.0.1:8848/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const inlineCount = pg => pg.evaluate(() => document.querySelectorAll('[onclick],[onerror],[onload],[onchange],[oninput],[onsubmit],a[href^="javascript:"]').length);
   const txt = async (pg, q) => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   /* ② 관리자 — 관리 → 아이템 탭의 data-hash 단추 */

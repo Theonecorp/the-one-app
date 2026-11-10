@@ -29,7 +29,7 @@ const path = require('path');
     window.__SHEETS = sh;
     window.XLSX = { read: () => { const S = window.__SHEETS; return { SheetNames: Object.keys(S), Sheets: Object.fromEntries(Object.keys(S).map(n => [n, { rows: S[n] }])) }; }, utils: { sheet_to_json: ws => ws.rows.map(r => r.slice()) } };
   }, sheets);
-  await pg.goto('http://127.0.0.1:8895/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8895/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#fAny', { state: 'attached', timeout: 8000 });
   const upload = async () => { await pg.evaluate(() => { document.getElementById('anyOut').innerHTML = ''; }); await pg.setInputFiles('#fAny', { name: 'The_One_ACH_3.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('fake') }); await pg.waitForFunction(() => /저장 완료|a-red/.test(document.getElementById('anyOut').innerHTML) && !document.getElementById('busy').classList.contains('on'), null, { timeout: 30000 }).catch(() => errs.push('import should finish')); return (await pg.$$eval('#anyOut .alert', e => e.map(x => x.textContent).join(' | '))).replace(/\s+/g, ' '); };
   const msg = await upload(); log('msg:', msg.slice(0, 320));

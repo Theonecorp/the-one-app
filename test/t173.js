@@ -14,7 +14,7 @@ const path = require('path'), fs = require('fs'), vm = require('vm');
   const mk = async (email, perm, w) => { const ctx = await br.newContext({ viewport: { width: w || 430, height: 1000 } }); const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(email + ': ' + e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(p => { try { window.__PERM__ = p; window.__ASKED__ = 0; Object.defineProperty(Notification, 'permission', { get: () => window.__PERM__ }); Notification.requestPermission = async () => { window.__ASKED__++; if (window.__PERM__ === 'default') window.__PERM__ = 'granted'; return window.__PERM__; }; if (!('PushManager' in window)) window.PushManager = function () {}; } catch (e) {} }, perm);
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o, name: 'X' }; }, email);
-    await pg.goto('http://127.0.0.1:8838/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300); return pg; };
+    await pg.goto('http://127.0.0.1:8838/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300); return pg; };
   /* ① */
   let pg = await mk('brandon@x.com', 'default');
   const btn = await pg.$('#hNotif'); if (btn) errs.push('① no "turn on notifications" button on home');

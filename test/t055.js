@@ -10,7 +10,7 @@ const path = require('path'), fs = require('fs');
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
   const txt = async sel => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: '회계' }; window.__AFTER_SEED__ = s => { s.invoices = (s.invoices || []).concat([{ id: 'A10021', no: 'A10021', t: 'A', d: '2026-10-01', ym: '2026-10', acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', order: 'O1', qty: 5, sub: 1500, disc: 0, total: 1500, bal: 1500, st: 'open', lines: [] }]); }; });
-  await pg.goto('http://127.0.0.1:8783/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8783/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/verify'; }); await pg.waitForSelector('#ckNo'); await shot('e0_verify');
   log('kpi:', (await txt('.kpi')).slice(0, 160));
   log('groups:', await pg.$$eval('.smgrp', e => e.map(x => x.querySelector('.iday').textContent.replace(/\s+/g, ' ').trim().slice(0, 60))));

@@ -15,7 +15,7 @@ const path = require('path'), fs = require('fs'), { execSync } = require('child_
     s.cod = (s.cod || []).concat([{ id: 'CL1', d: day(1), ym: ym(day(1)), sm: 'brandon', acct: '1271', store: 'BEAUTY 4U', method: 'COD', ref: 'UPS', amt: 55, invs: [{ no: 'A50010', t: 'A', amt: 55 }], disc: '', note: '', v: false, vn: '', settled: '', void: false },
       { id: 'CN1', d: day(1), ym: ym(day(1)), sm: '', acct: '1271', store: 'BEAUTY 4U', method: 'CREDIT CARD', ref: '123456', amt: 44, invs: [{ no: 'A50011', t: 'A', amt: 44 }], disc: '', note: '', v: false, vn: '', settled: '', void: false }]);`;
   await pg.addInitScript(sd => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', sd); }, seed);
-  await pg.goto('http://127.0.0.1:8836/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8836/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   /* 계산 단위 시험 (comm.js) */
   const U = await pg.evaluate(async () => { const M = await import('/src/comm.js'); const cs = M.commSettings({ commTol: 2 }), rate = M.ratesOf({ rates: { a: 0.15 } });
     const tol = M.lineOfEntry({ id: 'T', d: '2026-10-28', sm: 'B', acct: '1', store: 'S', pays: [{ m: 'CASH', amt: 101.5 }], invs: [{ no: 'A1', t: 'A', amt: 100 }] });

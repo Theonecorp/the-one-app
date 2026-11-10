@@ -17,7 +17,7 @@ const SEED = 'var SEED_DATA = ' + JSON.stringify({ fac: [{ code: 'SX', name: 'SH
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
   const txt = async sel => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; });
-  await pg.goto('http://127.0.0.1:8776/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8776/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   /* v0.8.20: 가져오기는 관리 → 📥 가져오기 */
   await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#f4', { state: 'attached' }); /* v0.8.78: 파일 칸은 접힌 칸 안 (자동 인식) */ await pg.evaluate(() => { document.querySelectorAll('details').forEach(d => { d.open = true; }); }); await pg.waitForSelector('#seedPaste');
   const cnt = () => pg.evaluate(() => { const S = window.__MOCK_STORE__; return [S.factoryInvoices, S.factoryPayments, S.pay1099, S.bonusAcc, S.payees, S.factories].map(c => Object.keys(c || {}).length).join('/'); });

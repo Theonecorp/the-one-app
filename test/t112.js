@@ -11,7 +11,7 @@ const path = require('path');
     rows.forEach(r => { if (loc[r[0]]) { while (r.length < 12) r.push(r.length === 10 ? 0 : ''); r[11] = loc[r[0]]; } }); s.catalog[1].j = JSON.stringify(rows);
     s.stock = [['AHG100', 456], ['AHG101', 0], ['AHG102', 5], ['AHG105', 264], ['AHG106', 0], ['AHG107', 30]].map(x => ({ id: x[0], code: x[0], qty: x[1], at: '2026-10-30T00:00:00Z' }));
   };
-  const mk = async (w) => { const pg = await br.newPage({ viewport: { width: w, height: 900 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); }, '(' + seed.toString() + ')(s)'); await pg.goto('http://127.0.0.1:8865/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(500); return pg; };
+  const mk = async (w) => { const pg = await br.newPage({ viewport: { width: w, height: 900 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); }, '(' + seed.toString() + ')(s)'); await pg.goto('http://127.0.0.1:8865/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(500); return pg; };
 
   /* ---------- 폰 ---------- */
   let pg = await mk(420);

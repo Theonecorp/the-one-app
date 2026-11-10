@@ -12,7 +12,7 @@ const path = require('path');
   const seed = `const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().substring(0, 10); };
     s.invoices = (s.invoices || []).concat([{ id: 'CM-000009', no: 'CM-000009', t: 'CM', kind: 'credit', src: 'credit', d: day(2), ym: day(2).substring(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', why: '대미지', lines: [{ c: 'AHG100', d: 'x', q: -12, p: 2.5, lp: 2.5 }], qty: -12, sub: -30, list: -30, disc: 0, total: -30, bal: -30, st: 'open', reviewed: false, createdBy: 'brandon@x.com', createdAt: new Date().toISOString() }]);`;
   const mk = async (email, w) => { const pg = await (await br.newContext({ viewport: { width: w || 430, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push(email + ': ' + e.message)); pg.on('dialog', d => d.accept());
-    await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8835/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300); return pg; };
+    await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8835/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300); return pg; };
   /* ① 세일즈맨이 크레딧 확정 → 알림은 앱만 */
   let pg = await mk('brandon@x.com');
   await pg.evaluate(() => { location.hash = '#/credit/new'; }); await pg.waitForSelector('#crStore', { timeout: 8000 });
@@ -34,7 +34,7 @@ const path = require('path');
   if (amts.join('|') !== '800.00|-30.00' || (await pg.$('.part'))) errs.push('③ invoice 800 + credit −30 with $770 received → 800.00 | -30.00, no partial (got ' + amts.join('|') + ')');
   await pg.context().close();
   /* ② 인보이스 조회 · ④ 사무실 일부 사용 */
-  const of = await mk('luke@theonefl.com', 1200);
+  const of = await mk('luke@theonefl.com', 1100);   // v0.8.181: 1200px 이상은 주문 칸이 고정 서랍에 (t177)
   await of.evaluate(() => { location.hash = '#/order'; }); await of.waitForSelector('[data-lf="inv"]', { timeout: 8000 }); await of.click('[data-lf="inv"]');
   await of.waitForSelector('[data-im="date"]', { timeout: 8000 }); await of.click('[data-im="date"]'); await of.waitForTimeout(700);
   await of.waitForSelector('[data-it="CM"]', { timeout: 8000 }).catch(() => errs.push('② invoice lookup has the ↩ CM credit chip'));

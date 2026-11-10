@@ -8,7 +8,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
   const txt = async (pg, q) => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   const seedInv = `s.invoices = (s.invoices || []).concat([{ id: 'A10021', no: 'A10021', t: 'A', d: '2026-10-01', ym: '2026-10', acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', lines: [], total: 1500, bal: 0, paid: 1500, pays: { E1: 1500 }, st: 'open' }]);`;
-  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8815/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8815/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   /* 회계: 등록 */
   let pg = await mk('acct@theonefl.com', seedInv + " s.users.forEach(u => { if (u.email === 'acct@theonefl.com') u.job = 'acct'; });");
   if (!(await pg.$('#nav button[data-go="hub/money"]'))) errs.push('acct nav should have the payments group');   // v0.8.125: 💵 수금 묶음 → 체크 관리

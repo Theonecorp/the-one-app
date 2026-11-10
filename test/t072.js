@@ -8,7 +8,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'design@x.com', name: 'Dee' }; window.__AFTER_SEED__ = s => { s.users.push({ id: 'design@x.com', email: 'design@x.com', name: 'Dee', role: 'manager', job: 'catalog', active: true }); }; });
-  await pg.goto('http://127.0.0.1:8805/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(800);
+  await pg.goto('http://127.0.0.1:8805/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(800);
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go).join(',')); log('nav:', nav, 'hash:', await pg.evaluate(() => location.hash));
   if (nav !== 'catmg,items,photos,labels,cat') errs.push('catalog job nav wrong: ' + nav);
   await pg.waitForSelector('[data-nop]', { timeout: 8000 }).catch(() => errs.push('photo missing card not shown'));

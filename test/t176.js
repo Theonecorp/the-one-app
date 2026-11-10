@@ -11,7 +11,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const mk = async email => { const pg = await (await br.newContext({ viewport: { width: 430, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push(email + ': ' + e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(e => { window.__MOCK_USER__ = { email: e, name: 'X' }; window.__AFTER_SEED__ = s => { s.settings[0].ordersOn = true; s.accounts.push({ id: 'N261110-ABCD', acct: 'N261110-ABCD', store: 'NEW TEMP SHOP', addr: '5 OAK ST', city: 'TAMPA', state: 'FL', zip: '33601', sm: 'ALEX', pending: true }); }; }, email);
-    await pg.goto('http://127.0.0.1:8841/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+    await pg.goto('http://127.0.0.1:8841/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   /* ① 아이템 */
   let pg = await mk('luke@theonefl.com');
   await pg.evaluate(() => { location.hash = '#/items/new'; }); await pg.waitForSelector('#fC', { timeout: 8000 });

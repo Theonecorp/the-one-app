@@ -10,7 +10,7 @@ const path = require('path');
   let ctx = await br.newContext({ viewport: { width: 430, height: 900 } }), pg = await ctx.newPage();
   pg.on('pageerror', e => errs.push(e.message));
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'Brandon' }; });
-  await pg.goto('http://127.0.0.1:8792/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(500);
+  await pg.goto('http://127.0.0.1:8792/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(500);
   const pill = async () => (await pg.textContent('#hNet')).trim();
   log('pill online:', await pill()); if (!/온라인/.test(await pill())) errs.push('pill should say online');
   await ctx.setOffline(true); await pg.waitForTimeout(300); log('offline:', await pg.evaluate(() => navigator.onLine), 'pill:', await pill()); if (!/오프라인/.test(await pill())) errs.push('pill should say offline');

@@ -8,7 +8,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true, isMobile: true });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; localStorage.setItem('theone.order.pre', '12'); });
-  await pg.goto('http://127.0.0.1:8840/test/demo.html#/home'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8840/test/demo.html#/home'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', '1271'); await pg.waitForSelector('[data-ac="1271"]'); await pg.tap('[data-ac="1271"]'); await pg.waitForTimeout(1200);
   if (await pg.$('#modal.on')) { await pg.tap('#modal .mclose'); await pg.waitForTimeout(300); }
   await pg.fill('#eQ1', 'AHG100'); await pg.waitForTimeout(500);

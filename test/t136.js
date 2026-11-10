@@ -9,7 +9,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 900 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8888/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8888/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const txt = async q => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   const dlg = async () => (await pg.evaluate(() => { const o = document.querySelector('.ovr'); return (o ? o.textContent : (document.getElementById('mbox') || {}).textContent) || ''; })).replace(/\s+/g, ' ');
   const setVal = async (q, v) => { await pg.fill(q, String(v)); await pg.dispatchEvent(q, 'input'); await pg.waitForTimeout(80); };

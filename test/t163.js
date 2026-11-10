@@ -13,7 +13,7 @@ const path = require('path');
   const mk = async (email, job, seed, w) => {
     const pg = await (await br.newContext({ viewport: { width: w || 430, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push(email + ': ' + e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', (o.job ? 'let u = s.users.find(x => x.id === "' + o.email + '"); if (!u) { u = { id: "' + o.email + '", email: "' + o.email + '", name: "X", active: true }; s.users.push(u); } u.role = "manager"; u.job = "' + o.job + '";' : '') + o.seed); }, { email, job, seed: SEED + (seed || '') });
-    await pg.goto('http://127.0.0.1:8828/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300); return pg;
+    await pg.goto('http://127.0.0.1:8828/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300); return pg;
   };
   /* ① 세일즈맨 */
   const sm = await mk('brandon@x.com', '');

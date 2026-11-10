@@ -8,7 +8,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8880/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
+  await pg.goto('http://127.0.0.1:8880/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
   await pg.evaluate(() => { location.hash = '#/cod'; }); await pg.waitForSelector('#btnCodNew', { timeout: 8000 });
   await pg.click('#btnCodNew'); await pg.waitForSelector('#cSave');
   await pg.selectOption('#cSm', 'BRANDON'); await pg.fill('#cStore', 'ALI B'); await pg.waitForSelector('#cHits [data-a="1111"]');

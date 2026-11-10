@@ -8,7 +8,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 900 } });
-  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); try { localStorage.clear(); } catch (e) {} }, { email, seed }); await pg.goto('http://127.0.0.1:8894/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); try { localStorage.clear(); } catch (e) {} }, { email, seed }); await pg.goto('http://127.0.0.1:8894/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const groups = pg => pg.$$eval('.hgrp', g => g.map(x => ({ k: x.dataset.grp, open: x.classList.contains('open'), head: x.querySelector('.hgh').textContent.replace(/\s+/g, ' ').trim(), tiles: [...x.querySelectorAll('[data-hg]')].map(b => b.dataset.hg) })));
   /* ① 오피스 매니저 */
   let pg = await mk('office@x.com', "s.users.push({ id: 'office@x.com', email: 'office@x.com', name: 'O', role: 'manager', job: 'office', active: true });");

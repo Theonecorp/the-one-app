@@ -22,7 +22,7 @@ const path = require('path'), fs = require('fs');
       o.sentAt = now; s.orders.forEach(x => { if (x.st === 'sent' && x.id !== 'O261015-CCCC') x.cfOk = true; });   // CCCC 만 세일즈맨 확인 전
     };
   });
-  await pg.goto('http://127.0.0.1:8799/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8799/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(600); await pg.waitForSelector('.htile'); await pg.click('[data-hg="sent"]'); await pg.waitForSelector('[data-ck]');
   const ids = () => pg.$$eval('#page [data-oid]', e => e.map(x => x.dataset.oid));

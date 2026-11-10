@@ -12,7 +12,7 @@ const path = require('path');
     const ago = h => new Date(Date.now() - h * 3600000).toISOString();
     const mk = (id, store, h) => ({ id, no: id, d: ago(h).substring(0, 10), ym: ago(h).substring(0, 7), sm: 'BRANDON', acct: '1111', store, st: 'sent', n: 1, qty: 1, amt: 10, createdAt: ago(h), updatedAt: ago(h), sentAt: ago(h) });
     window.__AFTER_SEED__ = s => { s.orders = [mk('O-NEW', 'NEWEST SHOP', 0.5), mk('O-OLD', 'OLDEST SHOP', 72), mk('O-MID', 'MIDDLE SHOP', 5)]; s.orderLines = []; }; });
-  await pg.goto('http://127.0.0.1:8795/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8795/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   /* 담당자 홈 배너 */
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#hOldB', { timeout: 8000 }).catch(() => errs.push('home banner missing'));
   if (await pg.$('#hOldB')) { log('home:', (await pg.textContent('#hOldB')).trim()); await pg.click('#hOldB'); await pg.waitForTimeout(1000);

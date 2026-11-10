@@ -11,7 +11,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await (await br.newContext({ viewport: { width: 1000, height: 900 } })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; try { localStorage.setItem('theone.order.view', 'list'); } catch (e) {} });
-  await pg.goto('http://127.0.0.1:8819/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8819/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(250); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(200); }
   /* 같은 분류 · 같은 가격인 아이템 찾기 (시드에서) */
   const grp = await pg.evaluate(() => { const M = window.__MOCK_STORE__; const rows = [].concat(...Object.values(M.catalog).filter(d => /^c\d+$/.test(d.id)).map(d => JSON.parse(d.j))).filter(r => !r[10] && Number(r[2]) > 0);
