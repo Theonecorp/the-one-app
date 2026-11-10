@@ -7,7 +7,7 @@
  *  번호는 counters/acctCode { app, whole } 를 트랜잭션으로 하나씩 — 두 사람이 동시에 눌러도 겹치지 않음
  *  SmartBee(이전 시스템)는 아직 쓰므로 그쪽 번호와 겹치지 않게 앱은 6001 부터
  * ============================================================ */
-import { $, esc, toast, busy, openModal, closeModal, confirmBox, bi, bt, nz } from './ui.js';
+import { $, esc, toast, busy, openModal, closeModal, confirmBox, bi, bt, nz, debounce } from './ui.js';
 import { can } from './main.js';
 
 let S = null;
@@ -28,7 +28,7 @@ export function newAcctForm(name, done) {
   const staff = S.role !== 'salesman';
   const fld = (id, ko, en, v, ph, type) => '<div class="fg"><label>' + (ko === en ? esc(ko) : bi(ko, en)) + '</label><input id="' + id + '"' + (type ? ' type="' + type + '"' : '') + ' value="' + esc(v || '') + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + ' autocomplete="off"></div>';
   openModal('<h2>🆕 ' + bi('새 거래처 열기', 'Open a new account') + '</h2><div class="muted">' + bt('지금은 임시 번호로 저장되고, 매니저가 주문을 확인하면서 정식 코드(6001~)를 붙입니다. 주문 · 수금은 바로 넣을 수 있습니다.', 'Saved with a temporary number now — a manager assigns the real code (6001+) while reviewing the order. You can enter orders and payments right away.') + '</div>' +
-    fld('naStore', '가게 이름 *', 'Store name *', String(name || '').toUpperCase()) +
+    fld('naStore', '가게 이름 *', 'Store name *', String(name || '').toUpperCase()) + '<div id="naDup"></div>' +   /* 🔎 같은 이름의 가게가 있으면 바로 (v0.8.181) */
     fld('naAddr', '주소 *', 'Street address *', '', '1234 MAIN ST') +
     '<div class="two" style="grid-template-columns:2fr 1fr 1fr;gap:6px">' + fld('naCity', '도시 *', 'City *', '') + fld('naState', '주 *', 'State *', 'FL') + fld('naZip', 'ZIP *', 'ZIP *', '', '', 'tel') + '</div>' +
     '<div class="two">' + fld('naTel', '전화', 'Phone', '', '', 'tel') + fld('naWho', '담당자 이름', 'Contact', '') + '</div>' +
@@ -42,12 +42,28 @@ export function newAcctForm(name, done) {
     '<div class="btns"><button class="b-ghost" id="naX">' + bt('취소', 'Cancel') + '</button><button class="b-blue" id="naGo">🆕 ' + bt('저장', 'Save') + '</button></div>');
   ['naWh', 'naApp', 'naRs'].forEach(id => { $(id).onclick = e => { if (e.target.tagName === 'A') return; $(id).classList.toggle('on'); }; });
   $('naX').onclick = closeModal;
+  /* 🔎 같은 이름 · 비슷한 거래처를 칠 때마다 보여 줌 — 같은 이름이면 저장을 막고 그 가게를 바로 쓸 수 있게 */
+  const accRow = a => '<div class="pr" style="padding:6px 0"><div class="ct"><b>' + esc(a.store) + ' <span class="tag t-g">' + esc(isTemp(a.acct) ? bt('임시', 'temp') : a.acct) + '</span></b><small>' + esc([a.addr, a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.tel ? ' · ' + esc(a.tel) : '') + '</small></div>' + (done ? '<button type="button" class="b-blue b-sm" data-nause="' + esc(a.acct) + '">' + bt('이 가게로', 'Use this') + '</button>' : '') + '</div>';
+  const paintDup = () => {
+    const box = $('naDup'); if (!box) return;
+    const v = id => ($(id) ? $(id).value.trim() : ''), same = sameName(v('naStore')), sim = similar({ store: v('naStore'), addr: v('naAddr'), zip: v('naZip').replace(/\D/g, '').substring(0, 5), tel: v('naTel') }).filter(a => !same.includes(a));
+    $('naGo').disabled = !!same.length;
+    box.innerHTML = (same.length ? '<div class="alert a-red" style="margin:-4px 0 8px"><b>⛔ ' + bt('같은 이름의 가게가 이미 있습니다 — 새로 열 수 없습니다', 'A store with this name already exists — cannot open another') + '</b>' + same.slice(0, 4).map(accRow).join('') + '<div class="muted" style="font-size:12px">' + bt('정말 다른 가게면 이름에 지점 · 도시를 붙여 구분하세요 (예: ' + esc(v('naStore')) + ' (ORLANDO))', 'If it really is a different store, add the branch or city to the name') + '</div></div>' : '') +
+      (sim.length ? '<div class="alert a-amb" style="margin:-4px 0 8px"><b>⚠️ ' + bt('비슷한 거래처 (주소 · 전화)', 'Similar accounts (address · phone)') + '</b>' + sim.slice(0, 3).map(accRow).join('') + '</div>' : '');
+    box.querySelectorAll('[data-nause]').forEach(b => b.onclick = () => { const a = S.accounts.byCode[b.dataset.nause]; closeModal(); if (done && a) done(a); });
+  };
+  ['naStore', 'naAddr', 'naZip', 'naTel'].forEach(id => { $(id).oninput = debounce(paintDup, 250); });
+  paintDup();
   $('naGo').onclick = async () => {
     const v = id => ($(id) ? $(id).value.trim() : '');
     const store = v('naStore').toUpperCase(), addr = v('naAddr').toUpperCase(), city = v('naCity').toUpperCase(), state = v('naState').toUpperCase(), zip = v('naZip').replace(/\D/g, '').substring(0, 5);
     if (!store || !addr || !city || !state || !zip) return toast(bt('가게 이름 · 주소 · 도시 · 주 · ZIP 을 넣어 주세요', 'Enter store, address, city, state and ZIP'), 'bad');
     const sm = staff ? v('naSm') : mySm();
     if (!sm) return toast(bt('세일즈맨을 고르세요', 'Pick a salesman'), 'bad');
+    /* ⛔ 같은 이름 — 폰의 목록 + 서버에서 한 번 더 (다른 세일즈맨이 방금 임시 번호로 연 가게까지) */
+    let same = sameName(store);
+    if (!same.length) { try { const srv = await S.DB.list('accounts', { where: [['store', '==', store]] }); same = srv; } catch (e) {} }
+    if (same.length) { paintDup(); return toast(bt('같은 이름의 가게가 이미 있습니다', 'A store with this name already exists') + ': ' + same[0].store + ' (' + (isTemp(same[0].acct || same[0].id) ? bt('임시', 'temp') : (same[0].acct || same[0].id)) + ')', 'bad'); }
     const dup = similar({ store, addr, zip, tel: v('naTel') });
     if (dup.length && !(await confirmBox(bt('비슷한 거래처가 이미 있습니다', 'Similar accounts already exist') + ':\n' + dup.slice(0, 3).map(a => '· ' + a.acct + ' ' + a.store + ' — ' + [a.addr, a.city].filter(Boolean).join(', ')).join('\n') + '\n\n' + bt('그래도 새로 열까요?', 'Open a new one anyway?'), bt('새로 열기', 'Open new')))) return;
     const id = tempId(), now = new Date().toISOString();
@@ -65,6 +81,8 @@ export function newAcctForm(name, done) {
   };
 }
 function addLocal(doc) { const a = Object.assign({}, doc); a._n = nz(a.store); a._all = nz([a.store, a.city, a.state, a.addr, a.acct, a.tel, a.sm].filter(Boolean).join(' ')); S.accounts.push(a); if (S.accounts.byCode) S.accounts.byCode[a.acct] = a; }
+/** ⛔ 이름이 같은 거래처 (띄어쓰기 · 기호 무시, 임시 번호 · 승인 대기 포함, 쉬는 💤 가게 포함) — 새로 열기를 막음 (v0.8.181) */
+export function sameName(store, skip) { const n = nz(store); if (n.length < 3) return []; return (S.accounts || []).filter(a => a.acct !== skip && (a._n || nz(a.store)) === n); }
 /** 같은 가게를 두 번 열지 않게 — 이름 · 주소 · 전화가 비슷한 기존 거래처 */
 export function similar(x, skip) {
   const n = nz(x.store), ad = nz(String(x.addr || '').replace(/\b(STE|SUITE|UNIT|#).*$/i, '')), tel = String(x.tel || '').replace(/\D/g, '').slice(-7);
