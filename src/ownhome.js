@@ -15,6 +15,7 @@ async function cached(key, ttl, fn) {
 import { invoicesBetween, invTypes } from './invoicing.js';
 import { PERIODS, periodRange } from './fulfill.js';
 import { stageAge } from './flow.js';
+import { bizDaysBetween } from './bizday.js';
 
 let S = null;
 const OP = { p: 'month', from: '', to: '' };
@@ -80,7 +81,7 @@ async function page(arg) {
   const LIVE = ['sent', 'pick', 'ok', 'picked', 'done', 'packed', 'dlv'], lateN = orders.filter(o => LIVE.includes(o.st)).filter(o => { const a = stageAge(o); return a && a.day; }).length, cfN = orders.filter(o => o.cfReq && !o.cfOk && o.st !== 'x').length;
   const newAcc = (S.accounts || []).filter(a => a.createdAt && String(a.createdAt).substring(0, 10) >= from && String(a.createdAt).substring(0, 10) <= to).length, pendAcc = (S.accounts || []).filter(a => a.pending).length;
   const lastBy = {}; E.forEach(e => { if (!lastBy[e.sm] || e.d > lastBy[e.sm]) lastBy[e.sm] = e.d; });
-  const quiet = (S.sms || []).filter(s => s.active !== false).map(s => ({ sm: s.code, d: lastBy[s.code] || '', days: lastBy[s.code] ? daysBetween(lastBy[s.code], t) : 99 })).filter(x => x.days >= 3).sort((a, b) => b.days - a.days);
+  const quiet = (S.sms || []).filter(s => s.active !== false).map(s => ({ sm: s.code, d: lastBy[s.code] || '', days: lastBy[s.code] ? bizDaysBetween(lastBy[s.code], t) : 99 })).filter(x => x.days >= 3).sort((a, b) => b.days - a.days);
   const sig = (n, label, bad) => '<div' + (bad && n ? ' style="background:#fee2e2"' : '') + '><b>' + n + '</b><span>' + label + '</span></div>';
   const opsBody = '<div class="kpi" style="grid-template-columns:repeat(4,1fr)">' + sig(lateN, '⏱ ' + bt('하루 넘은 주문', 'Orders > 1 day'), true) + sig(cfN, '❓ ' + bt('확인 대기', 'Awaiting confirm'), true) + sig(newAcc + (pendAcc ? '<small>+' + pendAcc + '</small>' : ''), '🆕 ' + bt('신규 거래처', 'New accounts')) + sig(quiet.length, '📵 ' + bt('3일+ 입력 없음', 'Quiet 3d+'), true) + '</div>' + (quiet.length ? '<div class="muted" style="font-size:12px;margin-top:6px">' + quiet.slice(0, 6).map(x => esc(x.sm) + ' ' + (x.d ? x.days + bt('일', 'd') : bt('기록 없음', 'none'))).join(' · ') + '</div>' : '');
   /* 그리기 */

@@ -8,6 +8,7 @@
 import { $, esc, money, toast, Router, debounce, bi, bt, localDay, today, addDays, sortBy } from './ui.js';
 import { can, jobOf } from './main.js';
 import { goOrder } from './orders.js';
+import { bizMs } from './bizday.js';
 import * as Fulfill from './fulfill.js';
 
 let S = null, TIMER = 0;
@@ -27,11 +28,11 @@ export const STAGES = [
 ];
 const stageOf = o => STAGES.find(s => s[4](o));
 /** 이 주문이 지금 단계에 얼마나 머물렀나 — 주문 목록 줄의 ⏱ 표시 · 밀린 주문 (orders.js)
- *  { key, since, ms, t: '5시간' · '2일째', late: 단계 기준 넘음, day: 하루(24시간) 넘음 } */
+ *  { key, since, ms, t: '5시간' · '2일째', late: 단계 기준 넘음, day: 하루(24시간) 넘음 } — 모두 영업일 시간 (주말 · 휴일은 세지 않음, v0.8.180) */
 export function stageAge(o) {
   const st = stageOf(o); if (!st || st[0] === 'shipped') return null;
   const since = st[5](o) || o.updatedAt || o.createdAt; if (!since) return null;
-  const ms = Math.max(0, Date.now() - new Date(since).getTime()), m = Math.round(ms / 60000);
+  const ms = bizMs(since), m = Math.round(ms / 60000);   /* 📅 영업일 시간만 (주말 · 휴일 빼고, v0.8.180) */
   return { key: st[0], since, ms, t: m < 60 ? m + bt('분', 'm') : m < 1440 ? Math.floor(m / 60) + bt('시간', 'h') : Math.floor(m / 1440) + bt('일째', 'd'), late: !!(st[6] && ms > st[6] * 3600000), day: ms > 86400000 };
 }
 const LIVE = ['sent', 'pick', 'ok', 'picked', 'done', 'packed', 'dlv'];
@@ -51,7 +52,7 @@ const nameOf = e => e ? (NAMES[e] || String(e).split('@')[0]) : '';
 const ownerName = (o, k) => k === 'pick' ? (o.pickerName || nameOf(o.picker)) : k === 'cfw' ? '🧑‍💼 ' + (o.sm || '') : '';
 function age(iso) {
   if (!iso) return { ms: 0, t: '' };
-  const ms = Date.now() - new Date(iso).getTime(), m = Math.max(0, Math.round(ms / 60000));
+  const ms = bizMs(iso), m = Math.max(0, Math.round(ms / 60000));   /* 📅 영업일 시간만 */
   return { ms, t: m < 60 ? m + '분' : m < 48 * 60 ? Math.floor(m / 60) + '시간 ' + (m % 60) + '분' : Math.floor(m / 1440) + '일' };
 }
 const hm = iso => { if (!iso) return ''; const d = new Date(iso); return (localDay(iso) === today() ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };

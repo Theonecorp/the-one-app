@@ -60,15 +60,17 @@ const path = require('path'), fs = require('fs'), vm = require('vm');
   const data = { users: [{ sm: 'BRANDON', email: 'brandon@x.com' }, { sm: 'SOO', email: 'soo@x.com' }],
     orders: [{ st: 'draft', sm: 'BRANDON', store: 'ALI B/S # 1', amt: 120, updatedAt: old }, { st: 'draft', sm: 'SOO', store: 'NEW', amt: 50, updatedAt: fresh }, { st: 'sent', sm: 'SOO', store: 'X', amt: 9, updatedAt: old }],
     entries: [{ rep: false, sm: 'BRANDON', store: 'BEAUTY 4U', total: 300, createdAt: old }, { rep: false, sm: 'SOO', store: 'Y', total: 70, createdAt: old, sb: true }, { rep: false, sm: 'SOO', store: 'Z', total: 80, createdAt: old }] };
-  let r = runAt({ H: 15, u: 3, day: '2026-11-11' }, data);
-  log('④ 15:00 Wed:', JSON.stringify(r.sent.map(x => x.to + ' | ' + x.title + ' | ' + x.body.replace(/\n/g, ' / ') + ' | ' + x.url)));
+  let r = runAt({ H: 15, u: 4, day: '2026-11-12' }, data);
+  log('④ 15:00 Thu:', JSON.stringify(r.sent.map(x => x.to + ' | ' + x.title + ' | ' + x.body.replace(/\n/g, ' / ') + ' | ' + x.url)));
   const b = r.sent.find(x => x.to === 'brandon@x.com'), s = r.sent.find(x => x.to === 'soo@x.com');
   if (r.sent.length !== 2 || !b || !/주문 1건 \$120\.00/.test(b.body) || !/수금 1건 \$300\.00/.test(b.body) || b.url !== './#/order') errs.push('④ BRANDON gets one pop-up with 1 unsent order and 1 unsent collection');
   if (!s || /주문/.test(s.body) || !/수금 1건 \$80\.00/.test(s.body) || s.url !== './#/mine') errs.push('④ SOO: fresh draft (<1h) and office-checked entry are skipped → only collection $80');
-  const again = runAt({ H: 15, u: 3, day: '2026-11-11', m: 7 }, data, r.P); if (again.sent.length) errs.push('④ not twice in the same hour');
+  const again = runAt({ H: 15, u: 4, day: '2026-11-12', m: 7 }, data, r.P); if (again.sent.length) errs.push('④ not twice in the same hour');
   if (runAt({ H: 15, u: 7, day: '2026-11-15' }, data).sent.length) errs.push('④ not on Sunday');
-  if (runAt({ H: 14, u: 3, day: '2026-11-11' }, data).sent.length) errs.push('④ not at other hours');
-  if (runAt({ H: 9, u: 3, day: '2026-11-11' }, Object.assign({}, data, { settings: { remindHours: [9] } })).sent.length !== 2) errs.push('④ settings.remindHours changes the hours');
-  if (runAt({ H: 15, u: 3, day: '2026-11-11' }, Object.assign({}, data, { settings: { remindHours: [] } })).sent.length) errs.push('④ empty remindHours = off');
+  if (runAt({ H: 15, u: 3, day: '2026-11-11' }, data).sent.length) errs.push('④ not on a holiday (Veterans Day · v0.8.180 영업일)');
+  if (runAt({ H: 15, u: 6, day: '2026-11-14' }, data).sent.length) errs.push('④ not on Saturday (v0.8.180 영업일)');
+  if (runAt({ H: 14, u: 4, day: '2026-11-12' }, data).sent.length) errs.push('④ not at other hours');
+  if (runAt({ H: 9, u: 4, day: '2026-11-12' }, Object.assign({}, data, { settings: { remindHours: [9] } })).sent.length !== 2) errs.push('④ settings.remindHours changes the hours');
+  if (runAt({ H: 15, u: 4, day: '2026-11-12' }, Object.assign({}, data, { settings: { remindHours: [] } })).sent.length) errs.push('④ empty remindHours = off');
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();
