@@ -8,7 +8,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 900 } });
-  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8800/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300); return pg; };
+  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8800/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300); return pg; };
   const pg = await mk('joao@x.com', "s.users.push({ id: 'joao@x.com', email: 'joao@x.com', name: 'J', role: 'manager', job: 'whmgr', active: true });");
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('① nav:', nav.join(' ')); if (!nav.includes('hub/wh')) errs.push('① warehouse manager has the 📦 재고 묶음');
   await pg.evaluate(() => { location.hash = '#/hub/wh'; }); await pg.waitForSelector('[data-hub]', { timeout: 8000 });

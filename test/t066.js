@@ -13,7 +13,7 @@ const path = require('path');
       s.cod = [{ id: 'C1', d: '2026-10-24', sm: 'BRANDON', acct: '1111', method: 'ACH', amt: 10, invs: [{ no: 'A43350', amt: 10 }] }];
       s.orders = [{ id: 'O261020-AAAA', no: 'O261020-AAAA', st: 'done', sm: 'BRANDON', acct: '1111', store: 'X', d: '2026-10-20', invs: ['A43301'] }];
     }; });
-  await pg.goto('http://127.0.0.1:8796/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8796/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   /* 1. 번호 만들기 · 맞추기 */
   const r = await pg.evaluate(async () => { const I = await import('/src/invoicing.js'), U = await import('/src/ui.js');
     return { fmt: [1, 43107, 999999, 1000000, 1999998, 1999999].map(n => I.fmtNo({ c: 'A' }, n)), norm: ['A43350', 'a 43350', 'P007803', 'P-008834', 'CM161', 'W612', 'A-043350', 'O261020-AAAA', 'AA12'].map(U.invNo),

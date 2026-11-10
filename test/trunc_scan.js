@@ -25,7 +25,7 @@ const scan = () => {
     const pg = await br.newPage({ viewport: { width: W, height: 900 } });
     await pg.addInitScript(([e, L]) => { window.__MOCK_USER__ = { email: e, name: 'X' };
       window.__AFTER_SEED__ = s => { const walk = o => { if (Array.isArray(o)) return o.map(walk); if (o && typeof o === 'object') { for (const k in o) o[k] = walk(o[k]); return o; } return o === 'ALI B/S # 1' ? L : o; }; for (const k in s) s[k] = walk(s[k]); s.settings[0].ordersOn = true; }; }, [em, LONG]);
-    await pg.goto('http://127.0.0.1:8789/test/demo.html'); await pg.waitForSelector('#nav button');
+    await pg.goto('http://127.0.0.1:8789/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
     await pg.evaluate(r => { location.hash = '#/' + r; }, r); await pg.waitForTimeout(1500);
     /* 가게 고르기 화면이면 검색해서 고름 */
     for (const q of ['#fStore', '#storeQ', '#eStoreQ', '#stQ', '#ivQ', '#oq']) { if (await pg.$(q)) { await pg.fill(q, 'super beauty'); await pg.waitForTimeout(600); const res1 = await pg.evaluate(scan); if (res1.length) console.log(em.split('@')[0], r, 'search', q, '\n   ' + res1.join('\n   ')); const hit = await pg.$('#sList div, #storeHits div, #eStoreHits [data-ac]'); if (hit) { await hit.click(); await pg.waitForTimeout(1200); } break; } }

@@ -7,7 +7,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 900 } });
   const seed = "s.orders.forEach(o => { o.sm = 'BRANDON'; }); s.orderLines.forEach(l => { l.sm = 'BRANDON'; }); const o = s.orders[0]; s.orders.push(Object.assign({}, o, { id: 'O261020-PICK', no: 'O261020-PICK', st: 'pick', store: 'PICKING STORE', picker: 'pick1@x.com' })); s.orderLines.push(Object.assign({}, s.orderLines[0], { id: 'O261020-PICK' }));";
-  const mk = async (email) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8843/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8843/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   let pg = await mk('brandon@x.com');
   /* 접수 주문 취소 */
   await pg.evaluate(() => { location.hash = '#/order/O261014-AAAA'; }); await pg.waitForSelector('#oCx', { timeout: 8000 }).catch(() => errs.push('cancel button on sent order missing'));

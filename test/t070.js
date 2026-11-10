@@ -9,7 +9,7 @@ const path = require('path');
   const mk = async (email) => { const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message));
     await pg.addInitScript(e => { window.__MOCK_USER__ = { email: e, name: 'X' }; try { localStorage.setItem('theone.vm', 'grid'); localStorage.removeItem('theone.order.pre'); } catch (x) {}
       window.__AFTER_SEED__ = s => { s.settings[0].ordersOn = true; s.users.push({ id: 'wh@x.com', email: 'wh@x.com', name: 'WH', role: 'manager', job: 'whmgr', active: true }); }; }, email);
-    await pg.goto('http://127.0.0.1:8803/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+    await pg.goto('http://127.0.0.1:8803/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   /* ① 세일즈맨 */
   let pg = await mk('brandon@x.com');
   await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ');

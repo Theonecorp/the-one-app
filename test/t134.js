@@ -14,7 +14,7 @@ const path = require('path');
     for (let i = 0; i < 12; i++) { const e = JSON.parse(JSON.stringify(base)); e.id = 'OL' + i; e.d = day([7, 0, 3, 7, 1, 0, 5, 3, 2, 9, 0, 4][i]); e.ym = e.d.slice(0, 7); e.createdAt = e.d + 'T10:' + String(10 + i).padStart(2, '0') + ':00Z'; e.v = false; e.settled = i >= 10 ? 'SET1' : ''; e.sb = i >= 10 || !(i === 1 || i === 4); e.rc = e.sb;   /* 1 · 4 는 접수 확인 대기, 나머지는 수령 완료(정산 화면에 보임) */ e.env = ''; e.mismatch = ''; e.store = 'OSTORE ' + i; e.pays = [{ m: 'CHECK', ref: String(8100 + i), amt: 50 + i }]; e.refs = [String(8100 + i)]; e.invs = []; e.total = 50 + i; s.entries.push(e); }`;
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { seed });
-  await pg.goto('http://127.0.0.1:8886/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8886/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const asc = a => a.every((x, i) => !i || a[i - 1] <= x);
   const keys = () => pg.evaluate(() => Array.from(document.querySelectorAll('#page .pr[data-vid]')).map(el => el.dataset.vid).filter(id => /^OL/.test(id)).map(id => { const e = window.__MOCK_STORE__.entries[id]; return e.d + ' ' + (e.createdAt || ''); }));
   /* ① 세일즈맨별 (기본) — 전체 보기(접수 확인 대기 + 수령 대기 전부) */

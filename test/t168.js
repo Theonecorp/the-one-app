@@ -12,7 +12,7 @@ const path = require('path');
   const seed = `s.accounts.forEach(a => { if (a.acct === '1111') delete a.disc; });
     s.invoices = (s.invoices || []).concat([{ id: 'A-000501', no: 'A-000501', t: 'A', d: '2026-10-20', ym: '2026-10', acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', lines: [{ c: 'AHG100', d: 'AL GOLD 0', q: 6, p: 2.5, lp: 2.5 }, { c: 'AHG105', d: 'AL GOLD 5', q: 4, p: 3.75, lp: 3.75 }], qty: 10, sub: 30, list: 30, disc: 20, total: 24, bal: 24, st: 'open' }]);`;
   const mk = async (email, w, extra) => { const pg = await (await br.newContext({ viewport: { width: w || 430, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push(email + ': ' + e.message)); pg.on('dialog', d => d.accept());
-    await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed: seed + (extra || '') }); await pg.goto('http://127.0.0.1:8833/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300); return pg; };
+    await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed: seed + (extra || '') }); await pg.goto('http://127.0.0.1:8833/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300); return pg; };
   const lines = pg => pg.evaluate(() => [...document.querySelectorAll('[data-crl]')].map(el => ({ c: el.dataset.crl, q: Number(el.querySelector('[data-crq]').value), p: Number(el.querySelector('[data-crp]').value) })));
   /* ① 세일즈맨 */
   let pg = await mk('brandon@x.com');

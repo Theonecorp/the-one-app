@@ -8,7 +8,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 800 } });
-  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8887/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8887/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const below = (pg, a, b) => pg.evaluate(([a, b]) => { const x = document.querySelector(a), y = document.querySelector(b); return x && y ? x.getBoundingClientRect().top > y.getBoundingClientRect().bottom - 1 : null; }, [a, b]);
   /* ---------- ① 사무실: 주문 시트 → 작업 시작 ---------- */
   let pg = await mk('luke@theonefl.com', '');

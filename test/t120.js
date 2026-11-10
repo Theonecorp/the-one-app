@@ -12,7 +12,7 @@ const path = require('path');
   /* 바코드 스크립트는 영영 안 옴 (느린 LTE 흉내) */
   await pg.route('**/jsbarcode/**', () => new Promise(() => {}));
   await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); }, '(' + seed.toString() + ')(s)');
-  await pg.goto('http://127.0.0.1:8875/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(500);
+  await pg.goto('http://127.0.0.1:8875/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(500);
   /* ---------- 아이템 창 ---------- */
   await pg.evaluate(() => { location.hash = '#/items'; }); await pg.waitForSelector('#itList [data-it]', { timeout: 8000 }); await pg.waitForTimeout(400);
   const t0 = Date.now(); await pg.click('#itList [data-it="AHG100"] .ct'); await pg.waitForSelector('#modal.on #isBar', { timeout: 2500 }).catch(() => errs.push('item sheet should open even when the barcode script never arrives'));

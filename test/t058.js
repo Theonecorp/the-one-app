@@ -8,7 +8,7 @@ const [MAIN, SALES, COMM] = process.argv.slice(2); if (!MAIN || !fs.existsSync(M
   const pg = await br.newPage({ viewport: { width: 900, height: 1000 } }); const errs = [], log = (...a) => console.log(...a);
   pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; window.__AFTER_SEED__ = s => { s.entries = []; s.cod = []; s.accounts = []; s.ar = []; }; });
-  await pg.goto('http://127.0.0.1:8788/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8788/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#f1');
   const msgs = () => pg.$$eval('#impOut .alert', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 260)));
   const cnt = () => pg.evaluate(() => { const S = window.__MOCK_STORE__; const n = k => Object.keys(S[k] || {}).length; return { entries: n('entries'), accounts: n('accounts'), salesmen: n('salesmen'), users: n('users'), ar: n('ar'), cod: n('cod'), settlements: n('settlements') }; });

@@ -9,7 +9,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const open = async (email, job) => { const pg = await (await br.newContext({ viewport: { width: 1200, height: 900 } })).newPage(); pg.on('pageerror', e => errs.push(email + ': ' + e.message));
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.job) window.__AFTER_SEED__ = s => { let u = s.users.find(x => x.id === o.email); if (!u) { u = { id: o.email, email: o.email, name: 'X', active: true }; s.users.push(u); } u.role = 'manager'; u.job = o.job; }; }, { email, job });
-    await pg.goto('http://127.0.0.1:8831/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
+    await pg.goto('http://127.0.0.1:8831/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
     await pg.evaluate(() => { location.hash = '#/catmg/cat'; }); await pg.waitForSelector('#sbFile, #catFile, .none', { timeout: 8000 }).catch(() => {}); await pg.waitForTimeout(500); return pg; };
   const jn = await open('jenny@theonefl.com', 'catalog');
   const a = await jn.evaluate(() => ({ sb: !!document.getElementById('sbFile'), cat: !!document.getElementById('catFile'), lock: /관리자만 올릴 수 있습니다/.test(document.body.textContent) })); log('① catalog job:', JSON.stringify(a));

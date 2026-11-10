@@ -20,7 +20,7 @@ const path = require('path'), fs = require('fs');
       s.accounts.find(a => a.acct === '1111').disc = { A: 20 };
     };
   });
-  await pg.goto('http://127.0.0.1:8768/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8768/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('#oNew'); await pg.click('#oNew'); await pg.waitForSelector('#eStoreQ');
   await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(150); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(200); await pg.waitForTimeout(700); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(150); }
   for (const c of ['AHG100', 'AHG101', 'GM104', 'EB103']) { await pg.fill('#eQ1', c); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(60); }
@@ -46,7 +46,7 @@ const path = require('path'), fs = require('fs');
   await pg.click('#oSendAll'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(800); log('sent via send-all:', await pg.textContent('#toast'));
   /* 매니저로 바꿔서 (같은 메모리 DB) */
   await pg.evaluate(async () => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; });
-  await pg.click('#hMenu'); await pg.waitForSelector('#mOut'); await pg.click('#mOut'); await pg.waitForSelector('#btnLogin'); await pg.click('#btnLogin'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
+  await pg.click('#hMenu'); await pg.waitForSelector('#mOut'); await pg.click('#mOut'); await pg.waitForSelector('#btnLogin'); await pg.click('#btnLogin'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
   await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-hg="sent"]'); await shot(pg, 'p3_staffhome'); await pg.click('[data-hg="sent"]'); await pg.waitForTimeout(600);
   log('mgr list:', (await pg.textContent('#page .card h2')).trim());
   const oid = await pg.$eval('[data-oid]:not([data-oid="O261014-AAAA"])', e => e.dataset.oid).catch(() => '');

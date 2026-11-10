@@ -8,7 +8,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8877/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(400);
+  await pg.goto('http://127.0.0.1:8877/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(400);
   /* 홈 묶음 타일로 목록 열기 (접힌 묶음은 펴서) */
   const goList = async k => {
     await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="home"], [data-hg="sent"]'); await pg.waitForTimeout(300);

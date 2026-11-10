@@ -13,7 +13,7 @@ import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, c
 import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel, reqNoteClean, reqNeedsNote } from './reqs.js';
 import { searchAccounts, accountLabel } from './accounts.js';
 import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName, prefixRank } from './catalog.js';
-import { jobOf, can } from './main.js';
+import { jobOf, can, dockMark } from './main.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
@@ -177,6 +177,7 @@ async function pageOrder(arg) {
   if (isStaff() && !LF.init) { LF.init = true; const j = jobOf(), first = { invoice: 'picked', acct: 'inv', pick: 'mine', whmgr: 'ups', pickinv: 'cfok' }[j]; if (first) LF.st = first; }
   if (isStaff() && !LF.list) return staffHome();
   if (isStaff() && !chipsFor().some(c => c[0] === LF.st)) LF.st = chipsFor()[0][0];
+  if (isStaff()) setTimeout(() => { try { dockMark(); } catch (e) {} }, 0);   /* 🧭 고정 서랍의 주문 칸 표시 */
   if (isStaff() && (LF.st === 'bo' || LF.st === 'inv' || LF.st === 'ups' || LF.st === 'packed')) return Fulfill.pageLists(LF, listHead());
   $('page').innerHTML = listHead() + '<div class="load">주문 읽는 중…</div>';
   bindHead();
@@ -428,6 +429,19 @@ async function staffHome() {
 /* 📌 담당자 메뉴 — 접수 · 출고 · 완료 · 기타 묶음의 모든 칸이 항상 보임 (단계를 누를 때마다 생겼다 없어지지 않게 · v0.8.174).
  *   폰: 목록 위 고정 머리 · 컴퓨터(≥900px): 왼쪽 메뉴 아래에 세로로 고정 (style.js .omenu). 홈 화면(staffHome)에도 같은 메뉴 — 홈 칸이 켜짐.
  *   🔄 새로 고침 = 지금 칸을 다시 읽음 (연결이 느려 폰에 저장된 옛 목록이 먼저 보였을 때) */
+/** 🧭 고정 서랍(데스크탑 왼쪽 메뉴)에 넣을 주문 메뉴 — 같은 칸(접수 · 출고 · 완료 · 기타). [[묶음, [[key, 아이콘, 한글, 영어]]]] (v0.8.181) */
+export function stageMenu() {
+  if (!isStaff()) return [];
+  const av = chipsFor(); return STG.map(g => [g, av.filter(c => g[4].includes(c[0])).map(c => { const i = c[1].indexOf(' '); return [c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2]]; })]).filter(x => x[1].length);
+}
+/** 지금 켜진 주문 칸 — 서랍 표시용 ('' = 주문 화면이 아님) */
+export function stageNow() { const h = location.hash; if (h === '#/shome' || ((h === '#/order' || h === '#/order/') && isStaff() && !LF.list)) return 'home'; return (h === '#/order' || h === '#/order/') && isStaff() ? LF.st : ''; }
+/** 서랍에서 주문 칸 누르기 */
+export function openStage(k) {
+  LF.init = true;
+  if (k === 'home') { LF.list = false; if (location.hash === '#/shome') staffHome(); else Router.go('shome'); return; }
+  LF.st = k; LF.list = true; if (location.hash === '#/order') pageOrder(''); else Router.go('order');
+}
 export function menuHtml(cmp, home) {
   const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '" title="' + esc(ko + ' · ' + en) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + ' <span class="en">' + en + '</span></span></button>';
   const chipOf = c => { const i = c[1].indexOf(' '); return chip(c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2], !home && LF.st === c[0]); };

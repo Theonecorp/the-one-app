@@ -9,7 +9,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 900, height: 1000 } });
-  const mk = async email => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; }, { email }); await pg.goto('http://127.0.0.1:8893/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async email => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; }, { email }); await pg.goto('http://127.0.0.1:8893/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   /* ① 세일즈맨에겐 없음 · 관리자에겐 있음 */
   let pg = await mk('brandon@x.com'); await pg.evaluate(() => { location.hash = '#/track'; }); await pg.waitForSelector('#tkQ', { timeout: 8000 });
   if (await pg.$('#tkAdhoc')) errs.push('① salesmen must not see the ad-hoc label button'); await pg.close();

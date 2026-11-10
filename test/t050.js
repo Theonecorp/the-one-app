@@ -9,7 +9,7 @@ const path = require('path'), fs = require('fs');
   pg.on('pageerror', e => errs.push(e.message + ' @ ' + String(e.stack).split('\n')[1])); pg.on('dialog', d => d.accept());
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'Brandon' }; window.open = () => null; });
-  await pg.goto('http://127.0.0.1:8771/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8771/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   /* 1. 수금 입력 — 계정코드 4자리 */
   await pg.evaluate(() => { location.hash = '#/entry/new'; }); await pg.waitForSelector('#fAcct');
   await shot('c0_entry');

@@ -9,7 +9,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 393, height: 860 } });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'office@x.com', name: 'X' }; window.__AFTER_SEED__ = s => { s.users.push({ id: 'office@x.com', email: 'office@x.com', name: 'Office', role: 'manager', job: 'office', active: true }); }; });
-  await pg.goto('http://127.0.0.1:8851/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8851/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('nav:', nav.join(' '));
   if (nav.join() !== 'shome,order,hub/money,hub/look,hub/wh') errs.push('office nav should be 5 big groups, got ' + nav.join());
   /* 홈 묶음 */

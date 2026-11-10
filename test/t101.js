@@ -9,7 +9,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 393, height: 640 }, hasTouch: true, isMobile: true });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; window.__AFTER_SEED__ = s => { s.orders.forEach(o => { o.sm = 'BRANDON'; o.ym = new Date().toISOString().slice(0, 7); }); s.orderLines.forEach(l => { l.sm = 'BRANDON'; }); }; });
-  await pg.goto('http://127.0.0.1:8846/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(600);
+  await pg.goto('http://127.0.0.1:8846/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(600);
   const H = () => pg.evaluate(() => ({ hash: location.hash, len: history.length }));
   const h0 = await H(); log('start:', JSON.stringify(h0));
   /* 홈 → 🛒 세일(목록) → 주문 상세 — 앱 안 이동 */

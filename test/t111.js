@@ -6,7 +6,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 420, height: 860 } });
-  const mk = async email => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'Luke Hur' }; }, { email }); await pg.goto('http://127.0.0.1:8863/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(600); return pg; };
+  const mk = async email => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'Luke Hur' }; }, { email }); await pg.goto('http://127.0.0.1:8863/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(600); return pg; };
 
   /* ---------- 관리자: 서랍 ---------- */
   let pg = await mk('luke@theonefl.com');

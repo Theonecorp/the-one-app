@@ -11,7 +11,7 @@ const path = require('path');
     s.cod = (s.cod || []).concat([{ id: 'CC1', d: day(3), ym: day(3).slice(0, 7), sm: 'BRANDON', acct: '1111', store: 'ALI B/S # 1', method: 'CREDIT CARD', ref: '778899', amt: 75, invs: [], v: false, settled: '', void: false }]);
     s.invoices = (s.invoices || []).concat([{ id: 'A10021', no: 'A10021', t: 'A', d: day(50), ym: day(50).slice(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 1500, bal: 1500, st: 'open', src: 'legacy', lines: [] }, { id: 'A10055', no: 'A10055', t: 'A', d: day(10), ym: day(10).slice(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 800, bal: 800, st: 'open', src: 'legacy', lines: [] }, { id: 'A09000', no: 'A09000', t: 'A', d: day(30), ym: day(30).slice(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 420, bal: 0, st: 'paid', src: 'legacy', lines: [] }]);`;
   await pg.addInitScript(sd => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', sd); }, seed);
-  await pg.goto('http://127.0.0.1:8844/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8844/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/invs'; }); await pg.waitForSelector('[data-ivm="store"]', { timeout: 8000 }); await pg.click('[data-ivm="store"]'); await pg.waitForSelector('[data-ia="1111"]', { timeout: 8000 }); await pg.click('[data-ia="1111"]');
   await pg.waitForSelector('#ssStmt', { timeout: 8000 }).catch(() => errs.push('store window missing'));
   const prt = async (mode, period, pays) => {

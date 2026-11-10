@@ -9,7 +9,7 @@ const path = require('path');
     const pg = await br.newPage({ viewport: { width: W, height: 800 } }); pg.on('pageerror', e => errs.push(e.message));
     await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' };
       window.__AFTER_SEED__ = s => { const now = Date.now(); for (let i = 0; i < 40; i++) { const t = new Date(now - i * 3600000).toISOString(); s.orders.push({ id: 'OX' + i, no: 'OX' + i, d: t.substring(0, 10), ym: t.substring(0, 7), sm: 'BRANDON', acct: '1111', store: 'SHOP ' + i, st: 'sent', n: 1, qty: 1, amt: 10, createdAt: t, updatedAt: t, sentAt: t }); } }; });
-    await pg.goto('http://127.0.0.1:8802/test/demo.html'); await pg.waitForSelector('#nav button');
+    await pg.goto('http://127.0.0.1:8802/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
     await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(800);
     await pg.click('[data-hg="sent"]').catch(() => {}); await pg.waitForTimeout(1200);
     await pg.evaluate(() => window.scrollTo(0, 900)); await pg.waitForTimeout(400);

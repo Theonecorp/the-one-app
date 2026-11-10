@@ -6,7 +6,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
-  const mk = async (email) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(e => { window.__MOCK_USER__ = { email: e, name: 'X' }; }, email); await pg.goto('http://127.0.0.1:8807/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(e => { window.__MOCK_USER__ = { email: e, name: 'X' }; }, email); await pg.goto('http://127.0.0.1:8807/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   /* 세일즈맨: 📦 체크 보내기 */
   let pg = await mk('brandon@x.com');
   await pg.evaluate(() => { location.hash = '#/send'; }); await pg.waitForSelector('.evck', { timeout: 8000 }).catch(() => errs.push('send tab missing'));
@@ -25,7 +25,7 @@ const path = require('path');
   pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { const E1 = s.entries.find(e => e.id === 'E1'), E3 = s.entries.find(e => e.id === 'E3'); E1.env = 'VTEST'; E3.env = 'VTEST'; E1.rc = false; E3.rc = false;
     s.envelopes = [{ id: 'VTEST', sm: 'BRANDON', n: 3, total: 2480, st: 'sent', sentAt: new Date(Date.now() - 20 * 86400000).toISOString(), by: 'brandon@x.com', entries: ['E1', 'E3'], got: {}, miss: {}, checks: [{ eid: 'E1', ref: '1042', amt: 1200, store: E1.store, acct: E1.acct, d: E1.d }, { eid: 'E1', ref: '1043', amt: 300, store: E1.store, acct: E1.acct, d: E1.d }, { eid: 'E3', ref: '555', amt: 980, store: E3.store, acct: E3.acct, d: E3.d }] }]; }; });
-  await pg.goto('http://127.0.0.1:8807/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8807/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const env2 = { id: 'VTEST', checks: [{ ref: '1042' }, { ref: '1043' }, { ref: '555' }] };
   await pg.evaluate(() => { location.hash = '#/verify'; }); await pg.waitForSelector('[data-ev]', { timeout: 8000 }).catch(() => errs.push('envelope card missing'));
   log('env card:', (await pg.textContent('#envBox')).replace(/\s+/g, ' ').slice(0, 120));

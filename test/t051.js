@@ -10,7 +10,7 @@ const path = require('path'), fs = require('fs');
   const txt = async sel => ((await pg.textContent(sel)) || '').replace(/\s+/g, ' ').trim();
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: '회계' }; window.open = () => null; });
-  await pg.goto('http://127.0.0.1:8774/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8774/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   /* 1. 거래처 ACH 등록 (라우팅 검사) */
   await pg.evaluate(() => { location.hash = '#/ach/acct'; }); await pg.waitForSelector('#nRt');
   await pg.fill('#nAcct', '1111'); await pg.fill('#nStore', 'ALI B/S # 1'); await pg.fill('#nBank', 'BANK OF AMERICA');

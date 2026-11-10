@@ -7,7 +7,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'own@x.com', name: 'Owner' }; try { localStorage.removeItem('theone.view.own@x.com'); } catch (e) {} window.__AFTER_SEED__ = s => { s.users.push({ id: 'own@x.com', email: 'own@x.com', name: 'Owner', role: 'owner', sm: 'SOO', active: true }); }; });
-  await pg.goto('http://127.0.0.1:8821/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8821/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('owner nav:', nav);
   if (nav[0] !== 'own' || !nav.includes('hub/look') || !nav.includes('hub/biz') || nav.includes('order') || nav.includes('mg/sales') || !nav.includes('view/salesman')) errs.push('v0.8.135: owner nav should be 홈 · 조회 · 경영 · 세일즈 모드');   // v0.8.112: 📄 인보이스 · 🏬 거래처 추가
   await pg.waitForSelector('[data-og="mg/sales"]', { timeout: 10000 }).catch(() => errs.push('dashboard did not render')); const cards = await pg.$$eval('#page .card h2', h => h.map(x => x.textContent.trim().slice(0, 14))); log('home cards:', cards);
@@ -25,11 +25,11 @@ const path = require('path');
   /* 세일즈맨 코드 없는 오너 → 모드 탭 없음 */
   const pg2 = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg2.on('pageerror', e => errs.push(e.message));
   await pg2.addInitScript(() => { window.__MOCK_USER__ = { email: 'own2@x.com', name: 'O2' }; window.__AFTER_SEED__ = s => { s.users.push({ id: 'own2@x.com', email: 'own2@x.com', name: 'O2', role: 'owner', active: true }); }; });
-  await pg2.goto('http://127.0.0.1:8821/test/demo.html'); await pg2.waitForSelector('#nav button'); const nav4 = await pg2.$$eval('#nav button', b => b.map(x => x.dataset.go)); if (nav4.includes('view/salesman')) errs.push('owner without SM code should not get the sales-mode tab');
+  await pg2.goto('http://127.0.0.1:8821/test/demo.html'); await pg2.waitForSelector('#nav button', { state: 'attached' }); const nav4 = await pg2.$$eval('#nav button', b => b.map(x => x.dataset.go)); if (nav4.includes('view/salesman')) errs.push('owner without SM code should not get the sales-mode tab');
   /* 관리자: 오너와 같은 홈 · 매출 · 경영 · 정산 · 관리 · 🔁 모드(창) */
   const pg3 = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg3.on('pageerror', e => errs.push(e.message));
   await pg3.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; try { localStorage.removeItem('theone.view.luke@theonefl.com'); } catch (e) {} });
-  await pg3.goto('http://127.0.0.1:8821/test/demo.html'); await pg3.waitForSelector('#nav button'); const nav5 = await pg3.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('admin nav:', nav5);
+  await pg3.goto('http://127.0.0.1:8821/test/demo.html'); await pg3.waitForSelector('#nav button', { state: 'attached' }); const nav5 = await pg3.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('admin nav:', nav5);
   if (nav5.join() !== 'own,hub/look,hub/biz,hub/wh,admin,view/menu') errs.push('v0.8.135: admin nav should be 홈 · 조회 · 경영 · 재고 · 관리 · 모드' + nav5.join());   // v0.8.112 · v0.8.114
   await pg3.waitForSelector('[data-og="mg/sales"]', { timeout: 10000 }).catch(() => errs.push('admin dashboard did not render'));
   await pg3.click('#nav button[data-go="view/menu"]'); await pg3.waitForSelector('#mbox [data-r]', { timeout: 4000 }).catch(() => errs.push('mode tab should open the view chooser'));

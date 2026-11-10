@@ -11,7 +11,7 @@ const path = require('path');
     s.stock = [['AHG100', 10], ['AHG101', 0], ['AHG102', 5]].map(x => ({ id: x[0], code: x[0], qty: x[1], at: '2026-10-30T00:00:00Z' })); };
   const mk = async () => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); window.__LIST_LOG__ = []; }, '(' + seed.toString() + ')(s)');
-    await pg.goto('http://127.0.0.1:8872/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(400);
+    await pg.goto('http://127.0.0.1:8872/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(400);
     /* 재고 읽기 호출을 기록 */
     await pg.evaluate(() => { const S = window.__S__ || null; });
     return pg; };

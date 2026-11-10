@@ -7,7 +7,7 @@ const path = require('path'), fs = require('fs'), os = require('os');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 420, height: 820 } });
-  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8856/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8856/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   /* ---------- 관리자: CSV 올리기 (직원 프로그램 모양 그대로) ---------- */
   const csv = path.join(os.tmpdir(), 'THE_ONE_inventory_test.csv');
   fs.writeFileSync(csv, 'no,sku,product_code,description,category,aisle,in_stock\n1,AHG100,AHG100,"Aluminum Gold ITEM 0",EARRING,6B,37\n2,AHG101,AHG101,"Aluminum Silver ITEM 1",EARRING,00,0\n3,AHG9001,AHG9001,"HIDDEN",EARRING,16A,5\n4,ZZZ-NOPE,ZZZ-NOPE,"not ours",X,2A,9\n');

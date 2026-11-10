@@ -10,7 +10,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 420, height: 860 }, hasTouch: true, isMobile: true });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8873/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(500);
+  await pg.goto('http://127.0.0.1:8873/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(500);
   await pg.evaluate(() => { location.hash = '#/items'; }); await pg.waitForSelector('#itList [data-it]', { timeout: 8000 }); await pg.waitForTimeout(600);
   /* 줄 누르기 → 보기 창 */
   await pg.tap('#itList [data-it="AHG100"] .ct'); await pg.waitForSelector('#modal.on', { timeout: 5000 }); await pg.waitForTimeout(500);

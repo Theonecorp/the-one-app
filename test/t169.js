@@ -17,7 +17,7 @@ const path = require('path');
     s.cod.push({ id: 'C9', d: day(30), ym: ymOf(day(30)), sm: 'BRANDON', acct: '1111', store: 'ALI B/S # 1', method: 'ACH', ref: 'ACH-77', amt: 1000, invs: [{ no: 'A9900', amt: 695.7 }], void: false });`;
   const open = async (w, h) => { const pg = await (await br.newContext({ viewport: { width: w, height: h } })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { seed });
-    await pg.goto('http://127.0.0.1:8834/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
+    await pg.goto('http://127.0.0.1:8834/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
     /* ① 새 주문에서 가게 고르기 → 잔액이 있으니 가게 창이 뜸 */
     await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pg.fill('#eStoreQ', 'ali'); await pg.waitForTimeout(250); await pg.click('#eStoreHits [data-ac="1111"]');
     await pg.waitForSelector('[data-ipi]', { timeout: 8000 }).catch(() => errs.push('① picking a store with a balance opens the store window on 📒 인보이스 · 수금 (' + w + 'px)')); return pg; };

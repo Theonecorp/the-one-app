@@ -78,7 +78,7 @@ const fmtTz = (d, tz, f) => { const p = Object.fromEntries(new Intl.DateTimeForm
   const pg = await (await br.newContext({ viewport: { width: 1200, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push(e.message));
   await pg.clock.setFixedTime(new Date('2026-11-02T15:00:00Z'));
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; });
-  await pg.goto('http://127.0.0.1:8839/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8839/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/admin/set'; }); await pg.waitForSelector('#stSumTo', { timeout: 8000 });
   const hols = await pg.$$eval('[data-hol]', B2 => B2.map(b => b.dataset.hol + (b.checked ? '+' : '-'))); log('④ holidays:', hols.join(' '));
   if (!hols.includes('2026-11-11+') || !hols.includes('2026-11-26+')) errs.push('④ upcoming federal holidays listed and checked');

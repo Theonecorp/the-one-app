@@ -10,7 +10,7 @@ const path = require('path');
   const seed = "s.invoices = (s.invoices || []).concat(" + JSON.stringify([{ id: 'A-043200', no: 'A-043200', t: 'A', d: y + '-' + m + '-05', ym: y + '-' + m, acct: '1271', store: 'BEAUTY 4U', sm: 'BRANDON', sub: 80, disc: 0, total: 80, bal: 80, st: 'open', orderId: 'O261014-AAAA', lines: [{ c: 'AHG100', d: 'Aluminum Gold ITEM 0', q: 2, p: 25 }, { c: 'AHG101', d: 'Aluminum Silver ITEM 1', q: 10, p: 3 }] }]) + ");";
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { seed });
-  await pg.goto('http://127.0.0.1:8828/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8828/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const txt = async q => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   await pg.evaluate(() => { location.hash = '#/invs'; }); await pg.waitForSelector('#iList .kpi', { timeout: 8000 }); await pg.click('[data-ip="lastm"]'); await pg.waitForSelector('[data-go="inv:A-043200"]', { timeout: 8000 }); await pg.click('[data-go="inv:A-043200"]'); await pg.waitForSelector('#idPrint', { timeout: 6000 });
   await pg.click('#idPrint'); await pg.waitForSelector('#prtbody .iv', { timeout: 6000 }).catch(() => errs.push('print view missing'));

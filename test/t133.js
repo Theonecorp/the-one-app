@@ -10,7 +10,7 @@ const path = require('path');
   const ctx = await br.newContext({ viewport: { width: 1100, height: 900 } });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8885/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8885/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const P = await pg.evaluate(async () => {
     const M = await import('/src/admin.js');
     const legacy = [['INVOICE ', 'DATE', 'CUSOMTER #', 'CUSTOMER NAME', 'SALES REP', 'TERM', 'SHIP TO', 'SHIP VIA', 'TOTAL', 'SALES ORDER'],

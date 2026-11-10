@@ -10,7 +10,7 @@ const path = require('path');
     const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().substring(0, 10); };
     const mk = (id, setup, drawOn) => ({ id, acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', amt: 100, terms: 'ACH 30', invDate: d(-30), drawOn, setup, st: setup ? 'SETUP' : 'WAIT', open: true, lines: [{ no: 'A' + id, amt: 100 }], createdAt: d(-30) });
     window.__AFTER_SEED__ = s => { s.ach = [mk('X1', true, d(-1)), mk('X2', false, d(-1)), mk('X3', false, d(5))]; }; });
-  await pg.goto('http://127.0.0.1:8794/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8794/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/ach/job'; }); await pg.waitForTimeout(1500);
   const seg = (await pg.textContent('#page')).replace(/\s+/g, ' '); console.log(seg.slice(0, 200));
   if (!/지연 1/.test(seg)) errs.push('late should be 1 (only not-setup past date)');

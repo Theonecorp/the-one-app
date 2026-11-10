@@ -1,6 +1,6 @@
 /* v0.8.174 시험 — 📌 담당자 주문 메뉴 고정: 단계(접수 · 출고 · 완료 · 기타)를 누를 때마다 세부 칸이 생겼다 없어지지 않고 모든 칸이 묶음별로 항상 보임
  *   ① 어느 담당자 화면이든 [data-lg] 단계 단추가 없고 .omenu 안에 묶음(data-og) 4개 · 그 일(job)의 칸이 전부 있음 (오피스 · 창고 매니저 · 픽킹 담당)
- *   ② 컴퓨터(≥900px): 메뉴가 왼쪽 메뉴 단추들 바로 아래에 고정(position fixed · 왼쪽 0 · 너비 210) · 홈 화면에서도 같은 자리에 있고 🏠 홈 칸이 켜짐 · 홈에서 칸을 누르면 그 목록
+ *   ② 컴퓨터(900–1199px · v0.8.181 부터 1200px 이상은 고정 서랍 하나로 — t177): 메뉴가 왼쪽 메뉴 단추들 바로 아래에 고정(position fixed · 왼쪽 0 · 너비 210) · 홈 화면에서도 같은 자리에 있고 🏠 홈 칸이 켜짐 · 홈에서 칸을 누르면 그 목록
  *   ③ 폰(430px): 메뉴는 목록 위에 흐름대로 · 작게(아이콘) 모드에서는 위에 고정 · 홈 화면에는 메뉴 없음(타일)
  *   ④ 🔄 새로 고침 단추가 지금 칸을 다시 읽음 (칸이 그대로 켜져 있음) · 백오더 목록에서 눌러도 동작 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
@@ -12,12 +12,12 @@ const path = require('path');
   const open = async (email, job, w, h, cmp) => {
     const pg = await (await br.newContext({ viewport: { width: w, height: h } })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.job) window.__AFTER_SEED__ = s => { let u = s.users.find(x => x.id === o.email); if (!u) { u = { id: o.email, email: o.email, name: 'X', active: true }; s.users.push(u); } u.role = 'manager'; u.job = o.job; }; if (o.cmp) try { localStorage.setItem('theone.ocompact', '1'); } catch (e) {} }, { email, job, cmp });
-    await pg.goto('http://127.0.0.1:8826/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
+    await pg.goto('http://127.0.0.1:8826/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
     await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(800); return pg;
   };
   const menuInfo = pg => pg.evaluate(() => { const m = document.querySelector('.omenu'); if (!m) return null; const r = m.getBoundingClientRect(), cs = getComputedStyle(m); const bs = document.querySelectorAll('#nav button'), last = bs[bs.length - 1]; const dk = document.body.classList.contains('dock') ? document.getElementById('drawer').getBoundingClientRect().width : 0; return { dock: dk, pos: cs.position, vis: cs.display !== 'none' && r.width > 0, left: r.left, top: r.top, w: r.width, navbtm: last ? last.getBoundingClientRect().bottom : 0, groups: [...m.querySelectorAll('[data-og]')].map(g => g.dataset.og), chips: [...m.querySelectorAll('[data-lf]')].map(b => b.dataset.lf), on: [...m.querySelectorAll('[data-lf].on')].map(b => b.dataset.lf), lg: document.querySelectorAll('[data-lg]').length, head: (document.querySelector('.ohead') || {}).className, sticky: document.querySelector('.ohead') ? getComputedStyle(document.querySelector('.ohead')).position : '' }; });
   /* ① ② 컴퓨터 · 관리자(오피스처럼 전체 칸) → 홈에 메뉴 · 칸 누르면 목록 */
-  const pc = await open('luke@theonefl.com', '', 1200, 800);
+  const pc = await open('luke@theonefl.com', '', 1100, 800);
   let m = await menuInfo(pc); log('② pc home:', JSON.stringify(m));
   if (!m || !m.vis) errs.push('② pc home shows the menu'); else {
     if (m.pos !== 'fixed' || m.left !== m.dock || m.w !== 210) errs.push('② pc menu is fixed at the left (after the docked drawer, ' + m.dock + 'px), 210px wide — got left ' + m.left);
@@ -37,7 +37,7 @@ const path = require('path');
   await pc.context().close();
   /* ① 창고 매니저 · 픽킹 담당 — 그 일의 칸이 전부 */
   for (const [job, must, mustNot] of [['whmgr', ['ups', 'cfok', 'sent', 'all'], ['draft']], ['pick', ['mine', 'pick', 'bo'], ['sent', 'all', 'inv']]]) {
-    const pg = await open('office@theonefl.com', job, 1200, 800); m = await menuInfo(pg); log('①', job, ':', JSON.stringify({ groups: m && m.groups, chips: m && m.chips, pos: m && m.pos }));
+    const pg = await open('office@theonefl.com', job, 1100, 800); m = await menuInfo(pg); log('①', job, ':', JSON.stringify({ groups: m && m.groups, chips: m && m.chips, pos: m && m.pos }));
     if (!m || !m.vis || m.pos !== 'fixed') errs.push('① ' + job + ' home shows the fixed menu'); else { must.forEach(k => { if (!m.chips.includes(k)) errs.push('① ' + job + ' menu has ' + k); }); mustNot.forEach(k => { if (m.chips.includes(k)) errs.push('① ' + job + ' menu must not have ' + k); }); if (m.lg) errs.push('① ' + job + ': no stage buttons'); }
     await pg.context().close();
   }

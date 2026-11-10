@@ -19,7 +19,7 @@ const path = require('path');
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   const y = new Date().getFullYear(), mi = new Date().getMonth();
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { const m = k => { const a = Array(12).fill(0); a[o.mi] = k; return a; }; s.sales = [{ id: String(o.y), year: o.y, rows: [{ label: 'Statement Deposit', grp: 'cash', m: m(50000) }, { label: 'statement expense', grp: 'cash', m: m(-30000) }, { label: 'checks', grp: 'cash', m: m(-5000) }, { label: 'service fee', grp: 'cash', m: m(-25) }, { label: 'Monthly profit', grp: 'cash', m: m(14975) }] }]; }; }, { y, mi });
-  await pg.goto('http://127.0.0.1:8824/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8824/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.waitForSelector('[data-og="now"]', { timeout: 10000 }); const dash = (await pg.textContent('[data-og="now"]')).replace(/\s+/g, ' '); log('dash:', dash.slice(-200));
   if (!/은행 실제/.test(dash) || !/\$50,000\.00/.test(dash) || !/\$35,025\.00/.test(dash) || !/✏️/.test(dash)) errs.push('dashboard should use the sales-sheet cash rows (marked ✏️)');
   await pg.evaluate(() => { location.hash = '#/mg/bank'; }); await pg.waitForTimeout(1500); const tab = (await pg.textContent('#mgBody')).replace(/\s+/g, ' '); log('tab:', tab.slice(0, 220));

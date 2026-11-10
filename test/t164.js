@@ -11,7 +11,7 @@ const path = require('path');
   const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().substring(0, 10); };
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'Brandon' }; });
-  await pg.goto('http://127.0.0.1:8829/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(300);
+  await pg.goto('http://127.0.0.1:8829/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
   await pg.evaluate(() => { location.hash = '#/hist'; }); await pg.waitForSelector('#pFrom', { timeout: 8000 }).catch(() => errs.push('① period card missing'));
   if (await pg.$('#pFrom')) {
     for (const id of ['pTo', 'pGo', 'pPrev', 'pMail']) if (!(await pg.$('#' + id))) errs.push('① #' + id + ' missing');

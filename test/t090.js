@@ -6,7 +6,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 1000 } });
-  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8827/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+  const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8827/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const txt = async (pg, q) => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   const lm = new Date(); lm.setDate(1); lm.setMonth(lm.getMonth() - 1); const y = lm.getFullYear(), m = String(lm.getMonth() + 1).padStart(2, '0');   /* 지난달 — 2 · 3 · 5일이 늘 지난 날이라 📅 지난 달 기간 안에 다 들어옴 */
   /* 잘못 들어간 이전 시스템 인보이스 흉내 — 번호에 글자 없음 · 가게 코드 없음 */

@@ -10,7 +10,7 @@ const path = require('path');
     const d = new Date().toISOString().substring(0, 10); s.invoices = (s.invoices || []).concat([{ id: 'A-077001', no: 'A-077001', t: 'A', d, ym: d.substring(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 120, bal: 120, st: 'open', lines: [] }]); };
   const mk = async (w) => { const ctx = await br.newContext({ viewport: { width: w, height: 860 }, hasTouch: w < 700, isMobile: w < 700 }); const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(f => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', f); try { localStorage.setItem('theone.order.view', 'list'); } catch (x) {} }, '(' + seed.toString() + ')(s)');
-    await pg.goto('http://127.0.0.1:8874/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(500); return pg; };
+    await pg.goto('http://127.0.0.1:8874/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(500); return pg; };
   const fits = async (pg, w, what) => { const sw = await pg.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)); log(what, 'scrollWidth', sw, '/', w); if (sw > w) errs.push(what + ' overflows the phone width: ' + sw + ' > ' + w); };
   const go = async (pg, h, sel) => { await pg.evaluate(x => { location.hash = x; }, h); await pg.waitForSelector(sel, { timeout: 8000 }).catch(() => errs.push(sel + ' missing on ' + h)); await pg.waitForTimeout(600); };
 

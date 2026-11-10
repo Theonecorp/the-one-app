@@ -7,7 +7,7 @@
  *  행 모양: [code, desc, price, srp, barcode, group, l1, l2, l3, photo, hide]
  * ============================================================ */
 import { $, esc, money, num, R2, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, itabs, pageHead , narrow, crow } from './ui.js';
-import { loadCatalog, catalog, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1, setItemPhoto, shrinkImage, photoOv } from './catalog.js';
+import { loadCatalog, catalog, exactItem, searchItems, editCatalog, ensureCats, cleanName, thumb, setHidden, setLevels, setLoc, locOf, aisleOf, NO_L1, setItemPhoto, shrinkImage, photoOv } from './catalog.js';
 import { stockAll } from './stock.js';
 import { typeOfItem, invTypes } from './invoicing.js';
 import { can } from './main.js';
@@ -234,6 +234,7 @@ function form(it, newCode) {
   openModal('<h2>' + (isNew ? '＋ ' + bi('새 아이템', 'New item') : '✏️ ' + esc(x.c)) + '</h2>' +
     (x.k ? '<div class="alert a-amb">🧩 세트 아이템 — 구성은 관리 → 📦 아이템 → 세트 구성에서 고칩니다. 여기서는 이름 · 가격 · 분류만.</div>' : '') +
     '<div class="two"><div class="fg"><label>코드 <span class="en">Code</span> *</label><input id="fC" value="' + esc(x.c) + '" ' + (isNew ? '' : 'readonly style="background:#f1f5f9"') + ' autocapitalize="characters" style="text-transform:uppercase"></div><div class="fg"><label>바코드 <span class="en">Barcode</span></label><input id="fB" value="' + esc(x.b || '') + '" inputmode="numeric"></div></div>' +
+    (isNew ? '<div id="fDup"></div>' : '') +   /* 🔎 새 코드를 치면 바로 — 이미 있는 아이템이면 그 정보 · 열기 (v0.8.181) */
     '<div class="fg"><label>이름 · 설명 <span class="en">Description</span> *</label><input id="fD" value="' + esc(x.d) + '"></div>' +
     '<div class="two"><div class="fg"><label>도매가 <span class="en">Price</span> * $</label><input id="fP" value="' + esc(x.p === '' ? '' : x.p) + '" inputmode="decimal" style="font-weight:800;text-align:right"></div><div class="fg"><label>소비자가 <span class="en">SRP</span> $</label><input id="fS" value="' + esc(x.s || '') + '" inputmode="decimal" style="text-align:right"></div></div>' +
     '<div class="two">' + catPick('fG', '그룹 <span class="en">Group</span>', L.groups, x.g) + catPick('fL1', 'Level 1', L.l1s(x.g), x.l1) + '</div>' +
@@ -273,6 +274,20 @@ function form(it, newCode) {
   bindLevelLists(['fG', 'fL1', 'fL2', 'fL3']);
   showType();
   $('fX').onclick = closeModal;
+  /* 🔎 새 아이템: 코드를 칠 때마다 이미 있는지 — 같은 코드면 그 아이템 정보 + ✏️ 열기 (등록 막음) · 바코드 · 붙임표만 다른 코드면 ⚠️ 알려 줌 */
+  const dupOf = code => { const c = String(code || '').trim().toUpperCase(); if (!c) return null; const same = C.byCode[c]; if (same) return { same, it: same }; const near = exactItem(c); return near && near.c !== c ? { same: null, it: near } : null; };
+  const paintDup = () => {
+    const box = $('fDup'); if (!box) return; const d = dupOf($('fC').value), it = d && d.it;
+    $('fOk').disabled = !!(d && d.same);
+    if (!d) { box.innerHTML = $('fC').value.trim() ? '<div class="muted" style="font-size:12px;margin:-4px 0 6px">✓ ' + bt('새 코드입니다', 'New code') + '</div>' : ''; return; }
+    const path = [it.g, it.l1, it.l2, it.l3].filter(Boolean).join(' › ');
+    box.innerHTML = '<div class="alert ' + (d.same ? 'a-red' : 'a-amb') + '" style="display:flex;gap:10px;align-items:center;margin:-2px 0 8px">' + (it.ph ? '<img src="' + esc(thumb(it.ph, 160)) + '" style="width:64px;height:64px;object-fit:cover;border-radius:8px" alt="">' : '<div class="noph">📷✕</div>') +
+      '<div style="flex:1;min-width:0"><b>' + (d.same ? '⛔ ' + bt('이미 있는 코드입니다', 'This code already exists') : '⚠️ ' + bt('비슷한 아이템이 있습니다', 'A similar item exists')) + ' — ' + esc(it.c) + '</b>' + (it.h ? ' <span class="tag t-g">🙈 ' + bt('숨김', 'hidden') + '</span>' : '') +
+      '<div style="font-size:13px">' + esc(it.d || '') + ' · <b>' + money(it.p) + '</b>' + (it.b ? ' · ' + esc(it.b) : '') + '</div><div class="muted" style="font-size:12px">' + esc(path || '') + '</div>' +
+      '<button type="button" class="b-ghost b-sm" id="fDupOpen" style="margin-top:4px">✏️ ' + bt('이 아이템 열기', 'Open this item') + '</button></div></div>';
+    $('fDupOpen').onclick = () => { closeModal(); setTimeout(() => form(it), 50); };
+  };
+  if (isNew) { $('fC').oninput = debounce(paintDup, 200); paintDup(); }
   if ($('fDel')) $('fDel').onclick = async () => {
     if (!(await confirmBox(x.c + ' 아이템을 목록에서 뺄까요? 지난 주문 · 인보이스 기록은 그대로 남습니다. 다시 팔 수도 있으면 삭제 대신 🙈 숨기기를 쓰세요. / Remove this item from the catalog?', '삭제'))) return;
     closeModal();
@@ -286,7 +301,11 @@ function form(it, newCode) {
     if (!/^[A-Z0-9][A-Z0-9\-_.\/ ]{0,29}$/.test(v.c)) return toast('코드는 영문 · 숫자 · - _ . / 만 (30자 이내)', 'bad');
     if (!v.d) return toast('이름을 넣어 주세요', 'bad');
     if (!(v.p > 0)) return toast('도매가를 넣어 주세요', 'bad');
-    if (isNew && C.byCode[v.c]) return toast('이미 있는 코드입니다 — 찾아서 수정하세요', 'bad');
+    if (isNew) {   /* 다른 폰에서 방금 등록했을 수도 있으니 최신 목록으로 한 번 더 */
+      try { await loadCatalog(S, true); } catch (e) {}
+      const C2 = catalog() || C; if (C2.byCode[v.c]) { paintDup(); return toast(bt('이미 있는 코드입니다 — ✏️ 이 아이템 열기로 수정하세요', 'This code already exists — open it to edit'), 'bad'); }
+      const near = exactItem(v.c); if (near && near.c !== v.c && !(await confirmBox(bt('비슷한 아이템이 있습니다', 'A similar item exists') + ': ' + near.c + ' — ' + (near.d || '') + '\n' + bt('그래도 새 코드로 등록할까요?', 'Register as a new code anyway?'), bt('등록', 'Register')))) return;
+    }
     if (v.b) { const dup = C.items.find(i => i.b === v.b && i.c !== v.c); if (dup && !(await confirmBox('바코드 ' + v.b + ' 는 ' + dup.c + ' 에도 있습니다. 그래도 저장할까요?', '저장'))) return; }
     if (v.ph && !/^https?:\/\//i.test(v.ph)) return toast('사진 주소는 https:// 로 시작해야 합니다', 'bad');
     const locV = $('fLoc') ? $('fLoc').value.trim().toUpperCase() : (x.loc || ''), supV = $('fSup') ? Stock.supValue('fSup') : (x.sup || '');
@@ -295,7 +314,8 @@ function form(it, newCode) {
     IT.q = v.c;
     await save((rows, cats) => {
       const row = [v.c, v.d, v.p, v.s, v.b, v.g, v.l1, v.l2, v.l3, v.ph, vis ? 0 : 1, locV, supV];
-      const i = rows.findIndex(r => r[0] === v.c); if (i >= 0) rows[i] = row; else rows.push(row);
+      const i = rows.findIndex(r => r[0] === v.c); if (i >= 0 && isNew) throw new Error(bt('이미 있는 코드입니다', 'This code already exists') + ' — ' + v.c);   /* 새 아이템이 기존 것을 덮어쓰지 않게 */
+      if (i >= 0) rows[i] = row; else rows.push(row);
       ensureCats(rows, cats); return 1;
     }, () => (isNew ? '등록 — ' : '저장 — ') + v.c + (vis ? '' : ' (🙈 숨김)'));
     if (phNew) { busy(true); try { const data = await shrinkImage(phNew); await setItemPhoto(S, v.c, { data, file: phNew }); toast('📷 ' + v.c + ' — ' + bt('사진 저장', 'photo saved'), 'good'); list(); } catch (e) { toast(bt('사진 저장 실패', 'Photo failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); }

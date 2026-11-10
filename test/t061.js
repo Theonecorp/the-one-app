@@ -12,7 +12,7 @@ const path = require('path'), fs = require('fs');
   await pg.route(/geocoding\.geo\.census\.gov/, r => { calls++; const cb = new URL(r.request().url()).searchParams.get('callback'); r.fulfill({ contentType: 'application/javascript', body: cb + '({"result":{"addressMatches":[{"coordinates":{"x":-81.38,"y":28.54}}]}})' }); });
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' };
     window.__AFTER_SEED__ = s => { (s.accounts || []).forEach((a, i) => { delete a.lat; delete a.lng; if (!a.zip) a.zip = i % 2 ? '32801' : '33101'; }); }; });
-  await pg.goto('http://127.0.0.1:8785/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8785/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/stores'; }); await pg.waitForSelector('[data-stm="map"]'); await pg.click('[data-stm="map"]');
   await pg.waitForSelector('#mapInfo b', { timeout: 20000 }); await pg.waitForTimeout(800);
   const info = ((await pg.textContent('#mapInfo')) || '').replace(/\s+/g, ' '); log('info:', info.slice(0, 200));

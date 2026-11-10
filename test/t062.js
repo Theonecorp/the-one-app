@@ -9,7 +9,7 @@ const path = require('path');
     const pg = await br.newPage({ viewport: { width: 430, height: 900 } }); pg.on('pageerror', e => errs.push(e.message));
     if (ver) await pg.route(/index\.html\?u=/, r => r.fulfill({ contentType: 'text/html', body: '<script src="app.js?v=' + ver + '"></script>' }));
     await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'B' }; window.__UPD_TEST__ = true; });
-    await pg.goto('http://127.0.0.1:8788/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(5500);
+    await pg.goto('http://127.0.0.1:8788/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(5500);
     const bar = await pg.$('#updBar'); console.log(ver, 'bar:', bar ? await bar.textContent() : null);
     if (!!bar !== want) errs.push('update bar expected ' + want + ' for ' + ver);
     const nav = await pg.$$eval('#nav button', b => b.map(x => x.textContent).join('|')); if (!/홈/.test(nav) || !/세일/.test(nav)) errs.push('salesman nav missing home/sale: ' + nav);

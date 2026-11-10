@@ -9,7 +9,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage(); pg.on('pageerror', e => errs.push(e.message));
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8890/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8890/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   const R = await pg.evaluate(async () => {
     const M = await import('/src/sales.js');
     const lines = [{ d: '2026-10-20', store: 'ALI B/S # 1', methods: 'CHECK #7001', e: 800, f: 0, invs: 'A-010055', P: 0, W: 0, disc: 0, sec: 'REG', src: 'FIELD', mismatch: 'W fixed' }, { d: '2026-10-21', store: 'BEAUTY 4U', methods: 'COD', e: 120, f: 0, invs: 'P-008700', P: 120, W: 0, disc: 0, sec: 'REG', src: 'COD' }];

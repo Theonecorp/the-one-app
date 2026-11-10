@@ -10,7 +10,7 @@ const path = require('path');
     s.orders.push(mk('OD1', 'DAY SHOP A', 1, 120), mk('OD2', 'DAY SHOP B', 2, 80), mk('OD3', 'ASKED SHOP', 3, 50, { cfReq: true, cfNote: 'AHG100 24개 맞나요?' }), mk('OD4', 'OLD OK', 30, 10, { cfOk: true }));`;
   const mk = async (email) => { const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(([e, sd]) => { window.__MOCK_USER__ = { email: e, name: 'X' }; const fn = new Function('s', sd); window.__AFTER_SEED__ = s => { s.settings[0].ordersOn = true; fn(s); }; }, [email, seed]);
-    await pg.goto('http://127.0.0.1:8804/test/demo.html'); await pg.waitForSelector('#nav button'); return pg; };
+    await pg.goto('http://127.0.0.1:8804/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   /* 세일즈맨 */
   let pg = await mk('brandon@x.com');
   await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('#dayCf .card', { timeout: 8000 }).catch(() => errs.push('day confirm card missing'));
@@ -31,7 +31,7 @@ const path = require('path');
   await pg.close();
   /* 매니저 */
   const seed2 = seed + " s.orders.find(o => o.id === 'OD2').cfIssueOpen = true; s.orders.find(o => o.id === 'OD2').cfIssue = '내 주문 아님';";
-  pg = await (async () => { const p = await br.newPage({ viewport: { width: 430, height: 1000 } }); p.on('pageerror', e => errs.push(e.message)); p.on('dialog', d => d.accept()); await p.addInitScript(([e, sd]) => { window.__MOCK_USER__ = { email: e, name: 'L' }; const fn = new Function('s', sd); window.__AFTER_SEED__ = s => { fn(s); }; }, ['luke@theonefl.com', seed2]); await p.goto('http://127.0.0.1:8804/test/demo.html'); await p.waitForSelector('#nav button'); return p; })();
+  pg = await (async () => { const p = await br.newPage({ viewport: { width: 430, height: 1000 } }); p.on('pageerror', e => errs.push(e.message)); p.on('dialog', d => d.accept()); await p.addInitScript(([e, sd]) => { window.__MOCK_USER__ = { email: e, name: 'L' }; const fn = new Function('s', sd); window.__AFTER_SEED__ = s => { fn(s); }; }, ['luke@theonefl.com', seed2]); await p.goto('http://127.0.0.1:8804/test/demo.html'); await p.waitForSelector('#nav button', { state: 'attached' }); return p; })();
   await pg.waitForSelector('#cfBarM', { timeout: 5000 }).catch(() => errs.push('manager issue bar missing')); log('mgr bar:', await pg.textContent('#cfBarM').catch(() => ''));
   await pg.click('#cfBarM'); await pg.waitForTimeout(1200); const pt = (await pg.textContent('#page')).replace(/\s+/g, ' '); if (!/내 주문 아님/.test(pt)) errs.push('order should show the issue');
   await pg.click('#mIssueOk'); await pg.waitForTimeout(1000); if (await pg.evaluate(() => window.__MOCK_STORE__.orders.OD2.cfIssueOpen)) errs.push('resolve failed');

@@ -9,7 +9,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 420, height: 900 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8876/test/demo.html'); await pg.waitForSelector('#nav button'); await pg.waitForTimeout(500);
+  await pg.goto('http://127.0.0.1:8876/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(500);
   await pg.evaluate(() => { location.hash = '#/stores'; }); await pg.waitForSelector('[data-st="1111"]', { timeout: 8000 }); await pg.waitForTimeout(300);
   /* 느린 인터넷: 읽기마다 3.5초 (가게 창은 두 단계 → 7초쯤) */
   await pg.evaluate(() => { window.__MOCK_DELAY__ = 3500; });

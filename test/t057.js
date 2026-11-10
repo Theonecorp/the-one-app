@@ -8,7 +8,7 @@ const FILE = process.argv[2]; if (!FILE || !fs.existsSync(FILE)) { console.log('
   const pg = await br.newPage({ viewport: { width: 900, height: 1000 } }); const errs = [], log = (...a) => console.log(...a);
   pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' }; });
-  await pg.goto('http://127.0.0.1:8787/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8787/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#f4');
   await pg.setInputFiles('#f4', FILE); await pg.waitForSelector('#bossGo', { timeout: 60000 });
   log('preview:', (await pg.textContent('#bossOut')).replace(/\s+/g, ' ').slice(0, 400));

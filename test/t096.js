@@ -7,7 +7,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 900 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-  await pg.goto('http://127.0.0.1:8838/test/demo.html'); await pg.waitForSelector('#nav button');
+  await pg.goto('http://127.0.0.1:8838/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/photos'; }); await pg.waitForSelector('#phGrid .phcard', { timeout: 10000 }).catch(() => errs.push('photo workbench missing'));
   await pg.fill('#phQ', 'AHG100'); await pg.waitForTimeout(500); await pg.waitForSelector('[data-pf="AHG100"]', { timeout: 6000, state: 'attached' }).catch(() => errs.push('photo input for AHG100 missing'));
   /* 1200×900 JPEG 만들기 */

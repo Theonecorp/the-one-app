@@ -29,10 +29,10 @@ const path = require('path');
   await b.pg.close();
   const d = await ctx.newPage(); d.on('pageerror', e => errs.push(e.message));
   await d.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'A' }; });
-  await d.goto('http://127.0.0.1:8841/test/demo.html'); await d.waitForSelector('#nav button'); await d.waitForTimeout(2500); await d.close();   // 담당자 폰 캐시 만들기
+  await d.goto('http://127.0.0.1:8841/test/demo.html'); await d.waitForSelector('#nav button', { state: 'attached' }); await d.waitForTimeout(2500); await d.close();   // 담당자 폰 캐시 만들기
   const c = await ctx.newPage(); c.on('pageerror', e => errs.push(e.message));
   await c.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'A' }; window.__AFTER_SEED__ = s => { s.users.forEach(u => { if (u.email === 'acct@theonefl.com') u.role = 'owner'; }); }; });
-  await c.goto('http://127.0.0.1:8841/test/demo.html'); await c.waitForSelector('#nav button');
+  await c.goto('http://127.0.0.1:8841/test/demo.html'); await c.waitForSelector('#nav button', { state: 'attached' });
   const nav1 = await c.$$eval('#nav button', b => b.map(x => x.dataset.go).join(' ')); await c.waitForTimeout(3500); const nav2 = await c.$$eval('#nav button', b => b.map(x => x.dataset.go).join(' '));
   log('nav (snapshot):', nav1); log('nav (after refresh):', nav2);
   if (/\bown\b/.test(nav1)) errs.push('snapshot nav should start as the cached staff menu'); if (!/\bown\b/.test(nav2)) errs.push('role change on the server should update the menu');
