@@ -57,12 +57,31 @@ export async function phone(title, body, url, tag) {
   } catch (e) {}
 }
 export const notifyState = () => !('Notification' in window) ? 'none' : Notification.permission;
-export async function askPermission() {
-  if (!('Notification' in window)) return toast(bt('이 기기는 알림을 쓸 수 없습니다 — 아이폰은 홈 화면에 앱으로 설치한 뒤 가능', 'Notifications not available — on iPhone, install the app to the home screen first'), 'bad');
-  const p = await Notification.requestPermission();
+export async function askPermission(quiet) {
+  if (!('Notification' in window)) { if (!quiet) toast(bt('이 기기는 알림을 쓸 수 없습니다 — 아이폰은 홈 화면에 앱으로 설치한 뒤 가능', 'Notifications not available — on iPhone, install the app to the home screen first'), 'bad'); return 'none'; }
+  let p = 'default'; try { p = await Notification.requestPermission(); } catch (e) {}
   if (p === 'granted') { try { (await import('./push.js')).enable(true); } catch (e) {} }   // 📱💻 앱을 닫아도 뜨게 이 기기 등록
-  toast(p === 'granted' ? '🔔 ' + bt('알림을 켰습니다', 'Notifications on') : bt('알림이 꺼져 있습니다 — 브라우저 설정에서 허용하세요', 'Notifications blocked — allow them in browser settings'), p === 'granted' ? 'good' : 'bad');
+  if (p === 'granted') toast('🔔 ' + bt('알림이 켜졌습니다', 'Notifications on'), 'good');
+  else if (!quiet) toast(bt('알림이 막혀 있습니다 — 브라우저 설정에서 허용하세요', 'Notifications blocked — allow them in browser settings'), 'bad');
   return p;
+}
+/** 🔔 알림은 항상 켜 둠 (v0.8.179 · 켜고 끄는 단추 없음) — 로그인할 때마다 부름
+ *   · 허락돼 있으면 이 기기를 등록(하루 한 번 토큰 확인) → 앱을 닫아도 팝업
+ *   · 아직 안 물어봤으면 처음 화면을 누를 때 자동으로 물어봄 (브라우저 · 아이폰은 사람이 누를 때만 물어볼 수 있음)
+ *   · 막혀 있으면 홈 · ☰ 메뉴에 허용하는 법을 보여 줌 (앱이 대신 켤 수 없음) */
+let AUTO = null;
+export function autoOn() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') { import('./push.js').then(P => P.enable(false)).catch(() => {}); return; }
+  if (Notification.permission !== 'default' || AUTO) return;
+  AUTO = () => { document.removeEventListener('click', AUTO, true); AUTO = null; if (Notification.permission === 'default') askPermission(true); };
+  document.addEventListener('click', AUTO, true);
+}
+/** 🔕 알림이 막힌 기기에 보여 줄 안내 (허용하는 법) — 막히지 않았으면 '' */
+export function blockedHtml() {
+  if (notifyState() !== 'denied') return '';
+  const ios = /iPhone|iPad/.test(navigator.userAgent || '');
+  return '<div class="alert a-amb" id="notifBlocked" style="margin-top:6px">🔕 <b>' + bt('알림이 막혀 있습니다', 'Notifications are blocked') + '</b> — ' + (ios ? bt('아이폰 설정 → 알림 → THE ONE → 알림 허용', 'iPhone Settings → Notifications → THE ONE → Allow') : bt('주소창 왼쪽 🔒 → 알림 → 허용 (설치한 앱은 기기 설정 → 앱 → THE ONE → 알림)', 'Tap 🔒 left of the address bar → Notifications → Allow (installed app: device Settings → Apps → THE ONE → Notifications)')) + '. ' + bt('주문 · 수금 알림을 받으려면 꼭 허용해 주세요.', 'Please allow it to get order and collection alerts.') + '</div>';
 }
 
 /* ---------- 로그인 뒤: 실시간 보기 시작 ---------- */

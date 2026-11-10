@@ -71,6 +71,7 @@ function run() {
   try {
     try { notifyRun_(); } catch (e) { Logger.log('알림 보내기 실패: ' + e.message); }
     try { envelopesLate_(); } catch (e) { Logger.log('봉투 미도착 확인 실패: ' + e.message); }
+    try { remindUnsent_(); } catch (e) { Logger.log('안 보낸 주문 · 수금 알림 실패: ' + e.message); }
     try { photoIndexRun_(); } catch (e) { Logger.log('사진 색인 실패: ' + e.message); }
     try { codSyncRun_(); } catch (e) { Logger.log('COD 시트 동기화 실패: ' + e.message); }
     try { photoExportRun_(); } catch (e) { Logger.log('사진 드라이브 저장 실패: ' + e.message); }
@@ -206,6 +207,41 @@ function testPush() {
   Logger.log('팝업 보냄: ' + n + '대 (0 이면 앱에서 🔔 알림 켜기를 먼저 · appsscript.json 권한 · setup 다시 실행)');
 }
 
+/* ---------- ⏰ 안 보낸 주문 · 수금 — 세일즈맨 폰 · 컴퓨터에 팝업 (v0.8.179) ----------
+ *  정한 시각(뉴욕 시간, 기본 11 · 15 · 18시, 일요일 빼고)마다 한 번: 1시간 넘게 그대로인
+ *    📝 임시 저장 주문(orders.st = draft) · 💵 리포트로 안 보낸 수금(entries.rep = false · 담당자 확인 전)
+ *  이 있는 세일즈맨에게 하나로 묶어 팝업. 시각은 settings/app.remindHours = [11, 15, 18] 로 바꿀 수 있음 (빈 배열이면 안 보냄)
+ *  폰에만 있는 주문(인터넷이 없어 아직 못 올린 것)은 서버가 모름 — 앱을 열면 📡 보낼 함이 알려 줌 */
+function remindUnsent_() {
+  const tz = 'America/New_York', now = new Date(), h = Number(Utilities.formatDate(now, tz, 'H')), dow = Number(Utilities.formatDate(now, tz, 'u'));   // u: 1 월 … 7 일
+  if (dow === 7) return;
+  const props = PropertiesService.getScriptProperties(), key = Utilities.formatDate(now, tz, 'yyyy-MM-dd') + ' ' + h;
+  if (props.getProperty('REMIND_AT') === key) return;   // 이 시각에 이미 보냄 (5분 트리거가 여러 번 돌아도 한 번)
+  if (Number(Utilities.formatDate(now, tz, 'm')) >= 15) return;   // 정각 뒤 15분 안에만 확인 (설정 읽기를 아낌)
+  const settings = getDoc_('settings', 'app') || {};
+  const hours = Array.isArray(settings.remindHours) ? settings.remindHours.map(Number) : [11, 15, 18];
+  if (hours.indexOf(h) < 0) return;
+  props.setProperty('REMIND_AT', key);
+  const cut = new Date(now.getTime() - 3600000).toISOString(), by = {};
+  const add = (sm, k, x) => { sm = String(sm || '').toUpperCase(); if (!sm) return; (by[sm] = by[sm] || { o: [], e: [] })[k].push(x); };
+  queryVal_('orders', 'st', { stringValue: 'draft' }, 300).forEach(o => { if (String(o.updatedAt || o.createdAt || '') < cut) add(o.sm, 'o', o); });
+  queryVal_('entries', 'rep', { booleanValue: false }, 300).forEach(e => { if (!e.sb && !e.void && !e.repl && String(e.createdAt || '') < cut) add(e.sm, 'e', e); });
+  Object.keys(by).forEach(sm => {
+    try {
+      const x = by[sm], to = query_('users', 'sm', sm, 5).filter(u => u.active !== false).map(u => String(u.email || u._id || '').toLowerCase()).filter(isEmail_);
+      if (!to.length) return;
+      const parts = [], amt = L => money_(L.reduce((a, y) => a + (Number(y.amt != null ? y.amt : y.total) || 0), 0));
+      if (x.o.length) parts.push('📝 안 보낸 주문 ' + x.o.length + '건 ' + amt(x.o) + ' (' + x.o.map(o => o.store || '').filter(Boolean).slice(0, 3).join(', ') + (x.o.length > 3 ? ' …' : '') + ')');
+      if (x.e.length) parts.push('💵 안 보낸 수금 ' + x.e.length + '건 ' + amt(x.e) + ' (' + x.e.map(e => e.store || '').filter(Boolean).slice(0, 3).join(', ') + (x.e.length > 3 ? ' …' : '') + ')');
+      const title = x.o.length && x.e.length ? '⏰ 안 보낸 주문 · 수금이 있습니다' : x.o.length ? '⏰ 안 보낸 주문이 있습니다' : '⏰ 안 보낸 수금이 있습니다';
+      const n = pushTo_(to, title, parts.join('\n') + '\n앱을 열어 보내 주세요 · Please send them in the app', x.o.length ? './#/order' : './#/mine', 'remind');
+      Logger.log('⏰ ' + sm + ': 주문 ' + x.o.length + ' · 수금 ' + x.e.length + ' → 팝업 ' + n + '대');
+    } catch (e) { Logger.log('⏰ ' + sm + ' 알림 실패: ' + e.message); }
+  });
+}
+/** 시험 — 지금 시각과 상관없이 한 번 (기록만 지우고 바로 실행하려면 settings.remindHours 에 지금 시각을 넣거나 아래처럼) */
+function testRemind() { PropertiesService.getScriptProperties().deleteProperty('REMIND_AT'); const h = Number(Utilities.formatDate(new Date(), 'America/New_York', 'H')); const s = getDoc_('settings', 'app') || {}; const keep = s.remindHours; patch_('settings', 'app', { remindHours: [h] }); try { remindUnsent_(); } finally { patch_('settings', 'app', { remindHours: Array.isArray(keep) ? keep : [11, 15, 18] }); PropertiesService.getScriptProperties().deleteProperty('REMIND_AT'); } }
+
 /* ---------- 📦 체크 봉투 미도착 — 보낸 지 LATE_DAYS 지나도 도착 확인이 안 된 봉투는 세일즈맨 · 담당자에게 한 번 알림 (봉투에 lateAt 기록) ---------- */
 const LATE_DAYS = 14;
 function envelopesLate_() {
@@ -324,6 +360,13 @@ function getDoc_(col, id) {
 }
 function query_(col, field, val, limit) {
   const body = { structuredQuery: { from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: val } } }, limit: limit || 20 } };
+  const res = UrlFetchApp.fetch(BASE + ':runQuery', { method: 'post', contentType: 'application/json', payload: JSON.stringify(body), headers: headers_(), muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('Firestore 읽기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 300));
+  return JSON.parse(res.getContentText()).filter(x => x.document).map(x => fromDoc_(x.document));
+}
+/** query_ 와 같지만 값의 종류를 직접 ({ stringValue } · { booleanValue }) */
+function queryVal_(col, field, value, limit) {
+  const body = { structuredQuery: { from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: value } }, limit: limit || 20 } };
   const res = UrlFetchApp.fetch(BASE + ':runQuery', { method: 'post', contentType: 'application/json', payload: JSON.stringify(body), headers: headers_(), muteHttpExceptions: true });
   if (res.getResponseCode() !== 200) throw new Error('Firestore 읽기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 300));
   return JSON.parse(res.getContentText()).filter(x => x.document).map(x => fromDoc_(x.document));

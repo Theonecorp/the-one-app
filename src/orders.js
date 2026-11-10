@@ -121,10 +121,10 @@ async function pageHome() {
     '<div class="card"><h2>📝 ' + bi('오늘 플랜', 'Today\'s plan') + ' <span class="muted" style="font-weight:400;font-size:12px" id="dPlanAt">' + (plan.at ? bt('마지막 수정', 'last edit') + ' ' + esc(md(plan.at.substring(0, 10))) : bt('이 폰에 저장됩니다', 'saved on this phone')) + '</span></h2>' +
     '<textarea id="dPlan" rows="3" placeholder="' + esc(bt('예: 올랜도 3곳 방문 · ALI 수금 · 샘플 전달', 'e.g. 3 stores in Orlando · collect at ALI · drop samples')) + '">' + esc(plan.text) + '</textarea></div>' +
     '<div class="card"><h2>⚡ ' + bi('바로 가기', 'Quick actions') + '</h2><div class="qgrid">' + qa('order/new', '🛒', bi('새 주문', 'New order'), 'blue') + qa('entry/new', '✍️', bi('수금 입력', 'Payment')) + qa('credit/new', '↩', bi('크레딧 · 리턴', 'Credit')) + qa('stores', '🏬', bi('가게 찾기', 'Stores')) + qa('cat', '📒', bi('카탈로그', 'Catalog')) + qa('mysales', '📈', bi('내 매출', 'My sales')) + qa('track', '🚚', bi('배송 조회', 'Tracking')) + qa('mine', '📋', bi('수금 기록', 'Payment log')) + '</div></div>' +
-    '<div id="dayCf"></div><div id="offCard"></div>' + (Notify.notifyState() === 'default' ? '<button class="b-ghost" id="hNotif" style="margin-top:4px">🔔 ' + bi('알림 켜기', 'Turn on notifications') + '</button>' : '');
+    '<div id="dayCf"></div><div id="offCard"></div>' + Notify.blockedHtml();   /* 🔔 알림은 항상 켜짐 (v0.8.179) — 켜기 단추 없이 처음 누를 때 자동으로 물어봄 · 막혔으면 허용하는 법 */
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
   const ta = $('dPlan'); ta.oninput = debounce(() => { planPut(ta.value); const at = $('dPlanAt'); if (at) at.textContent = bt('저장됨', 'saved') + ' ' + md(today()); }, 400);
-  Notify.dayCard($('dayCf')); import('./offline.js').then(O => O.homeCard($('offCard'), true)); if ($('hNotif')) $('hNotif').onclick = async () => { await Notify.askPermission(); $('hNotif').remove(); };
+  Notify.dayCard($('dayCf')); import('./offline.js').then(O => O.homeCard($('offCard'), true));
   /* 숫자 — 폰에 둔 지난 값 먼저, 그 다음 새로 읽음 */
   try { const ms = JSON.parse(localStorage.getItem('theone.snap.mysales.' + sm) || 'null'), M = ms && ms.html && ms.html.M, k = M && Object.keys(M).sort().pop(); if (k && $('dkSales')) $('dkSales').textContent = money(M[k].tot || 0); } catch (e) {}
   const todo = [];

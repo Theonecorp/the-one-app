@@ -189,6 +189,8 @@ export async function openInvoices(acct) {
   try {
     const wh = [['acct', '==', acct], ['st', '==', 'open']]; if (S.role === 'salesman') wh.push(['sm', '==', me()]);
     const app = await S.DB.list('invoices', { where: wh });
+    /* ↩ 크레딧을 AR 인보이스에 바로 적용한 것 (AR 기준일 뒤) — 그 줄 잔액에서 뺌 */
+    app.forEach(x => { if (x.src !== 'credit' || x.st === 'x') return; (x.apply || []).forEach(a => { if (!a || !(String(a.d || '') > String(ar.asOf || ''))) return; const v = list.find(y => invNo(y.no) === invNo(a.no)); if (v) { const m = R2(num(a.amt)); v.bal = R2(v.bal - m); v.paid = R2((v.paid || 0) + m); } }); });
     const have = {}; list.forEach(v => { have[v.no] = 1; });
     const ents = await myEntries();
     app.forEach(x => { if (have[x.no] || x.src === 'legacy') return;   // 이전 시스템 인보이스 — AR 이 기준
