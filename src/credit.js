@@ -6,10 +6,14 @@
  *    · 리턴 물건의 창고 수령 확인은 지금은 하지 않음 (랜덤으로 들어와 일일이 맞추기 어려움)
  *    · v0.8.177: 🏷 할인 백 % (기록이 없어도 할인해서 나간 것은 할인 뺀 가격으로) · 🕘 최근 인보이스에서 여러 줄 한 번에 · 📋 코드 · 수량 여러 줄 붙여넣기
  *      · 주문 화면 ↔ 크레딧 바로 이동 (같은 가게) · 사무실은 확인 전 크레딧에 할인 백을 다시 적용 가능
+ *    · v0.8.179: 크레딧은 인보이스처럼 그 가게의 기록 — 가게 창 · 인보이스 조회 · 수금 고르기에 그대로 보이고 수금 때 인보이스와 같이 누르면 받을 돈에서 빠짐
+ *      · ↩ 인보이스에 바로 적용 (오피스 매니저 · 관리자 · 오너만 — can('crApply')): apply = [{ no, acct, amt, d, by, at, ar }]
+ *        CM pays['AP:인보이스'] = −금액 · 앱 인보이스 pays['CM:크레딧번호'] = 금액 → 두 문서의 잔액이 같이 줄어듦. 이전 시스템(AR) 인보이스는 AR 기준일 뒤 적용분을 잔액에서 뺌
+ *      · 적용 기록마다 ✕ 되돌리기 · 크레딧 한 장 한도 기본 10000
  * ============================================================ */
-import { $, esc, money, R2, num, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sortBy, bi, bt, printOpen, debounce } from './ui.js';
+import { $, esc, money, R2, num, today, ym, md, invNo, toast, busy, openModal, closeModal, confirmBox, Router, sortBy, bi, bt, printOpen, debounce } from './ui.js';
 import { loadCatalog, catalog, exactItem, searchItems, thumb } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache, monthsOf } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache, monthsOf, getInvoice } from './invoicing.js';
 import { searchAccounts } from './accounts.js';
 import { mySm } from './access.js';
 import { can } from './main.js';
@@ -20,8 +24,8 @@ const isSales = () => S.role === 'salesman';
 const staffOk = () => S.role === 'admin' || S.role === 'owner' || (S.role === 'manager' && (can('invoice') || can('verify')));
 export function register(state) { S = state; Router.on('credit', page); }
 /** CM 번호용 인보이스 종류 — 설정에 CM 칸 종류가 있으면 그것, 없으면 CM */
-/** ↩ 세일즈맨 크레딧 메모 한 장 한도 — settings/app.creditMax (기본 1000) · firestore.rules 의 creditMax() 와 같음 */
-export const creditMax = () => { const v = Number(S && S.settings && S.settings.creditMax); return v >= 0 && isFinite(v) && S.settings.creditMax != null ? v : 1000; };
+/** ↩ 세일즈맨 크레딧 메모 한 장 한도 — settings/app.creditMax (기본 10000, v0.8.179) · firestore.rules 의 creditMax() 와 같음 */
+export const creditMax = () => { const v = Number(S && S.settings && S.settings.creditMax); return v >= 0 && isFinite(v) && S.settings.creditMax != null ? v : 10000; };
 export function creditType() { return invTypes(S).find(t => t.comm === 'CM') || { c: 'CM', n: '크레딧 메모 Credit Memo', comm: 'CM', start: 1 }; }
 const CR = { acct: '', store: '', sm: '', acc: null, disc: {}, dback: null, why: '', note: '', lines: [], rec: [] };
 const DBACK = [0, 5, 10, 15, 20, 25, 30];
@@ -225,9 +229,10 @@ async function detail(no) {
     ((x.flags || []).length ? '<div class="alert a-amb">⚠️ ' + x.flags.map(esc).join(' · ') + '</div>' : '') +
     (x.st === 'x' ? '<div class="alert a-red">✕ VOID — ' + esc(x.voidReason || '') + ' <span class="muted">' + esc(String(x.voidBy || '').split('@')[0]) + ' ' + esc(String(x.voidAt || '').substring(0, 10)) + '</span></div>' : '') +
     /* 💵 크레딧 쓰기 — 수금 입력에서 미결 인보이스와 같이 고르면 받을 돈에서 빠짐. 사무실이 그 수금을 확인하면 남은 크레딧이 줄어듦 */
-    (x.st !== 'x' ? '<div class="sumbox" style="margin-top:8px">💵 ' + bt('남은 크레딧', 'Credit left') + ' <b style="color:#15803d">' + money(x.bal != null ? x.bal : x.total) + '</b>' + (x.paid ? ' · ' + bt('수금에 쓴 것', 'used in payments') + ' ' + money(x.paid) : '') + '<div class="muted" style="margin-top:4px">' + bt('쓰는 법: 💵 수금 입력에서 이 가게의 미결 인보이스와 이 크레딧(↩ 표시)을 같이 고르면, 받을 돈 = 인보이스 − 크레딧 이 됩니다. 사무실이 그 수금을 확인하면 남은 크레딧이 줄어듭니다.', 'How to use: in 💵 payment entry, pick the open invoices together with this credit (↩). Amount to collect = invoices − credit. When the office verifies that payment, the credit is used up.') + '</div></div>' : '') +
+    (x.st !== 'x' ? '<div class="sumbox" style="margin-top:8px">💵 ' + bt('남은 크레딧', 'Credit left') + ' <b style="color:#15803d">' + money(x.bal != null ? x.bal : x.total) + '</b>' + (usedPay(x) ? ' · ' + bt('수금에 쓴 것', 'used in payments') + ' ' + money(usedPay(x)) : '') + (usedApply(x) ? ' · ' + bt('인보이스에 적용', 'applied to invoices') + ' ' + money(usedApply(x)) : '') + '<div class="muted" style="margin-top:4px">' + bt('이 크레딧은 인보이스처럼 가게 기록에 남습니다 (가게 창 · 인보이스 조회 · 수금 고르기). 수금 받을 때(💵 수금 입력) 인보이스와 이 크레딧(↩ 표시)을 같이 누르면 받을 돈 = 인보이스 − 크레딧 이 되고, 사무실이 그 수금을 확인하면 남은 크레딧이 줄어듭니다.', 'This credit stays on the store record like an invoice (store window · invoice lookup · payment picks). Tap it together with invoices when collecting: amount to collect = invoices − credit. When the office verifies that payment, the credit is used up.') + (applyOk() ? ' ' + bt('오피스 매니저 · 관리자는 아래 ↩ 인보이스에 바로 적용 으로 돈 없이 바로 맞출 수 있습니다.', 'Office manager · admin can also apply it straight to invoices below.') : '') + '</div></div>' : '') +
+    applyHtml(x) +
     (x.reviewed ? '<div class="alert a-grn">✅ ' + bt('사무실 확인', 'Reviewed') + ' — ' + esc(String(x.reviewedBy || '').split('@')[0]) + ' ' + esc(String(x.reviewedAt || '').substring(0, 16).replace('T', ' ')) + '</div>' : '') +
-    '<div class="btns" style="margin-top:8px;flex-wrap:wrap"><button class="b-ghost b-sm" id="crPrint">🖨 ' + bt('크레딧 메모 인쇄', 'Print credit memo') + '</button>' + (x.st !== 'x' && x.acct ? '<button class="b-ghost b-sm" id="crOrder">🛒 ' + bt('이 가게 주문 (교환 물건)', 'Order for this store (exchange)') + '</button>' : '') + (staffOk() && x.st !== 'x' ? (!x.reviewed ? '<button class="b-ghost b-sm" id="crRedisc">🏷 ' + bt('할인 백 적용', 'Apply discount back') + '</button><button class="b-green b-sm" id="crOk">✅ ' + bt('확인', 'Confirm') + '</button>' : '') + '<button class="b-ghost b-sm" id="crVoid" style="color:#991b1b">🚫 VOID</button>' : '') + '</div></div>' +
+    '<div class="btns" style="margin-top:8px;flex-wrap:wrap"><button class="b-ghost b-sm" id="crPrint">🖨 ' + bt('크레딧 메모 인쇄', 'Print credit memo') + '</button>' + (x.st !== 'x' && x.acct ? '<button class="b-ghost b-sm" id="crOrder">🛒 ' + bt('이 가게 주문 (교환 물건)', 'Order for this store (exchange)') + '</button>' : '') + (applyOk() && x.st !== 'x' && crLeft(x) > 0.005 ? '<button class="b-blue b-sm" id="crApply">↩ ' + bt('인보이스에 바로 적용', 'Apply to invoices') + '</button>' : '') + (staffOk() && x.st !== 'x' ? (!x.reviewed ? '<button class="b-ghost b-sm" id="crRedisc">🏷 ' + bt('할인 백 적용', 'Apply discount back') + '</button><button class="b-green b-sm" id="crOk">✅ ' + bt('확인', 'Confirm') + '</button>' : '') + '<button class="b-ghost b-sm" id="crVoid" style="color:#991b1b">🚫 VOID</button>' : '') + '</div></div>' +
     '<div class="card"><h2>' + bt('아이템', 'Items') + ' ' + (x.lines || []).length + '</h2><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('단가', 'Unit') + '</th><th class="r">' + bt('크레딧', 'Credit') + '</th></tr>' + (x.lines || []).map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + (l.dc ? ' · ' + bt('가게 할인', 'store disc') + ' ' + l.dc + '%' : '') + (l.src === 'recent' ? ' · ' + bt('최근 인보이스 가격', 'recent invoice price') : l.src === 'manual' ? ' · <b class="warn">' + bt('직접 바꾼 가격', 'manual price') + '</b>' : '') + (l.recent ? '<br>🕘 ' + esc(l.recent.d) + ' ' + esc(l.recent.no) + ' ' + money(l.recent.p) + (Math.abs(l.recent.p - l.p) > 0.009 ? ' <b class="warn">≠</b>' : ' ✓') : '') + '</div></td><td class="r">' + Math.abs(l.q) + '</td><td class="r">' + money(l.p) + '</td><td class="r"><b>−' + money(R2(Math.abs(l.q) * l.p)) + '</b></td></tr>').join('') + '</table></div>';
   $('crBack').onclick = () => Router.go('credit');
   $('crPrint').onclick = () => printOpen(creditHtml(x));
@@ -242,11 +247,18 @@ async function detail(no) {
     $('rdbIn').oninput = () => { const v = Number($('rdbIn').value); if ($('rdbIn').value !== '' && isFinite(v) && v >= 0 && v <= 90) show(v); };
     $('rdbX').onclick = closeModal;
     $('rdbGo').onclick = async () => { if (pct == null) return; const r = calc(pct); busy(true);
-      try { await S.DB.update('invoices', x.no, { lines: r.L, sub: -r.sub, list: -r.list, total: -r.sub, bal: -r.sub, dback: pct, flags: (x.flags || []).filter(f => !/^할인 백/.test(f)).concat(['할인 백 ' + pct + '% — 사무실 적용']), discAt: new Date().toISOString(), discBy: S.user.email }); dropInvCache(monthsOf([x])); closeModal(); toast('🏷 ' + x.no + ' −' + money(r.sub), 'good'); detail(no); }
+      try { await S.DB.update('invoices', x.no, { lines: r.L, sub: -r.sub, list: -r.list, total: -r.sub, bal: Math.min(0, R2(-r.sub - Object.values(x.pays || {}).reduce((a, v) => a + (Number(v) || 0), 0))), dback: pct, flags: (x.flags || []).filter(f => !/^할인 백/.test(f)).concat(['할인 백 ' + pct + '% — 사무실 적용']), discAt: new Date().toISOString(), discBy: S.user.email }); dropInvCache(monthsOf([x])); closeModal(); toast('🏷 ' + x.no + ' −' + money(r.sub), 'good'); detail(no); }
       catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
   };
+  if ($('crApply')) $('crApply').onclick = () => applyModal(x, () => detail(no));
+  document.querySelectorAll('[data-apx]').forEach(b => b.onclick = async () => {
+    const i = +b.dataset.apx, a = (x.apply || [])[i]; if (!a) return;
+    if (!(await confirmBox(bt('이 적용을 되돌릴까요?', 'Undo this application?') + '\n' + x.no + ' → ' + a.no + ' ' + money(a.amt), '✕ ' + bt('되돌리기', 'Undo')))) return;
+    busy(true); try { await saveApply(x, (x.apply || []).filter((_, k) => k !== i), [a.no]); toast('✕ ' + a.no + ' ' + money(a.amt)); detail(no); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false);
+  });
   if ($('crOk')) $('crOk').onclick = async () => { busy(true); try { await S.DB.update('invoices', x.no, { reviewed: true, reviewedBy: S.user.email, reviewedAt: new Date().toISOString() }); toast('✅ ' + x.no); detail(no); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('crVoid')) $('crVoid').onclick = () => {
+    if ((x.apply || []).length) return toast(bt('인보이스에 적용한 기록이 있습니다 — 먼저 ✕ 되돌린 뒤 VOID 하세요', 'Applied to invoices — undo those first, then VOID'), 'bad');
     openModal('<h2 style="color:#991b1b">🚫 ' + esc(x.no) + ' VOID</h2><div class="muted">' + bt('크레딧을 무효로 합니다. 가게 잔액에서 다시 더해지고 세일즈맨에게 사유가 전달됩니다.', 'Voids the credit: the store balance goes back up and the salesman is told why.') + '</div><div class="fg"><label>' + bt('사유 (필수)', 'Reason (required)') + '</label><input id="cvWhy"></div><div class="btns"><button class="b-ghost" id="cvX">' + bt('돌아가기', 'Back') + '</button><button class="b-red" id="cvGo">🚫 VOID</button></div>');
     $('cvX').onclick = closeModal;
     $('cvGo').onclick = async () => { const why = $('cvWhy').value.trim(); if (!why) return toast(bt('사유를 적으세요', 'Type the reason'), 'bad'); busy(true);
@@ -254,6 +266,69 @@ async function detail(no) {
         try { const N = await import('./notify.js'); await N.queue({ kind: 'creditVoid', toSm: x.sm, pushOnly: true, subject: '[THE ONE] 🚫 크레딧 VOID — ' + x.store, text: '🚫 크레딧 ' + x.no + ' VOID → ' + x.sm + ' · ' + x.store + ' ' + money(x.total) + '\n사유: ' + why, url: N.appUrl('credit/' + encodeURIComponent(x.no)) }); } catch (e) {}
         closeModal(); toast('🚫 VOID ' + x.no); detail(no); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
   };
+}
+/* ---------- ↩ 인보이스에 바로 적용 (v0.8.179) — 오피스 매니저 · 관리자 · 오너만 ---------- */
+const applyOk = () => can('crApply');
+/** 남은 크레딧 (양수) */
+const crLeft = x => x.st === 'x' ? 0 : R2(-(x.bal != null ? x.bal : x.total));
+const usedApply = x => R2((x.apply || []).reduce((a, y) => a + num(y.amt), 0));
+const usedPay = x => R2(Object.keys(x.pays || {}).filter(k => k.indexOf('AP:') !== 0).reduce((a, k) => a + (Number(x.pays[k]) || 0), 0));
+function applyHtml(x) {
+  const L = x.apply || []; if (!L.length) return '';
+  return '<div class="sumbox" style="margin-top:8px"><b>↩ ' + bt('인보이스에 적용한 기록', 'Applied to invoices') + '</b>' + L.map((a, i) => '<div class="muted" style="display:flex;gap:8px;align-items:center;margin-top:4px"><span style="flex:1">' + esc(a.d || '') + ' · <b>' + esc(a.no) + '</b>' + (a.ar ? ' <span class="tag t-c">AR</span>' : '') + ' — <b>' + money(a.amt) + '</b> · ' + esc(String(a.by || '').split('@')[0]) + '</span>' + (applyOk() && x.st !== 'x' ? '<button class="b-ghost b-sm" data-apx="' + i + '" title="' + esc(bt('되돌리기', 'Undo')) + '">✕</button>' : '') + '</div>').join('') +
+    (L.some(a => a.ar) ? '<div class="muted" style="margin-top:4px;font-size:12px">AR = ' + bt('이전 시스템(SmartBee) 인보이스 — SmartBee 에도 같은 크레딧을 넣어야 다음 AR 올리기 뒤에도 맞습니다', 'SmartBee invoice — enter the same credit in SmartBee so the next A/R upload matches') + '</div>' : '') + '</div>';
+}
+/** 적용 기록(apply) 을 저장하고 두 쪽 잔액을 다시 맞춤 — CM: pays['AP:인보이스'] · 앱 인보이스: pays['CM:크레딧'] (touched: 바뀐 인보이스 번호) */
+async function saveApply(x, apply, touched) {
+  const by = {}; apply.forEach(a => { const k = invNo(a.no); by[k] = R2((by[k] || 0) + num(a.amt)); });
+  const pays = {}; Object.keys(x.pays || {}).forEach(k => { if (k.indexOf('AP:') !== 0) pays[k] = x.pays[k]; });
+  Object.keys(by).forEach(no => { if (by[no]) pays['AP:' + no] = -by[no]; });
+  const paid = R2(Object.values(pays).reduce((a, v) => a + (Number(v) || 0), 0)), bal = Math.min(0, R2((x.total || 0) - paid)), now = new Date().toISOString();
+  await S.DB.update('invoices', x.no, { apply, pays, paid, bal, applyAt: now });
+  Object.assign(x, { apply, pays, paid, bal });
+  const docs = [x];
+  for (const no of Array.from(new Set(touched.map(invNo)))) {
+    let inv = null; try { inv = await getInvoice(S, no); } catch (e) {}
+    if (!inv || inv.st === 'x' || inv.src === 'legacy' || inv.src === 'credit') continue;   // 이전 시스템 인보이스는 AR 이 기준 (AR 잔액에서 뺌)
+    const ip = Object.assign({}, inv.pays || {}), k = 'CM:' + x.no; if (by[no]) ip[k] = by[no]; else delete ip[k];
+    const ipaid = R2(Object.values(ip).reduce((a, v) => a + (Number(v) || 0), 0)), ibal = Math.max(0, R2((inv.total || 0) - ipaid));
+    await S.DB.update('invoices', inv.id || inv.no, { pays: ip, paid: ipaid, bal: ibal, updatedAt: now }); docs.push(inv);
+  }
+  dropInvCache(monthsOf(docs));
+  try { const St = await import('./store.js'); St.dropStoreCache(x.acct); } catch (e) {}   // 가게 창 · 인보이스 상세가 새 잔액으로
+}
+/** 이 가게 미결 인보이스를 골라 크레딧을 적용 — 오래된 것부터 남은 크레딧만큼 자동 채움, 금액은 고칠 수 있음 */
+async function applyModal(x, done) {
+  const left = crLeft(x); if (!(left > 0.005)) return toast(bt('남은 크레딧이 없습니다', 'No credit left'), 'bad');
+  openModal('<h2>↩ ' + esc(x.no) + ' ' + bi('인보이스에 바로 적용', 'Apply to invoices') + '</h2><div class="load">' + bt('미결 인보이스 읽는 중…', 'Loading open invoices…') + '</div>');
+  let open = [];
+  try { const { storeInfo } = await import('./store.js'); const info = await storeInfo(x.acct, true); open = (info.invs || []).filter(v => v.bal > 0.005 && invNo(v.no) !== invNo(x.no)).map(v => ({ no: String(v.no), d: v.d, bal: R2(v.bal), ar: !v.app, amt: 0, on: false })).sort((a, b) => String(a.d).localeCompare(String(b.d)) || a.no.localeCompare(b.no)); } catch (e) {}
+  const box = $('mbox'); if (!box) return;
+  const tot = () => R2(open.reduce((a, v) => a + (v.on ? num(v.amt) : 0), 0));
+  let seq = 0; const fill = () => { let r = left; open.filter(v => v.on).sort((a, b) => a.seq - b.seq).concat(open.filter(v => !v.on)).forEach(v => { if (!v.on) { v.amt = 0; return; } if (v.manual) { r = R2(r - num(v.amt)); return; } v.amt = Math.max(0, Math.min(v.bal, r)); r = R2(r - v.amt); }); };
+  const paint = () => {
+    const t = tot(), over = t > left + 0.005;
+    box.innerHTML = '<h2>↩ ' + esc(x.no) + ' ' + bi('인보이스에 바로 적용', 'Apply to invoices') + '</h2><div class="muted">' + esc(x.store) + ' · ' + bt('남은 크레딧', 'Credit left') + ' <b style="color:#15803d">' + money(left) + '</b> — ' + bt('누른 순서대로 남은 크레딧을 채웁니다. 금액은 고칠 수 있습니다. 돈을 받지 않고 크레딧으로만 인보이스 잔액을 줄입니다.', 'Tap invoices — filled in the order tapped; amounts can be edited. Reduces invoice balances with the credit only (no money).') + '</div>' +
+      (open.length ? '<div style="max-height:50vh;overflow:auto;margin-top:8px">' + open.map((v, i) => '<div class="pick inv' + (v.on ? ' on' : '') + '" data-apk="' + i + '"><div class="ck">✓</div><div class="pm"><b>' + esc(v.no) + (v.ar ? ' <span class="tag t-c">AR</span>' : ' <span class="tag t-b">' + bt('앱', 'App') + '</span>') + '</b><small>' + esc(md(v.d)) + ' · ' + bt('잔액', 'balance') + ' ' + money(v.bal) + '</small></div>' + (v.on ? '<input data-apa="' + i + '" value="' + num(v.amt).toFixed(2) + '" inputmode="decimal" style="width:96px;text-align:right">' : '<b>' + money(v.bal) + '</b>') + '</div>').join('') + '</div>'
+        : '<div class="none">' + bt('이 가게에 잔액 있는 인보이스가 없습니다', 'No open invoices for this store') + '</div>') +
+      '<div class="sumbox" style="margin-top:8px">' + bt('적용', 'Apply') + ' <b>' + money(t) + '</b> · ' + bt('적용 뒤 남는 크레딧', 'credit left after') + ' <b>' + money(R2(left - t)) + '</b>' + (over ? ' <b class="warn">' + bt('남은 크레딧보다 많습니다', 'more than the credit left') + '</b>' : '') + '</div>' +
+      '<div class="btns"><button class="b-ghost" id="apX">' + bt('돌아가기', 'Back') + '</button><button class="b-blue" id="apGo"' + (t > 0.005 && !over ? '' : ' disabled') + '>↩ ' + bt('적용', 'Apply') + ' ' + money(t) + '</button></div>';
+    box.querySelectorAll('[data-apk]').forEach(el => el.onclick = e => { if (e.target.tagName === 'INPUT') return; const v = open[+el.dataset.apk]; v.on = !v.on; v.seq = ++seq; v.manual = false; fill(); paint(); });
+    box.querySelectorAll('[data-apa]').forEach(el => el.onchange = () => { const v = open[+el.dataset.apa]; v.amt = Math.max(0, Math.min(v.bal, R2(num(el.value)))); v.manual = true; fill(); paint(); });
+    $('apX').onclick = closeModal;
+    $('apGo').onclick = async () => {
+      const sel = open.filter(v => v.on && num(v.amt) > 0.005); if (!sel.length) return;
+      const t2 = tot(); if (t2 > left + 0.005) return toast(bt('남은 크레딧보다 많습니다', 'More than the credit left'), 'bad');
+      busy(true);
+      try {
+        const d = today(), at = new Date().toISOString(), by = S.user.email;
+        await saveApply(x, (x.apply || []).concat(sel.map(v => ({ no: v.no, acct: x.acct, amt: R2(num(v.amt)), d, by, at, ar: v.ar }))), sel.map(v => v.no));
+        closeModal(); toast('↩ ' + x.no + ' → ' + sel.length + bt('장 적용', ' invoice(s)') + ' ' + money(t2), 'good'); if (done) done();
+      } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  };
+  paint();
 }
 function creditHtml(x) {
   const co = company(S);

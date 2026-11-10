@@ -25,6 +25,8 @@ const isStaff = () => S.role !== 'salesman';
 const mySm = () => (S.me && S.me.sm ? String(S.me.sm).toUpperCase() : '');
 
 /** 가게 자료 읽기 (10분 보관) — 인터넷이 없으면 Firestore 오프라인 사본에서 */
+/** ↩ 크레딧 메모(CM)의 인보이스 바로 적용 기록 — [{ cm, no, amt, d, by }] (VOID 크레딧 빼고) · v0.8.179 */
+export function crApps(invs) { const R = []; (invs || []).forEach(x => { if (!x || x.src !== 'credit' || x.st === 'x') return; (x.apply || []).forEach(a => { if (a && a.no && num(a.amt)) R.push({ cm: x.no, no: invNo(a.no), amt: R2(num(a.amt)), d: a.d || '', by: a.by || '' }); }); }); return R; }
 export async function storeInfo(acct, force) {
   const c = CACHE[acct];
   if (c && !force && Date.now() - c.at < 600000) { if (!(c.access && c.access.k === 'none') || (await acctAccess(acct)).k === 'none') return c; }   // 그사이 허락을 받았으면 새로 읽음
@@ -61,7 +63,8 @@ export async function storeInfo(acct, force) {
       if (st) {
         const paid = {};
         pays.forEach(e => { if (e.void || e.repl || e.bounced || e.d <= out.asOf) return; (e.invs || []).forEach(v => { const k = v.no; paid[k] = R2((paid[k] || 0) + num(v.amt)); }); });
-        out.invs = (st.invs || []).map(v => { const p = paid[v.inv] || 0; return { no: v.inv, d: v.d, amt: v.amt, paid: p, bal: R2(v.bal - p), pdd: v.pdd || 0, bk: v.bk || 0 }; }).sort((x, y) => x.d < y.d ? 1 : -1);
+        const crp = {}; crApps(appInv).forEach(a => { if (a.d > out.asOf) crp[a.no] = R2((crp[a.no] || 0) + a.amt); });   /* ↩ 크레딧을 이 AR 인보이스에 바로 적용한 것 (AR 기준일 뒤 · 번호는 invNo 로 맞춤) */
+        out.invs = (st.invs || []).map(v => { const p = R2((paid[v.inv] || 0) + (crp[invNo(v.inv)] || 0)); return { no: v.inv, d: v.d, amt: v.amt, paid: p, bal: R2(v.bal - p), pdd: v.pdd || 0, bk: v.bk || 0 }; }).sort((x, y) => x.d < y.d ? 1 : -1);
         out.invs.forEach(v => { out.bal += v.bal; if (v.bal > 0.005) out.bk[Math.max(0, Math.min(4, v.bk))] += v.bal; });
         out.bal = R2(out.bal); out.bk = out.bk.map(R2);
       }
@@ -85,6 +88,7 @@ export async function storeInfo(acct, force) {
     out.orders = sortBy(orders.filter(o => o.st !== 'x'), o => o.d + (o.createdAt || ''), true).slice(0, 30);
     out.pays = sortBy(pays.filter(e => !e.void), e => e.d + (e.createdAt || ''), true).slice(0, 80);
     out.cods = sortBy((cods || []).filter(c => !c.void), c => c.d + (c.createdAt || ''), true).slice(0, 80);
+    out.crApps = crApps(appInv);   /* ↩ 크레딧 → 인보이스 바로 적용 기록 (수금 목록 · 인보이스 상세에 같이) */
     /* 💵 후일 수표(Postdate check) — 아직 입금일이 안 된 수표 (바운스 · 대체 · 취소 빼고) */
     const td = today(); out.pdc = R2(pays.filter(e => !e.void && !e.repl && !e.bounced).reduce((a, e) => a + (e.pays || []).filter(p => p.m === 'CHECK' && p.dep && p.dep > td).reduce((b, p) => b + num(p.amt), 0), 0));
     /* 🕘 아이템별 이 가게 구매 기록 — 주문 화면에 "9/16(3) · 7/20(6)" 로 보임
@@ -223,6 +227,7 @@ function invRows(info) {
 function payRows(info) {
   const R = [];
   (info.pays || []).forEach(e => (e.pays || []).forEach(p => R.push({ m: p.m === 'ZELLE' ? 'ZELLE' : p.m === 'CASH' ? 'CASH' : 'CHECK', d: e.d, amt: num(p.amt), ty: e.bounced ? 'BOUNCE' : 'PAY', ref: p.m === 'CHECK' ? (p.ref ? '#' + p.ref : '') : (p.ref || ''), dep: p.dep || '', invs: (e.invs || []).map(v => v.no).filter(Boolean), sm: e.sm || '' })));
+  (info.crApps || []).forEach(a => R.push({ m: 'CREDIT', d: a.d, amt: a.amt, ty: 'CM', ref: a.cm, dep: '', invs: [a.no], sm: '' }));   /* ↩ 크레딧을 인보이스에 바로 적용 */
   (info.cods || []).forEach(c => R.push({ m: c.method || 'COD', d: c.d, amt: num(c.amt), ty: c.method || 'COD', ref: c.ref || '', dep: '', invs: (c.invs || []).map(v => v.no).concat(c.inv ? [c.inv] : []).filter(Boolean), sm: c.sm || '' }));
   return R.sort((a, b) => String(b.d).localeCompare(String(a.d)));
 }
@@ -255,6 +260,7 @@ export async function invDetail(no, acct, back) {
   const info = acct ? await storeInfo(acct) : null;
   const v = info ? (info.invs || []).find(z => invNo(z.no) === no) : null;
   const pays = info ? (info.pays || []).filter(e => (e.invs || []).some(y => invNo(y.no) === no)) : [];
+  const crs = info ? (info.crApps || []).filter(c => c.no === no) : [];   /* ↩ 이 인보이스에 바로 적용한 크레딧 */
   const box = $('mbox'); if (!box) return;
   if (!x && !v) {
     box.innerHTML = '<h2>📄 ' + esc(no) + '</h2>' + (denied || (info && info.access && info.access.k === 'none')
@@ -275,12 +281,14 @@ export async function invDetail(no, acct, back) {
     (x && x.memo ? '<div class="alert a-amb" style="margin-top:8px">📝 ' + bt('메모', 'Memo') + ': <b>' + esc(x.memo) + '</b></div>' : '') +   /* 📝 인보이스 메모 — 할인 · 외상 조건 (이전 시스템 Memo 열 · v0.8.174) */
     (info && info.asOf ? '<div class="muted">' + bt('잔액은 AR 기준일', 'Balance from A/R as of') + ' ' + esc(info.asOf) + bt(' + 그 뒤 받은 돈', ' + payments since') + '</div>' : '') +
     (pays.length ? '<div class="sumbox"><b>💵 ' + bt('이 인보이스에 넣은 수금', 'Payments applied') + '</b>' + pays.map(e => { const y = (e.invs || []).find(z => z.no === no); return '<div class="muted">' + esc(e.d) + ' · ' + esc((e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(', ')) + ' · ' + esc(e.sm || '') + ' — <b>' + money(y ? y.amt : 0) + '</b></div>'; }).join('') + '</div>' : '') +
+    (crs.length ? '<div class="sumbox"><b>↩ ' + bt('이 인보이스에 적용한 크레딧', 'Credits applied') + '</b>' + crs.map(c => '<div class="muted tap" data-crgo="' + esc(c.cm) + '">' + esc(c.d) + ' · <b>' + esc(c.cm) + '</b> — <b>' + money(c.amt) + '</b> ›</div>').join('') + '</div>' : '') +
     (lines.length ? '<div style="max-height:40vh;overflow:auto"><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('가격', 'Price') + '</th><th class="r">' + bt('금액', 'Amount') + '</th></tr>' + lines.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table></div>'
       : '<div class="muted" style="margin-top:6px">' + (legacy ? bt('이전 시스템(SmartBee) 인보이스 — 품목 줄은 SmartBee 에 있습니다', 'SmartBee invoice — line items are in SmartBee') : !x ? bt('AR 에만 있는 인보이스 — 인보이스 목록을 올리면 자세히 보입니다', 'Only in A/R — upload the invoice list for details') : '') + '</div>') +
     (!a && acct ? '<div class="alert a-amb">⚠️ ' + bt('거래처 목록에 없는 계정코드입니다', 'This account code is not in the customer list') + ' (' + esc(acct) + ') — ' + bt('✏️ 수정에서 가게를 다시 연결하세요', 'relink the store with ✏️ Edit') + '</div>' : !acct && x ? '<div class="alert a-amb">⚠️ ' + bt('이 인보이스에 가게(계정코드)가 없습니다 — ✏️ 수정에서 연결하세요', 'This invoice has no store — link one with ✏️ Edit') + '</div>' : '') +
     '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="idStore2">🏬 ' + bi('가게 창', 'Store') + '</button>' + (x && lines.length ? '<button class="b-blue" id="idPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' : '') +
     (x && isStaff() && can('void') ? (legacy || !x.orderId ? '<button class="b-ghost" id="idEdit">✏️ ' + bi('수정', 'Edit') + '</button><button class="b-ghost" id="idDel" style="color:#991b1b">🗑 ' + bi('지우기', 'Delete') + '</button>' : '<button class="b-ghost" id="idOrder">📦 ' + bi('주문 열기 (VOID · 다시 발행)', 'Open order (void · reissue)') + '</button>') : '') + '</div>';
   $('idX').onclick = () => back ? back() : closeModal();
+  box.querySelectorAll('[data-crgo]').forEach(el => el.onclick = () => { closeModal(); goHash('#/credit/' + encodeURIComponent(el.dataset.crgo)); });
   const toStore = () => storeSheet(acct, null, 'invh');
   $('idStore').onclick = toStore; $('idStore2').onclick = toStore;
   if ($('idPrint')) $('idPrint').onclick = async () => { const { printInvoices } = await import('./fulfill.js'); printInvoices([x], a); };

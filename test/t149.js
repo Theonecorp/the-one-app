@@ -20,7 +20,7 @@ const path = require('path'), fs = require('fs');
   const inv = block('invoices');
   if (!/request\.resource\.data\.total >= -creditMax\(\)/.test(inv)) errs.push('① salesman credit must be capped by creditMax()');
   if (!/request\.resource\.data\.get\('reviewed', false\) == false/.test(inv)) errs.push('① salesman credit must not be reviewed');
-  if (!/settings\/app\)\.data\.get\('creditMax', 1000\)/.test(R)) errs.push('① creditMax() reads settings/app.creditMax (default 1000)');
+  if (!/settings\/app\)\.data\.get\('creditMax', 10000\)/.test(R)) errs.push('① creditMax() reads settings/app.creditMax (default 10000 · v0.8.179)');
   if (!/staffJob\(\['whmgr', 'pick'\]\) && request\.resource\.data\.diff\(resource\.data\)\.affectedKeys\(\)\.hasOnly\(\['shipTo', 'store', 'updatedAt'\]\)/.test(inv)) errs.push('① warehouse may only change shipTo · store on invoices');
   /* L4 */
   const smu = (R.match(/function smOrderUpdate\(\) \{[^]*?\n    \}/) || [''])[0];

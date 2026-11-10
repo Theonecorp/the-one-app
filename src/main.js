@@ -45,7 +45,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.178';
+export const VER = 'v0.8.179';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -80,7 +80,7 @@ export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct
 /** 일별 할 수 있는 것 — flow 🧭 전체 주문 흐름 감독 · newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
  *  · verify 수금 확인 · cod COD·카드 · ach ACH · items 아이템 · 재고 위치 · bo 백오더 */
 export const CAN = {
-  office:  ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo'],
+  office:  ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'verify', 'cod', 'ach', 'items', 'bo', 'crApply'],   // crApply: ↩ 크레딧을 인보이스에 바로 적용 (오피스 매니저 · 관리자 · 오너만, v0.8.179)
   acct:    ['verify', 'cod', 'ach', 'invLookup'],
   pickinv: ['flow', 'newOrder', 'invoice', 'void', 'assign', 'pick', 'ship', 'items', 'bo'],   // v0.8.164: 출고 · 인보이스 담당도 주문 넣기
   invoice: ['newOrder', 'invoice', 'void', 'items', 'bo'],

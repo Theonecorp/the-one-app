@@ -202,7 +202,7 @@ async function settings() {
   const s = S.settings || {};
   $('adminBody').innerHTML = '<div class="card"><h2>정산 설정</h2>' +
     '<div class="fg"><label>할인 초과 기준 (이 값을 넘으면 할인 요율) %</label><input id="stDisc" value="' + ((s.discLimit != null ? s.discLimit : 0.2) * 100).toFixed(0) + '" inputmode="decimal"></div>' +
-    '<div class="fg"><label>↩ 세일즈맨 크레딧 메모 한 장 한도 $ (넘으면 사무실이 발행 · firestore.rules 도 같은 값)</label><input id="stCrMax" value="' + (s.creditMax != null ? s.creditMax : 1000) + '" inputmode="decimal"></div>' +
+    '<div class="fg"><label>↩ 세일즈맨 크레딧 메모 한 장 한도 $ (넘으면 사무실이 발행 · firestore.rules 도 같은 값)</label><input id="stCrMax" value="' + (s.creditMax != null ? s.creditMax : 10000) + '" inputmode="decimal"></div>' +
     '<div class="fg"><label>정산 — 받은 돈과 인보이스 합 차이 허용 $ <span class="muted">(이 금액 이하면 표시만 하고 그대로 계산 · 넘으면 그 줄은 금액을 맞출 때까지 제외)</span></label><input id="stTol" type="number" step="0.01" inputmode="decimal" value="' + (s.commTol != null ? s.commTol : 2) + '"></div>' +
     '<div class="fg"><label>담당자 알림 이메일 (옵션)</label><input id="stMail" value="' + esc(s.reportTo || 'check@theonefl.com') + '"></div>' +
     '<div class="two"><div class="fg"><label>📦 재고 부족 기준 (개 · 아이템마다 따로 정하지 않으면 이 수량 아래로 내려갈 때 알림)</label><input id="stMin" inputmode="numeric" value="' + esc(s.stockMin != null ? s.stockMin : 12) + '"></div><div class="fg"><label>📦 재고 부족 알림 이메일 (쉼표로 여러 명 · 비우면 담당자 알림 이메일로)</label><input id="stLowTo" value="' + esc(s.stockAlertTo || '') + '" placeholder="office@theonefl.com, luke@theonefl.com"></div></div>' +

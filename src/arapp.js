@@ -3,6 +3,7 @@
  *    앱 인보이스 잔액 = bal (담당자가 수금 확인 · COD 로 넣은 돈은 이미 빠짐) − 아직 확인 전인 수금 입력
  *    → 앱을 쓰면서 쌓이는 인보이스 · 수금으로 미수금이 저절로 맞춰짐 (AR 을 다시 올리지 않아도)
  *  돌려준 AR 의 앱 인보이스 줄에는 app: true — 쓰는 쪽은 그 줄에서 수금을 다시 빼지 않음
+ *  ↩ 크레딧 바로 적용(CM.apply) 은 AR 줄 잔액에서 이미 뺌 (v.cm)
  * ============================================================ */
 import { R2, num, today, daysBetween, invNo } from './ui.js';
 import { termDays } from './invoicing.js';
@@ -15,6 +16,11 @@ export function mergeAppInvoices(ar, invs, ents) {
   out.stores.forEach(s => { by[s.acct] = s; s.invs.forEach(v => have.add(invNo(v.inv))); });
   const unv = {};   // 인보이스 번호 → [[수금 id, 금액]]
   (ents || []).forEach(e => { if (e.void || e.repl || e.bounced) return; (e.invs || []).forEach(v => { if (v.no) (unv[invNo(v.no)] = unv[invNo(v.no)] || []).push([e.id, num(v.amt)]); }); });
+  /* ↩ 크레딧을 이전 시스템(AR) 인보이스에 바로 적용한 것 — AR 기준일 뒤 적용분을 그 줄 잔액에서 뺌 (앱 인보이스는 그 문서 pays 에 이미 들어감) · v0.8.179 */
+  (invs || []).forEach(x => { if (!x || x.src !== 'credit' || x.st === 'x') return; (x.apply || []).forEach(a => {
+    if (!a || !a.no || !(String(a.d || '') > String(out.asOf || ''))) return; const s = by[a.acct || x.acct]; if (!s) return;
+    const v = s.invs.find(y => !y.app && invNo(y.inv) === invNo(a.no)); if (!v) return;
+    const amt = R2(num(a.amt)); v.bal = R2(v.bal - amt); v.cm = R2((v.cm || 0) + amt); s.total = R2((s.total || 0) - amt); }); });
   let n = 0;
   (invs || []).forEach(x => {
     if (!x || x.src === 'legacy' || x.st !== 'open' || have.has(invNo(x.no))) return;

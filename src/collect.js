@@ -169,15 +169,17 @@ function arAlloc() {
   F.invs.forEach(v => { if (v.ar && !v.manual) auto.push(v); else manual += amtOf(v.amt); });
   let left = R2(total - manual);
   auto.sort((a, b) => (Number(a.bal) < 0 ? 0 : 1) - (Number(b.bal) < 0 ? 0 : 1));   /* ↩ 크레딧 먼저 (화면 순서는 그대로 · 배분 순서만) */
+  /* ↩ 크레딧은 같이 고른 인보이스 금액까지만 씀 (v0.8.179) — 크레딧이 더 크면 나머지는 남은 크레딧으로 남음 */
+  let cap = R2(auto.reduce((a, v) => a + Math.max(0, Number(v.bal) || 0), 0) + Math.max(0, manual));
   auto.forEach(v => {
     const bal = Number(v.bal) || 0; let amt = bal;
-    if (bal > 0) { amt = Math.max(0, Math.min(bal, left)); left = R2(left - amt); } else left = R2(left - bal);
-    v.amt = amt.toFixed(2); v.partial = bal > 0 && amt < bal - 0.005; v.zero = bal > 0 && amt < 0.005;
+    if (bal > 0) { amt = Math.max(0, Math.min(bal, left)); left = R2(left - amt); } else { amt = -Math.min(-bal, Math.max(0, cap)); cap = R2(cap + amt); left = R2(left - amt); }
+    v.amt = amt.toFixed(2); v.partial = bal > 0 ? amt < bal - 0.005 : amt > bal + 0.005; v.zero = bal > 0 ? amt < 0.005 : amt > -0.005;
   });
 }
 function paintInvSum() {
   arAlloc();
-  F.invs.forEach((v, i) => { const el = document.querySelector('[data-iamt="' + i + '"]'); if (el && v.ar && !v.manual) { el.value = centsFmt(v.amt, Number(v.bal) < 0); } const row = document.querySelector('[data-ii="' + i + '"]'); if (row) { row.classList.toggle('zero', !!v.zero); const pt = row.querySelector('.part'); if (pt) { pt.style.display = v.partial ? 'inline-block' : 'none'; pt.textContent = v.zero ? '받은 돈 부족 — 이 인보이스엔 $0 · not covered' : '파샬 · partial'; } else if (v.partial && row.querySelector('.ibal')) row.querySelector('.ibal').insertAdjacentHTML('beforeend', '<span class="part">' + (v.zero ? '받은 돈 부족 · not covered' : '파샬 · partial') + '</span>'); } });
+  F.invs.forEach((v, i) => { const el = document.querySelector('[data-iamt="' + i + '"]'); if (el && v.ar && !v.manual) { el.value = centsFmt(v.amt, Number(v.bal) < 0); } const row = document.querySelector('[data-ii="' + i + '"]'); if (row) { row.classList.toggle('zero', !!v.zero); const pt = row.querySelector('.part'); if (pt) { pt.style.display = v.partial ? 'inline-block' : 'none'; pt.textContent = Number(v.bal) < 0 ? (v.zero ? '↩ 인보이스를 같이 고르면 씀 · pick an invoice to use' : '↩ 일부만 씀 · partly used') : v.zero ? '받은 돈 부족 — 이 인보이스엔 $0 · not covered' : '파샬 · partial'; } else if (v.partial && row.querySelector('.ibal')) row.querySelector('.ibal').insertAdjacentHTML('beforeend', '<span class="part">' + (v.zero ? '받은 돈 부족 · not covered' : '파샬 · partial') + '</span>'); } });
   const box = $('invSum'); if (!box) return;
   const list = F.invs.filter(v => !v.zero && (v.no || amtOf(v.amt)));
   if (!list.length) { box.className = ''; box.innerHTML = ''; return; }

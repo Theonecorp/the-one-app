@@ -169,13 +169,13 @@ service cloud.firestore {
     // 인보이스 — 세일즈맨: 내가 발행한 것 · 내 담당 가게(거래처 담당 = 내 코드) 것 · 관리자가 허락한 가게 것 (허락 기간 동안)
     function ownAcct(a) { return mySm() != '' && get(/databases/$(database)/documents/accounts/$(a)).data.get('sm', '') == mySm(); }
     function granted(a) { return exists(/databases/$(database)/documents/grants/$(email() + '__' + a)) && get(/databases/$(database)/documents/grants/$(email() + '__' + a)).data.untilMs > request.time.toMillis(); }
-    function creditMax() { return exists(/databases/$(database)/documents/settings/app) ? get(/databases/$(database)/documents/settings/app).data.get('creditMax', 1000) : 1000; }
+    function creditMax() { return exists(/databases/$(database)/documents/settings/app) ? get(/databases/$(database)/documents/settings/app).data.get('creditMax', 10000) : 10000; }
     match /invoices/{id} {
       allow read: if isStaff() || (registered() && (resource.data.sm == mySm() || ownAcct(resource.data.acct) || granted(resource.data.acct)));
       allow write: if invJob();
       allow update: if staffJob(['whmgr', 'pick']) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shipTo', 'store', 'updatedAt']);   // 창고: 배송 주소 · 가게 이름만 (출고 때)
       // ↩ 크레딧 메모 — 세일즈맨이 자기 가게에 바로 확정 (금액 마이너스 · src credit · 자기 세일즈맨 코드)
-      // 🔐 M2: 한 장 한도(settings/app.creditMax · 기본 1000) 안에서만 · 사무실 확인(reviewed)은 못 붙임
+      // 🔐 M2: 한 장 한도(settings/app.creditMax · 기본 10000) 안에서만 · 사무실 확인(reviewed)은 못 붙임
       allow create: if registered() && mySm() != '' && request.resource.data.src == 'credit' && request.resource.data.sm == mySm() && request.resource.data.total <= 0 && request.resource.data.total >= -creditMax()
                     && request.resource.data.get('reviewed', false) == false && request.resource.data.createdBy == email() && ownAcct(request.resource.data.acct);
     }
