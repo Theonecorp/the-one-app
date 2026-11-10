@@ -73,10 +73,9 @@ function paintPanel() {
         (m.ref && m.ref.id ? '<button type="button" class="mref" data-mref="' + esc(m.ref.kind + ':' + m.ref.id) + '">' + ({ order: '🧾', inv: '📄', acct: '🏬' }[m.ref.kind] || '🔗') + ' ' + esc(m.ref.label || m.ref.id) + ' ›</button>' : '') +
         '<div class="mact">' + (mine ? '<small class="muted">' + (readers ? '✓ ' + bt('읽음', 'read') + ' ' + readers : bt('아직 안 읽음', 'unread')) + '</small>' : '<button type="button" class="b-ghost b-sm" data-mrep="' + esc(m.id) + '">↩ ' + bt('답장', 'Reply') + '</button>') + '</div></div>';
     }).join('') + '</div>' : '<div class="none">' + bt('아직 메시지가 없습니다', 'No messages yet') + '</div>') +
-    (Notify.notifyState() === 'default' ? '<div class="mperm"><span>' + bt('화면이 잠겨 있어도 알림 받기', 'Get notified when the screen is locked') + '</span><button type="button" class="b-blue b-sm" id="msgPerm">' + bt('켜기', 'Turn on') + '</button></div>' : '') +
+    Notify.blockedHtml() +
     '<div class="btns"><button type="button" class="b-ghost" id="msgX">' + bt('닫기', 'Close') + '</button></div>';
   $('msgX').onclick = closeModal; $('msgNew').onclick = () => compose({});
-  if ($('msgPerm')) $('msgPerm').onclick = async () => { await Notify.askPermission(); paintPanel(); };
   box.querySelectorAll('[data-mref]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.mref.split(':'); closeModal(); if (k === 'order') Router.go('order', id); else if (k === 'inv') Router.go('order', 'inv:' + id); else if (k === 'acct') Router.go('stores', id); });
   box.querySelectorAll('[data-mrep]').forEach(b => b.onclick = () => { const m = INBOX.find(x => x.id === b.dataset.mrep); if (!m) return; compose({ to: m.fromRole === 'salesman' && m.fromSm ? 'sm:' + m.fromSm : 'u:' + m.from, toLabel: (m.fromName || m.from), ref: m.ref || null, quote: m.text }); });
 }
