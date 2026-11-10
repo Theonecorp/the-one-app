@@ -9,6 +9,7 @@
  *  자료: ach/{id} (건) · achBank/{acct} (은행 정보 — achAccess 있는 사람만) · accounts/{acct}.ach* (상태 표시용)
  *  인출 완료(수동 · 자동: 예정일 + 3영업일) → cod 컬렉션에 method 'ACH' 로 넣어 수금 확인 · 정산으로 흐름
  * ============================================================ */
+import { bankHolidays } from './bizday.js';
 import { $, esc, money, num, R2, today, ym, md, addDays, daysBetween, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, pad4, nz, sel, hasWords, invNo } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, sortStores } from './accounts.js';
@@ -20,21 +21,8 @@ const achOk = () => S.role === 'admin' || !!(S.me && S.me.achAccess);
 const TERMS = () => (S.settings && S.settings.achTerms) || ['ACH 15', 'ACH 30', 'ACH 45', 'ACH 60', 'ACH 90'];
 
 /* ---------- 영업일 · 휴일 ---------- */
-function nthDow(y, m, dow, n) { const d = new Date(y, m, 1); let c = 0; while (true) { if (d.getDay() === dow && ++c === n) return d; d.setDate(d.getDate() + 1); } }
-function lastDow(y, m, dow) { const d = new Date(y, m + 1, 0); while (d.getDay() !== dow) d.setDate(d.getDate() - 1); return d; }
-const fmt = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-function observed(y, m, day) { const d = new Date(y, m, day); if (d.getDay() === 6) d.setDate(d.getDate() - 1); else if (d.getDay() === 0) d.setDate(d.getDate() + 1); return d; }
-let HOL = null, HOLY = '';
-function holidays() {
-  const y = new Date().getFullYear();
-  if (HOL && HOLY === String(y)) return HOL;
-  HOL = {}; HOLY = String(y);
-  [y - 1, y, y + 1].forEach(Y => {
-    [observed(Y, 0, 1), nthDow(Y, 0, 1, 3), nthDow(Y, 1, 1, 3), lastDow(Y, 4, 1), observed(Y, 5, 19), observed(Y, 6, 4), nthDow(Y, 8, 1, 1), nthDow(Y, 9, 1, 2), observed(Y, 10, 11), nthDow(Y, 10, 4, 4), observed(Y, 11, 25)].forEach(d => { HOL[fmt(d)] = 1; });
-  });
-  ((S.settings && S.settings.holidays) || []).forEach(d => { HOL[d] = 1; });
-  return HOL;
-}
+/* v0.8.180: 공휴일 계산은 bizday.js 로 (은행 휴일 = 연방 공휴일 + 추가 휴일) */
+const holidays = () => bankHolidays();
 export function nextBiz(s, add) { const H = holidays(); let d = addDays(s, add || 0); for (let i = 0; i < 40; i++) { const w = new Date(d + 'T12:00:00').getDay(); if (w !== 0 && w !== 6 && !H[d]) return d; d = addDays(d, 1); } return d; }
 function bizAfter(s, n) { let d = s; for (let i = 0; i < n; i++) d = nextBiz(addDays(d, 1)); return d; }
 

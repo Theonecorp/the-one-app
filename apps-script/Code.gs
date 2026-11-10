@@ -72,6 +72,7 @@ function run() {
     try { notifyRun_(); } catch (e) { Logger.log('알림 보내기 실패: ' + e.message); }
     try { envelopesLate_(); } catch (e) { Logger.log('봉투 미도착 확인 실패: ' + e.message); }
     try { remindUnsent_(); } catch (e) { Logger.log('안 보낸 주문 · 수금 알림 실패: ' + e.message); }
+    try { dailySummary_(); } catch (e) { Logger.log('일일 요약 메일 실패: ' + e.message); }
     try { photoIndexRun_(); } catch (e) { Logger.log('사진 색인 실패: ' + e.message); }
     try { codSyncRun_(); } catch (e) { Logger.log('COD 시트 동기화 실패: ' + e.message); }
     try { photoExportRun_(); } catch (e) { Logger.log('사진 드라이브 저장 실패: ' + e.message); }
@@ -208,7 +209,7 @@ function testPush() {
 }
 
 /* ---------- ⏰ 안 보낸 주문 · 수금 — 세일즈맨 폰 · 컴퓨터에 팝업 (v0.8.179) ----------
- *  정한 시각(뉴욕 시간, 기본 11 · 15 · 18시, 일요일 빼고)마다 한 번: 1시간 넘게 그대로인
+ *  정한 시각(뉴욕 시간, 기본 11 · 15 · 18시, 영업일만 — 주말 · 휴일 빼고)마다 한 번: 1시간 넘게 그대로인
  *    📝 임시 저장 주문(orders.st = draft) · 💵 리포트로 안 보낸 수금(entries.rep = false · 담당자 확인 전)
  *  이 있는 세일즈맨에게 하나로 묶어 팝업. 시각은 settings/app.remindHours = [11, 15, 18] 로 바꿀 수 있음 (빈 배열이면 안 보냄)
  *  폰에만 있는 주문(인터넷이 없어 아직 못 올린 것)은 서버가 모름 — 앱을 열면 📡 보낼 함이 알려 줌 */
@@ -216,11 +217,13 @@ function remindUnsent_() {
   const tz = 'America/New_York', now = new Date(), h = Number(Utilities.formatDate(now, tz, 'H')), dow = Number(Utilities.formatDate(now, tz, 'u'));   // u: 1 월 … 7 일
   if (dow === 7) return;
   const props = PropertiesService.getScriptProperties(), key = Utilities.formatDate(now, tz, 'yyyy-MM-dd') + ' ' + h;
+  if (dow === 6) return;   // 📅 영업일만 (토 · 일 · 휴일 빼고, v0.8.180)
   if (props.getProperty('REMIND_AT') === key) return;   // 이 시각에 이미 보냄 (5분 트리거가 여러 번 돌아도 한 번)
   if (Number(Utilities.formatDate(now, tz, 'm')) >= 15) return;   // 정각 뒤 15분 안에만 확인 (설정 읽기를 아낌)
   const settings = getDoc_('settings', 'app') || {};
   const hours = Array.isArray(settings.remindHours) ? settings.remindHours.map(Number) : [11, 15, 18];
   if (hours.indexOf(h) < 0) return;
+  if (!biz_(settings).isBiz(Utilities.formatDate(now, tz, 'yyyy-MM-dd'))) return;
   props.setProperty('REMIND_AT', key);
   const cut = new Date(now.getTime() - 3600000).toISOString(), by = {};
   const add = (sm, k, x) => { sm = String(sm || '').toUpperCase(); if (!sm) return; (by[sm] = by[sm] || { o: [], e: [] })[k].push(x); };
@@ -242,12 +245,154 @@ function remindUnsent_() {
 /** 시험 — 지금 시각과 상관없이 한 번 (기록만 지우고 바로 실행하려면 settings.remindHours 에 지금 시각을 넣거나 아래처럼) */
 function testRemind() { PropertiesService.getScriptProperties().deleteProperty('REMIND_AT'); const h = Number(Utilities.formatDate(new Date(), 'America/New_York', 'H')); const s = getDoc_('settings', 'app') || {}; const keep = s.remindHours; patch_('settings', 'app', { remindHours: [h] }); try { remindUnsent_(); } finally { patch_('settings', 'app', { remindHours: Array.isArray(keep) ? keep : [11, 15, 18] }); PropertiesService.getScriptProperties().deleteProperty('REMIND_AT'); } }
 
+/* ---------- 📅 영업일 — 앱(src/bizday.js)과 같은 규칙 (v0.8.180) ----------
+ *  휴일 = 미국 연방 공휴일(주말이면 대체일) + settings.app.holidays − settings.app.workHolidays(회사가 일하는 공휴일) · 토 · 일 */
+function biz_(settings) {
+  const st = settings || getDoc_('settings', 'app') || {}, tz = 'America/New_York';
+  const fmt = d => Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+  const ymd = (y, m, d) => y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  const dowOf = s => new Date(s + 'T12:00:00Z').getUTCDay();
+  const nth = (y, m, dow, n) => { let c = 0; for (let d = 1; d <= 31; d++) { if (dowOf(ymd(y, m, d)) === dow && ++c === n) return ymd(y, m, d); } return ''; };
+  const last = (y, m, dow) => { for (let d = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); d > 0; d--) if (dowOf(ymd(y, m, d)) === dow) return ymd(y, m, d); return ''; };
+  const obs = (y, m, d) => { const w = dowOf(ymd(y, m, d)); const t = new Date(Date.UTC(y, m, d + (w === 6 ? -1 : w === 0 ? 1 : 0))); return ymd(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()); };
+  const H = {}, y0 = Number(fmt(new Date()).substring(0, 4));
+  [y0 - 1, y0, y0 + 1].forEach(Y => [obs(Y, 0, 1), nth(Y, 0, 1, 3), nth(Y, 1, 1, 3), last(Y, 4, 1), obs(Y, 5, 19), obs(Y, 6, 4), nth(Y, 8, 1, 1), nth(Y, 9, 1, 2), obs(Y, 10, 11), nth(Y, 10, 4, 4), obs(Y, 11, 25)].forEach(d => { H[d] = 1; }));
+  (st.holidays || []).forEach(d => { H[d] = 1; }); (st.workHolidays || []).forEach(d => { delete H[d]; });
+  const isBiz = s => { s = String(s).substring(0, 10); const w = dowOf(s); return w !== 0 && w !== 6 && !H[s]; };
+  const add = (s, n) => { const t = new Date(s + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().substring(0, 10); };
+  const between = (a, b) => { let n = 0, d = a; for (let i = 0; i < 4000 && d < b; i++) { d = add(d, 1); if (isBiz(d)) n++; } return n; };
+  const prevBiz = s => { let d = add(s, -1); for (let i = 0; i < 30 && !isBiz(d); i++) d = add(d, -1); return d; };
+  /** 영업일에 든 시간만 (ms) — 하루 경계는 뉴욕 자정 */
+  const ms = (fromIso, toMs) => { const t0 = new Date(fromIso).getTime(), t1 = toMs || Date.now(); if (!(t1 > t0)) return 0; let tot = 0, cur = t0;
+    for (let i = 0; i < 4000 && cur < t1; i++) { const d = fmt(new Date(cur)), nd = add(d, 1), offs = Utilities.formatDate(new Date(nd + 'T12:00:00Z'), tz, 'XXX'), next = Math.min(t1, new Date(nd + 'T00:00:00' + offs).getTime());
+      if (isBiz(d)) tot += next - cur; cur = next > cur ? next : cur + 3600000; }
+    return tot; };
+  return { H, isBiz, add, between, prevBiz, ms, day: iso => fmt(new Date(iso)) };
+}
+
+/* ---------- 📊 일일 요약 메일 — 영업일 아침 한 번, 관리자에게 (v0.8.180) ----------
+ *  기간: 지난 영업일 ~ 어제 (월요일 아침 = 금 · 토 · 일, 휴일 다음 날은 휴일까지 포함)
+ *  ① 🛒 주문 · 매출 (새 주문 · 인보이스 · 이번 달 누적과 영업일 기준 예상)  ② 💵 수금 (세일즈맨 · 사무실 COD/ACH/카드)
+ *  ③ 📦 출고 · UPS (박스 · 무게 · 운임 · 가게 · 딜리버리)  ④ ⚠️ 특이사항 (밀린 주문 · 안 보낸 주문/수금 · 확인 요청 · 바운스 · 크레딧 · 봉투 · 조용한 세일즈맨 · UPS 기록 · 메일 오류)
+ *  받는 사람 settings.app.summaryTo (기본 관리자) · 시각 settings.app.summaryHour (뉴욕 시간, 기본 7) · 끄기: summaryHour = -1 · 시험: testSummary() */
+function dailySummary_(force) {
+  const tz = 'America/New_York', now = new Date(), td = Utilities.formatDate(now, tz, 'yyyy-MM-dd'), h = Number(Utilities.formatDate(now, tz, 'H'));
+  const props = PropertiesService.getScriptProperties();
+  if (!force && props.getProperty('SUMMARY_AT') === td) return;
+  const settings = getDoc_('settings', 'app') || {}, hour = settings.summaryHour != null ? Number(settings.summaryHour) : 7;
+  if (!force && (hour < 0 || h < hour)) return;
+  const B = biz_(settings);
+  if (!force && !B.isBiz(td)) return;
+  props.setProperty('SUMMARY_AT', td);
+  const to = String(settings.summaryTo || REPLY_TO).split(/[,;\s]+/).filter(isEmail_);
+  if (!to.length) return;
+  const r = summaryData_(B, td, settings);
+  MailApp.sendEmail({ to: (force && force.to) || to.join(','), subject: r.subject, htmlBody: r.html, name: 'THE ONE', replyTo: REPLY_TO });
+  Logger.log('📊 요약 메일 → ' + ((force && force.to) || to.join(',')) + ' · ' + r.subject);
+}
+function testSummary() { dailySummary_({ to: Session.getActiveUser().getEmail() }); }
+function queryIn_(col, field, vals, limit) {
+  const body = { structuredQuery: { from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: field }, op: 'IN', value: { arrayValue: { values: vals.map(v => ({ stringValue: v })) } } } }, limit: limit || 2000 } };
+  const res = UrlFetchApp.fetch(BASE + ':runQuery', { method: 'post', contentType: 'application/json', payload: JSON.stringify(body), headers: headers_(), muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('Firestore 읽기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 300));
+  return JSON.parse(res.getContentText()).filter(x => x.document).map(x => fromDoc_(x.document));
+}
+function queryGe_(col, field, val, limit) {
+  const body = { structuredQuery: { from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: field }, op: 'GREATER_THAN_OR_EQUAL', value: { stringValue: val } } }, limit: limit || 2000 } };
+  const res = UrlFetchApp.fetch(BASE + ':runQuery', { method: 'post', contentType: 'application/json', payload: JSON.stringify(body), headers: headers_(), muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('Firestore 읽기 실패 ' + res.getResponseCode() + ': ' + res.getContentText().substring(0, 300));
+  return JSON.parse(res.getContentText()).filter(x => x.document).map(x => fromDoc_(x.document));
+}
+/** 요약 계산 — 읽기만 함 (B: biz_(), td: 오늘 뉴욕 날짜) → { subject, html, data } */
+function summaryData_(B, td, settings) {
+  const tz = 'America/New_York', from = B.prevBiz(td), to = B.add(td, -1), inP = d => d && d >= from && d <= to;
+  const ym = td.substring(0, 7), pym = B.add(ym + '-01', -1).substring(0, 7), monthFirst = ym + '-01';
+  const day = iso => iso ? (String(iso).length <= 10 ? String(iso) : B.day(iso)) : '';
+  const n = v => Number(v) || 0, sumOf = (L, f) => L.reduce((a, x) => a + n(f(x)), 0);
+  const safe = f => { try { return f(); } catch (e) { Logger.log('요약 읽기 실패: ' + e.message); return []; } };
+  const orders = safe(() => queryIn_('orders', 'ym', [ym, pym]));
+  const invs = safe(() => queryIn_('invoices', 'ym', [ym, pym])).filter(x => x.st !== 'x');
+  const ents = safe(() => queryIn_('entries', 'ym', [ym, pym])).filter(e => !e.void && !e.repl);
+  const cods = safe(() => queryIn_('cod', 'ym', [ym, pym])).filter(c => !c.void);
+  const ships = safe(() => queryGe_('shipments', 'shipDate', B.add(from, -10))).filter(x => !x.voided);
+  const sms = safe(() => listAll_('salesmen')).filter(x => x.active !== false);
+  /* ① 주문 · 매출 */
+  const newO = orders.filter(o => o.sentAt && o.st !== 'x' && o.st !== 'draft' && inP(day(o.sentAt)));
+  const isCM = x => x.t === 'CM' || x.src === 'credit';
+  const invP = invs.filter(x => inP(x.d) && !isCM(x)), crP = invs.filter(x => inP(x.d) && isCM(x));
+  const invM = invs.filter(x => x.d >= monthFirst && x.d <= to && !isCM(x)), crM = invs.filter(x => x.d >= monthFirst && x.d <= to && isCM(x));
+  const monthEnd = B.add(B.add(monthFirst, 32).substring(0, 7) + '-01', -1), bdDone = B.between(B.add(monthFirst, -1), to), bdAll = B.between(B.add(monthFirst, -1), monthEnd);
+  const salesM = sumOf(invM, x => x.total) + sumOf(crM, x => x.total), pace = bdDone ? salesM / bdDone * bdAll : 0;
+  const bySm = (L, amt) => { const m = {}; L.forEach(x => { const k = x.sm || '—'; m[k] = m[k] || { n: 0, a: 0 }; m[k].n++; m[k].a += n(amt(x)); }); return Object.keys(m).sort((a, b) => m[b].a - m[a].a).map(k => [k, m[k].n, m[k].a]); };
+  /* ② 수금 */
+  const entP = ents.filter(e => inP(e.d)), codP = cods.filter(c => inP(c.d));
+  const byM = {}; entP.forEach(e => (e.pays || []).forEach(p => { const k = p.m || 'CHECK'; byM[k] = (byM[k] || 0) + n(p.amt); })); codP.forEach(c => { const k = c.method || 'COD'; byM[k] = (byM[k] || 0) + n(c.amt); });
+  const colP = sumOf(entP, e => e.total) + sumOf(codP, c => c.amt), colM = sumOf(ents.filter(e => e.d >= monthFirst && e.d <= to), e => e.total) + sumOf(cods.filter(c => c.d >= monthFirst && c.d <= to), c => c.amt);
+  /* ③ 출고 · UPS */
+  const shipP = ships.filter(x => inP(x.shipDate)), pk = {}; shipP.forEach(x => { pk[x.shipId || x.lead || x.trk] = x; });
+  const shipStores = {}; shipP.forEach(x => { shipStores[x.store || x.acct] = (shipStores[x.store || x.acct] || 0) + 1; });
+  const bySvc = {}; shipP.forEach(x => { const k = x.svcName || x.svc || 'UPS'; bySvc[k] = (bySvc[k] || 0) + 1; });
+  const shippedO = orders.filter(o => o.shipAt && inP(day(o.shipAt))), dlvDone = orders.filter(o => o.deliveredAt && inP(day(o.deliveredAt)));
+  const lastShip = ships.reduce((a, x) => x.shipDate > a ? x.shipDate : a, '');
+  /* ④ 특이사항 */
+  const cut1h = new Date(Date.now() - 3600000).toISOString(), notes = [];
+  const drafts = orders.filter(o => o.st === 'draft' && String(o.updatedAt || o.createdAt || '') < cut1h), unsent = ents.filter(e => e.rep === false && !e.sb && String(e.createdAt || '') < cut1h);
+  if (drafts.length) notes.push('📝 안 보낸 주문 ' + drafts.length + '건 ' + money_(sumOf(drafts, o => o.amt)) + ' — ' + bySm(drafts, o => o.amt).map(x => x[0] + ' ' + x[1]).join(', '));
+  if (unsent.length) notes.push('💵 리포트로 안 보낸 수금 ' + unsent.length + '건 ' + money_(sumOf(unsent, e => e.total)) + ' — ' + bySm(unsent, e => e.total).map(x => x[0] + ' ' + x[1]).join(', '));
+  const STG = [['sent', '📥 신규 확인', o => o.cfOk ? (o.cfAt || o.sentAt) : o.cfReq ? (o.cfReqAt || o.sentAt) : o.sentAt], ['pick', '📦 출고 작업', o => o.pickAt], ['ok', '📦 출고 작업', o => o.pickAt], ['picked', '✅ 검수 · 인보이스', o => o.pickDoneAt || o.pickAt], ['done', '🧾 포장', o => o.doneAt], ['packed', '📮 UPS 픽업', o => o.packAt], ['dlv', '🚗 딜리버리', o => o.dlvAt]];
+  const stuck = []; orders.forEach(o => { const g = STG.find(x => x[0] === o.st); if (!g) return; const since = g[2](o) || o.updatedAt; if (!since) return; const ms = B.ms(since); if (ms > 86400000) stuck.push({ o, g: g[1], d: Math.floor(ms / 86400000) }); });
+  stuck.sort((a, b) => b.d - a.d);
+  if (stuck.length) notes.push('⏱ 한 단계에 영업일 하루 넘게 머문 주문 ' + stuck.length + '건 — ' + stuck.slice(0, 8).map(x => (x.o.store || '') + ' (' + x.g + ' ' + x.d + '일째)').join(', ') + (stuck.length > 8 ? ' …' : ''));
+  const cfw = orders.filter(o => o.st === 'sent' && o.cfReq && !o.cfOk), iss = orders.filter(o => o.cfIssueOpen);
+  if (cfw.length) notes.push('❓ 세일즈맨 확인 대기 ' + cfw.length + '건 — ' + cfw.slice(0, 5).map(o => (o.sm || '') + ' ' + (o.store || '')).join(', '));
+  if (iss.length) notes.push('⚠️ 세일즈맨이 알린 주문 문제 ' + iss.length + '건 — ' + iss.slice(0, 5).map(o => (o.store || '') + ': ' + (o.cfIssue || '')).join(' / '));
+  const bnc = safe(() => listAll_('bounces')), bncP = bnc.filter(b => inP(b.d)), bncOpen = bnc.filter(b => (b.st || 'open') === 'open');
+  if (bncP.length || bncOpen.length) notes.push('💸 바운스 체크 — 새로 ' + bncP.length + '건 ' + money_(sumOf(bncP, b => b.amt)) + ' · 미해결 ' + bncOpen.length + '건 ' + money_(sumOf(bncOpen, b => b.amt)));
+  const crWait = invs.filter(x => isCM(x) && !x.reviewed);
+  if (crP.length) notes.push('↩ 새 크레딧 ' + crP.length + '건 ' + money_(sumOf(crP, x => x.total)) + ' — ' + crP.slice(0, 5).map(x => (x.sm || '') + ' ' + (x.store || '') + ' ' + money_(x.total)).join(', '));
+  if (crWait.length) notes.push('↩ 사무실 확인 안 한 크레딧 ' + crWait.length + '건 ' + money_(sumOf(crWait, x => x.total)));
+  const envs = safe(() => query_('envelopes', 'st', 'sent', 100)).filter(e => e.sentAt && B.between(B.day(e.sentAt), td) >= LATE_DAYS);
+  if (envs.length) notes.push('📦 체크 봉투 미도착 (영업일 ' + LATE_DAYS + '일+) ' + envs.length + '개 — ' + envs.slice(0, 5).map(e => e.sm + ' ' + money_(e.total)).join(', '));
+  const lastBy = {}; ents.forEach(e => { if (!lastBy[e.sm] || e.d > lastBy[e.sm]) lastBy[e.sm] = e.d; });
+  const quiet = sms.map(x => ({ sm: x.code || x._id, d: lastBy[x.code || x._id] || '' })).filter(x => x.d).map(x => Object.assign(x, { n: B.between(x.d, to) })).filter(x => x.n >= 3).sort((a, b) => b.n - a.n);   // 두 달 동안 한 건도 없는 코드(사무실 · 쉬는 사람)는 빼고
+  if (quiet.length) notes.push('😶 영업일 3일 넘게 수금 입력이 없는 세일즈맨 — ' + quiet.map(x => x.sm + ' ' + x.n + '일 (마지막 ' + x.d.substring(5).replace('-', '/') + ')').join(', '));
+  if (lastShip && B.between(lastShip, to) >= 2) notes.push('📮 UPS 출고 기록이 ' + lastShip + ' 뒤로 없습니다 (영업일 ' + B.between(lastShip, to) + '일) — UPS 라벨 · Quantum View 가져오기를 확인하세요');
+  const big = newO.filter(o => n(o.amt) >= 5000);
+  if (big.length) notes.push('💰 $5,000 넘는 주문 — ' + big.map(o => (o.sm || '') + ' ' + (o.store || '') + ' ' + money_(o.amt)).join(', '));
+  const mailErr = safe(() => query_('reports', 'mail', 'error', 20)), nqErr = safe(() => query_('notifyq', 'st', 'error', 20));
+  if (mailErr.length || nqErr.length) notes.push('✉️ 보내기 실패 — 수금 리포트 메일 ' + mailErr.length + '건 · 알림 ' + nqErr.length + '건 (Apps Script 실행 기록 확인)');
+  /* 메일 */
+  const fd = s => Number(s.substring(5, 7)) + '/' + Number(s.substring(8, 10)) + '(' + '일월화수목금토'.charAt(new Date(s + 'T12:00:00Z').getUTCDay()) + ')';
+  const period = from === to ? fd(from) : fd(from) + ' ~ ' + fd(to);
+  const th = 'style="text-align:left;padding:4px 8px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px"', tdc = 'style="padding:4px 8px;border-bottom:1px solid #f1f5f9"', tdr = 'style="padding:4px 8px;border-bottom:1px solid #f1f5f9;text-align:right"';
+  const tbl = (head, rows) => rows.length ? '<table style="border-collapse:collapse;width:100%;max-width:640px;font-size:13px;margin:4px 0 10px"><tr>' + head.map((x, i) => '<th ' + th + (i ? ' align="right"' : '') + '>' + x + '</th>').join('') + '</tr>' + rows.map(r => '<tr>' + r.map((c, i) => '<td ' + (i ? tdr : tdc) + '>' + c + '</td>').join('') + '</tr>').join('') + '</table>' : '';
+  const kpi = (L, v) => '<td style="padding:8px 12px;background:#f8fafc;border-radius:8px"><div style="font-size:12px;color:#64748b">' + L + '</div><div style="font-size:18px;font-weight:800">' + v + '</div></td>';
+  const sec = (t, body) => '<h3 style="margin:18px 0 6px;font-size:16px">' + t + '</h3>' + body;
+  const boxes = shipP.length, pkgN = Object.keys(pk).length;
+  const html = '<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;max-width:680px">' +
+    '<h2 style="margin:0">📊 THE ONE 일일 요약 — ' + esc_(period) + '</h2><div style="color:#64748b;font-size:13px">영업일 기준 (주말 · 휴일 빼고) · 이번 달 영업일 ' + bdDone + '/' + bdAll + '일 지남 · ' + esc_(td) + ' 아침</div>' +
+    '<table style="border-spacing:6px;margin:8px -6px"><tr>' + kpi('새 주문', newO.length + '건 ' + money_(sumOf(newO, o => o.amt))) + kpi('인보이스 매출', money_(sumOf(invP, x => x.total))) + kpi('수금', money_(colP)) + kpi('📦 UPS 박스', boxes + '개') + '</tr></table>' +
+    (notes.length ? sec('⚠️ 특이사항 · 확인할 것', '<ul style="margin:4px 0 0;padding-left:20px;font-size:14px;line-height:1.55">' + notes.map(x => '<li>' + esc_(x) + '</li>').join('') + '</ul>') : sec('⚠️ 특이사항', '<div style="color:#15803d">✅ 특별히 확인할 것이 없습니다</div>')) +
+    sec('🛒 주문 · 매출', '<div style="font-size:14px">새로 들어온 주문 <b>' + newO.length + '건 ' + money_(sumOf(newO, o => o.amt)) + '</b> · 인보이스 <b>' + invP.length + '장 ' + money_(sumOf(invP, x => x.total)) + '</b>' + (crP.length ? ' · 크레딧 ' + crP.length + '장 ' + money_(sumOf(crP, x => x.total)) : '') + '<br>이번 달 매출(인보이스 − 크레딧) <b>' + money_(salesM) + '</b>' + (pace ? ' · 이 속도면 월말 약 <b>' + money_(pace) + '</b>' : '') + '</div>' +
+      tbl(['세일즈맨', '새 주문', '금액'], bySm(newO, o => o.amt).map(x => [esc_(x[0]), x[1] + '건', money_(x[2])]))) +
+    sec('💵 수금', '<div style="font-size:14px">합계 <b>' + money_(colP) + '</b> (세일즈맨 ' + entP.length + '건 ' + money_(sumOf(entP, e => e.total)) + ' · 사무실 COD/ACH/카드 ' + codP.length + '건 ' + money_(sumOf(codP, c => c.amt)) + ') · 이번 달 누적 <b>' + money_(colM) + '</b><br>' + Object.keys(byM).sort((a, b) => byM[b] - byM[a]).map(k => esc_(k) + ' ' + money_(byM[k])).join(' · ') + '</div>' +
+      tbl(['세일즈맨', '수금', '금액'], bySm(entP, e => e.total).map(x => [esc_(x[0]), x[1] + '건', money_(x[2])]))) +
+    sec('📦 출고 · UPS', '<div style="font-size:14px">UPS <b>' + boxes + '박스</b> (' + pkgN + '건 · ' + Object.keys(shipStores).length + '곳 · ' + Math.round(sumOf(shipP, x => x.w)) + ' lb' + (sumOf(shipP, x => x.cost) ? ' · 운임 ' + money_(sumOf(shipP, x => x.cost)) : '') + ')' + (Object.keys(bySvc).length ? ' — ' + Object.keys(bySvc).map(k => esc_(k) + ' ' + bySvc[k]).join(' · ') : '') +
+      '<br>출고 끝난 주문 ' + shippedO.length + '건' + (dlvDone.length ? ' · 🚗 딜리버리 완료 ' + dlvDone.length + '건' : '') + (lastShip ? ' · UPS 기록 마지막 날짜 ' + esc_(lastShip) : '') + '</div>' +
+      tbl(['가게', '박스'], Object.keys(shipStores).sort((a, b) => shipStores[b] - shipStores[a]).slice(0, 12).map(k => [esc_(k), shipStores[k]]))) +
+    '<p style="color:#94a3b8;font-size:12px;margin-top:18px">THE ONE 앱 자동 요약 · 받는 사람 · 시각은 앱 관리 → 설정에서 바꿉니다</p></div>';
+  const subject = '[THE ONE] 📊 일일 요약 ' + period + ' — 주문 ' + newO.length + '건 ' + money_(sumOf(newO, o => o.amt)) + ' · 수금 ' + money_(colP) + ' · UPS ' + boxes + '박스' + (notes.length ? ' · ⚠️ ' + notes.length : '');
+  return { subject, html, data: { from, to, newO: newO.length, newAmt: sumOf(newO, o => o.amt), invN: invP.length, invAmt: sumOf(invP, x => x.total), col: colP, boxes, notes } };
+}
+
 /* ---------- 📦 체크 봉투 미도착 — 보낸 지 LATE_DAYS 지나도 도착 확인이 안 된 봉투는 세일즈맨 · 담당자에게 한 번 알림 (봉투에 lateAt 기록) ---------- */
-const LATE_DAYS = 14;
+const LATE_DAYS = 10;   // 영업일 10일 ≈ 2주 (v0.8.180 — 전엔 달력 14일)
 function envelopesLate_() {
   if (new Date().getMinutes() >= 10) return;   // 1시간에 한 번만 (5분 트리거 중 첫 번)
-  const list = query_('envelopes', 'st', 'sent', 50), cut = new Date(Date.now() - LATE_DAYS * 86400000).toISOString();
-  const late = list.filter(e => !e.lateAt && String(e.sentAt || '') < cut);
+  const list = query_('envelopes', 'st', 'sent', 50);
+  if (!list.some(e => !e.lateAt)) return;
+  const B = biz_(), td = today_();
+  const late = list.filter(e => !e.lateAt && e.sentAt && B.between(B.day(e.sentAt), td) >= LATE_DAYS);
   if (!late.length) return;
   const settings = getDoc_('settings', 'app') || {}, staff = String(settings.reportTo || DEFAULT_TO).split(/[,;\s]+/).filter(isEmail_);
   const props = PropertiesService.getScriptProperties();
@@ -255,7 +400,7 @@ function envelopesLate_() {
     try {
       const to = []; query_('users', 'sm', String(e.sm), 5).forEach(u => { const m = u.email || u._id; if (isEmail_(m) && to.indexOf(m) < 0) to.push(m); }); staff.forEach(m => { if (to.indexOf(m) < 0) to.push(m); });
       const got = Object.keys(e.got || {}).length, days = Math.floor((Date.now() - new Date(e.sentAt).getTime()) / 86400000);
-      const text = '⚠️ 체크 봉투 미도착 — ' + e.sm + ' · ' + e._id + ' · ' + (e.sentAt || '').substring(0, 10) + ' 보냄 (' + days + '일 전) · ' + (e.n || 0) + '장 ' + money_(e.total) + (got ? ' · 도착 ' + got + '/' + (e.n || 0) : ' · 아직 한 장도 도착 확인 안 됨') + (e.trk ? '\n추적: ' + e.trk : '') + '\n세일즈맨: 보낸 날짜 · 추적 번호를 확인해 주세요. 담당자: 우편물을 확인하고 앱 → 수금 확인 → 📦 봉투에서 맞춰 주세요.';
+      const text = '⚠️ 체크 봉투 미도착 — ' + e.sm + ' · ' + e._id + ' · ' + (e.sentAt || '').substring(0, 10) + ' 보냄 (영업일 ' + B.between(B.day(e.sentAt), td) + '일 전) · ' + (e.n || 0) + '장 ' + money_(e.total) + (got ? ' · 도착 ' + got + '/' + (e.n || 0) : ' · 아직 한 장도 도착 확인 안 됨') + (e.trk ? '\n추적: ' + e.trk : '') + '\n세일즈맨: 보낸 날짜 · 추적 번호를 확인해 주세요. 담당자: 우편물을 확인하고 앱 → 수금 확인 → 📦 봉투에서 맞춰 주세요.';
       if (to.length) MailApp.sendEmail({ to: to.join(','), subject: '[THE ONE] ⚠️ 체크 봉투 미도착 — ' + e.sm + ' ' + e._id, name: 'THE ONE', replyTo: REPLY_TO, htmlBody: '<div style="font-family:Arial,sans-serif;font-size:15px">' + text.split('\n').map(esc_).join('<br>') + '</div>' });
       const hook = (props.getProperty('CHAT_WEBHOOK_' + String(e.sm).toUpperCase().replace(/[^A-Z0-9]/g, '_'))) || props.getProperty('CHAT_WEBHOOK');
       if (hook) { const id = to.length ? chatId_(to[0]) : ''; UrlFetchApp.fetch(hook, { method: 'post', contentType: 'application/json; charset=UTF-8', payload: JSON.stringify({ text: (id ? '<users/' + id + '> ' : '') + text }), muteHttpExceptions: true }); }

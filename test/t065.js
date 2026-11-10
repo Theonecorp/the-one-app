@@ -6,6 +6,8 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message));
+  /* v0.8.180: ⏱ 는 영업일 시간 — 시험 시계를 평일 한가운데(2026-10-22 목 13시 뉴욕)로 고정해 요일과 상관없이 같게 (72시간 전 = 월요일 → 3일째) */
+  await pg.clock.setFixedTime(new Date('2026-10-22T17:00:00Z'));
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' };
     const ago = h => new Date(Date.now() - h * 3600000).toISOString();
     const mk = (id, store, h) => ({ id, no: id, d: ago(h).substring(0, 10), ym: ago(h).substring(0, 7), sm: 'BRANDON', acct: '1111', store, st: 'sent', n: 1, qty: 1, amt: 10, createdAt: ago(h), updatedAt: ago(h), sentAt: ago(h) });

@@ -8,7 +8,8 @@
  *    세일즈맨 탭 ↩️ 바운스: 내 바운스 목록 · 메모 주고받기 · 새 체크 받음 → 수금 입력(대체 체크로 미리 채움)
  *    회계 탭 ↩️ 바운스: 전체 목록 (세일즈맨별 · 지난 날수) · 등록 · 클리어 · 메모
  * ============================================================ */
-import { $, esc, money, R2, num, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sortBy, groupBy, sum, daysBetween, bi, bt, inputDate, sel, invNo } from './ui.js';
+import { $, esc, money, R2, num, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sortBy, groupBy, sum, bi, bt, inputDate, sel, invNo } from './ui.js';
+import { bizDaysBetween as daysBetween } from './bizday.js';   /* 📅 영업일 (v0.8.180) */
 import { newId } from './db.js';
 import { mySm } from './access.js';
 import { applyToInvoices } from './mgr.js';

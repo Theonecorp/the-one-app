@@ -646,6 +646,7 @@
 "비용 · 지급":["Costs","Custos · pagamentos"],
 "비용 요약":["Cost summary","Resumo de custos"],
 "비우기":["Clear","Limpar"],
+"비우면 관리자에게":["Empty = admin","Vazio = administrador"],
 "비움":["cleared","limpo"],
 "비활성":["Inactive","Inativo"],
 "비활성 (목록 · 지도에서 뺌)":["Inactive (hide from lists)","Inativo (fora das listas)"],
@@ -958,6 +959,7 @@
 "영업 담당자":["Sales rep","Vendedor"],
 "영업시간 · 방문":["Hours · visit","Horário · visita"],
 "영업일":["business days","dias úteis"],
+"영업일 5일 넘게 안 보낸 체크":["Checks unsent for 5+ business days","Cheques não enviados há mais de 5 dias úteis"],
 "예: 1111 ALI 주문 오늘 꼭 나가야 해요 / 샘플 3개 같이 보내 주세요":["e.g. 1111 ALI must ship today / add 3 samples","ex.: pedido 1111 ALI precisa sair hoje / mande 3 amostras"],
 "예: 1111 · ALI B/S":["e.g. 1111 · ALI B/S","ex.: 1111 · ALI B/S"],
 "예: 2단 월 디스플레이 · 주문 물건과 같이 / 따로":["e.g. 2-tier wall display · ship with / separate from the order","ex.: display de parede de 2 níveis · junto / separado do pedido"],
@@ -1206,6 +1208,7 @@
 "일괄 등록 · 삭제 (붙여넣기)":["Bulk add · delete (paste)","Cadastro · exclusão em lote (colar)"],
 "일괄 등록 · 삭제는 관리자만 — 아이템은 ＋ 새 아이템으로 하나씩 등록하세요":["Bulk add/delete is admin only — add items one at a time with ＋ New item","Cadastro/exclusão em massa só para administrador — cadastre os itens um a um com ＋ Novo item"],
 "일반으로 (6000번대)":["Regular (6000s)","Normal (6000)"],
+"일일 요약 메일 — 받는 사람 (쉼표로) · 보내는 시각 (뉴욕 시간, 영업일 아침 · -1 이면 끔)":["Daily summary email — recipients (comma separated) · hour (New York time, business-day mornings · -1 = off)","E-mail de resumo diário — destinatários (separados por vírgula) · hora (horário de Nova York, manhãs de dias úteis · -1 = desligado)"],
 "읽는 중":["Reading","Carregando"],
 "읽는 중…":["Loading…","Carregando…"],
 "읽은 열":["Columns","Colunas lidas"],
@@ -1497,6 +1500,7 @@
 "최근 출고":["Recent shipments","Envios recentes"],
 "최근 출고 (3일)":["Recently shipped (3 days)","Expedidos recentemente (3 dias)"],
 "최신 숫자를 받는 중 — 지난번 화면":["Refreshing — showing last view","Atualizando — mostrando a última tela"],
+"추가 휴일 YYYY-MM-DD, 쉼표로 (예: 2026-11-27)":["Extra holidays YYYY-MM-DD, comma separated","Feriados extras AAAA-MM-DD, separados por vírgula"],
 "추적 번호 (여러 개는 띄어서)":["Tracking # (space-separated)","Nº de rastreio (separados por espaço)"],
 "추적 번호 · 메모 (선택)":["Tracking # · note (optional)","Rastreio · nota (opcional)"],
 "추적 타임라인":["Tracking timeline","Linha do tempo"],
@@ -1712,7 +1716,8 @@
 "회사 서버와 연결되어 있습니다.":["Connected to the company server.","Conectado ao servidor da empresa."],
 "후일":["PDC","Pré"],
 "후일 수표":["Postdate check","Cheque pré-datado"],
-"휴대용 바코드 스캐너(USB · 블루투스)도 됩니다 — 스캔하면 코드가 자동으로 들어옵니다.":["A handheld USB or Bluetooth scanner works too — the code is typed in automatically.","Um leitor USB ou Bluetooth também funciona — o código entra automaticamente."]
+"휴대용 바코드 스캐너(USB · 블루투스)도 됩니다 — 스캔하면 코드가 자동으로 들어옵니다.":["A handheld USB or Bluetooth scanner works too — the code is typed in automatically.","Um leitor USB ou Bluetooth também funciona — o código entra automaticamente."],
+"휴일 — 앱의 며칠 지남 · 요약 메일 · 알림은 영업일(주말 · 휴일 빼고) 기준. 회사가 일하는 공휴일은 체크를 끄세요":["Holidays — day counts, summary email and alerts use business days (no weekends · holidays). Uncheck federal holidays the company works","Feriados — contagem de dias, e-mail de resumo e avisos usam dias úteis (sem fins de semana · feriados). Desmarque os feriados federais em que a empresa trabalha"]
 },
 "r":{
 " 로 합치기":["",""],

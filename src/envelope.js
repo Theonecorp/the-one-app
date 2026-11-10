@@ -7,12 +7,13 @@
  *                       got: {eid: at}, miss: {eid: true}, doneAt, doneBy }
  *    entries.env = 봉투 번호 · entries.rc = 도착(② 체크 수령, 기존 그대로)
  * ============================================================ */
-import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, confirmBox, askOver, printOpen, sum, bi, bt, daysBetween } from './ui.js';
+import { $, esc, money, num, R2, today, md, toast, busy, openModal, closeModal, confirmBox, askOver, printOpen, sum, bi, bt } from './ui.js';
+import { bizDaysBetween as daysBetween } from './bizday.js';   /* 📅 영업일 (v0.8.180) */
 import { newId } from './db.js';
 
 let S = null;
 export function register(state) { S = state; }
-export const LATE_DAYS = 14;
+export const LATE_DAYS = 10;   // 영업일 10일 ≈ 2주 (v0.8.180 — 전엔 달력 14일)
 const mySm = () => String((S.me && S.me.sm) || '').toUpperCase();
 const envId = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return 'V' + String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate()) + '-' + Math.random().toString(36).slice(2, 5).toUpperCase(); };
 const ck = r => (r.pays || []).filter(p => p.m === 'CHECK');
@@ -30,15 +31,15 @@ export async function paintSend(el, sm, myEntries) {
   const checks = []; rows.forEach(r => ck(r).forEach(p => checks.push({ eid: r.id, ref: refOf(p), amt: R2(num(p.amt)), store: r.store, acct: r.acct || '', d: r.d })));
   checks.sort((x, y) => String(x.d).localeCompare(String(y.d)) || String(x.store).localeCompare(String(y.store)));
   const tot = R2(sum(checks, c => c.amt));
-  /* 🔎 빠진 것 확인 — ① 7일 넘게 안 보낸 체크 ② 사무실이 "미도착" 표시한 체크(봉투에 없었음 → 다시 보내기 목록으로) ③ 📮 가는 중인데 오래된 봉투 ④ Daily Report 안 보낸 수금 */
-  const OLD = 7, old = checks.filter(c => daysBetween(c.d, today()) >= OLD);
+  /* 🔎 빠진 것 확인 — ① 영업일 5일(≈1주) 넘게 안 보낸 체크 ② 사무실이 "미도착" 표시한 체크(봉투에 없었음 → 다시 보내기 목록으로) ③ 📮 가는 중인데 오래된 봉투 ④ Daily Report 안 보낸 수금 */
+  const OLD = 5, old = checks.filter(c => daysBetween(c.d, today()) >= OLD);
   const miss = []; envAll.forEach(e => Object.keys(e.miss || {}).forEach(k => { if ((e.got || {})[k]) return; const c = (e.checks || []).find(x => x.eid + '|' + x.ref === k); const r = c && all.find(x => x.id === c.eid); if (c && r && r.env === e.id) miss.push(Object.assign({ env: e.id }, c)); }));
   const lateEnv = envAll.filter(e => e.st === 'sent' && isLate(e));
   const noRep = all.filter(r => r.rep === false && !r.sb);
   const probs = (old.length ? 1 : 0) + (miss.length ? 1 : 0) + (lateEnv.length ? 1 : 0) + (noRep.length ? 1 : 0);
   const checkCard = '<div class="card" id="evChk" style="border:2px solid ' + (probs ? '#fcd34d' : '#bbf7d0') + '"><h2 style="font-size:15px">🔎 ' + bi('빠진 것 확인', 'Anything missing?') + ' ' + (probs ? '<span class="tag t-r">' + probs + '</span>' : '<span class="tag t-k">✅</span>') + '</h2>' +
     (probs ? '' : '<div class="muted">' + bt('안 보낸 오래된 체크 · 미도착 체크 · 늦은 봉투 · 안 보낸 Daily Report 가 없습니다', 'No old unsent checks, missing checks, late envelopes or unsent daily reports') + '</div>') +
-    (old.length ? '<div class="pr"><div class="ct"><b>⚠️ ' + bt(OLD + '일 넘게 안 보낸 체크', 'Checks unsent for ' + OLD + '+ days') + ' ' + old.length + bt('장', '') + '</b><small>' + money(sum(old, c => c.amt)) + ' · ' + bt('아래 목록에서 빨간 날짜', 'red dates in the list below') + '</small></div></div>' : '') +
+    (old.length ? '<div class="pr"><div class="ct"><b>⚠️ ' + bt('영업일 ' + OLD + '일 넘게 안 보낸 체크', 'Checks unsent for ' + OLD + '+ business days') + ' ' + old.length + bt('장', '') + '</b><small>' + money(sum(old, c => c.amt)) + ' · ' + bt('아래 목록에서 빨간 날짜', 'red dates in the list below') + '</small></div></div>' : '') +
     (miss.length ? miss.map(c => '<div class="pr"><div class="ct"><b>⚠️ ' + bt('미도착', 'Not received') + ' · ' + esc(c.store) + ' #' + esc(c.ref) + '</b><small>' + esc(md(c.d)) + ' · ' + money(c.amt) + ' · ' + bt('봉투', 'envelope') + ' ' + esc(c.env) + ' — ' + bt('사무실이 봉투에서 못 찾았습니다', 'the office did not find it in the envelope') + '</small></div><div class="pa"><button class="b-ghost b-sm" data-remiss="' + esc(c.eid) + '">↩ ' + bt('다시 보내기 목록에', 'Send again') + '</button></div></div>').join('') : '') +
     (lateEnv.length ? lateEnv.map(e => '<div class="pr"><div class="ct"><b>📮 ' + esc(e.id) + ' ' + bt('아직 도착 안 함', 'not arrived yet') + '</b><small>' + esc(String(e.sentAt || '').substring(0, 10)) + ' · ' + (e.n || 0) + bt('장', '') + ' · ' + money(e.total) + ' · ' + ago(e) + (e.trk ? ' · ' + esc(e.trk) : '') + ' — ' + bt('우편을 확인해 주세요', 'please check the mail') + '</small></div></div>').join('') : '') +
     (noRep.length ? '<div class="pr tap" id="evNoRep"><div class="ct"><b>📧 ' + bt('Daily Report 안 보낸 수금', 'Payments not in a daily report') + ' ' + noRep.length + bt('건', '') + '</b><small>' + money(sum(noRep, r => r.total)) + ' · ' + bt('오늘 내역에서 전송', 'send from Today') + ' ›</small></div></div>' : '') + '</div>';

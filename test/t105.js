@@ -32,7 +32,7 @@ const path = require('path');
   const order = await pg.$$eval('.evck', L => L.map(c => c.closest('label').textContent.match(/#(\d+)/)[1])); log('send order:', order.join(','));
   const i1 = order.indexOf('9001'), i3 = order.indexOf('9003'), i2 = order.indexOf('9002'); if (!(i1 >= 0 && i1 < i3 && i3 < i2)) errs.push('checks should be oldest first (9001 → 9003 → 9002)');
   const chk = (await pg.textContent('#evChk')).replace(/\s+/g, ' '); log('check card:', chk.slice(0, 160));
-  if (!/7일 넘게 안 보낸 체크/.test(chk)) errs.push('old unsent checks should be flagged'); if (!/MISS STORE #9100/.test(chk)) errs.push('check the office marked missing should be listed');
+  if (!/영업일 5일 넘게 안 보낸 체크/.test(chk)) errs.push('old unsent checks should be flagged'); if (!/MISS STORE #9100/.test(chk)) errs.push('check the office marked missing should be listed');
   await pg.click('[data-remiss="EM1"]'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(900);
   const st = await pg.evaluate(() => ({ env: window.__MOCK_STORE__.entries.EM1.env, re: window.__MOCK_STORE__.entries.EM1.envRe, n: document.querySelectorAll('.evck').length })); log('after ↩:', JSON.stringify(st));
   if (st.env !== '' || st.re !== 'VMISS') errs.push('↩ should clear env and remember the old envelope'); if (st.n !== order.length + 1) errs.push('the missing check should be back on the send list');
