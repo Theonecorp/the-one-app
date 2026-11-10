@@ -72,6 +72,7 @@ function run() {
     try { notifyRun_(); } catch (e) { Logger.log('알림 보내기 실패: ' + e.message); }
     try { envelopesLate_(); } catch (e) { Logger.log('봉투 미도착 확인 실패: ' + e.message); }
     try { remindUnsent_(); } catch (e) { Logger.log('안 보낸 주문 · 수금 알림 실패: ' + e.message); }
+    try { newItemsRun_(); } catch (e) { Logger.log('새 아이템 알림 실패: ' + e.message); }
     try { dailySummary_(); } catch (e) { Logger.log('일일 요약 메일 실패: ' + e.message); }
     try { photoIndexRun_(); } catch (e) { Logger.log('사진 색인 실패: ' + e.message); }
     try { codSyncRun_(); } catch (e) { Logger.log('COD 시트 동기화 실패: ' + e.message); }
@@ -113,8 +114,8 @@ function run() {
  *  받는 사람: toSm → 그 세일즈맨 코드의 사용자 이메일 · toStaff → 설정의 담당자 알림 이메일(reportTo)
  *  구글 챗: 스크립트 속성 CHAT_WEBHOOK (챗 스페이스 → 앱 및 통합 → 웹훅 추가 → 주소 복사) 이 있으면 그 스페이스에도 올림 */
 function notifyRun_() {
-  const list = query_('notifyq', 'st', 'wait', 30);
-  if (!list.length) return;
+  const list = query_('notifyq', 'st', 'wait', 60);
+  if (!list.some(n => n.kind !== 'newItem')) return;
   const settings = getDoc_('settings', 'app') || {};
   const staff = String(settings.reportTo || DEFAULT_TO).split(/[,;\s]+/).filter(isEmail_);
   const props = PropertiesService.getScriptProperties();
@@ -135,6 +136,7 @@ function notifyRun_() {
     if (g === 'g:wh') return r === 'manager' && (j === 'whmgr' || j === 'pick' || j === 'pickinv');
     return r === 'admin' || r === 'owner' || (r === 'manager' && j !== 'whmgr' && j !== 'pick' && j !== 'catalog'); }).map(emailOf);   // g:office · g:staff
   list.forEach(n => {
+    if (n.kind === 'newItem') return;   // 🆕 새 아이템은 newItemsRun_ 이 묶어서 (10분 조용해지면 · 영업일 8–19시)
     try {
       const by = String(n.by || '').toLowerCase(), add = (L, e) => { e = String(e || '').trim().toLowerCase(); if (isEmail_(e) && L.indexOf(e) < 0) L.push(e); };
       const sender = senderOf(n), staffSender = isStaffUser(sender);
@@ -268,6 +270,27 @@ function biz_(settings) {
       if (isBiz(d)) tot += next - cur; cur = next > cur ? next : cur + 3600000; }
     return tot; };
   return { H, isBiz, add, between, prevBiz, ms, day: iso => fmt(new Date(iso)) };
+}
+
+/* ---------- 🆕 새 아이템 알림 — 세일즈맨 폰 팝업 (v0.8.182) ----------
+ *  앱이 아이템을 새로 등록하면 notifyq 에 kind 'newItem' (codes: [{ c, d, p }]) 을 남김 → 여기서 묶어 한 번에
+ *  · 마지막 등록 뒤 10분 동안 더 없을 때 (하나씩 여러 개 등록해도 팝업 한 번) · 영업일 8–19시(뉴욕)에만 — 밤 · 주말 · 휴일에 등록한 것은 다음 영업일 아침
+ *  · 받는 사람: 활성 세일즈맨 전부 · 누르면 앱의 새 주문 → 🆕 새로 나온 목록 */
+function newItemsRun_(nowMs) {
+  const L = queryVal_('notifyq', 'kind', { stringValue: 'newItem' }, 200).filter(n => n.st === 'wait');
+  if (!L.length) return 0;
+  const now = nowMs || Date.now(), last = L.reduce((a, n) => String(n.at || '') > a ? String(n.at || '') : a, '');
+  if (now - new Date(last).getTime() < 10 * 60000) return 0;   // 아직 등록하는 중
+  const tz = 'America/New_York', d = new Date(now), h = Number(Utilities.formatDate(d, tz, 'H'));
+  if (h < 8 || h >= 19 || !biz_().isBiz(Utilities.formatDate(d, tz, 'yyyy-MM-dd'))) return 0;
+  const seen = {}, codes = []; L.sort((a, b) => String(a.at).localeCompare(String(b.at))).forEach(n => (n.codes || []).forEach(x => { if (x && x.c && !seen[x.c]) { seen[x.c] = 1; codes.push(x); } }));
+  const to = listAll_('users').filter(u => u.active !== false && u.role === 'salesman').map(u => String(u.email || u._id || '').toLowerCase()).filter(isEmail_);
+  let pushed = 0;
+  if (codes.length && to.length) pushed = pushTo_(to, '🆕 새 아이템 ' + codes.length + '개 · New items', codes.slice(0, 6).map(x => x.c + ' ' + String(x.d || '').slice(0, 30) + (x.p ? ' ' + money_(x.p) : '')).join('\n') + (codes.length > 6 ? '\n… +' + (codes.length - 6) : ''), './#/order/newitems', 'newitem');
+  const at = new Date(now).toISOString();
+  L.forEach(n => patch_('notifyq', n._id, { st: 'sent', sentAt: at, push: pushed, pushTo: to.length + ' salesmen', merged: codes.length }));
+  Logger.log('🆕 새 아이템 ' + codes.length + '개 → 세일즈맨 ' + to.length + '명 · 팝업 ' + pushed + '대');
+  return codes.length;
 }
 
 /* ---------- 📊 일일 요약 메일 — 영업일 아침 한 번, 관리자에게 (v0.8.180) ----------
