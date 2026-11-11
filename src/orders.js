@@ -603,7 +603,7 @@ function cancelReq(o) {
 /** 종류별 합계 · 할인 표 */
 export function typeSummary(by) {
   const g = Object.values(by); if (!g.length) return '';
-  const names = {}; invTypes(S).forEach(t => { names[t.c] = t.n; });
+  const names = {}; invTypes(S).forEach(t => { names[t.c] = t.n; }); names[OB] = names[OB] || bt('타사 제품 · 가격으로', 'Other brands · by price');
   const tot = g.reduce((a, x) => a + x.total, 0);
   return '<div style="margin-top:8px">' + g.map(x => '<div class="trow"><span class="tb ' + esc(x.t) + '">' + esc(x.t) + '</span><div class="tx"><b>' + esc(names[x.t] || x.t) + '</b><small>' + x.qty + '개 · ' + money(x.sub) + (x.disc ? ' · 할인 ' + x.disc + '% (−' + money(x.sub - x.total) + ')' : '') + '</small></div><span class="ta">' + money(x.total) + '</span></div>').join('') +
     (g.length > 1 ? '<div class="trow sum"><div class="tx"><b>합계 Total</b><small>' + g.reduce((a, x) => a + x.qty, 0) + '개 · 인보이스 ' + g.length + '장</small></div><span class="ta">' + money(tot) + '</span></div>' : '') + '</div>';
@@ -679,7 +679,7 @@ function paintEditor() {
   else h += '<div style="flex:1;min-width:0;position:relative"><input id="eStoreQ" placeholder="🏬 가게 이름 · 계정코드 · 도시 / Store name · Acct # · City" autocomplete="off"><div class="hits" id="eStoreHits" style="display:none"></div></div>';
   h += '</div><div class="etabs"><button class="' + (O.view === 'add' ? 'on' : '') + '" data-ev="add">' + (isCr() ? '↩ ' + bi('담기', 'Add') : '🛒 ' + bi('주문', 'Order')) + '</button><button class="' + (O.view === 'cart' ? 'on' : '') + '" data-ev="cart">✅ ' + (isCr() ? bi('크레딧 확인', 'Review') : bi('주문 확인', 'Review')) + ' <span class="cnt" id="eCnt">' + t.n + '</span></button><button class="' + (O.view === 'memo' ? 'on' : '') + '" data-ev="memo">' + (isCr() ? '📝 ' + bi('사유 · 메모', 'Reason') : '📝 ' + bi('메모', 'Memo')) + '<span id="eMdot">' + (O.memo || reqCount(O.req) || (isCr() && O.why) ? ' •' : '') + '</span></button></div></div><div id="eTop"></div></div>';
   /* 고정 칸 밖: 수정 중 표시 · 메모 · 고정 노트 · (담당자) 세일즈맨 */
-  if (isCr()) h += '<div class="alert crban" id="eCrBan">↩ <b>' + bi('크레딧 · 리턴', 'Credit · Return') + '</b> — ' + bt('돌려받을 물건을 주문처럼 눌러 담으세요. 저장하면 보낼 주문에 주문과 같이 모이고, 보내면 사무실이 확인해 CM 번호를 발행합니다.', 'Tap the returned items like an order. Saved credits wait in Review & send with your orders; once sent, the office checks them and issues the CM.') + (O.why ? ' <span class="tag" style="background:#ffedd5;color:#9a3412">' + esc(O.why) + '</span>' : '') + '</div>';
+  if (isCr()) h += '<div class="alert crban" id="eCrBan">↩ <b>' + bi('크레딧 · 리턴', 'Credit · Return') + '</b> — ' + bt('돌려받을 물건을 주문처럼 눌러 담으세요. 저장하면 보낼 주문에 주문과 같이 모이고, 보내면 사무실이 확인해 CM 번호를 발행합니다.', 'Tap the returned items like an order. Saved credits wait in Review & send with your orders; once sent, the office checks them and issues the CM.') + (O.why ? ' <span class="tag" style="background:#ffedd5;color:#9a3412">' + esc(O.why) + '</span>' : '') + '<div class="btns" style="justify-content:flex-start;margin:6px 0 0"><button type="button" class="b-ghost b-sm" id="eCrOther">🏷 ' + bt('타사 제품 · 가격으로', 'Other brands · by price') + ' · ✍️ ' + bt('직접', 'Manual') + '</button></div></div>';
   if (O.id) h += '<div class="alert a-amb" style="margin:0 0 8px">✏️ ' + esc(O.no) + ' 수정 중 ' + stTag(O.st) + '</div>';
   if (acc && acc.note) h += '<div class="alert a-blu" style="margin:0 0 8px">📝 ' + esc(acc.note) + '</div>';
   h += '<div id="eStoreNotes"></div>';
@@ -698,6 +698,7 @@ function paintEditor() {
   eHeadH();
   if ($('eStoreX')) $('eStoreX').onclick = async () => { if (O.lines.length && !(await confirmBox('가게를 바꿀까요? 담은 아이템 ' + O.lines.length + '줄은 그대로 두고 가게만 바뀝니다 (할인은 새 가게 기본으로). / Change store?', '바꾸기'))) return; O.store = ''; O.acct = ''; INFO = null; saveWip(); paintEditor(); };
   if ($('eStoreI')) $('eStoreI').onclick = () => Store.storeSheet(O.acct, null, 'invh');
+  if ($('eCrOther')) $('eCrOther').onclick = otherSheet;
   if ($('eStoreCr')) $('eStoreCr').onclick = () => { flushWip(); if (isStaff()) Router.go('credit', 'new:' + encodeURIComponent(O.acct)); else startCreditFor(O.acct); };   /* 세일즈맨: ↩ 크레딧도 주문처럼 (v0.8.187) · 담당자: 바로 발행하는 크레딧 화면 */   /* ↩ 같은 가게로 크레딧 — 작성 중 주문은 폰에 남아 돌아오면 이어서 */   // 📋 기록 — 인보이스 기록 탭부터 (담는 동안은 기록 줄이 숨어 이 버튼이 그 역할)
   if (O.acct) { loadInfo(O.acct); Notes.fillPinned('eStoreNotes', O.acct); }
   if ($('eStoreQ')) {
@@ -854,11 +855,33 @@ export function flexTypes(lines) {
   flex.forEach(l => { l.t = best; });
   return lines;
 }
+/* 🏷 타사 제품 리턴 — 우리 코드가 없는 물건은 가격대로 (v0.8.187 관리자: "타 회사 제품은 가격으로 정리 — 1.99 · 2.49 · 2.99 … 9.49 · 9.99 · … 39.99" · "특이사항은 크레딧을 수동으로")
+ *   가격 단추를 누를 때마다 그 가격 줄 +1 (코드 OB-1.99 · 종류 OB) · ✍️ 직접 = 설명 · 단가 · 수량. 이 줄들은 가게 할인 · 할인 백을 빼지 않음 (그 가격 그대로) */
+const OB = 'OB';
+export const OB_PRICES = (() => { const a = []; for (let v = 1.99; v < 10; v += 0.5) a.push(Math.round(v * 100) / 100); for (let v = 10.99; v < 40; v += 1) a.push(Math.round(v * 100) / 100); return a; })();
+function obAdd(c, d, p, q) { let l = IDX[c]; if (l) l.q += q; else { l = { c, d, q, p, lp: p, t: OB }; O.lines.push(l); IDX[c] = l; } saveWip(); refreshTotals(); }
+function otherSheet() {
+  const paint = () => {
+    const box = $('obGrid'); if (!box) return;
+    box.innerHTML = OB_PRICES.map(v => { const c = 'OB-' + v.toFixed(2), n = IDX[c] ? IDX[c].q : 0; return '<button type="button" class="' + (n ? 'on' : '') + '" data-obp="' + v.toFixed(2) + '">$' + v.toFixed(2) + (n ? ' <b>×' + n + '</b>' : '') + '</button>'; }).join('');
+    box.querySelectorAll('[data-obp]').forEach(b => b.onclick = () => { const v = Number(b.dataset.obp); obAdd('OB-' + v.toFixed(2), bt('타사 제품', 'Other brand') + ' $' + v.toFixed(2), v, 1); paint(); });
+    const man = O.lines.filter(l => l.t === OB && /^MAN-/.test(l.c));
+    $('obMan').innerHTML = man.length ? man.map(l => '<div>✍️ ' + esc(l.d) + ' · ' + l.q + ' × ' + money(l.p) + ' = <b>' + money(R2(l.q * l.p)) + '</b></div>').join('') : '';
+    const ob = O.lines.filter(l => l.t === OB && l.q > 0); $('obTot').textContent = ob.length ? ob.reduce((a, l) => a + l.q, 0) + bt('개 · ', ' pcs · ') + '−' + money(R2(ob.reduce((a, l) => a + l.q * l.p, 0))) : '';
+  };
+  openModal('<h2>🏷 ' + bi('타사 제품 · 가격으로', 'Other brands · by price') + '</h2><div class="muted">' + bt('우리 코드가 없는 물건은 가격대를 누르세요 — 누를 때마다 1개. 이 줄은 할인 없이 그 가격 그대로 크레딧됩니다. 수량은 ✅ 크레딧 확인에서 고칠 수 있습니다.', 'For goods without our code, tap the price — one per tap. These lines are credited at that price with no discount. Fix quantities in Review.') + '</div>' +
+    '<div class="obgrid" id="obGrid"></div>' +
+    '<div class="card" style="margin:10px 0 0;padding:10px"><b>✍️ ' + bt('직접 입력 — 특이사항', 'Manual — special cases') + '</b><div class="two" style="margin-top:6px"><input id="obD" placeholder="' + esc(bt('설명 (예: 가발 리턴 · 가격 조정)', 'Description')) + '"><div style="display:flex;gap:6px"><input id="obP" type="number" step="0.01" inputmode="decimal" placeholder="' + esc(bt('단가 $', 'Unit $')) + '" style="flex:1 1 0;min-width:0"><input id="obQ" type="number" inputmode="numeric" value="1" style="flex:0 0 64px;min-width:0"><button type="button" class="b-blue b-sm" id="obAdd" style="flex:0 0 auto;width:auto">＋</button></div></div><div id="obMan" class="muted" style="font-size:12.5px;margin-top:6px"></div></div>' +
+    '<div class="btns"><span class="muted" id="obTot" style="align-self:center;flex:1"></span><button class="b-blue" id="obDone">' + bt('닫기', 'Done') + '</button></div>');
+  $('obAdd').onclick = () => { const d = $('obD').value.trim(), p = R2($('obP').value), q = Math.max(1, Math.floor(Number($('obQ').value) || 1)); if (!d) return toast(bt('설명을 적으세요', 'Enter a description'), 'bad'); if (!(p > 0)) return toast(bt('단가를 적으세요', 'Enter the unit price'), 'bad'); obAdd('MAN-' + Date.now().toString(36).toUpperCase(), d, p, q); $('obD').value = ''; $('obP').value = ''; $('obQ').value = '1'; paint(); };
+  $('obDone').onclick = () => { closeModal(); paintEditor(); };
+  paint();
+}
 /* ↩ 크레딧 사유 · 메모 · 🏷 할인 백 (v0.8.187 — 크레딧 화면의 사유 · 할인 백을 주문 화면으로) */
 const CR_WHY = [['대미지', 'Damaged'], ['오래된 물건 교환', 'Old stock exchange'], ['잘못 보낸 물건', 'Wrong item shipped'], ['가격 조정', 'Price adjustment'], ['기타', 'Other']];
 const CR_DB = [0, 5, 10, 15, 20, 25, 30];
 /** 🏷 할인 백 — 고르면 모든 종류에 그 % (기본 = 가게 기본 할인). 줄을 새로 담아도 저장 · 확인 때 다시 맞춤 */
-function crDisc() { if (!isCr() || O.dback == null) return; const ty = {}; O.lines.forEach(l => { ty[l.t || DT()] = 1; }); ty[DT()] = 1; Object.keys(O.disc || {}).forEach(k => { ty[k] = 1; }); O.disc = {}; Object.keys(ty).forEach(k => { O.disc[k] = O.dback; }); }
+function crDisc() { if (!isCr() || O.dback == null) return; const ty = {}; O.lines.forEach(l => { ty[l.t || DT()] = 1; }); ty[DT()] = 1; Object.keys(O.disc || {}).forEach(k => { ty[k] = 1; }); O.disc = {}; Object.keys(ty).forEach(k => { if (k !== OB) O.disc[k] = O.dback; }); }
 function paintCrMemo() {
   crDisc();
   const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null, def = accDiscOf(), defT = Object.keys(def).length ? Object.keys(def).map(k => k + ' ' + def[k] + '%').join(' · ') : '0%';

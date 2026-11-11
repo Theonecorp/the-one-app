@@ -134,6 +134,7 @@ body.kb nav#nav,body.kb .sticky,body.kb .bulkbar{display:none!important}body.kb{
 .dt th{position:sticky;top:0;background:#f8fafc;color:#475569;font-size:11.5px;font-weight:700;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;z-index:1;user-select:none}
 .dt th[data-dts]{cursor:pointer}.dt th[data-dts]:hover{color:var(--navy)}.dt th.sa::after{content:' ▲';font-size:9px}.dt th.sd::after{content:' ▼';font-size:9px}
 /* 주문 ☰ 목록 — 표가 화면 너비를 넘지 않게: 칸 너비 고정, 아이템 칸이 남는 만큼 (세트 구성품 줄 · 지난번 가격 줄은 …) (v0.8.185 — 폰에서 세트 줄 때문에 수량 칸이 잘림) */
+.obgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:6px;margin-top:8px;max-height:46vh;overflow:auto}.obgrid button{padding:10px 4px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font-weight:800;font-size:14px}.obgrid button.on{background:#fff7ed;border-color:#fb923c;color:#9a3412}.obgrid button b{font-size:12px}
 .crtag{background:#ffedd5!important;color:#9a3412!important;font-weight:800}.alert.crban{background:#fff7ed;border:2px solid #fb923c;color:#7c2d12;margin:0 0 8px}
 .dt.olist{table-layout:fixed;width:100%}.dt.olist td.ct{overflow:hidden}
 .dt td{padding:8px 10px;border-bottom:1px solid #eef2f7;vertical-align:middle;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}.dt td.wrap{white-space:normal;max-width:none}
