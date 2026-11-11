@@ -389,7 +389,7 @@ async function paintToday() {
 }
 function entCard(r) {
   const vd = !!r.void;
-  const bits = (r.pays || []).map(p => esc(p.m) + (p.ref ? ' #' + esc(p.ref) : '') + ' ' + money(p.amt) + (p.mob ? ' <span class="mobtag">📱</span>' : '') + (p.repl ? ' <span class="rpltag">🔁 대체' + (p.orig ? ' · 원래 #' + esc(p.orig) : '') + '</span>' : '') + (p.dep && p.dep !== r.d ? (p.dep > today() ? ' <span class="posttag">입금 Dep ' + esc(p.dep) + '</span>' : ' · 입금 ' + esc(p.dep)) : ''));
+  const bits = (r.pays || []).map(p => esc(p.m) + (p.ref ? ' #' + esc(p.ref) : '') + ' ' + money(p.amt) + (p.mob ? ' <span class="mobtag">📱</span>' : '') + (p.repl ? ' <span class="rpltag">🔁 대체' + (p.orig ? ' · 원래 #' + esc(p.orig) : '') + '</span>' : '') + depTag(p, r.d));
   if (r.d !== TODAY_D && r.rep === false) bits.unshift('<span class="latetag">지난 건 ' + esc(md(r.d)) + ' · not sent</span>');
   return '<div class="ent' + (vd ? ' void' : '') + (r.mismatch ? ' bad' : '') + '"><div class="t"><div class="store">' + esc(r.store) + (r.acct ? '<span class="code">' + esc(r.acct) + '</span>' : '') + (r.newStore ? '<span class="newtag">NEW</span>' : '') + '</div><div class="amt">' + money(r.total) + '</div></div>' +
     '<div class="meta">' + bits.join(' · ') + (r.addr ? '<br>' + esc(r.addr) : '') +
@@ -519,8 +519,10 @@ function quickRange(k) {
 const srcOf = c => c.method === 'ACH' ? 'ACH' : c.method === 'COD' ? 'COD' : 'CARD';
 const SRC = { FIELD: ['수금', '#e0f2fe', '#075985'], COD: ['COD', '#fef3c7', '#92400e'], ACH: ['ACH', '#ede9fe', '#5b21b6'], CARD: ['카드', '#dcfce7', '#14532d'] };
 /** 기록 한 줄 (가게 · 금액 · 받은 날 · 결제 · 인보이스 · 세일즈맨 · 상태) */
+/* 💰 디파짓 날짜 — 체크는 늘 (받은 날과 같아도), 그 밖은 다를 때만 · 오늘 뒤면 🟠 후일 (v0.8.185 관리자: "받은 날짜 말고 디파짓 되는 날짜도") */
+const depTag = (p, d) => { const dp = p.dep || (p.m === 'CHECK' ? d : ''); if (!dp || (p.m !== 'CHECK' && dp === d)) return ''; return dp > today() ? ' <span class="posttag">후일 디파짓 Dep ' + esc(dp) + '</span>' : ' · 디파짓 Dep ' + esc(dp); };
 const entHtml = x => { const sd = SRC[x.src] || SRC.FIELD; return '<div class="hent"><div class="t"><span><span class="tag" style="background:' + sd[1] + ';color:' + sd[2] + '">' + sd[0] + '</span> ' + esc(x.store) + (x.acct ? '<span class="code">' + esc(x.acct) + '</span>' : '') + '</span><span class="amt">' + money(x.total) + '</span></div>' +
-  '<div class="meta"><span class="kv2"><b>받은 날 Rcvd</b> ' + esc(x.d) + '</span>' + (x.src === 'FIELD' ? (x.pays || []).map(p => '<span class="kv2"><b>' + esc(p.m) + '</b>' + (p.ref ? ' #' + esc(p.ref) : '') + ' ' + money(p.amt) + (p.mob ? ' 📱' : '') + (p.repl ? ' 🔁' : '') + '</span>').join('') : '<span class="kv2"><b>' + esc(x.method || '') + '</b>' + (x.ref ? ' ' + esc(x.ref) : '') + '</span>') +
+  '<div class="meta"><span class="kv2"><b>받은 날 Rcvd</b> ' + esc(x.d) + '</span>' + (x.src === 'FIELD' ? (x.pays || []).map(p => '<span class="kv2"><b>' + esc(p.m) + '</b>' + (p.ref ? ' #' + esc(p.ref) : '') + ' ' + money(p.amt) + (p.mob ? ' 📱' : '') + (p.repl ? ' 🔁' : '') + depTag(p, x.d) + '</span>').join('') : '<span class="kv2"><b>' + esc(x.method || '') + '</b>' + (x.ref ? ' ' + esc(x.ref) : '') + '</span>') +
   ((x.invs || []).length ? '<br>📄 ' + x.invs.map(v => esc(v.no) + ' ' + money(v.amt)).join(' · ') : '') + '<br><span class="kv2">👤 ' + esc(x.sm) + '</span><span class="kv2">' + (x.src === 'FIELD' ? (x.rep ? '리포트 전송됨 Sent' : '전송 대기 Pending') + ' · ' + esc(stageText(x)) : (x.v ? '확인됨' : '입력됨')) + '</span></div></div>'; };
 /** 📅 기간 조회 — 받은 날짜가 기간 안인 내 기록 (COD · ACH · 카드 포함 체크 시) · 날짜별 소계 · 종류별 합계 */
 async function periodSearch() {
