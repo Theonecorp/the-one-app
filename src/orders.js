@@ -1205,10 +1205,26 @@ async function saveOrder(st) {
   }
   /* 세일즈맨 · 새 주문 — 폰의 보낼 함에 먼저 넣고(사라지지 않게) 전송 */
   try { putOut(orderDoc(base, lines, O.disc), lines); } catch (e) { return toast(e.message, 'bad'); }
-  const id = O.id; O = null; clearWip();
+  const id = O.id, acct = base.acct, store = base.store; O = null; clearWip();
   busy(true); const r = await syncOutbox(true); busy(false);
   const left = !!readOut()[id];
   toast(left ? '📱 폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다' : (st === 'sent' ? '보냈습니다 📤' : '저장했습니다 — 수정 · 추가는 보내기 전까지 자유, 하루 치는 "보낼 주문"에서 한 번에 보냅니다'), left ? '' : 'good');
+  /* 💵 그 가게에 받을 돈이 있으면 "수금할 것 있나요?" → 수금 입력으로 바로 (v0.8.185) */
+  if (acct && await askCollect(acct, store)) return;
   /* 저장 · 보내기 뒤에는 홈으로 */
   Router.go(Router.home || 'order');
+}
+/** 💵 주문 저장 뒤 — 가게 미수금(AR · 미결 인보이스)이 있으면 묻고, "수금 입력"을 누르면 그 가게가 골라진 수금 입력으로 (true = 넘어감)
+ *   잔액을 3초 안에 못 읽으면(오프라인 등) 금액 없이 물음 · 잔액이 0 이면 묻지 않음 (v0.8.185 관리자: "오더 저장 뒤 그 가게의 수금할 것이 있는지 물어보고 수금으로 바로 연결") */
+async function askCollect(acct, store) {
+  let info = null; try { info = await Promise.race([Store.storeInfo(acct), new Promise(r => setTimeout(() => r(null), 3000))]); } catch (e) {}
+  const bal = info && !info.err ? Number(info.bal) || 0 : null, nInv = info && info.invs ? info.invs.filter(v => v.bal > 0.005).length : 0;
+  if (bal != null && bal <= 0.005) return false;
+  return new Promise(res => {
+    openModal('<h2>💵 ' + bi('이 가게에서 받은 수금이 있나요?', 'Any payment from this store?') + '</h2><div class="sumbox" style="margin:8px 0"><b>' + esc(store) + '</b> <span class="muted">' + esc(acct) + '</span>' +
+      (bal != null ? '<div style="margin-top:4px">' + bt('미수금', 'Open balance') + ' <b class="warn" style="font-size:18px">' + money(bal) + '</b>' + (nInv ? ' · ' + bt('인보이스', 'invoices') + ' ' + nInv + bt('장', '') : '') + '</div>' : '') + '</div>' +
+      '<div class="btns"><button class="b-ghost" id="acNo">' + bi('나중에', 'Later') + '</button><button class="b-green" id="acGo">💵 ' + bi('수금 입력', 'Enter payment') + '</button></div>');
+    $('acNo').onclick = () => { closeModal(); res(false); };
+    $('acGo').onclick = async () => { closeModal(); try { const C = await import('./collect.js'); C.newEntryFor(acct, store); res(true); } catch (e) { res(false); } };
+  });
 }

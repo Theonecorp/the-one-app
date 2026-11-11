@@ -32,6 +32,8 @@ const F = {};
 /* ↩️ 바운스 탭에서 "새 체크 받음" — 가게 · 원래 체크 번호 · 금액을 🔁 대체 체크로 미리 채워 수금 입력으로 */
 let PRE_R = null;
 export function prefillRepl(o) { PRE_R = o; Router.go('entry', 'new'); }
+/** 💵 이 가게 수금 입력으로 바로 — 가게가 골라진 채 (주문 저장 뒤 "수금할 것 있나요?" 에서, v0.8.185) */
+export function newEntryFor(acct, store) { resetForm(); const a = S.accounts && S.accounts.byCode ? S.accounts.byCode[acct] : null; F.acct = a ? a.acct : acct; F.store = a ? a.store : store; Router.go('entry'); }
 function resetForm() {
   Object.assign(F, { sm: isSales() ? '' : F.sm, acct: '', store: '', newStore: false, addr: '', tel: '', d: today(),
     pays: [{ m: 'CHECK', ref: '', amt: '', dep: today(), mob: false, repl: false, orig: '' }],
