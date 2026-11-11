@@ -361,7 +361,7 @@ function inboundMessage_(m, byCode) {
     const book = inboundBook_(att); let R = null;
     for (let i = 0; i < book.length; i++) { const r = parseFactoryInvoice(book[i].rows, byCode, year); if (!r.err) { R = r; break; } if (!R) R = r; }
     R = R || { err: 'nocode', lines: [] };
-    const ledger = book.some(sh => FacStmt.looksLikeStatement(sh.rows)), K = classifyFile({ name: att.getName(), sheets: book, inv: R, ledger: ledger });
+    const ledger = FacStmt.looksLikeAnyStatement(book), K = classifyFile({ name: att.getName(), sheets: book, inv: R, ledger: ledger, subject: subj });
     return { att: att, name: att.getName(), book: book, R: R, kind: K.kind, why: K.why, priced: (R.lines || []).some(l => (l.p || 0) > 0), pack: PACK_RE.test(att.getName() + ' ' + top(book)) };
   });
   /* 명세서 · 진행표 · 그 밖 — 공장 금액이 들어 있을 수 있어 관리자에게만 */
@@ -405,13 +405,15 @@ function inboundRegister_(m, x, B, revised) {
 function inboundFactoryFile_(m, x) {
   const subj = m.getSubject() || '', from = m.getFrom() || '', fromName = String(from).replace(/<.*$/, '').replace(/"/g, '').trim(), now = new Date().toISOString();
   const facs = listAll_('factories').filter(f => f.active !== false);
-  const P = x.kind === 'statement' ? FacStmt.parseFactoryStatement(x.book) : null, ledger = !!(P && P.sheets.length);
-  const fac = (P && P.name && FacStmt.matchFactory(P.name, facs)) || FacStmt.matchFactory(fromName + ' ' + subj + ' ' + x.name, facs) || null;
+  const P = x.kind === 'statement' || x.kind === 'status' ? FacStmt.parseAnyStatement(x.book) : null, ledger = !!(P && P.sheets.length);
+  /* 어느 공장 — 파일 안 이름 → 보낸 사람 · 메일 제목 · 파일 이름 → 같은 주소가 전에 보낸 인보이스의 공장 */
+  let fac = (P && P.name && FacStmt.matchFactory(P.name, facs)) || FacStmt.guessFactory(((P && P.name) || '') + ' ' + fromName + ' ' + subj + ' ' + x.name, facs) || null;
+  if (!fac) { const prev = query_('inbound', 'mailFrom', from, 5).find(d => d.factory); if (prev) fac = FacStmt.guessFactory(prev.factory, facs); }
   let cmp = null;
   if (ledger && fac) cmp = FacStmt.compareStatement(P, { inv: query_('factoryInvoices', 'f', fac.code, 5000), pay: query_('factoryPayments', 'f', fac.code, 5000) });
   let url = ''; try { url = inboundSaveFile_(x.att, fac ? fac.code : '미확인'); } catch (e) { Logger.log('🏭 드라이브 보관 실패: ' + e.message); }
   const cut = L => (L || []).slice(0, 30);
-  const small = cmp ? { from: cmp.from, to: cmp.to, fileBal: cmp.fileBal, appBal: cmp.appBal, appBalAt: cmp.appBalAt, diff: cmp.diff, ok: cmp.ok, fileInv: cmp.fileInv, filePay: cmp.filePay,
+  const small = cmp ? { fmt: cmp.fmt, from: cmp.from, to: cmp.to, fileBal: cmp.fileBal, appBal: cmp.appBal, appBalAt: cmp.appBalAt, diff: cmp.diff, ok: cmp.ok, fileInv: cmp.fileInv, filePay: cmp.filePay, fwd: cmp.fwd, open: cut(cmp.open),
     inv: { onlyFile: cut(cmp.inv.onlyFile), onlyApp: cut(cmp.inv.onlyApp), moved: cut(cmp.inv.moved) }, pay: { onlyFile: cut(cmp.pay.onlyFile), onlyApp: cut(cmp.pay.onlyApp), moved: cut(cmp.pay.moved) } } : null;
   const doc = { at: now, kind: x.kind, why: x.why, file: x.name, url: url, from: from, subject: subj, ledger: ledger, cmp: small };
   if (fac) patch_('factories', fac.code, { mailDocs: [doc].concat((fac.mailDocs || []).slice(0, 9)) });
@@ -425,8 +427,10 @@ function inboundFactoryFile_(m, x) {
       list('📄 파일에만 있는 인보이스', cmp.inv.onlyFile, r => esc_(r.d) + ' ' + m2(r.amt) + (r.note ? ' · ' + esc_(r.note) : '')) + list('📒 앱에만 있는 인보이스', cmp.inv.onlyApp, r => esc_(r.d) + ' ' + m2(r.amt)) +
       list('📄 파일에만 있는 송금', cmp.pay.onlyFile, r => esc_(r.d) + ' ' + m2(r.amt)) + list('📒 앱에만 있는 송금', cmp.pay.onlyApp, r => esc_(r.d) + ' ' + m2(r.amt)) +
       list('📅 금액은 같고 날짜만 다름', cmp.inv.moved.concat(cmp.pay.moved), r => m2(r.amt) + ' — 파일 ' + esc_(r.fileD) + ' · 앱 ' + esc_(r.appD)) +
+      (cmp.fwd ? '<p style="font-size:14px">이월 (' + esc_(cmp.fwd.d) + ' 전 잔액): 파일 ' + m2(cmp.fwd.file) + ' · 앱 ' + m2(cmp.fwd.app) + (Math.abs(cmp.fwd.diff) < 0.011 ? ' ✅' : ' — <b style="color:#b91c1c">차이 ' + m2(cmp.fwd.diff) + '</b> (그 전 기간부터 다름)') + '</p>' : '') +
+      list('🏭 아직 안 보낸 주문 (공장 진행표의 IN PROGRESS)', cmp.open || [], r => esc_(r.po) + ' ' + esc_(r.item) + ' · ' + esc_(r.d) + ' · ' + m2(r.amt)) +
       '<p style="font-size:13px">앱 <b>경영 → 🏭 공장</b>에 이 비교가 남아 있습니다. 파일대로 장부를 맞추려면 이 파일을 <b>관리 → 가져오기</b>에 올리세요 (🏭 공장 명세서).</p>';
-  } else if (x.kind === 'statement') body += '<p>' + (!fac ? '⚠️ 어느 공장인지 찾지 못했습니다 — 경영 → 🏭 공장의 이름과 맞지 않음. ' : '') + (!ledger ? '⚠️ 장부 모양(Date · PAID DATE · DEPOSIT MONEY 머리글)이 아니라 자동 비교를 못 했습니다. ' : '') + '파일을 열어 확인해 주세요.</p>';
+  } else if (x.kind === 'statement' || (x.kind === 'status' && ledger)) body += '<p>' + (!fac ? '⚠️ 어느 공장인지 찾지 못했습니다 — 경영 → 🏭 공장의 이름과 맞지 않음. ' : '') + (!ledger ? '⚠️ 아는 장부 모양(Date · PAID DATE · DEPOSIT MONEY / ACCOUNT / 결재내역서 / ORDER STATUS)이 아니라 자동 비교를 못 했습니다. ' : '') + '파일을 열어 확인해 주세요.</p>';
   else body += '<p>입고 예정에는 넣지 않았습니다. ' + (x.kind === 'status' ? '생산 · 주문 진행표로 보입니다.' : '인보이스 모양(아이템 코드 · 수량)이 아닙니다.') + '</p>';
   const tag = cmp ? (Math.abs(cmp.diff) < 0.011 && cmp.ok ? ' ✅ 장부와 같음' : ' ⚠️ 장부와 다름 ' + m2(cmp.diff)) : '';
   MailApp.sendEmail({ to: REPLY_TO, subject: '[THE ONE] ' + KN + ' — ' + who + tag, name: 'THE ONE', replyTo: REPLY_TO, htmlBody: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px">' + body + '</div>' });

@@ -205,7 +205,9 @@ function mailDocsCard(f) {
       (c ? '<div style="margin-top:4px">' + (same ? '<span class="tag t-k">✅ 장부와 같음</span>' : '<span class="tag" style="background:#fee2e2;color:#991b1b">⚠️ 장부와 다름 ' + signed(c.diff) + '</span>') + ' <span style="font-size:12.5px">파일 BALANCE <b>' + money(c.fileBal) + '</b> · 앱 (' + esc(md(c.to)) + '까지) <b>' + money(c.appBalAt) + '</b> · 앱 지금 ' + money(c.appBal) + '</span></div>' +
         rows('📄 파일에만 있는 인보이스', c.inv && c.inv.onlyFile, r => md(r.d) + ' ' + money(r.amt)) + rows('📒 앱에만 있는 인보이스', c.inv && c.inv.onlyApp, r => md(r.d) + ' ' + money(r.amt)) +
         rows('📄 파일에만 있는 송금', c.pay && c.pay.onlyFile, r => md(r.d) + ' ' + money(r.amt)) + rows('📒 앱에만 있는 송금', c.pay && c.pay.onlyApp, r => md(r.d) + ' ' + money(r.amt)) +
-        rows('📅 날짜만 다름', ((c.inv && c.inv.moved) || []).concat((c.pay && c.pay.moved) || []), r => money(r.amt) + ' 파일 ' + md(r.fileD) + ' / 앱 ' + md(r.appD)) : '<div class="muted" style="font-size:12px">' + esc(x.why || '') + (x.kind === 'statement' && !x.ledger ? ' — 장부 모양이 아니라 자동 비교 못 함' : '') + '</div>') + '</div>'; }).join('') +
+        rows('📅 날짜만 다름', ((c.inv && c.inv.moved) || []).concat((c.pay && c.pay.moved) || []), r => money(r.amt) + ' 파일 ' + md(r.fileD) + ' / 앱 ' + md(r.appD)) +
+        (c.fwd ? '<div style="font-size:12px;margin-top:4px"><b>이월</b> ' + esc(md(c.fwd.d)) + ' 전 잔액 — 파일 ' + money(c.fwd.file) + ' · 앱 ' + money(c.fwd.app) + (Math.abs(c.fwd.diff) < 0.011 ? ' ✅' : ' <b class="warn">차이 ' + signed(c.fwd.diff) + '</b>') + '</div>' : '') +
+        rows('🏭 진행 중 주문 (IN PROGRESS)', c.open, r => esc(r.po) + ' ' + esc(r.item) + ' ' + money(r.amt)) : '<div class="muted" style="font-size:12px">' + esc(x.why || '') + (x.kind === 'statement' && !x.ledger ? ' — 장부 모양이 아니라 자동 비교 못 함' : '') + '</div>') + '</div>'; }).join('') +
     '<div class="hint">파일대로 장부를 맞추려면 그 파일을 관리 → 가져오기에 올리세요 (🏭 공장 명세서).</div></div>';
 }
 /* ---------- 🧹 중복 정리 — 명세서(src 'stmt') 줄과 옛 자료(seed) · 손입력 줄이 같은 연도에 겹칠 때 명세서만 남김 · 공장 합치기 ----------
