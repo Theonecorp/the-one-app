@@ -2,7 +2,7 @@
  *   ① src/bizday.js: 주말 · 연방 공휴일(대체일) 빼고 셈 · 추가 휴일 · 회사가 일하는 공휴일(workHolidays) · 금 16시 → 월 10시 = 18시간
  *   ② apps-script biz_ 가 앱과 같은 날을 영업일로 봄 (2026-2027 매일)
  *   ③ 요약 메일: 기간 = 지난 영업일 ~ 어제 (월요일 = 금 · 토 · 일) · 새 주문 · 인보이스 · 크레딧 · 수금(방법별) · 📦 UPS 박스 · 특이사항(밀린 주문 · 안 보낸 주문/수금 · 확인 대기 · UPS 기록 끊김)
- *      · 영업일 아침 정한 시각 뒤 하루 한 번 · 주말 · 휴일 · 시각 전에는 안 보냄
+ *      · 아침 정한 시각 뒤 하루 한 번 · 시각 전에는 안 보냄 (주말 · 휴일 규칙은 v0.8.184 t184 — 새로 들어온 게 있을 때만)
  *   ④ 관리 → 설정: 휴일 체크 끄기 → workHolidays · 추가 휴일 · 요약 받는 사람 · 시각 저장 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs'), vm = require('vm');
@@ -68,8 +68,7 @@ const fmtTz = (d, tz, f) => { const p = Object.fromEntries(new Intl.DateTimeForm
   G = gas(MON8, data); G.ctx.dailySummary_(); log('③ Mon 8:00 sent:', G.sent.length, G.sent[0] && G.sent[0].to); if (G.sent.length !== 1 || !/luke@theonefl\.com/.test(G.sent[0].to)) errs.push('③ sends at 8:00 on a business day to the admin by default');
   G.ctx.dailySummary_(); if (G.sent.length !== 1) errs.push('③ once a day');
   G = gas(new Date('2026-11-16T11:00:00Z').getTime(), data); G.ctx.dailySummary_(); if (G.sent.length) errs.push('③ not before 7:00');
-  G = gas(new Date('2026-11-14T13:00:00Z').getTime(), data); G.ctx.dailySummary_(); if (G.sent.length) errs.push('③ not on Saturday');
-  G = gas(new Date('2026-11-11T13:00:00Z').getTime(), data); G.ctx.dailySummary_(); if (G.sent.length) errs.push('③ not on a holiday (Veterans Day)');
+  /* 주말 · 휴일에 안 보내던 규칙은 v0.8.184 에서 "새로 들어온 게 있으면 보냄"으로 바뀜 → t184 */
   G = gas(MON8, Object.assign({}, data, { settings: { summaryHour: -1 } })); G.ctx.dailySummary_(); if (G.sent.length) errs.push('③ summaryHour -1 = off');
   G = gas(MON8, Object.assign({}, data, { settings: { summaryTo: 'a@x.com, b@x.com', summaryHour: 6 } })); G.ctx.dailySummary_(); if (!G.sent.length || G.sent[0].to !== 'a@x.com,b@x.com') errs.push('③ summaryTo setting');
   /* ④ 관리 설정 */

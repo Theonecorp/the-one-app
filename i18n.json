@@ -1282,6 +1282,7 @@
 "일괄 등록 · 삭제 (붙여넣기)":["Bulk add · delete (paste)","Cadastro · exclusão em lote (colar)"],
 "일괄 등록 · 삭제는 관리자만 — 아이템은 ＋ 새 아이템으로 하나씩 등록하세요":["Bulk add/delete is admin only — add items one at a time with ＋ New item","Cadastro/exclusão em massa só para administrador — cadastre os itens um a um com ＋ Novo item"],
 "일반으로 (6000번대)":["Regular (6000s)","Normal (6000)"],
+"일일 요약 메일 — 받는 사람 (쉼표로) · 보내는 시각 (뉴욕 시간 · -1 이면 끔). 매일 아침 확인해 새로 들어온 게 한 건이라도 있을 때만 보냄":["Daily summary email — recipients (comma separated) · hour (New York time · -1 = off). Checked every morning; sent only when something new came in","E-mail de resumo diário — destinatários (separados por vírgula) · hora (horário de Nova York · -1 = desligado). Verificado toda manhã; enviado só quando algo novo entrou"],
 "일일 요약 메일 — 받는 사람 (쉼표로) · 보내는 시각 (뉴욕 시간, 영업일 아침 · -1 이면 끔)":["Daily summary email — recipients (comma separated) · hour (New York time, business-day mornings · -1 = off)","E-mail de resumo diário — destinatários (separados por vírgula) · hora (horário de Nova York, manhãs de dias úteis · -1 = desligado)"],
 "읽는 중":["Reading","Carregando"],
 "읽는 중…":["Loading…","Carregando…"],
@@ -1819,6 +1820,7 @@
 "후일":["PDC","Pré"],
 "후일 수표":["Postdate check","Cheque pré-datado"],
 "휴대용 바코드 스캐너(USB · 블루투스)도 됩니다 — 스캔하면 코드가 자동으로 들어옵니다.":["A handheld USB or Bluetooth scanner works too — the code is typed in automatically.","Um leitor USB ou Bluetooth também funciona — o código entra automaticamente."],
+"휴일 — 앱의 며칠 지남 · 알림은 영업일(주말 · 휴일 빼고) 기준. 회사가 일하는 공휴일은 체크를 끄세요":["Holidays — day counts and alerts use business days (no weekends · holidays). Uncheck federal holidays the company works","Feriados — contagem de dias e alertas usam dias úteis (sem fins de semana · feriados). Desmarque os feriados federais em que a empresa trabalha"],
 "휴일 — 앱의 며칠 지남 · 요약 메일 · 알림은 영업일(주말 · 휴일 빼고) 기준. 회사가 일하는 공휴일은 체크를 끄세요":["Holidays — day counts, summary email and alerts use business days (no weekends · holidays). Uncheck federal holidays the company works","Feriados — contagem de dias, e-mail de resumo e avisos usam dias úteis (sem fins de semana · feriados). Desmarque os feriados federais em que a empresa trabalha"]
 },
 "r":{

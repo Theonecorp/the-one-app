@@ -383,23 +383,29 @@ function inboundNotify_(kind, subject, text, staffOnly) {
 function testInboundMail() { const n = inboundMailRun_(); Logger.log('🚢 공장 인보이스 메일 → 입고 예정 ' + n + '건'); }
 
 /* ---------- 📊 일일 요약 메일 — 영업일 아침 한 번, 관리자에게 (v0.8.180) ----------
- *  기간: 지난 영업일 ~ 어제 (월요일 아침 = 금 · 토 · 일, 휴일 다음 날은 휴일까지 포함)
+ *  기간: 지난번 보낸 요약 다음 날 ~ 어제 (처음엔 지난 영업일부터 · 최대 7일)
+ *  보내는 날: 영업일 · 주말 · 휴일 상관없이 매일 아침 확인 → 그 기간에 한 건이라도 들어왔으면(주문 · 인보이스 · 크레딧 · 수금 · COD/ACH/카드 · UPS · 출고 · 딜리버리) 보냄,
+ *            아무것도 없으면 안 보냄 — 다음 날 요약이 그날까지 묶어서 보여 줌 (v0.8.184 관리자: "한 건이라도 들어온 게 있으면 보내고 없으면 안 보내게")
  *  ① 🛒 주문 · 매출 (새 주문 · 인보이스 · 이번 달 누적과 영업일 기준 예상)  ② 💵 수금 (세일즈맨 · 사무실 COD/ACH/카드)
  *  ③ 📦 출고 · UPS (박스 · 무게 · 운임 · 가게 · 딜리버리)  ④ ⚠️ 특이사항 (밀린 주문 · 안 보낸 주문/수금 · 확인 요청 · 바운스 · 크레딧 · 봉투 · 조용한 세일즈맨 · UPS 기록 · 메일 오류)
- *  받는 사람 settings.app.summaryTo (기본 관리자) · 시각 settings.app.summaryHour (뉴욕 시간, 기본 7) · 끄기: summaryHour = -1 · 시험: testSummary() */
+ *  받는 사람 settings.app.summaryTo (기본 관리자) · 시각 settings.app.summaryHour (뉴욕 시간, 기본 7) · 끄기: summaryHour = -1 · 시험: testSummary() (활동이 없어도 보냄 · 기록은 안 바꿈) */
 function dailySummary_(force) {
   const tz = 'America/New_York', now = new Date(), td = Utilities.formatDate(now, tz, 'yyyy-MM-dd'), h = Number(Utilities.formatDate(now, tz, 'H'));
   const props = PropertiesService.getScriptProperties();
   if (!force && props.getProperty('SUMMARY_AT') === td) return;
   const settings = getDoc_('settings', 'app') || {}, hour = settings.summaryHour != null ? Number(settings.summaryHour) : 7;
   if (!force && (hour < 0 || h < hour)) return;
-  const B = biz_(settings);
-  if (!force && !B.isBiz(td)) return;
-  props.setProperty('SUMMARY_AT', td);
+  const B = biz_(settings), yest = B.add(td, -1), last = props.getProperty('SUMMARY_TO') || '';
+  let from = last && last < yest ? B.add(last, 1) : B.prevBiz(td);
+  if (from > yest) from = yest;
+  if (from < B.add(td, -7)) from = B.add(td, -7);
+  if (!force) props.setProperty('SUMMARY_AT', td);   // 하루 한 번만 확인 (5분마다 다시 계산하지 않게)
   const to = String(settings.summaryTo || REPLY_TO).split(/[,;\s]+/).filter(isEmail_);
   if (!to.length) return;
-  const r = summaryData_(B, td, settings);
+  const r = summaryData_(B, td, settings, from);
+  if (!force && !r.data.any) { Logger.log('📊 요약 — ' + from + ' ~ ' + yest + ' 새로 들어온 것 없음 → 안 보냄 (다음 요약에 묶임)'); return; }
   MailApp.sendEmail({ to: (force && force.to) || to.join(','), subject: r.subject, htmlBody: r.html, name: 'THE ONE', replyTo: REPLY_TO });
+  if (!force) props.setProperty('SUMMARY_TO', yest);
   Logger.log('📊 요약 메일 → ' + ((force && force.to) || to.join(',')) + ' · ' + r.subject);
 }
 function testSummary() { dailySummary_({ to: Session.getActiveUser().getEmail() }); }
@@ -416,8 +422,8 @@ function queryGe_(col, field, val, limit) {
   return JSON.parse(res.getContentText()).filter(x => x.document).map(x => fromDoc_(x.document));
 }
 /** 요약 계산 — 읽기만 함 (B: biz_(), td: 오늘 뉴욕 날짜) → { subject, html, data } */
-function summaryData_(B, td, settings) {
-  const tz = 'America/New_York', from = B.prevBiz(td), to = B.add(td, -1), inP = d => d && d >= from && d <= to;
+function summaryData_(B, td, settings, from0) {
+  const tz = 'America/New_York', to = B.add(td, -1), from = from0 && from0 <= to ? from0 : B.prevBiz(td), inP = d => d && d >= from && d <= to;
   const ym = td.substring(0, 7), pym = B.add(ym + '-01', -1).substring(0, 7), monthFirst = ym + '-01';
   const day = iso => iso ? (String(iso).length <= 10 ? String(iso) : B.day(iso)) : '';
   const n = v => Number(v) || 0, sumOf = (L, f) => L.reduce((a, x) => a + n(f(x)), 0);
@@ -494,7 +500,8 @@ function summaryData_(B, td, settings) {
       tbl(['가게', '박스'], Object.keys(shipStores).sort((a, b) => shipStores[b] - shipStores[a]).slice(0, 12).map(k => [esc_(k), shipStores[k]]))) +
     '<p style="color:#94a3b8;font-size:12px;margin-top:18px">THE ONE 앱 자동 요약 · 받는 사람 · 시각은 앱 관리 → 설정에서 바꿉니다</p></div>';
   const subject = '[THE ONE] 📊 일일 요약 ' + period + ' — 주문 ' + newO.length + '건 ' + money_(sumOf(newO, o => o.amt)) + ' · 수금 ' + money_(colP) + ' · UPS ' + boxes + '박스' + (notes.length ? ' · ⚠️ ' + notes.length : '');
-  return { subject, html, data: { from, to, newO: newO.length, newAmt: sumOf(newO, o => o.amt), invN: invP.length, invAmt: sumOf(invP, x => x.total), col: colP, boxes, notes } };
+  const any = !!(newO.length || invP.length || crP.length || entP.length || codP.length || shipP.length || shippedO.length || dlvDone.length);   // 그 기간에 한 건이라도 들어왔나 (특이사항만으로는 안 보냄)
+  return { subject, html, data: { any, from, to, newO: newO.length, newAmt: sumOf(newO, o => o.amt), invN: invP.length, invAmt: sumOf(invP, x => x.total), col: colP, boxes, notes } };
 }
 
 /* ---------- 📦 체크 봉투 미도착 — 보낸 지 LATE_DAYS 지나도 도착 확인이 안 된 봉투는 세일즈맨 · 담당자에게 한 번 알림 (봉투에 lateAt 기록) ---------- */
