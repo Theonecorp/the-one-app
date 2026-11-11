@@ -2,7 +2,9 @@
  *   ① 공장 인보이스(중국 커머셜 인보이스 모양 — 머리 · 묶음 · ITEM NO · QTY · 합친 단가 칸 · TOTAL)를 읽음: 공장 · 날짜(11月11日) · 묶음별 수량/금액 · 합친 칸 단가 채움 · 같은 이름 묶음은 (2)
  *   ② 등록(관리자): 목록에 없는 코드는 빨갛게 → 코드를 고치면 맞춤 · 등록하면 오는 중 + 창고 · 오피스 팝업(kind inbound)
  *   ③ 창고 매니저: 공장별 목록에 보임 · 단가(원가)는 안 보임 · 등록 단추 없음 · 받은 수량 입력(한 줄 모자람) + 남은 줄 모두 맞음 → 입고 확정
- *      → 재고에 받은 수량만큼 · 입고 기록(receipts) · 상태 입고 완료 · 차이 1줄 기록 + 알림(kind inboundDiff) */
+ *      → 재고에 받은 수량만큼 · 입고 기록(receipts) · 상태 입고 완료 · 차이 1줄 기록 + 알림(kind inboundDiff)
+ *   ④ 팩킹 리스트 모양 (SX ONE#78 装箱单 2026.9.2 · 箱数 박스 · 한 코드가 두 박스 · 머리글이 PRICE|PRICE 로 잘못 적힌 묶음 · 단가가 판매가보다 비싸면 위안 추정)
+ *   ⑤ 공급망 인보이스 모양 (Seller: · INVOICE #: · 엑셀 날짜 숫자 · 공장 코드와 우리 코드 두 칸 · Q'ty/CT 와 QTY · 끝 숫자 한 자리 코드 OPCG7 = OPCG07 · 트래킹 · FREIGHT) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs');
 (async () => {
@@ -53,6 +55,29 @@ const path = require('path'), fs = require('fs');
   log('③ after:', JSON.stringify({ before, after }));
   if (after.a - before.a !== 100 || after.b - before.b !== 35) errs.push('③ stock goes up by the received qty (AHG100 +100, AHG105 +35)');
   if (after.st !== 'done' || after.rq !== 175 || !after.diff || after.diff.length !== 1 || after.diff[0].c !== 'AHG105' || after.nd !== 1) errs.push('③ inbound done, receipt 175 pcs, 1 difference recorded + alert');
+  /* ④ ⑤ 다른 공장 모양 — 읽기만 (작은 카탈로그로) */
+  const P = await wh.evaluate(async () => {
+    const M = await import('/src/inbound.js');
+    const by = { HGDS01: { c: 'HGDS01', p: 3 }, N_B100S: { c: 'N_B100S', p: 10 }, N_L100G: { c: 'N_L100G', p: 10 }, TNG01: { c: 'TNG01', p: 4 }, TNS01: { c: 'TNS01', p: 4 }, OPCG07: { c: 'OPCG07', p: 3 }, ICE208: { c: 'ICE208', p: 13 }, PEG121: { c: 'PEG121', p: 2 } };
+    const a = M.parseFactoryInvoice([
+      ['SX   ONE#78装箱单  2026.9.2日   空运'], ['NO', '箱数', 'ITEM#', 'PRICE', 'QTY', 'TOTAL', '每箱数量'],
+      [1, '1#', 'TNG01', 7.5, 300, 2250, 600], [2, '', 'TNS01', 7.5, 200, 1500], [3, '2#', 'TNS01', 7.5, 100, 750, 400], [4, '', 'HG0S01', 4, 300, 1200], ['', '', '', '', '900对'],
+      ['D#89   装箱单  2026.9.2 日'], ['NO', '箱数', 'PRICE', 'PRICE', 'QTY', 'TOTAL'], [5, '3#', 'N-B100S', 8, 240, 1920], [6, '', 'N-L100G', 8.5, 120, 1020]], by, 2026);
+    const b = M.parseFactoryInvoice([
+      ['', 'COMMERCIAL INVOICE', '', '', 'DATE：', 46326], ['', 'INVOICE #:', '261031-ONE'], ['', 'Seller:', '', 'Consignee:'], ['', 'ZHEJIANG JUDA SUPPLY CHAIN CO.,LTD', '', 'The One hhh Corp'],
+      ['', 'SHIP VIA', 'SHIP NO.', 'Weight'], ['', 'UPS', '1Z2K28F30317822035', 518],
+      ['A+ ITEM #', 'ONE \nItem No.', 'Description', 'C/T \nNO.', 'C/T', "Q'ty\n/CT", 'QTY', 'PRICE', 'TOTAL'],
+      ['PCG7\nPE2-2', 'OPCG7', 'PIN CATCH', 'T683', '', '', 503, 0.47, 236.41], ['ICE208', 'ICE208', 'BRACELET', 'T666', 1, '', 456, 1.7, 775.2], ['ICE208', 'ICE208', 'BRACELET', 'T678', 1, '', 12, 1.7, 20.4],
+      ['PEG1-9', 'PEG121', 'PINCATCH', 'T683', 1, '', 1272, 0.56, 712.32], ['SUBTOTAL', '', '', '', 3, '', 2243, '', 1744.33], ['FREIGHT', '', '', '', '', '', '', '', 100.5]], by, 2026);
+    const L = r => r.lines.map(l => l.c + ':' + l.q + '@' + l.p + (l.box && l.box.length ? '[' + l.box.join('+') + ']' : '') + (l.ok ? '' : '✗' + (l.sim || ''))).join(' ');
+    return { a: { f: a.factory, no: a.no, d: a.d, cur: a.cur, boxes: a.boxes, secs: a.secs.map(x => x.q + '/' + x.amt).join(' '), L: L(a) }, b: { f: b.factory, no: b.no, d: b.d, trk: b.trk, frt: b.frt, boxes: b.boxes, q: b.lines.reduce((x, l) => x + l.q, 0), L: L(b) } };
+  });
+  log('④ packing list:', JSON.stringify(P.a)); log('⑤ supply chain:', JSON.stringify(P.b));
+  if (P.a.f !== 'SX' || P.a.no !== 'ONE#78' || P.a.d !== '2026-09-02' || P.a.boxes !== 3) errs.push('④ factory SX · no ONE#78 · date 2026.9.2 · 3 boxes from the title and 箱数');
+  if (!/TNS01:300@7\.5\[1#\+2#\]/.test(P.a.L) || !/N_B100S:240@8\[3#\]/.test(P.a.L) || !/N_L100G:120@8\.5/.test(P.a.L)) errs.push('④ code split over two boxes is summed (TNS01 1#+2#) · N-B100S = N_B100S · price read even when the code column is labelled PRICE');
+  if (!/HG0S01:300@4\[2#\]✗HGDS01/.test(P.a.L) || P.a.cur !== 'CNY?') errs.push('④ unknown HG0S01 suggests HGDS01 (not applied) · currency guessed as CNY');
+  if (P.b.f !== 'ZHEJIANG JUDA SUPPLY CHAIN CO.,LTD' || P.b.no !== '261031-ONE' || P.b.d !== '2026-10-31' || P.b.trk !== '1Z2K28F30317822035' || P.b.frt !== 100.5) errs.push('⑤ Seller · INVOICE # · Excel date 46326 · UPS tracking · freight');
+  if (!/OPCG07:503@0\.47/.test(P.b.L) || !/ICE208:468@1\.7\[T666\+T678\]/.test(P.b.L) || P.b.q !== 2243 || /✗/.test(P.b.L)) errs.push("⑤ our code column (not the factory's) · QTY (not Q'ty/CT) · OPCG7 = OPCG07 · ICE208 summed over cartons");
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();
