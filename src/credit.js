@@ -47,16 +47,19 @@ async function list() {
   let rows = [];
   try { rows = await S.DB.list('invoices', { where: isSales() ? [['t', '==', T.c], ['sm', '==', mySm()]] : [['t', '==', T.c]] }); } catch (e) { $('page').innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; }
   rows = sortBy(rows.filter(x => x.src === 'credit'), x => x.d + (x.createdAt || ''), true);
+  const REQ_H = await reqListHtml();
   const wait = rows.filter(x => x.st !== 'x' && !x.reviewed), done = rows.filter(x => x.st !== 'x' && x.reviewed), voided = rows.filter(x => x.st === 'x');
   const row = x => '<div class="pr tap' + (x.st === 'x' ? '' : x.reviewed ? ' v' : '') + '" data-cr="' + esc(x.no) + '"><div class="mk">' + (x.st === 'x' ? '✕' : x.reviewed ? '✓' : '·') + '</div><div class="ct"><b>' + esc(x.store) + ' <span class="tag t-k">' + esc(x.no) + '</span>' + ((x.flags || []).length ? ' <span class="tag" style="background:#fef3c7;color:#92400e">⚠️ ' + x.flags.length + '</span>' : '') + '</b><small>' + esc(x.d) + ' · ' + esc(x.sm || '') + ' · ' + esc(x.why || '') + ' · ' + (x.qty ? Math.abs(x.qty) + bt('개', ' pcs') : '') + '</small></div><div class="pa"><b>' + money(x.total) + '</b><small>' + (x.st === 'x' ? 'VOID' : x.reviewed ? bt('사무실 확인', 'Reviewed') : bt('확인 대기', 'To review')) + '</small></div></div>';
   $('page').innerHTML = '<div class="card"><h2>↩ ' + bi('크레딧 · 리턴', 'Credits · Returns') + '</h2><div class="muted">' + (isSales() ? bt('가게에 준 크레딧 기록입니다. 확정하면 CM 번호가 생기고 가게 잔액에서 바로 빠집니다. 사무실이 내용을 확인합니다.', 'Credits you gave to stores. Once confirmed a CM number is issued and the store balance drops right away. The office reviews it.') : bt('세일즈맨이 확정한 크레딧 메모입니다. 내용 · 가격을 보고 ✅ 확인하거나, 문제면 VOID 하세요.', 'Credit memos confirmed by salesmen. Review and ✅ confirm, or VOID if wrong.')) + '</div>' +
     (isSales() || staffOk() ? '<div class="btns" style="justify-content:flex-start"><button class="b-blue" id="crNew">↩ ' + bi('크레딧 주기', 'Give credit') + '</button></div>' : '') +   // v0.8.164: 인보이스 · 사무실 담당도 바로 크레딧
     '<div class="kpi" style="grid-template-columns:repeat(3,1fr)"><div><b>' + wait.length + '</b><span>' + bt('확인 대기', 'To review') + '</span></div><div><b>' + money(-sumOf(wait.concat(done))) + '</b><span>' + bt('크레딧 합계', 'Credits total') + '</span></div><div><b>' + rows.length + '</b><span>' + bt('전체', 'All') + '</span></div></div></div>' +
+    REQ_H +
     (wait.length ? '<div class="card"><h2>' + bt('확인 대기', 'To review') + ' ' + wait.length + '</h2>' + wait.map(row).join('') + '</div>' : '') +
     (done.length ? '<div class="card"><h2>' + bt('확인 완료', 'Reviewed') + ' ' + done.length + '</h2>' + done.map(row).join('') + '</div>' : '') +
     (voided.length ? '<div class="card"><h2>VOID ' + voided.length + '</h2>' + voided.map(row).join('') + '</div>' : '') +
     (!rows.length ? '<div class="card"><div class="none">' + bt('크레딧 기록이 없습니다', 'No credits yet') + '</div></div>' : '');
-  if ($('crNew')) $('crNew').onclick = () => Router.go('credit', 'new');
+  if ($('crNew')) $('crNew').onclick = () => isSales() ? Router.go('order', 'credit') : Router.go('credit', 'new');   // 세일즈맨은 주문처럼 눌러 담는 크레딧 (v0.8.187)
+  document.querySelectorAll('[data-crq2]').forEach(el => el.onclick = () => Router.go('order', el.dataset.crq2));
   document.querySelectorAll('[data-cr]').forEach(el => el.onclick = () => Router.go('credit', encodeURIComponent(el.dataset.cr)));
 }
 const sumOf = L => R2(L.reduce((a, x) => a + (Number(x.total) || 0), 0));
@@ -337,4 +340,56 @@ function creditHtml(x) {
     '<table><tr><th>Code</th><th>Description</th><th class="r">Qty</th><th class="r">List</th><th class="r">Disc</th><th class="r">Unit</th><th class="r">Credit</th></tr>' + (x.lines || []).map(l => '<tr><td>' + esc(l.c) + '</td><td>' + esc(l.d || '') + '</td><td class="r">' + Math.abs(l.q) + '</td><td class="r">' + money(l.lp != null ? l.lp : l.p) + '</td><td class="r">' + (num(l.dc) ? num(l.dc) + '%' : '') + '</td><td class="r">' + money(l.p) + '</td><td class="r">−' + money(R2(Math.abs(l.q) * l.p)) + '</td></tr>').join('') +
     '<tr class="fin"><td colspan="6" class="r"><b>TOTAL CREDIT</b></td><td class="r"><b>' + money(x.total) + '</b></td></tr></table>' +
     '<div style="font-size:11px;color:#666;margin-top:10px">This credit is applied to the store balance. 이 크레딧은 가게 잔액에 반영됩니다.</div><div class="sig"><div>Store</div><div>Salesman</div></div>';
+}
+
+/* ---------- 📥 세일즈맨 크레딧 요청 (v0.8.187) — 주문처럼 눌러 담아 보낼 주문과 같이 보낸 것 (orders.kind 'credit', 금액 마이너스)
+ *   사무실이 열어 확인 → ↩ 크레딧 확정 = CM 번호 발행(invoices · 이 때 가게 잔액에서 빠짐 · 사무실 확인됨) + 요청은 완료(cmNo) · ✕ 취소는 사유와 함께
+ *   가격 = 주문 줄 가격 × (1 − 가게 할인 · 할인 백 %) — 주문 화면 합계와 같음 ---------- */
+const reqLines = (o, lines) => (lines || []).filter(l => l.q > 0).map(l => { const t = l.t || 'A', dc = Number((o.disc || {})[t]) || 0, lp = l.lp != null ? l.lp : l.p; return { c: l.c, d: l.d || '', q: l.q, lp, p: R2(l.p * (1 - dc / 100)), dc, t }; });
+export async function reviewRequest(o, lines) {
+  const L = reqLines(o, lines), sub = R2(L.reduce((a, l) => a + l.q * l.p, 0)), q = L.reduce((a, l) => a + l.q, 0), can2 = staffOk() && o.st === 'sent' && !o.cmNo;
+  const stT = o.cmNo ? '<span class="tag t-k">✅ ' + esc(o.cmNo) + '</span>' : o.st === 'x' ? '<span class="tag t-x">✕ ' + bt('취소', 'Cancelled') + '</span>' : o.st === 'draft' ? '<span class="tag">' + bt('세일즈맨 작성 중', 'Draft') + '</span>' : '<span class="tag" style="background:#fef3c7;color:#92400e">⏳ ' + bt('확인 대기', 'To review') + '</span>';
+  $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">↩ ' + bi('크레딧 요청', 'Credit request') + ' ' + esc(o.no) + ' ' + stT + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div><div class="muted">' + esc(o.acct || '') + ' · ' + esc(o.sm || '') + ' · ' + esc(o.d || '') + '</div></div><button class="b-ghost b-sm" id="crrBack">‹ ' + bt('목록', 'List') + '</button></div>' +
+    '<div class="hero" style="font-size:26px;color:#b45309">−' + money(sub) + '</div><div class="heroSub">' + bt('사유', 'Reason') + ': <b>' + esc(o.why || '—') + '</b>' + (o.memo ? ' — ' + esc(o.memo) : '') + (o.dback != null ? ' · 🏷 ' + bt('할인 백', 'Discount back') + ' <b>' + o.dback + '%</b>' : '') + ' · ' + L.length + bt('줄 · ', ' lines · ') + q + bt('개', ' pcs') + '</div>' +
+    (o.st === 'x' ? '<div class="alert a-red">✕ ' + esc(o.cancelWhy || '') + '</div>' : '') +
+    (can2 ? '<div class="btns" style="margin-top:10px;flex-wrap:wrap"><button class="b-ghost" id="crrX">✕ ' + bt('취소', 'Cancel') + '</button><button class="b-blue" id="crrOk" style="background:#b45309;flex:1 1 auto">↩ ' + bi('크레딧 확정 — CM 발행', 'Confirm credit — issue CM') + '</button></div><div class="hint">' + bt('확정하면 CM 번호가 생기고 가게 잔액에서 빠집니다. 세일즈맨에게 알림이 갑니다.', 'Confirming issues the CM number and takes it off the store balance. The salesman is notified.') + '</div>' : '') +
+    (o.cmNo ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="crrCm">📄 ' + esc(o.cmNo) + '</button></div>' : '') + '</div>' +
+    '<div class="card"><h2>' + bt('아이템', 'Items') + ' ' + L.length + '</h2><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('단가', 'Unit') + '</th><th class="r">' + bt('크레딧', 'Credit') + '</th></tr>' +
+    L.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d) + (l.dc ? ' · ' + bt('목록가', 'list') + ' ' + money(l.lp) + ' − ' + l.dc + '%' : '') + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">−' + money(R2(l.q * l.p)) + '</td></tr>').join('') +
+    '<tr><td colspan="3" class="r"><b>' + bt('합계', 'Total') + '</b></td><td class="r"><b>−' + money(sub) + '</b></td></tr></table></div>';
+  $('crrBack').onclick = () => history.length > 1 ? history.back() : Router.go('order');
+  if ($('crrCm')) $('crrCm').onclick = () => Router.go('credit', encodeURIComponent(o.cmNo));
+  if ($('crrX')) $('crrX').onclick = async () => {
+    const why = prompt(bt('취소 사유', 'Reason to cancel')); if (why == null) return;
+    busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'x', cancelAt: now, cancelBy: S.user.email, cancelWhy: why || bt('사무실 취소', 'Cancelled by office'), updatedAt: now });
+      try { const N = await import('./notify.js'); await N.queue({ kind: 'creditReq', toSm: o.sm, pushOnly: true, subject: '[THE ONE] ✕ 크레딧 요청 취소 — ' + o.store, text: '✕ ' + o.store + ' ↩ ' + money(sub) + ' — ' + (why || '') }); } catch (e) {}
+      toast('✕ ' + bt('취소했습니다', 'Cancelled'), 'good'); Router.go('order'); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+  if ($('crrOk')) $('crrOk').onclick = async () => {
+    if (!(await confirmBox(o.store + ' · ' + (o.why || '') + '\n↩ −' + money(sub) + ' — ' + bt('CM 을 발행할까요?', 'Issue the CM?'), '↩ ' + bt('확정', 'Confirm')))) return;
+    busy(true);
+    try {
+      const T = creditType(), no = await nextInvoiceNo(S, T), d = today(), now = new Date().toISOString(), C = catalog(), acc = S.accounts && S.accounts.byCode ? S.accounts.byCode[o.acct] : null;
+      const doc = { no, id: no, t: T.c, kind: 'credit', src: 'credit', d, ym: ym(d), acct: o.acct, store: o.store, sm: o.sm, why: o.why || '', note: (o.memo || '').trim(),
+        lines: L.map(l => { const it = C && C.byCode[l.c]; return { c: l.c, d: l.d, q: -l.q, p: l.p, lp: l.lp, dc: l.dc, src: 'order', g: it ? (it.l1 || it.g || '') : '', ty: l.t, recent: null }; }),
+        qty: -q, sub: -sub, list: -R2(L.reduce((a, l) => a + l.q * l.lp, 0)), disc: 0, total: -sub, bal: -sub, discMap: o.disc || {}, dback: o.dback != null ? o.dback : null, flags: [], terms: (acc && acc.terms) || '', st: 'open',
+        reviewed: true, reviewedBy: S.user.email, reviewedAt: now, createdBy: o.createdBy || S.user.email, createdAt: now, issuedBy: S.user.email, fromOrder: o.id };
+      await S.DB.batch([{ op: 'set', col: 'invoices', id: no, data: doc }, { op: 'update', col: 'orders', id: o.id, data: { st: 'done', cmNo: no, invs: [no], doneAt: now, doneBy: S.user.email, updatedAt: now } }]);
+      dropInvCache(monthsOf([doc]));
+      try { const N = await import('./notify.js'); await N.queue({ kind: 'creditReq', toSm: o.sm, pushOnly: true, subject: '[THE ONE] ↩ 크레딧 발행 ' + no + ' — ' + o.store, text: '↩ ' + no + ' · ' + o.store + ' −' + money(sub) + ' (' + (o.why || '') + ')' }); } catch (e) {}
+      toast('↩ ' + no + ' — ' + bt('발행', 'issued') + ' −' + money(sub), 'good');
+      Router.go('credit', encodeURIComponent(no));
+    } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
+}
+/** 크레딧 목록 위 — 세일즈맨: 내가 보낸 요청 · 사무실: 확인 대기 요청 */
+async function reqListHtml() {
+  let R = [];
+  try { R = isSales() ? (await S.DB.list('orders', { where: [['sm', '==', mySm()]] })).filter(o => o.kind === 'credit' && (o.st === 'draft' || o.st === 'sent')) : (await S.DB.list('orders', { where: [['st', '==', 'sent']] })).filter(o => o.kind === 'credit'); } catch (e) { return ''; }
+  if (!R.length) return '';
+  R = sortBy(R, o => o.d + (o.createdAt || ''), true);
+  return '<div class="card" style="border:2px solid #fb923c"><h2>' + (isSales() ? '📤 ' + bt('보낸 · 보낼 크레딧 요청', 'Your credit requests') : '📥 ' + bt('세일즈맨 크레딧 요청 — 확인 대기', 'Credit requests to review')) + ' ' + R.length + '</h2>' +
+    R.map(o => '<div class="pr tap" data-crq2="' + esc(o.id) + '"><div class="mk">↩</div><div class="ct"><b>' + esc(o.store) + ' <span class="tag crtag">' + esc(o.why || '') + '</span>' + (o.st === 'draft' ? ' <span class="tag">' + bt('보내기 전', 'not sent') + '</span>' : '') + '</b><small>' + esc(o.d || '') + ' · ' + esc(o.sm || '') + ' · ' + (o.n || 0) + bt('줄', ' lines') + '</small></div><div class="pa"><b>' + money(o.amt) + '</b></div></div>').join('') + '</div>';
 }

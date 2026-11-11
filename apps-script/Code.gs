@@ -505,7 +505,7 @@ function summaryData_(B, td, settings, from0) {
   const ships = safe(() => queryGe_('shipments', 'shipDate', B.add(from, -10))).filter(x => !x.voided);
   const sms = safe(() => listAll_('salesmen')).filter(x => x.active !== false);
   /* ① 주문 · 매출 */
-  const newO = orders.filter(o => o.sentAt && o.st !== 'x' && o.st !== 'draft' && inP(day(o.sentAt)));
+  const newO = orders.filter(o => o.kind !== 'credit' && o.sentAt && o.st !== 'x' && o.st !== 'draft' && inP(day(o.sentAt)));   // ↩ 크레딧 요청(orders.kind credit, v0.8.187)은 주문이 아님 — 발행된 CM 은 인보이스 크레딧으로 잡힘
   const isCM = x => x.t === 'CM' || x.src === 'credit';
   const invP = invs.filter(x => inP(x.d) && !isCM(x)), crP = invs.filter(x => inP(x.d) && isCM(x));
   const invM = invs.filter(x => x.d >= monthFirst && x.d <= to && !isCM(x)), crM = invs.filter(x => x.d >= monthFirst && x.d <= to && isCM(x));

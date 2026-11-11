@@ -48,7 +48,8 @@ const path = require('path');
   if (await pg.$('#crOrder')) { await pg.click('#crOrder'); await pg.waitForTimeout(1200); const st = await pg.evaluate(() => (document.querySelector('.estore b') || {}).textContent || ''); log('③ order store:', st); if (!/ALI B\/S # 1/.test(st)) errs.push('③ the order editor opens with the same store'); }
   /* ③ 주문 화면 ↩ 크레딧 → 같은 가게 */
   await pg.waitForSelector('#eStoreCr', { timeout: 6000 }).catch(() => errs.push('③ order editor has ↩ 크레딧'));
-  if (await pg.$('#eStoreCr')) { await pg.click('#eStoreCr'); await pg.waitForSelector('#crStore', { timeout: 6000 }); await pg.waitForTimeout(800); const v = await pg.inputValue('#crStore'); log('③ credit store:', v); if (!/ALI B\/S # 1/.test(v)) errs.push('③ credit form opens with the same store'); }
+  /* v0.8.187: 세일즈맨은 ↩ 크레딧도 주문처럼 — 같은 가게로 크레딧 모드 주문 화면 (t193) */
+  if (await pg.$('#eStoreCr')) { await pg.click('#eStoreCr'); await pg.waitForSelector('#eCrBan', { timeout: 6000 }).catch(() => {}); await pg.waitForTimeout(800); const v = await pg.evaluate(() => (document.querySelector('.estore b') || {}).textContent || ''); log('③ credit store:', v); if (!/ALI B\/S # 1/.test(v) || !(await pg.$('#eCrBan'))) errs.push('③ ↩ 크레딧 opens the credit (order-style) screen with the same store'); }
   await pg.context().close();
   /* ② 사무실 다시 적용 */
   const of = await mk('luke@theonefl.com', 1100, cm ? 's.invoices = (s.invoices || []).concat([' + JSON.stringify(cm) + ']);' : '');

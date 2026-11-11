@@ -18,7 +18,7 @@ const path = require('path');
   if (kpi.length !== 4) errs.push('4 KPI tiles expected'); if (!/\$1,234\.50\|ar/.test(kpi.join(','))) errs.push('receivables KPI should read the ar doc'); if (!/^1\|order$/.test(kpi[2] || '') && !/^1\|order$/.test(kpi[2] || '')) { if (!kpi.some(x => x === '1|order')) errs.push('to-send KPI should count the draft'); }
   const todo = await pg.$$eval('#dTodo .trow', r => r.map(x => x.dataset.hg + ':' + x.querySelector('b').textContent.replace(/\s+/g, ' '))); log('todo:', todo);
   if (!todo.some(t => /^order:/.test(t) && /1/.test(t))) errs.push('todo should list orders to send'); if (!todo.some(t => /^order\/cf:/.test(t))) errs.push('todo should list the office confirmation request'); if (!todo.some(t => /^ar:/.test(t))) errs.push('todo should list receivables');
-  for (const g of ['order/new', 'entry/new', 'credit/new', 'mysales', 'stores', 'cat']) if (!(await pg.$('.qgrid [data-hg="' + g + '"]'))) errs.push('quick action missing: ' + g);
+  for (const g of ['order/new', 'entry/new', 'order/credit', 'mysales', 'stores', 'cat'])   /* v0.8.187: 세일즈맨 ↩ 크레딧 = 주문처럼 담는 크레딧 (t193) */ if (!(await pg.$('.qgrid [data-hg="' + g + '"]'))) errs.push('quick action missing: ' + g);
   /* 📝 플랜 저장 → 새로 그려도 남음 */
   await pg.fill('#dPlan', '올랜도 3곳 · ALI 수금'); await pg.waitForTimeout(700);
   await pg.evaluate(() => { location.hash = '#/stores'; }); await pg.waitForTimeout(500); await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('#dPlan', { timeout: 8000 });
