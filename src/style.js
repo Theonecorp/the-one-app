@@ -133,6 +133,8 @@ body.kb nav#nav,body.kb .sticky,body.kb .bulkbar{display:none!important}body.kb{
 .dt{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
 .dt th{position:sticky;top:0;background:#f8fafc;color:#475569;font-size:11.5px;font-weight:700;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;z-index:1;user-select:none}
 .dt th[data-dts]{cursor:pointer}.dt th[data-dts]:hover{color:var(--navy)}.dt th.sa::after{content:' ▲';font-size:9px}.dt th.sd::after{content:' ▼';font-size:9px}
+/* 주문 ☰ 목록 — 표가 화면 너비를 넘지 않게: 칸 너비 고정, 아이템 칸이 남는 만큼 (세트 구성품 줄 · 지난번 가격 줄은 …) (v0.8.185 — 폰에서 세트 줄 때문에 수량 칸이 잘림) */
+.dt.olist{table-layout:fixed;width:100%}.dt.olist td.ct{overflow:hidden}
 .dt td{padding:8px 10px;border-bottom:1px solid #eef2f7;vertical-align:middle;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}.dt td.wrap{white-space:normal;max-width:none}
 .dt .r{text-align:right;font-variant-numeric:tabular-nums}.dt .c{text-align:center}.dt th.r{text-align:right}
 .dt tbody tr.tap{cursor:pointer}.dt tbody tr.tap:hover td{background:#f8fafc}.dt tbody tr.dim td{opacity:.6}.dt tbody tr.hid td{opacity:.6}
