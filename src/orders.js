@@ -903,7 +903,7 @@ function paintAdd() {
   if (!('ontouchstart' in window)) q.focus();
 }
 /* ☰ 목록 보기 — 표 (사진 · 아이템 · 가격 · 📦 · 수량). 줄의 이름을 누르면 카드처럼 담김, 사진은 🔍 팝업 */
-const LIST_TH = () => '<thead><tr><th style="width:44px"></th><th>' + bt('아이템', 'Item') + '</th><th style="width:66px">' + bt('가격', 'Price') + '</th><th style="width:112px">' + bt('수량', 'Qty') + '</th></tr></thead>';
+const LIST_TH = () => '<thead><tr><th style="width:40px"></th><th>' + bt('아이템', 'Item') + '</th><th style="width:60px">' + bt('가격', 'Price') + '</th><th style="width:110px">' + bt('수량', 'Qty') + '</th></tr></thead>';
 function itemRow(it) {
   const cur = IDX[it.c] ? IDX[it.c].q : 0;
   const t = typeOfItem(S, it), dc = Number((O.disc || {})[t]) || 0, hist = Store.histText(INFO, it.c), lp = Store.lastPrice(INFO, it.c);

@@ -19,12 +19,13 @@ const path = require('path');
     if (!(await pg.$$('#eRes tr.irow')).length) { await pg.click('#eVM'); await pg.waitForTimeout(600); }
     return pg;
   };
-  const measure = pg => pg.evaluate(() => { const t = document.querySelector('#eRes table.olist'), box = t && t.parentElement; return { vw: innerWidth, page: document.documentElement.scrollWidth, table: t ? Math.round(t.getBoundingClientRect().width) : 0, box: box ? Math.round(box.clientWidth) : 0, qtyR: Array.from(document.querySelectorAll('#eRes tr.irow td.qc')).map(td => Math.round(td.getBoundingClientRect().right)), kit: (document.querySelector('#eRes tr[data-row="KEY-BCHSET"] small.sub0') || {}).textContent || '' }; });
+  const measure = pg => pg.evaluate(() => { const t = document.querySelector('#eRes table.olist'), box = t && t.parentElement; return { vw: innerWidth, page: document.documentElement.scrollWidth, table: t ? Math.round(t.getBoundingClientRect().width) : 0, box: box ? Math.round(box.clientWidth) : 0, qtyR: Array.from(document.querySelectorAll('#eRes tr.irow td.qc')).map(td => Math.round(td.getBoundingClientRect().right)), kit: (document.querySelector('#eRes tr[data-row="KEY-BCHSET"] small.sub0') || {}).textContent || '', priceCut: Array.from(document.querySelectorAll('#eRes tr.irow td.pc')).filter(td => td.scrollWidth > td.clientWidth + 1).length }; });
   /* ① ② 폰 */
   const ph = await open(390, 844, true); const m = await measure(ph);
   log('① phone:', JSON.stringify(m));
   if (!m.table || m.table > m.box || m.page > m.vw || m.qtyR.some(r => r > m.vw) || !m.qtyR.length) errs.push('① phone: table fits the screen and every qty box is on screen (table ' + m.table + ' / box ' + m.box + ', page ' + m.page + ', qty right ' + m.qtyR.join(',') + ')');
   if (!/KEY-BCH01×3/.test(m.kit)) errs.push('② the set row still shows its components');
+  if (m.priceCut) errs.push('① prices ($180.00) are not cut off in the narrow price column');
   await ph.click('#eRes tr[data-row="KEY-BCHSET"] [data-qp], #eRes tr[data-row="KEY-BCHSET"] td.qc button:last-child'); await ph.waitForTimeout(400);
   const q = await ph.evaluate(() => { const i = document.querySelector('#eRes tr[data-row="KEY-BCHSET"] td.qc input'); return i ? i.value : ''; });
   log('② qty after +:', q); if (q !== '1') errs.push('② + on the set row still adds it (got ' + q + ')');
