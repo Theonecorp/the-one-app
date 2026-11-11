@@ -21,8 +21,12 @@ function idb() {
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
 }
-async function idbGet(key) { try { const db = await idb(); return await new Promise(res => { const q = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(key); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch (e) { return null; } }
-async function idbSet(key, v) { try { const db = await idb(); await new Promise(res => { const t = db.transaction(IDB_STORE, 'readwrite'); t.objectStore(IDB_STORE).put(v, key); t.oncomplete = res; t.onerror = res; }); } catch (e) {} }
+/* 폰 저장소(IndexedDB)가 멈춰도(아이폰에서 앱을 다시 열 때 가끔) 화면이 기다리지 않게 — 4초 안에 안 오면 없는 것으로 */
+const idbT = (p, v) => Promise.race([p, new Promise(r => setTimeout(() => r(v), 4000))]);
+async function idbGet(key) { return idbT(idbGet0(key), null); }
+async function idbGet0(key) { try { const db = await idb(); return await new Promise(res => { const q = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(key); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch (e) { return null; } }
+async function idbSet(key, v) { return idbT(idbSet0(key, v), undefined); }
+async function idbSet0(key, v) { try { const db = await idb(); await new Promise(res => { const t = db.transaction(IDB_STORE, 'readwrite'); t.objectStore(IDB_STORE).put(v, key); t.oncomplete = res; t.onerror = res; }); } catch (e) {} }
 
 /* ---------- 읽기 ---------- */
 let CAT = null;   // { ver, items, byCode, byBar, cats, tree }
@@ -246,13 +250,30 @@ async function newItemNotice(S, rows) {
   try { const N = await import('./notify.js'); await N.queue({ kind: 'newItem', pushOnly: true, toGroup: 'g:sales', n: rows.length, codes: rows.map(r => ({ c: r[0], d: String(r[1] || '').slice(0, 60), p: Number(r[2]) || 0 })), subject: '[THE ONE] 🆕 새 아이템 ' + rows.length + '개', text: rows.slice(0, 5).map(r => r[0] + ' ' + String(r[1] || '').slice(0, 40)).join(', '), url: N.appUrl('order/newitems') }); } catch (e) {}
 }
 
+/* ⚡ 폰에 목록이 있으면 바로 돌려주고, 새 버전 확인은 뒤에서 (v0.8.184 — 연결이 느리거나 멈추면 주문 화면이 "아이템 목록 준비 중"에서 1분 넘게 기다리던 일)
+ *   force 이거나 처음(폰에 목록 없음)이면 예전처럼 끝까지 기다림. 뒤에서 새 버전을 받으면 'theone:catalog' 알림 */
+let FRESH_AT = 0, FRESH_P = null;
 export async function loadCatalog(S, force) {
+  if (!force) {
+    if (!CAT) prepCat(S, false);
+    if (!CAT) { const c = await idbGet(IDB_KEY); if (c && Array.isArray(c.rows) && c.rows.length) CAT = index(c); }
+    if (CAT) {
+      if (!FRESH_P && Date.now() - FRESH_AT > 60000) { const v0 = CAT.ver + '|' + (CAT.setsVer || ''); FRESH_P = loadCatalogNow(S, false).then(C => { FRESH_AT = Date.now(); if (C && C.ver + '|' + (C.setsVer || '') !== v0) { try { window.dispatchEvent(new Event('theone:catalog')); } catch (e) {} } }).catch(() => {}).finally(() => { FRESH_P = null; }); }
+      return CAT;
+    }
+  }
+  const C = await loadCatalogNow(S, force); FRESH_AT = Date.now(); return C;
+}
+function prepCat(S, force) {
   if (S && S.settings && S.settings.catPins) setPins(S.settings.catPins);
   if (S && S.settings && S.settings.catOrder) setCatOrder(S.settings.catOrder);
   if (S && S.settings) setLocs(S.settings.catLoc);
   if (!POP.length || force) loadPop(S);
   DRIVE_ON = !!(S && S.settings && S.settings.photoDrive);
   loadPhotoIndex();
+}
+async function loadCatalogNow(S, force) {
+  prepCat(S, force);
   let meta = null;
   try { meta = await S.DB.get('catalog', 'meta'); }
   catch (e) {   /* 인터넷이 안 되면 폰에 보관한 목록으로 */

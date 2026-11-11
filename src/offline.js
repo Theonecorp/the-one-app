@@ -55,7 +55,7 @@ export async function prefetchPhotos(onStep, limit, quiet) {
     const n = urls.length; let i = 0;
     const one = u => new Promise(res => { const im = new Image(); const fin = () => { done++; res(); }; im.onload = fin; im.onerror = fin; im.src = u; setTimeout(fin, 8000); });
     const worker = async () => { while (i < n) { const u = urls[i++]; await one(u); if (onStep && done % 20 === 0) onStep(bt('사진 받는 중', 'Fetching photos') + ' ' + done + ' / ' + n, done, n); } };
-    await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
+    await Promise.all(Array.from({ length: quiet ? 2 : 6 }, () => worker()));   // 자동(quiet)은 2개씩만 — 휴대폰 데이터에서 주문 · 다른 화면 읽기와 다투지 않게 (v0.8.184)
     try { localStorage.setItem(K_PH, JSON.stringify({ at: new Date().toISOString(), n: done, ver: C.ver || '' })); } catch (e) {}
     if (onStep) onStep(bt('사진 완료', 'Photos done') + ' ' + done, n, n);
   } finally { RUNNING = false; }
