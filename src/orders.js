@@ -757,13 +757,14 @@ function paintMemo() {
   const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null;
   const rq = O.req || (O.req = {}), rn = O.reqNote || (O.reqNote = {});
   const reqCard = '<div class="card"><h2>🎁 ' + bi('인서트 · 디스플레이 요청', 'Insert · display request') + '</h2><div class="muted">' + bt('가게에 같이 보낼 인서트 · 디스플레이 — 출고 담당이 보고 인보이스에도 찍힙니다', 'Inserts and displays to ship with this order — warehouse sees it and it prints on the invoice') + '</div>' +
-    '<div class="reqs">' + REQ_KINDS.map(k => '<div class="reqrow' + (rq[k[0]] > 0 ? ' on' : '') + '"><b>' + reqLabel(k[0]) + '</b><span class="rqs"><button type="button" data-rqm="' + k[0] + '">−</button><span data-rqv="' + k[0] + '">' + (rq[k[0]] || 0) + '</span><button type="button" data-rqp="' + k[0] + '">＋</button></span>' +
+    '<div class="reqs">' + REQ_KINDS.map(k => '<div class="reqrow' + (rq[k[0]] > 0 ? ' on' : '') + (rq[k[0]] > 0 && reqNeedsNote(k[0]) ? ' wide' : '') + '"><b>' + reqLabel(k[0]) + '</b><span class="rqs"><button type="button" data-rqm="' + k[0] + '">−</button><span data-rqv="' + k[0] + '">' + (rq[k[0]] || 0) + '</span><button type="button" data-rqp="' + k[0] + '">＋</button></span>' +
       /* 🧩 인서트는 "어떤 것" 인지 — 세트 코드(SET ORDER 분류)를 골라 넣거나 글로 (앵클렛 · 팔찌 …) → 창고 · 인보이스 · Notes Display 에 같이 감 (v0.8.174) */
       (rq[k[0]] > 0 && reqNeedsNote(k[0]) ? '<div class="reqnote"><input data-rqn="' + k[0] + '" value="' + esc(rn[k[0]] || '') + '" placeholder="' + esc(bt('어떤 것? 예: 앵클렛 13" · 세트 코드', 'Which one? e.g. anklet 13" · set code')) + '"><button type="button" class="b-ghost b-sm" data-rqset="' + k[0] + '">🧩 ' + bt('세트 고르기', 'Pick set') + '</button></div>' : '') + '</div>').join('') + '</div>' +
     (reqCount(rq) ? '<div class="alert a-amb" style="margin-top:8px">🎁 ' + reqText(rq, false, rn) + '</div>' : '') + '</div>';
-  $('eBody').innerHTML = reqCard + '<div class="card"><h2>📝 ' + bi('메모', 'Memo') + '</h2><div class="muted">배송 방법 · 특이사항 · 할인 요청 등 사무실에 전할 말 <span class="en">Shipping, special requests, discount asks</span></div>' +
+  /* 📝 메모가 맨 위 · 🎁 인서트 · 디스플레이는 그 아래 (v0.8.186 관리자: "메모가 제일 위에 · 디스플레이 선택을 밑으로") */
+  $('eBody').innerHTML = '<div class="card"><h2>📝 ' + bi('메모', 'Memo') + '</h2><div class="muted">배송 방법 · 특이사항 · 할인 요청 등 사무실에 전할 말 <span class="en">Shipping, special requests, discount asks</span></div>' +
     '<textarea id="eMemo" rows="4" placeholder="예: UPS 로 보내 주세요 / 금요일 전 도착 / 디스플레이 같이" style="margin-top:8px">' + esc(O.memo || '') + '</textarea>' +
-    '<div class="chips" style="margin-top:8px">' + MEMO_QUICK.map(x => '<button data-mq="' + esc(x[1]) + '">+ ' + esc(x[0]) + ' <span class="en">' + esc(x[1]) + '</span></button>').join('') + '</div></div>' +
+    '<div class="chips" style="margin-top:8px">' + MEMO_QUICK.map(x => '<button data-mq="' + esc(x[1]) + '">+ ' + esc(x[0]) + (x[0] !== x[1] ? ' <span class="en">' + esc(x[1]) + '</span>' : '') + '</button>').join('') + '</div></div>' + reqCard +
     '<div class="card"><h2>' + bi('주문 요약', 'Summary') + '</h2><div class="pr"><div class="ct"><b>' + esc(O.store || '가게 미선택') + '</b><small>' + esc(acc ? acc.acct + ' · ' + [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : '') + '</small></div></div>' +
     '<div class="kpi"><div><b>' + t.n + '</b><span>줄 lines</span></div><div><b>' + t.qty + '</b><span>수량 pcs</span></div><div><b>' + money(t.amt) + '</b><span>금액 total</span></div><div' + (needSm() ? ' data-smk="1" style="cursor:pointer"' : '') + '><b id="eSmK"' + (needSm() && !O.sm ? ' class="warn"' : '') + '>' + esc(O.sm || (needSm() ? '선택 ✎' : '-')) + '</b><span>세일즈맨' + (needSm() && O.sm ? ' ✎' : '') + '</span></div></div>' + typeSummary(t.by) + '</div>';
   document.querySelectorAll('[data-smk]').forEach(el => el.onclick = async () => { if (await pickSm()) paintMemo(); });
@@ -837,7 +838,7 @@ export function flexTypes(lines) {
   return lines;
 }
 /* 📝 메모 빠른 단추 — 단추는 한글 · 영어로 보이고, 메모 칸에는 영어로 찍힘 (창고 · 사무실 · 인보이스 모두 영어로 읽으므로, v0.8.174) */
-const MEMO_QUICK = [['UPS 배송', 'Ship by UPS'], ['픽업 (가게에서 가져감)', 'Customer pickup'], ['세일즈맨 직접 배달', 'Salesman delivers'], ['급함 — 먼저 처리', 'URGENT - process first'], ['디스플레이 같이 보내기', 'Send display together']];
+const MEMO_QUICK = [['UPS 배송', 'Ship by UPS'], ['픽업 (가게에서 가져감)', 'Customer pickup'], ['세일즈맨 직접 배달', 'Salesman delivers'], ['급함 — 먼저 처리', 'URGENT - process first'], ['디스플레이 같이 보내기', 'Send display together'], ['Shipping With Jewelry', 'Shipping With Jewelry'], ['No Cross', 'No Cross']];   // 영어 그대로 (v0.8.186 관리자)
 function tapAdd(c) { const had = IDX[c] ? IDX[c].q : 0, n = setQty(c, tapQty(c)), l = IDX[c]; if (l) { if (PRE > 0 && had) l.tap = (l.tap || 1) + 1; else delete l.tap; saveWip(); } return n; }
 function sure(c) { const l = IDX[c]; if (l && l.tap) { delete l.tap; saveWip(); } }
 const multi = l => !!(l && l.tap >= 2);
@@ -1205,10 +1206,26 @@ async function saveOrder(st) {
   }
   /* 세일즈맨 · 새 주문 — 폰의 보낼 함에 먼저 넣고(사라지지 않게) 전송 */
   try { putOut(orderDoc(base, lines, O.disc), lines); } catch (e) { return toast(e.message, 'bad'); }
-  const id = O.id; O = null; clearWip();
+  const id = O.id, acct = base.acct, store = base.store; O = null; clearWip();
   busy(true); const r = await syncOutbox(true); busy(false);
   const left = !!readOut()[id];
   toast(left ? '📱 폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다' : (st === 'sent' ? '보냈습니다 📤' : '저장했습니다 — 수정 · 추가는 보내기 전까지 자유, 하루 치는 "보낼 주문"에서 한 번에 보냅니다'), left ? '' : 'good');
+  /* 💵 그 가게에 받을 돈이 있으면 "수금할 것 있나요?" → 수금 입력으로 바로 (v0.8.185) */
+  if (acct && await askCollect(acct, store)) return;
   /* 저장 · 보내기 뒤에는 홈으로 */
   Router.go(Router.home || 'order');
+}
+/** 💵 주문 저장 뒤 — 가게 미수금(AR · 미결 인보이스)이 있으면 묻고, "수금 입력"을 누르면 그 가게가 골라진 수금 입력으로 (true = 넘어감)
+ *   잔액을 3초 안에 못 읽으면(오프라인 등) 금액 없이 물음 · 잔액이 0 이면 묻지 않음 (v0.8.185 관리자: "오더 저장 뒤 그 가게의 수금할 것이 있는지 물어보고 수금으로 바로 연결") */
+async function askCollect(acct, store) {
+  let info = null; try { info = await Promise.race([Store.storeInfo(acct), new Promise(r => setTimeout(() => r(null), 3000))]); } catch (e) {}
+  const bal = info && !info.err ? Number(info.bal) || 0 : null, nInv = info && info.invs ? info.invs.filter(v => v.bal > 0.005).length : 0;
+  if (bal != null && bal <= 0.005) return false;
+  return new Promise(res => {
+    openModal('<h2>💵 ' + bi('이 가게에서 받은 수금이 있나요?', 'Any payment from this store?') + '</h2><div class="sumbox" style="margin:8px 0"><b>' + esc(store) + '</b> <span class="muted">' + esc(acct) + '</span>' +
+      (bal != null ? '<div style="margin-top:4px">' + bt('미수금', 'Open balance') + ' <b class="warn" style="font-size:18px">' + money(bal) + '</b>' + (nInv ? ' · ' + bt('인보이스', 'invoices') + ' ' + nInv + bt('장', '') : '') + '</div>' : '') + '</div>' +
+      '<div class="btns"><button class="b-ghost" id="acNo">' + bi('나중에', 'Later') + '</button><button class="b-green" id="acGo">💵 ' + bi('수금 입력', 'Enter payment') + '</button></div>');
+    $('acNo').onclick = () => { closeModal(); res(false); };
+    $('acGo').onclick = async () => { closeModal(); try { const C = await import('./collect.js'); C.newEntryFor(acct, store); res(true); } catch (e) { res(false); } };
+  });
 }
