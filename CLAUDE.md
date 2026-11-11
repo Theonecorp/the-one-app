@@ -38,7 +38,7 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 
 ## GitHub 이 막혔을 때 (2026-11 계정 정지 때 겪은 일)
 - 앱 배포는 Firebase Hosting(https://app.theonefl.com · `node tools/fbhost.mjs . apply` · 서비스 계정 `FIREBASE_*` 가 있는 관리자 환경에서만) 이라 GitHub 과 무관하게 올릴 수 있다. GitHub Pages 는 예비.
-- 코드 거울: GitLab https://gitlab.com/theonecorp-group/the-one-app — `sh tools/mirror.sh` 로 푸시 (환경 변수 `GITLAB_TOKEN`). GitHub 이 돌아오면 그대로 origin 에 푸시 → PR → check → 머지.
+- 코드 거울: GitLab https://gitlab.com/theonecorp-group/the-one-app — 평소에는 **자동**: GitHub 에 푸시 · 머지 · 브랜치 삭제가 일어날 때마다 `.github/workflows/mirror.yml` 이 같은 모양으로 GitLab 에 덮어씀 (GitHub 이 원본 · 비밀값 `GITLAB_TOKEN` · GitLab main 은 force push 허용). GitHub 이 막혔을 때만 `sh tools/mirror.sh` 로 직접 푸시 (환경 변수 `GITLAB_TOKEN`) — 그때도 GitLab main 에 바로 커밋하지 말고 브랜치로 (GitHub 이 돌아오면 거울이 main 을 덮어씀). GitHub 이 돌아오면 그 브랜치를 origin 에 푸시 → PR → check → 머지.
 - 세션이 끝나기 전에 `git bundle create … --all` 로 번들을 남겨 두면 커밋을 잃지 않는다.
 
 ## 되돌리기
