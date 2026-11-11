@@ -73,6 +73,7 @@ function run() {
     try { envelopesLate_(); } catch (e) { Logger.log('봉투 미도착 확인 실패: ' + e.message); }
     try { remindUnsent_(); } catch (e) { Logger.log('안 보낸 주문 · 수금 알림 실패: ' + e.message); }
     try { newItemsRun_(); } catch (e) { Logger.log('새 아이템 알림 실패: ' + e.message); }
+    try { inboundMailRun_(); } catch (e) { Logger.log('🚢 공장 인보이스 메일 실패: ' + e.message); }
     try { dailySummary_(); } catch (e) { Logger.log('일일 요약 메일 실패: ' + e.message); }
     try { photoIndexRun_(); } catch (e) { Logger.log('사진 색인 실패: ' + e.message); }
     try { codSyncRun_(); } catch (e) { Logger.log('COD 시트 동기화 실패: ' + e.message); }
@@ -292,6 +293,94 @@ function newItemsRun_(nowMs) {
   Logger.log('🆕 새 아이템 ' + codes.length + '개 → 세일즈맨 ' + to.length + '명 · 팝업 ' + pushed + '대');
   return codes.length;
 }
+
+/* ---------- 🚢 공장 인보이스 메일 → 앱 입고 예정 (v0.8.183) ----------
+ *  공장이 inbound@theonefl.com 으로 인보이스 엑셀을 보내면 (이 스크립트 계정 받은편지함에 오도록 — 별칭 · 그룹 · 전달 중 하나)
+ *  ① 첨부(xlsx · xls · csv)를 구글 시트로 바꿔 줄들을 읽고 → InboundParse.gs(앱과 같은 코드)로 공장 · 번호 · 날짜 · 코드 · 수량 · 단가 · 박스
+ *  ② 메일 본문의 정해진 칸(INVOICE NO · SHIP DATE · TRACKING · CARTONS · CURRENCY · INVOICE AMOUNT · FREIGHT · PAYMENT REQUEST)도 읽음
+ *  ③ 앱에 입고 예정으로: 모든 코드가 앱에 있고 공장을 알면 🚢 오는 중 (창고 · 오피스 팝업), 아니면 🔎 확인 대기 (오피스 · 관리자 팝업)
+ *     단가 · 금액 · 송금 요청은 inboundCost (관리자만) — 본문 금액과 엑셀 합계가 다르면 표시
+ *  ④ 메일에 라벨 "THE ONE/입고 처리" (다시 읽지 않음) · 같은 공장 같은 번호는 건너뜀 (제목에 REVISED 면 확인 대기 문서를 새것으로 바꿈)
+ *  주소는 스크립트 속성 INBOUND_TO 로 바꿀 수 있음 (기본 inbound@theonefl.com) */
+const INBOUND_TO_DEFAULT = 'inbound@theonefl.com', INBOUND_LABEL = 'THE ONE/입고 처리';
+function inboundMailRun_() {
+  const P = PropertiesService.getScriptProperties(), to = P.getProperty('INBOUND_TO') || INBOUND_TO_DEFAULT;
+  const threads = GmailApp.search('to:' + to + ' -label:"' + INBOUND_LABEL + '" newer_than:30d', 0, 10);
+  if (!threads.length) return 0;
+  const label = GmailApp.getUserLabelByName(INBOUND_LABEL) || GmailApp.createUserLabel(INBOUND_LABEL);
+  const byCode = inboundCatalog_(); let n = 0;
+  threads.forEach(th => {
+    th.getMessages().forEach(m => {
+      try { n += inboundMessage_(m, byCode); } catch (e) { Logger.log('🚢 ' + m.getSubject() + ': ' + e.message); inboundNotify_('inboundErr', '⚠️ 공장 인보이스 메일을 읽지 못했습니다 — ' + m.getSubject(), m.getFrom() + '\n' + e.message, true); }
+    });
+    th.addLabel(label);
+  });
+  return n;
+}
+/** 카탈로그 → { 코드: { c, d, p } } (앱 parseFactoryInvoice 가 쓰는 모양) */
+function inboundCatalog_() {
+  const meta = getDoc_('catalog', 'meta') || {}, by = {};
+  for (let i = 0; i < Number(meta.chunks || 0); i++) { const d = getDoc_('catalog', 'c' + i); if (d && d.j) JSON.parse(d.j).forEach(r => { by[String(r[0]).toUpperCase()] = { c: r[0], d: r[1], p: Number(r[2]) || 0 }; }); }
+  return by;
+}
+/** 첨부 하나 → 줄들(aoa). xlsx · xls 는 구글 시트로 바꿔 읽고 지움 */
+function inboundAoa_(att) {
+  const name = att.getName();
+  if (/\.(csv|txt)$/i.test(name)) return Utilities.parseCsv(att.getDataAsString());
+  const meta = { name: 'inbound-tmp-' + name, mimeType: 'application/vnd.google-apps.spreadsheet' }, bd = 'xxinbound' + Date.now();
+  const payload = Utilities.newBlob('--' + bd + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + bd + '\r\nContent-Type: ' + att.getContentType() + '\r\n\r\n').getBytes().concat(att.getBytes()).concat(Utilities.newBlob('\r\n--' + bd + '--').getBytes());
+  const r = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'post', contentType: 'multipart/related; boundary=' + bd, payload: payload, headers: headers_(), muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error('엑셀 변환 실패 ' + r.getResponseCode() + ': ' + r.getContentText().substring(0, 200));
+  const id = JSON.parse(r.getContentText()).id;
+  try {
+    const v = SpreadsheetApp.openById(id).getSheets()[0].getDataRange().getValues();
+    return v.map(row => row.map(x => x instanceof Date ? Utilities.formatDate(x, 'America/New_York', 'yyyy-MM-dd') : x));
+  } finally { UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id, { method: 'delete', headers: headers_(), muteHttpExceptions: true }); }
+}
+/** 메일 본문의 정해진 칸 — "PAYMENT REQUEST 请付款金额: USD 26,732.89" 같은 줄 */
+function inboundBody_(text) {
+  const t = String(text || ''), get = re => { const m = t.match(re); return m ? String(m[1]).trim() : ''; }, money = v => Number(String(v || '').replace(/[^0-9.\-]/g, '')) || 0;
+  return { no: get(/INVOICE\s*NO[^:：\n]*[:：]\s*([^\n]+)/i), d: get(/SHIP\s*DATE[^:：\n]*[:：]\s*([^\n]+)/i), trk: get(/TRACKING[^:：\n]*[:：]\s*([^\n]+)/i), ctn: money(get(/CARTONS?[^:：\n]*[:：]\s*([^\n]+)/i)),
+    cur: /RMB|CNY|人民币/i.test(get(/CURRENCY[^:：\n]*[:：]\s*([^\n]+)/i)) ? 'CNY' : /USD|\$/i.test(get(/CURRENCY[^:：\n]*[:：]\s*([^\n]+)/i)) ? 'USD' : '',
+    amt: money(get(/INVOICE\s*AMOUNT[^:：\n]*[:：]\s*([^\n]+)/i)), frt: money(get(/FREIGHT[^:：\n]*[:：]\s*([^\n]+)/i)), pay: money(get(/PAYMENT\s*REQUEST[^:：\n]*[:：]\s*([^\n]+)/i)) };
+}
+/** 메일 하나 — 엑셀 첨부마다 입고 예정 한 건. 돌려주는 값: 등록한 건수 */
+function inboundMessage_(m, byCode) {
+  const atts = m.getAttachments().filter(a => /\.(xlsx|xls|csv)$/i.test(a.getName()));
+  const subj = m.getSubject() || '', from = m.getFrom() || '', B = inboundBody_(m.getPlainBody()), revised = /REVISED/i.test(subj);
+  if (!atts.length) { inboundNotify_('inboundErr', '⚠️ 공장 메일에 엑셀이 없습니다 — ' + subj, from + '\n엑셀(.xlsx · .xls) 인보이스를 첨부해 다시 보내 달라고 해 주세요.', true); return 0; }
+  let n = 0;
+  atts.forEach(att => {
+    const R = parseFactoryInvoice(inboundAoa_(att), byCode, Number(Utilities.formatDate(m.getDate(), 'America/New_York', 'yyyy')));
+    if (R.err) { inboundNotify_('inboundErr', '⚠️ 공장 인보이스를 읽지 못했습니다 — ' + att.getName(), from + ' · ' + subj + '\n' + (R.err === 'nocode' ? '아이템 코드 칸을 찾지 못함' : '수량이 있는 줄이 없음') + ' — 앱 재고 → 🚢 입고 예정에서 파일로 직접 올려 주세요.', true); return; }
+    const factory = R.factory || String(from).replace(/<.*$/, '').replace(/"/g, '').trim() || String(from), no = R.no || B.no || (factory.split(/\s+/)[0].toUpperCase().slice(0, 10) + '-' + (R.d || B.d || today_()).replace(/-/g, ''));
+    const dup = query_('inbound', 'no', no, 10).find(x => x.st !== 'x' && x.factory === factory);
+    if (dup && !(revised && (dup.st === 'review' || dup.st === 'coming'))) { Logger.log('🚢 이미 있음: ' + no); return; }
+    const id = dup ? dup._id : 'IB' + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1296).toString(36).toUpperCase();
+    const unknown = R.lines.filter(l => !l.ok), st = unknown.length ? 'review' : 'coming', now = new Date().toISOString();
+    const qty = R.lines.reduce((a, l) => a + l.q, 0), amt = Math.round(R.lines.reduce((a, l) => a + l.q * (l.p || 0), 0) * 100) / 100;
+    const cur = B.cur || String(R.cur || 'USD').replace('?', '');
+    patch_('inbound', id, { id: id, no: no, factory: factory, fromCode: '', d: R.d || dstrB_(B.d) || today_(), eta: '', file: att.getName(), src: 'mail', mailFrom: from, mailSubject: subj, st: st, boxes: R.boxes || B.ctn || 0, trk: R.trk || B.trk || '',
+      secs: R.secs.map(x => ({ n: x.n, q: x.q })), lines: R.lines.map(l => ({ c: l.c, raw: l.raw, d: l.d || '', q: l.q, sec: l.sec, ok: l.ok, rq: null, sim: l.sim || '', box: l.box || [], bx: (l.bx || []).map(b => ({ b: b.b, q: b.q, rq: null })) })), n: R.lines.length, qty: qty, by: 'mail:' + from, at: now, revisedAt: dup ? now : null });
+    const p = {}, praw = {}; R.lines.forEach(l => { p[l.c] = l.p || 0; praw[l.raw || l.c] = l.p || 0; });
+    patch_('inboundCost', id, { id: id, no: no, factory: factory, praw: praw, cur: cur, curGuess: !B.cur && /\?/.test(R.cur || ''), frt: R.frt || B.frt || 0, amt: amt, secs: R.secs.map(x => ({ n: x.n, amt: x.amt })), p: p, pay: B.pay || 0, bodyAmt: B.amt || 0, amtMismatch: !!(B.amt && Math.abs(B.amt - amt) > 1), at: now });
+    const head = '🚢 ' + factory + ' · ' + no + ' · ' + R.lines.length + '종 ' + qty.toLocaleString() + '개' + (R.boxes ? ' · 📦 ' + R.boxes : '');
+    if (st === 'coming') inboundNotify_('inbound', '[THE ONE] 🚢 입고 예정 — ' + factory, head + ' — 오는 중 (메일로 자동 등록)', false);
+    else inboundNotify_('inboundReview', '[THE ONE] 🔎 입고 예정 확인 대기 — ' + factory, head + '\n앱에 없는 코드 ' + unknown.length + ': ' + unknown.slice(0, 8).map(l => l.c + (l.sim ? '(≈' + l.sim + ')' : '')).join(', ') + '\n앱 재고 → 🚢 입고 예정에서 코드를 고치고 등록하세요.', true);
+    n++;
+  });
+  return n;
+}
+function dstrB_(v) { const s = String(v || ''); const m = s.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ''; }
+/** 알림 — 앱 알림 대기열로 (팝업만). staffOnly: 오피스 · 관리자만, 아니면 창고 묶음 + 오피스 */
+function inboundNotify_(kind, subject, text, staffOnly) {
+  const id = 'N' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+  const n = { id: id, kind: kind, st: 'wait', by: REPLY_TO, byName: 'THE ONE 메일', at: new Date().toISOString(), pushOnly: true, toStaff: true, subject: subject, text: text, url: 'https://app.theonefl.com/#/stock/inb' };
+  if (!staffOnly) n.toGroup = 'g:wh';
+  patch_('notifyq', id, n);
+}
+/** 시험 — 받은편지함의 inbound 메일을 지금 한 번 (라벨이 붙은 것은 건너뜀) */
+function testInboundMail() { const n = inboundMailRun_(); Logger.log('🚢 공장 인보이스 메일 → 입고 예정 ' + n + '건'); }
 
 /* ---------- 📊 일일 요약 메일 — 영업일 아침 한 번, 관리자에게 (v0.8.180) ----------
  *  기간: 지난 영업일 ~ 어제 (월요일 아침 = 금 · 토 · 일, 휴일 다음 날은 휴일까지 포함)
