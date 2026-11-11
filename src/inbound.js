@@ -23,7 +23,8 @@ const ST = { f: 'open', draft: null };
 /** 등록 · 지우기 — 관리자 · 오너 · 오피스 매니저 / 받기 — + 창고 매니저 · 창고 직원 · 출고 담당 */
 export const canAdd = () => isTop() || (S.role === 'manager' && jobOf() === 'office');
 export const canRecv = () => canAdd() || (S.role === 'manager' && ['whmgr', 'pick', 'pickinv'].includes(jobOf()));
-const seeCost = () => canAdd();
+/** 공장 단가(원가)는 관리자만 — 단가는 따로 inboundCost/{id} 에 두고 firestore.rules 로 관리자만 읽음 (오피스는 등록할 때 쓰기만) */
+const seeCost = () => !!(S && S.me && S.me.role === 'admin');
 const S_ = v => String(v == null ? '' : v).trim();
 const num = v => { const n = Number(S_(v).replace(/[$,\s]/g, '')); return isFinite(n) ? n : 0; };
 const norm = s => S_(s).toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -88,8 +89,9 @@ export function parseFactoryInvoice(aoa, byCode, year) {
     const q = Math.round(num(r[qi])); if (!q) return;
     const it = find(code); let p = pi >= 0 ? num(r[pi]) : 0; if (pi >= 0 && !S_(r[pi])) p = lastP; else lastP = p;   // 합친 칸 — 같은 단가
     const k = (it ? it.c : code.toUpperCase()) + '\u0001' + sec;
-    if (!by[k]) { by[k] = { c: it ? it.c : code.toUpperCase(), raw: code, d: it ? it.d : '', q: 0, p, sec, ok: !!it, rq: null, box: [] }; order.push(k); if (!it) by[k].sim = similarCode(code, byCode); }
-    by[k].q += q; if (box && !by[k].box.includes(box)) by[k].box.push(box);   // 한 코드가 두 박스에 나뉘면 합침 (박스 번호는 기록)
+    if (!by[k]) { by[k] = { c: it ? it.c : code.toUpperCase(), raw: code, d: it ? it.d : '', q: 0, p, sec, ok: !!it, rq: null, box: [], bx: [] }; order.push(k); if (!it) by[k].sim = similarCode(code, byCode); }
+    by[k].q += q;   // 한 코드가 두 박스에 나뉘면 한 줄로 합치고, 박스마다 수량은 bx 에 (📦 박스별 확인)
+    if (box) { if (!by[k].box.includes(box)) by[k].box.push(box); const e = by[k].bx.find(x => x.b === box); if (e) e.q += q; else by[k].bx.push({ b: box, q, rq: null }); }
   });
   out.lines = order.map(k => by[k]); out.boxes = boxes.size;
   const bs = {}; out.lines.forEach(l => { bs[l.sec] = bs[l.sec] || { n: l.sec, q: 0, amt: 0 }; bs[l.sec].q += l.q; bs[l.sec].amt = Math.round((bs[l.sec].amt + l.q * l.p) * 100) / 100; });
@@ -115,9 +117,14 @@ const amtTxt = (v, cur) => /CNY/.test(cur || '') ? '¥' + (Math.round(v * 100) /
 const tot = L => ({ n: L.length, qty: L.reduce((a, l) => a + l.q, 0), amt: Math.round(L.reduce((a, l) => a + l.q * (l.p || 0), 0) * 100) / 100 });
 
 /* ---------- 화면 (재고 → 🚢 입고 예정) ---------- */
+const ISSUE = [['short', '수량 모자람', 'Short'], ['over', '수량 많음', 'Over'], ['damaged', '불량 · 파손', 'Damaged'], ['wrong', '다른 아이템', 'Wrong item'], ['other', '기타', 'Other']];
+const issueLabel = k => { const x = ISSUE.find(i => i[0] === k); return x ? bt(x[1], x[2]) : k; };
+/** 줄의 받은 수량 — 박스가 있으면 박스마다 받은 수량의 합(하나라도 확인 전이면 null), 아이템별로 직접 넣었으면 그 값 */
+export const lineRq = l => { if (l.bx && l.bx.length && !l.byItem) return l.bx.some(b => b.rq == null) ? null : l.bx.reduce((a, b) => a + b.rq, 0); return l.rq == null ? null : l.rq; };
 export async function paint(box) {
   box.innerHTML = '<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>';
-  let L = []; try { L = await S.DB.list('inbound'); } catch (e) { box.innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; }
+  let L = [], C = {}; try { L = await S.DB.list('inbound'); } catch (e) { box.innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; }
+  if (seeCost()) { try { (await S.DB.list('inboundCost')).forEach(c => { C[c.id] = c; }); } catch (e) {} }
   L = L.filter(x => x.st !== 'x');
   const open = L.filter(x => x.st !== 'done'), shown = ST.f === 'open' ? open : ST.f === 'done' ? L.filter(x => x.st === 'done') : L;
   const byF = {}; sortBy(shown, x => x.d || x.at || '', true).forEach(x => { (byF[x.factory || '—'] = byF[x.factory || '—'] || []).push(x); });
@@ -126,10 +133,10 @@ export async function paint(box) {
     (canAdd() ? '<div class="fg" style="margin-top:8px"><label>📎 ' + bt('공장 인보이스 등록 (엑셀 · CSV)', 'Register a factory invoice (Excel · CSV)') + '</label><input type="file" id="ibFile" accept=".xlsx,.xls,.csv"></div><div id="ibOut"></div>' : '') +
     '<div class="chips" style="margin-top:8px">' + [['open', bt('진행 중', 'Open') + ' ' + open.length], ['done', bt('입고 완료', 'Received')], ['all', bt('전체', 'All')]].map(c => '<button class="' + (ST.f === c[0] ? 'on' : '') + '" data-ibf="' + c[0] + '">' + c[1] + '</button>').join('') + '</div></div>' +
     (Object.keys(byF).length ? Object.keys(byF).sort().map(f => '<div class="card"><h2 style="font-size:15px">🏭 ' + esc(f) + ' <span class="muted" style="font-weight:400">' + byF[f].length + bt('건', '') + ' · ' + byF[f].reduce((a, x) => a + (x.qty || 0), 0).toLocaleString() + bt('개', ' pcs') + '</span></h2>' +
-      byF[f].map(x => '<div class="pr tap" data-ib="' + esc(x.id) + '"><div class="ct"><b>' + esc(x.no || x.id) + ' ' + stTag(x) + '</b><small>' + esc(md(x.d || '')) + ' · ' + (x.n || 0) + bt('종', ' items') + ' · ' + esc((x.secs || []).map(s => s.n).join(' · ')) + (x.diff && x.diff.length ? ' · <span class="warn">⚠️ ' + bt('차이', 'diff') + ' ' + x.diff.length + '</span>' : '') + '</small></div><div class="pa"><b>' + (x.qty || 0).toLocaleString() + '</b><small>' + (seeCost() && x.amt ? amtTxt(x.amt, x.cur) : bt('개', 'pcs')) + '</small></div></div>').join('') + '</div>').join('')
+      byF[f].map(x => '<div class="pr tap" data-ib="' + esc(x.id) + '"><div class="ct"><b>' + esc(x.no || x.id) + ' ' + stTag(x) + '</b><small>' + esc(md(x.d || '')) + ' · ' + (x.n || 0) + bt('종', ' items') + (x.boxes ? ' · 📦 ' + x.boxes : '') + ' · ' + esc((x.secs || []).map(s => s.n).filter(Boolean).join(' · ')) + (x.diff && x.diff.length ? ' · <span class="warn">⚠️ ' + bt('차이', 'diff') + ' ' + x.diff.length + '</span>' : '') + '</small></div><div class="pa"><b>' + (x.qty || 0).toLocaleString() + '</b><small>' + (C[x.id] && C[x.id].amt ? amtTxt(C[x.id].amt, C[x.id].cur) : bt('개', 'pcs')) + '</small></div></div>').join('') + '</div>').join('')
       : '<div class="card"><div class="none">' + bt('입고 예정이 없습니다', 'Nothing inbound') + '</div></div>');
   box.querySelectorAll('[data-ibf]').forEach(b => b.onclick = () => { ST.f = b.dataset.ibf; paint(box); });
-  box.querySelectorAll('[data-ib]').forEach(el => el.onclick = () => detail(L.find(x => x.id === el.dataset.ib), box));
+  box.querySelectorAll('[data-ib]').forEach(el => el.onclick = () => detail(L.find(x => x.id === el.dataset.ib), box, C[el.dataset.ib] || null));
   if ($('ibFile')) $('ibFile').onchange = async () => { const f = $('ibFile').files[0]; $('ibFile').value = ''; if (f) await readFile(f, box); };
 }
 async function readFile(f, box) {
@@ -144,21 +151,21 @@ async function readFile(f, box) {
     ST.draft = Object.assign(P, { file: f.name }); preview(box);
   } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; }
 }
-/** 등록 전 확인 — 공장 · 번호 · 날짜 고치기 · 목록에 없는 코드는 코드를 고쳐 맞춤 */
+/** 등록 전 확인 — 공장 · 번호 · 날짜 고치기 · 목록에 없는 코드는 코드를 고쳐 맞춤 · 단가 · 통화는 관리자만 */
 function preview(box) {
-  const P = ST.draft, t = tot(P.lines), bad = P.lines.filter(l => !l.ok), sups = Stock.suppliers();
+  const P = ST.draft, t = tot(P.lines), bad = P.lines.filter(l => !l.ok), sups = Stock.suppliers(), $c = seeCost();
   openModal('<h2>🚢 ' + bi('공장 인보이스 확인', 'Check the factory invoice') + '</h2><div class="muted">' + esc(P.file) + '</div>' +
     '<div class="two"><div class="fg"><label>🏭 ' + bt('공장', 'Factory') + '</label><input id="ibF" value="' + esc(P.factory) + '" list="ibFL"><datalist id="ibFL">' + sups.map(s => '<option value="' + esc(s.name || s.alias || s.code) + '">').join('') + '</datalist></div><div class="fg"><label>' + bt('인보이스 번호', 'Invoice no') + '</label><input id="ibNo" value="' + esc(P.no) + '" placeholder="' + esc(bt('비우면 공장 · 날짜로', 'empty = factory · date')) + '"></div></div>' +
     '<div class="two"><div class="fg"><label>' + bt('인보이스 날짜', 'Invoice date') + '</label><input type="date" id="ibD" value="' + esc(P.d || today()) + '"></div><div class="fg"><label>' + bt('도착 예정 (선택)', 'ETA (optional)') + '</label><input type="date" id="ibEta" value="' + esc(P.eta || '') + '"></div></div>' +
-    (seeCost() ? '<div class="fg"><label>💱 ' + bt('단가 통화', 'Price currency') + (/\?/.test(P.cur || '?') ? ' <span class="warn">— ' + bt('파일에 안 적혀 있어 추정했습니다. 확인하세요', 'not stated in the file — estimated, please check') + '</span>' : '') + '</label><div class="seg">' + [['USD', '$ USD'], ['CNY', '¥ CNY (위안)']].map(c => '<button type="button" class="' + (String(P.cur || 'USD?').replace('?', '') === c[0] ? 'on' : '') + '" data-ibcur="' + c[0] + '">' + c[1] + '</button>').join('') + '</div></div>' : '') +
-    ((P.boxes || P.trk || P.frt) ? '<div class="muted" style="font-size:12.5px">' + [P.boxes ? '📦 ' + bt('박스', 'Boxes') + ' ' + P.boxes : '', P.trk ? '🚚 UPS ' + esc(P.trk) : '', P.frt && seeCost() ? bt('운임', 'Freight') + ' ' + amtTxt(P.frt, P.cur) : ''].filter(Boolean).join(' · ') + '</div>' : '') +
-    '<div class="sumbox">' + P.secs.map(s => '<div>' + esc(s.n || '—') + ' — <b>' + s.q.toLocaleString() + '</b>' + bt('개', ' pcs') + (seeCost() ? ' · ' + amtTxt(s.amt, P.cur) : '') + '</div>').join('') + '<div style="margin-top:4px"><b>' + t.n + bt('종 · ', ' items · ') + t.qty.toLocaleString() + bt('개', ' pcs') + (seeCost() ? ' · ' + amtTxt(t.amt, P.cur) : '') + '</b></div></div>' +
+    ($c ? '<div class="fg"><label>💱 ' + bt('단가 통화', 'Price currency') + (/\?/.test(P.cur || '?') ? ' <span class="warn">— ' + bt('파일에 안 적혀 있어 추정했습니다. 확인하세요', 'not stated in the file — estimated, please check') + '</span>' : '') + '</label><div class="seg">' + [['USD', '$ USD'], ['CNY', '¥ CNY (위안)']].map(c => '<button type="button" class="' + (String(P.cur || 'USD?').replace('?', '') === c[0] ? 'on' : '') + '" data-ibcur="' + c[0] + '">' + c[1] + '</button>').join('') + '</div></div>' : '') +
+    ((P.boxes || P.trk || P.frt) ? '<div class="muted" style="font-size:12.5px">' + [P.boxes ? '📦 ' + bt('박스', 'Boxes') + ' ' + P.boxes : '', P.trk ? '🚚 UPS ' + esc(P.trk) : '', P.frt && $c ? bt('운임', 'Freight') + ' ' + amtTxt(P.frt, P.cur) : ''].filter(Boolean).join(' · ') + '</div>' : '') +
+    '<div class="sumbox">' + P.secs.map(s => '<div>' + esc(s.n || '—') + ' — <b>' + s.q.toLocaleString() + '</b>' + bt('개', ' pcs') + ($c ? ' · ' + amtTxt(s.amt, P.cur) : '') + '</div>').join('') + '<div style="margin-top:4px"><b>' + t.n + bt('종 · ', ' items · ') + t.qty.toLocaleString() + bt('개', ' pcs') + ($c ? ' · ' + amtTxt(t.amt, P.cur) : '') + '</b></div></div>' +
     (bad.length ? '<div class="alert a-red">⚠️ ' + bt('앱에 없는 코드', 'Codes not in the app') + ' ' + bad.length + ' — ' + bt('맞는 코드로 고치거나, 새 아이템이면 먼저 등록하세요 (그대로 두면 받을 때 재고 코드로 그대로 들어갑니다)', 'fix them to the right code, or register the new items first (left as is, they go in as these codes)') + '</div>' : '<div class="alert a-grn">✅ ' + bt('모든 코드가 앱 카탈로그와 맞습니다', 'All codes match the catalog') + '</div>') +
-    '<div style="max-height:42vh;overflow:auto"><table><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th class="r">' + bt('수량', 'Qty') + '</th>' + (seeCost() ? '<th class="r">' + bt('단가', 'Unit') + '</th>' : '') + '</tr>' +
-      P.lines.map((l, i) => '<tr' + (l.ok ? '' : ' style="background:#fef2f2"') + '><td>' + (l.ok ? '<b>' + esc(l.c) + '</b>' : '<input data-ibc="' + i + '" value="' + esc(l.c) + '" style="width:110px;text-transform:uppercase">') + '</td><td><small>' + esc(l.d || (l.ok ? '' : bt('목록에 없음', 'not in catalog'))) + '</small>' + (!l.ok && l.sim ? ' <button type="button" class="b-ghost b-sm" data-ibsim="' + i + '">≈ ' + esc(l.sim) + '?</button>' : '') + (l.box && l.box.length ? '<div class="muted" style="font-size:11px">📦 ' + esc(l.box.join(' · ')) + '</div>' : '') + '</td><td class="r">' + l.q.toLocaleString() + '</td>' + (seeCost() ? '<td class="r">' + amtTxt(l.p, P.cur) + '</td>' : '') + '</tr>').join('') + '</table></div>' +
+    '<div style="max-height:42vh;overflow:auto"><table><tr><th>' + bt('코드', 'Code') + '</th><th>' + bt('이름', 'Name') + '</th><th class="r">' + bt('수량', 'Qty') + '</th>' + ($c ? '<th class="r">' + bt('단가', 'Unit') + '</th>' : '') + '</tr>' +
+      P.lines.map((l, i) => '<tr' + (l.ok ? '' : ' style="background:#fef2f2"') + '><td>' + (l.ok ? '<b>' + esc(l.c) + '</b>' : '<input data-ibc="' + i + '" value="' + esc(l.c) + '" style="width:110px;text-transform:uppercase">') + '</td><td><small>' + esc(l.d || (l.ok ? '' : bt('목록에 없음', 'not in catalog'))) + '</small>' + (!l.ok && l.sim ? ' <button type="button" class="b-ghost b-sm" data-ibsim="' + i + '">≈ ' + esc(l.sim) + '?</button>' : '') + (l.box && l.box.length ? '<div class="muted" style="font-size:11px">📦 ' + esc(l.box.join(' · ')) + '</div>' : '') + '</td><td class="r">' + l.q.toLocaleString() + '</td>' + ($c ? '<td class="r">' + amtTxt(l.p, P.cur) + '</td>' : '') + '</tr>').join('') + '</table></div>' +
     '<div class="btns"><button class="b-ghost" id="ibX">' + bt('취소', 'Cancel') + '</button><button class="b-blue" id="ibGo">🚢 ' + bt('입고 예정으로 등록', 'Register as inbound') + '</button></div>');
-  document.querySelectorAll('[data-ibc]').forEach(inp => inp.onchange = () => { const l = P.lines[+inp.dataset.ibc], it = exactItem(inp.value); l.c = it ? it.c : inp.value.trim().toUpperCase(); l.d = it ? it.d : ''; l.ok = !!it; keep(); preview(box); });
   const keep = () => { P.factory = $('ibF').value.trim(); P.no = $('ibNo').value.trim(); P.d = $('ibD').value; P.eta = $('ibEta').value; };
+  document.querySelectorAll('[data-ibc]').forEach(inp => inp.onchange = () => { const l = P.lines[+inp.dataset.ibc], it = exactItem(inp.value); l.c = it ? it.c : inp.value.trim().toUpperCase(); l.d = it ? it.d : ''; l.ok = !!it; keep(); preview(box); });
   document.querySelectorAll('[data-ibsim]').forEach(b => b.onclick = () => { const l = P.lines[+b.dataset.ibsim], it = exactItem(l.sim); if (it) { l.c = it.c; l.d = it.d; l.ok = true; } keep(); preview(box); });   // ≈ 비슷한 코드 — 눌러야 바뀜
   document.querySelectorAll('[data-ibcur]').forEach(b => b.onclick = () => { keep(); P.cur = b.dataset.ibcur; preview(box); });
   ['ibF', 'ibNo', 'ibD', 'ibEta'].forEach(id => { $(id).onchange = keep; });
@@ -170,46 +177,105 @@ function preview(box) {
     try {
       let dup = null; try { dup = (await S.DB.list('inbound', { where: [['no', '==', no]] })).find(x => x.st !== 'x' && x.factory === P.factory); } catch (e) {}
       if (dup) { busy(false); return toast(bt('이미 등록된 인보이스입니다', 'Already registered') + ': ' + no, 'bad'); }
-      const id = newId('IB'), now = new Date().toISOString(), t2 = tot(P.lines), sup = Stock.supFind(P.factory);
-      const doc = { id, no, factory: P.factory, fromCode: sup ? sup.code : '', d: P.d || today(), eta: P.eta || '', file: P.file, st: 'coming', cur: String(P.cur || 'USD').replace('?', ''), boxes: P.boxes || 0, trk: P.trk || '', frt: P.frt || 0, secs: P.secs, lines: P.lines.map(l => ({ c: l.c, raw: l.raw, d: l.d, q: l.q, p: l.p, sec: l.sec, ok: l.ok, rq: null, box: l.box || [] })), n: t2.n, qty: t2.qty, amt: t2.amt, by: S.user.email, at: now };
-      await S.DB.set('inbound', id, doc);
-      try { const N = await import('./notify.js'); await N.queue({ kind: 'inbound', pushOnly: true, toGroup: 'g:wh', toStaff: true, subject: '[THE ONE] 🚢 ' + bt('입고 예정', 'Inbound') + ' — ' + P.factory, text: '🚢 ' + P.factory + ' · ' + no + ' · ' + t2.n + bt('종 ', ' items ') + t2.qty.toLocaleString() + bt('개 — 오는 중', ' pcs — on the way'), url: N.appUrl('stock/inb') }); } catch (e) {}
-      ST.draft = null; closeModal(); toast('🚢 ' + no + ' — ' + t2.qty.toLocaleString() + bt('개 입고 예정', ' pcs inbound'), 'good'); paint(box);
+      const id = await saveInbound(P, no);
+      ST.draft = null; closeModal(); toast('🚢 ' + no + ' — ' + tot(P.lines).qty.toLocaleString() + bt('개 입고 예정', ' pcs inbound'), 'good'); paint(box);
+      return id;
     } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
 }
-/** 상세 — 받은 수량 확인 · 중간 저장 · 입고 확정 */
-function detail(x, box) {
+/** 저장 — 입고 예정(inbound: 단가 없음) + 단가(inboundCost: 관리자만 읽음) + 창고 · 오피스 팝업 */
+export async function saveInbound(P, no, src) {
+  const id = newId('IB'), now = new Date().toISOString(), t2 = tot(P.lines), sup = Stock.supFind(P.factory);
+  const doc = { id, no, factory: P.factory, fromCode: sup ? sup.code : '', d: P.d || today(), eta: P.eta || '', file: P.file || '', src: src || 'app', st: 'coming', boxes: P.boxes || 0, trk: P.trk || '', secs: P.secs.map(x => ({ n: x.n, q: x.q })),
+    lines: P.lines.map(l => ({ c: l.c, raw: l.raw, d: l.d, q: l.q, sec: l.sec, ok: l.ok, rq: null, box: l.box || [], bx: (l.bx || []).map(b => ({ b: b.b, q: b.q, rq: null })) })), n: t2.n, qty: t2.qty, by: (S.user && S.user.email) || '', at: now };
+  await S.DB.set('inbound', id, doc);
+  const p = {}; P.lines.forEach(l => { p[l.c] = l.p || 0; });
+  await S.DB.set('inboundCost', id, { id, no, factory: P.factory, cur: String(P.cur || 'USD').replace('?', ''), curGuess: /\?/.test(P.cur || ''), frt: P.frt || 0, amt: t2.amt, secs: P.secs.map(x => ({ n: x.n, amt: x.amt })), p, at: now });
+  try { const N = await import('./notify.js'); await N.queue({ kind: 'inbound', pushOnly: true, toGroup: 'g:wh', toStaff: true, subject: '[THE ONE] 🚢 ' + bt('입고 예정', 'Inbound') + ' — ' + P.factory, text: '🚢 ' + P.factory + ' · ' + no + ' · ' + t2.n + bt('종 ', ' items ') + t2.qty.toLocaleString() + bt('개 — 오는 중', ' pcs — on the way') + (P.boxes ? ' · 📦 ' + P.boxes : ''), url: N.appUrl('stock/inb') }); } catch (e) {}
+  return id;
+}
+/** 상세 — 📋 아이템별 / 📦 박스별 · 받은 수량 · 문제 표시 · 인보이스에 없는 아이템 · 중간 저장 · 입고 확정 */
+function detail(x, box, cost) {
   if (!x) return;
-  const done = x.st === 'done', L = x.lines.map(l => Object.assign({}, l)), rcv = canRecv() && !done;
+  const done = x.st === 'done', L = JSON.parse(JSON.stringify(x.lines)), rcv = canRecv() && !done, $c = seeCost() && cost;
+  const boxes = []; L.forEach(l => (l.bx || []).forEach(b => { if (!boxes.includes(b.b)) boxes.push(b.b); }));
+  const noBoxL = L.filter(l => !(l.bx && l.bx.length));
+  const V = { view: boxes.length ? 'box' : 'item', box: '', iss: -1, add: false };
+  const cell = (rq, q) => rq == null ? '—' : rq.toLocaleString() + (rq !== q ? ' <b class="warn">(' + (rq - q > 0 ? '+' : '') + (rq - q) + ')</b>' : '');
+  const issueTag = l => l.issue ? ' <span class="tag" style="background:#fef3c7;color:#92400e">⚠️ ' + esc(issueLabel(l.issue.k)) + (l.issue.note ? ' · ' + esc(l.issue.note) : '') + '</span>' : '';
+  const name = l => '<b>' + esc(l.c) + '</b>' + (l.extra ? ' <span class="tag t-a">' + bt('인보이스에 없음', 'not on invoice') + '</span>' : '') + issueTag(l) + '<div class="muted" style="font-size:11.5px">' + esc(l.d || (l.ok ? '' : bt('목록에 없는 코드', 'not in catalog'))) + (l.sec ? ' · ' + esc(l.sec) : '') + '</div>';
+  const boxSt = b => { const E = L.map(l => (l.bx || []).find(z => z.b === b && !l.byItem)).filter(Boolean); if (!E.length) { const byI = L.some(l => l.byItem && (l.bx || []).some(z => z.b === b)); return byI ? 'item' : 'none'; } if (E.every(z => z.rq == null)) return 'none'; if (E.some(z => z.rq == null)) return 'part'; const prob = L.some(l => (l.bx || []).some(z => z.b === b) && ((l.issue && (!l.issue.box || l.issue.box === b)) || (l.bx || []).some(z => z.b === b && z.rq !== z.q)));   /* 문제는 그 박스에서 적은 것만 */ return prob ? 'prob' : 'ok'; };
+  const BST = { none: ['·', bt('확인 전', 'to check'), ''], part: ['…', bt('확인 중', 'checking'), 't-a'], ok: ['✓', bt('확인 · 맞음', 'checked'), 't-k'], prob: ['⚠️', bt('문제 있음', 'issue'), 't-r'], item: ['📋', bt('아이템별로 확인', 'checked by item'), 't-g'] };
+  const issueForm = (i) => { const l = L[i]; return '<tr><td colspan="3" style="background:#fffbeb"><div class="chips" style="margin:2px 0">' + ISSUE.map(k => '<button type="button" class="' + (l.issue && l.issue.k === k[0] ? 'on' : '') + '" data-iss="' + k[0] + '">' + bt(k[1], k[2]) + '</button>').join('') + '</div><div style="display:flex;gap:6px"><input id="issNote" value="' + esc((l.issue && l.issue.note) || '') + '" placeholder="' + esc(bt('메모 — 예: 3개 파손, 다른 색이 들어옴', 'note — e.g. 3 broken, wrong color')) + '" style="flex:1"><button type="button" class="b-ghost b-sm" id="issClr">' + bt('문제 없음', 'No issue') + '</button><button type="button" class="b-blue b-sm" id="issOk">' + bt('적기', 'Save') + '</button></div></td></tr>'; };
   const paintM = () => {
-    const sent = L.reduce((a, l) => a + l.q, 0), got = L.reduce((a, l) => a + (l.rq == null ? 0 : l.rq), 0), left = L.filter(l => l.rq == null).length, diff = L.filter(l => l.rq != null && l.rq !== l.q);
+    const sent = L.reduce((a, l) => a + l.q, 0), got = L.reduce((a, l) => a + (lineRq(l) || 0), 0), left = L.filter(l => lineRq(l) == null).length, diff = L.filter(l => lineRq(l) != null && lineRq(l) !== l.q || l.issue);
+    let body = '';
+    if (V.view === 'box' && !V.box) {
+      body = '<div class="muted" style="margin:4px 0">' + bt('박스를 열면서 누르세요 — 박스마다 들어 있어야 할 아이템과 수량이 나옵니다.', 'Tap each box as you open it — it shows what should be inside.') + '</div>' +
+        boxes.map(b => { const st = boxSt(b), E = L.filter(l => (l.bx || []).some(z => z.b === b)), q = E.reduce((a, l) => a + l.bx.find(z => z.b === b).q, 0); return '<div class="pr tap" data-box="' + esc(b) + '"><div class="ct"><b>📦 ' + esc(b) + ' <span class="tag ' + BST[st][2] + '">' + BST[st][0] + ' ' + BST[st][1] + '</span></b><small>' + E.length + bt('종 · ', ' items · ') + q.toLocaleString() + bt('개', ' pcs') + '</small></div><div class="pa">›</div></div>'; }).join('') +
+        (noBoxL.length ? '<div class="pr tap" data-box="__nobox"><div class="ct"><b>' + bt('박스 번호 없는 아이템', 'Items without a box no.') + '</b><small>' + noBoxL.length + bt('종', ' items') + '</small></div><div class="pa">›</div></div>' : '');
+    } else {
+      const inBox = V.view === 'box' && V.box && V.box !== '__nobox';
+      const rows = V.view === 'box' ? (V.box === '__nobox' ? noBoxL.map(l => L.indexOf(l)) : L.map((l, i) => (l.bx || []).some(z => z.b === V.box) ? i : -1).filter(i => i >= 0)) : L.map((l, i) => i);
+      body = (V.view === 'box' ? '<div class="btns" style="justify-content:flex-start;margin:4px 0"><button class="b-ghost b-sm" id="bxBack">‹ ' + bt('박스 목록', 'Boxes') + '</button>' + (rcv ? '<button class="b-ghost b-sm" id="bxAll">✅ ' + bt('이 박스 모두 맞음', 'This box is all correct') + '</button><button class="b-ghost b-sm" id="bxAdd">＋ ' + bt('인보이스에 없는 아이템', 'Item not on invoice') + '</button>' : '') + '</div><h3 style="margin:4px 0">📦 ' + esc(V.box === '__nobox' ? bt('박스 번호 없음', 'No box no.') : V.box) + '</h3>' : (rcv ? '<div class="btns" style="justify-content:flex-start;margin:6px 0"><button class="b-ghost b-sm" id="ibAll">✅ ' + bt('남은 줄 모두 맞음', 'All remaining correct') + '</button><button class="b-ghost b-sm" id="bxAdd">＋ ' + bt('인보이스에 없는 아이템', 'Item not on invoice') + '</button></div>' : '')) +
+        (V.add ? '<div class="sumbox" style="margin:6px 0"><b>＋ ' + bt('인보이스에 없는데 들어온 아이템', 'Item received but not on the invoice') + '</b><div style="display:flex;gap:6px;margin-top:4px"><input id="adC" placeholder="' + esc(bt('코드', 'Code')) + '" style="flex:1;text-transform:uppercase"><input id="adQ" inputmode="numeric" placeholder="' + esc(bt('수량', 'Qty')) + '" style="width:80px"><button type="button" class="b-blue b-sm" id="adGo">' + bt('넣기', 'Add') + '</button></div></div>' : '') +
+        '<div style="max-height:46vh;overflow:auto"><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('보낸', 'Sent') + '</th><th class="r">' + bt('받은', 'Got') + '</th></tr>' +
+        rows.map(i => { const l = L[i], bxe = inBox ? l.bx.find(z => z.b === V.box) : null, q = bxe ? bxe.q : l.q, rq = bxe ? (l.byItem ? null : bxe.rq) : lineRq(l);
+          const inp = rcv ? '<input data-q="' + i + '" inputmode="numeric" value="' + (rq == null ? '' : rq) + '" placeholder="—" style="width:70px;text-align:right">' + ' <button type="button" class="b-ghost b-sm" data-isb="' + i + '" title="' + esc(bt('문제 적기', 'Report a problem')) + '">⚠️</button>' : cell(rq, q);
+          return '<tr' + (!l.ok ? ' style="background:#fef2f2"' : (rq != null && rq !== q) || l.issue ? ' style="background:#fef3c7"' : '') + '><td>' + name(l) + (!inBox && l.box && l.box.length ? '<div class="muted" style="font-size:11px">📦 ' + esc(l.box.join(' · ')) + '</div>' : '') + '</td><td class="r">' + q.toLocaleString() + ($c && cost.p && cost.p[l.c] != null ? '<div class="muted" style="font-size:11px">' + amtTxt(cost.p[l.c], cost.cur) + '</div>' : '') + '</td><td class="r" style="white-space:nowrap">' + inp + '</td></tr>' + (V.iss === i ? issueForm(i) : ''); }).join('') + '</table></div>';
+    }
     openModal('<h2>🚢 ' + esc(x.no) + '</h2><div class="muted">🏭 ' + esc(x.factory) + ' · ' + esc(md(x.d || '')) + (x.eta ? ' · ' + bt('도착 예정', 'ETA') + ' ' + esc(md(x.eta)) : '') + (x.boxes ? ' · 📦 ' + bt('박스', 'Boxes') + ' ' + x.boxes : '') + (x.trk ? ' · 🚚 ' + esc(x.trk) : '') + ' · ' + esc(x.file || '') + '</div>' +
-      '<div class="kpi" style="grid-template-columns:repeat(3,1fr);margin-top:8px"><div><b>' + sent.toLocaleString() + '</b><span>' + bt('보낸 수량', 'Shipped') + '</span></div><div><b>' + got.toLocaleString() + '</b><span>' + bt('받은 수량', 'Received') + '</span></div><div' + (diff.length ? ' style="background:#fef3c7"' : '') + '><b>' + (left ? left + bt('줄 남음', ' left') : diff.length ? '⚠️ ' + diff.length : '✓') + '</b><span>' + (left ? bt('확인 전', 'to check') : bt('차이', 'Differences')) + '</span></div></div>' +
+      ($c ? '<div class="sumbox" style="margin-top:6px">💰 ' + bt('공장 금액 (관리자만)', 'Factory amount (admin only)') + ': <b>' + amtTxt(cost.amt || 0, cost.cur) + '</b>' + (cost.frt ? ' · ' + bt('운임', 'Freight') + ' ' + amtTxt(cost.frt, cost.cur) : '') + (cost.curGuess ? ' <span class="warn">(' + bt('통화 추정', 'currency estimated') + ')</span>' : '') + ' <span class="seg" style="display:inline-flex;vertical-align:middle">' + [['USD', '$'], ['CNY', '¥']].map(c => '<button type="button" class="' + (cost.cur === c[0] ? 'on' : '') + '" data-ccur="' + c[0] + '">' + c[1] + '</button>').join('') + '</span></div>' : '') +
+      '<div class="kpi" style="grid-template-columns:repeat(3,1fr);margin-top:8px"><div><b>' + sent.toLocaleString() + '</b><span>' + bt('보낸 수량', 'Shipped') + '</span></div><div><b>' + got.toLocaleString() + '</b><span>' + bt('받은 수량', 'Received') + '</span></div><div' + (diff.length ? ' style="background:#fef3c7"' : '') + '><b>' + (left ? left + bt('줄 남음', ' left') : diff.length ? '⚠️ ' + diff.length : '✓') + '</b><span>' + (left ? bt('확인 전', 'to check') : bt('차이 · 문제', 'Differences · issues')) + '</span></div></div>' +
       (done ? '<div class="alert a-grn">✅ ' + bt('입고 완료', 'Received') + ' — ' + esc(String(x.recvBy || '').split('@')[0]) + ' ' + esc(String(x.recvAt || '').substring(0, 16).replace('T', ' ')) + '</div>' : '') +
-      (rcv ? '<div class="btns" style="justify-content:flex-start;margin:6px 0"><button class="b-ghost b-sm" id="ibAll">✅ ' + bt('남은 줄 모두 맞음', 'All remaining correct') + '</button></div>' : '') +
-      '<div style="max-height:46vh;overflow:auto"><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('보낸', 'Sent') + '</th><th class="r">' + bt('받은', 'Got') + '</th></tr>' +
-        L.map((l, i) => '<tr' + (!l.ok ? ' style="background:#fef2f2"' : l.rq != null && l.rq !== l.q ? ' style="background:#fef3c7"' : '') + '><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || (l.ok ? '' : bt('목록에 없는 코드', 'not in catalog'))) + (l.sec ? ' · ' + esc(l.sec) : '') + (l.box && l.box.length ? ' · 📦 ' + esc(l.box.join(' · ')) : '') + '</div></td><td class="r">' + l.q.toLocaleString() + '</td><td class="r">' +
-          (rcv ? '<input data-ibq="' + i + '" inputmode="numeric" value="' + (l.rq == null ? '' : l.rq) + '" placeholder="—" style="width:76px;text-align:right">' : (l.rq == null ? '—' : l.rq.toLocaleString() + (l.rq !== l.q ? ' <b class="warn">(' + (l.rq - l.q > 0 ? '+' : '') + (l.rq - l.q) + ')</b>' : ''))) + '</td></tr>').join('') + '</table></div>' +
+      (boxes.length ? '<div class="seg" style="margin-top:6px"><button type="button" class="' + (V.view === 'box' ? 'on' : '') + '" data-ibv="box">📦 ' + bt('박스별', 'By box') + '</button><button type="button" class="' + (V.view === 'item' ? 'on' : '') + '" data-ibv="item">📋 ' + bt('아이템별', 'By item') + '</button></div>' : '') +
+      body +
       '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="ibX">' + bt('닫기', 'Close') + '</button>' + (canAdd() && !done ? '<button class="b-ghost" id="ibDel" style="color:#991b1b">🗑 ' + bt('지우기', 'Delete') + '</button>' : '') +
         (rcv ? '<button class="b-ghost" id="ibSave">💾 ' + bt('중간 저장', 'Save progress') + '</button><button class="b-green" id="ibOk"' + (left ? ' disabled' : '') + '>📥 ' + bt('입고 확정 — 재고에 더하기', 'Confirm — add to stock') + '</button>' : '') + '</div>');
-    document.querySelectorAll('[data-ibq]').forEach(inp => inp.onchange = () => { const v = S_(inp.value); L[+inp.dataset.ibq].rq = v === '' ? null : Math.max(0, Math.round(num(v))); paintM(); });
+    /* 묶기 */
+    document.querySelectorAll('[data-ccur]').forEach(b => b.onclick = async () => { try { await S.DB.update('inboundCost', x.id, { cur: b.dataset.ccur, curGuess: false }); cost.cur = b.dataset.ccur; cost.curGuess = false; paintM(); } catch (e) { toast(e.code || e.message, 'bad'); } });   // 💱 관리자: 통화 고치기
+    document.querySelectorAll('[data-ibv]').forEach(b => b.onclick = () => { V.view = b.dataset.ibv; V.box = ''; V.iss = -1; V.add = false; paintM(); });
+    document.querySelectorAll('[data-box]').forEach(el => el.onclick = () => { V.box = el.dataset.box; V.iss = -1; V.add = false; paintM(); });
+    if ($('bxBack')) $('bxBack').onclick = () => { V.box = ''; V.iss = -1; V.add = false; paintM(); };
+    if ($('bxAll')) $('bxAll').onclick = () => { L.forEach(l => { if (V.box === '__nobox') { if (!(l.bx && l.bx.length) && l.rq == null) l.rq = l.q; return; } const e = (l.bx || []).find(z => z.b === V.box); if (e && e.rq == null) { e.rq = e.q; l.byItem = false; } }); paintM(); };
+    if ($('ibAll')) $('ibAll').onclick = () => { L.forEach(l => { if (lineRq(l) != null) return; if (l.bx && l.bx.length && !l.byItem) l.bx.forEach(z => { if (z.rq == null) z.rq = z.q; }); else l.rq = l.q; }); paintM(); };
+    document.querySelectorAll('[data-q]').forEach(inp => inp.onchange = () => {
+      const l = L[+inp.dataset.q], v = S_(inp.value), n = v === '' ? null : Math.max(0, Math.round(num(v)));
+      if (V.view === 'box' && V.box && V.box !== '__nobox') { const e = l.bx.find(z => z.b === V.box); if (l.byItem) { l.byItem = false; l.rq = null; } e.rq = n; }
+      else if (l.bx && l.bx.length) { l.byItem = n != null; l.rq = n; }   // 아이템별로 직접 — 그 아이템의 박스별 확인 대신
+      else l.rq = n;
+      paintM();
+    });
+    document.querySelectorAll('[data-isb]').forEach(b => b.onclick = () => { V.iss = V.iss === +b.dataset.isb ? -1 : +b.dataset.isb; paintM(); });
+    if (V.iss >= 0) {
+      let k = (L[V.iss].issue && L[V.iss].issue.k) || '';
+      document.querySelectorAll('[data-iss]').forEach(b => b.onclick = () => { k = b.dataset.iss; document.querySelectorAll('[data-iss]').forEach(z => z.classList.toggle('on', z === b)); });
+      $('issOk').onclick = () => { if (!k) return toast(bt('무슨 문제인지 고르세요', 'Pick the kind of problem'), 'bad'); L[V.iss].issue = { k, note: $('issNote').value.trim(), box: V.view === 'box' ? V.box : '', by: (S.user && S.user.email) || '' }; V.iss = -1; paintM(); };
+      $('issClr').onclick = () => { delete L[V.iss].issue; V.iss = -1; paintM(); };
+    }
+    if ($('bxAdd')) $('bxAdd').onclick = () => { V.add = !V.add; paintM(); };
+    if ($('adGo')) $('adGo').onclick = () => {
+      const raw = $('adC').value.trim(), q = Math.max(0, Math.round(num($('adQ').value))); if (!raw || !q) return toast(bt('코드와 수량을 넣으세요', 'Enter code and qty'), 'bad');
+      const it = exactItem(raw), c = it ? it.c : raw.toUpperCase(), b = V.view === 'box' && V.box && V.box !== '__nobox' ? V.box : '';
+      L.push({ c, raw, d: it ? it.d : '', q: 0, sec: '', ok: !!it, extra: true, rq: b ? null : q, box: b ? [b] : [], bx: b ? [{ b, q: 0, rq: q }] : [] });
+      V.add = false; paintM();
+    };
     $('ibX').onclick = closeModal;
-    if ($('ibAll')) $('ibAll').onclick = () => { L.forEach(l => { if (l.rq == null) l.rq = l.q; }); paintM(); };
-    if ($('ibSave')) $('ibSave').onclick = async () => { busy(true); try { await S.DB.update('inbound', x.id, { lines: L, st: 'checking', chkAt: new Date().toISOString(), chkBy: S.user.email }); Object.assign(x, { lines: L, st: 'checking' }); toast('💾 ' + bt('저장 — 확인 중', 'Saved — checking')); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
+    if ($('ibSave')) $('ibSave').onclick = async () => { busy(true); try { await S.DB.update('inbound', x.id, { lines: L, st: 'checking', chkAt: new Date().toISOString(), chkBy: S.user.email }); x.lines = JSON.parse(JSON.stringify(L)); x.st = 'checking'; toast('💾 ' + bt('저장 — 확인 중', 'Saved — checking')); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
     if ($('ibDel')) $('ibDel').onclick = async () => { if (!(await confirmBox(x.no + ' ' + bt('입고 예정을 지울까요? (재고는 그대로)', '— delete this inbound? (stock unchanged)'), bt('지우기', 'Delete')))) return; busy(true); try { await S.DB.update('inbound', x.id, { st: 'x', delAt: new Date().toISOString(), delBy: S.user.email }); closeModal(); paint(box); } catch (e) { toast(e.code || e.message, 'bad'); } busy(false); };
     if ($('ibOk')) $('ibOk').onclick = async () => {
-      const got2 = L.filter(l => l.rq > 0), diff2 = L.filter(l => l.rq !== l.q);
-      if (!(await confirmBox('📥 ' + x.no + '\n' + got2.length + bt('종 · ', ' items · ') + got2.reduce((a, l) => a + l.rq, 0).toLocaleString() + bt('개를 재고에 더할까요?', ' pcs — add to stock?') + (diff2.length ? '\n⚠️ ' + bt('보낸 수량과 다른 줄', 'Lines that differ') + ' ' + diff2.length : ''), bt('입고 확정', 'Confirm')))) return;
+      L.forEach(l => { l.rq = lineRq(l); });
+      const got2 = L.filter(l => l.rq > 0), diff2 = L.filter(l => l.rq !== l.q || l.issue);
+      if (!(await confirmBox('📥 ' + x.no + '\n' + got2.length + bt('종 · ', ' items · ') + got2.reduce((a, l) => a + l.rq, 0).toLocaleString() + bt('개를 재고에 더할까요?', ' pcs — add to stock?') + (diff2.length ? '\n⚠️ ' + bt('차이 · 문제', 'Differences · issues') + ' ' + diff2.length : ''), bt('입고 확정', 'Confirm')))) return paintM();
       busy(true);
       try {
         const rid = newId('R'), now = new Date().toISOString(), d = today();
-        await S.DB.set('receipts', rid, { id: rid, d, from: x.factory, fromCode: x.fromCode || '', file: x.file || '', inbound: x.id, invNo: x.no, n: got2.length, qty: got2.reduce((a, l) => a + l.rq, 0), lines: got2.map(l => ({ c: l.c, q: l.rq, d: l.d || '' })), note: diff2.length ? bt('차이', 'Diff') + ' ' + diff2.map(l => l.c + ' ' + l.q + '→' + l.rq).join(', ') : '', by: S.user.email, at: now });
+        const diffL = diff2.map(l => ({ c: l.c, q: l.q, rq: l.rq, extra: !!l.extra, issue: l.issue ? issueLabel(l.issue.k) + (l.issue.note ? ' · ' + l.issue.note : '') : '' }));
+        await S.DB.set('receipts', rid, { id: rid, d, from: x.factory, fromCode: x.fromCode || '', file: x.file || '', inbound: x.id, invNo: x.no, n: got2.length, qty: got2.reduce((a, l) => a + l.rq, 0), lines: got2.map(l => ({ c: l.c, q: l.rq, d: l.d || '' })), note: diffL.length ? bt('차이 · 문제', 'Diff · issues') + ': ' + diffL.map(z => z.c + ' ' + z.q + '→' + z.rq + (z.issue ? ' (' + z.issue + ')' : '')).join(', ') : '', by: S.user.email, at: now });
         await Stock.applyMoves(got2.map(l => ({ c: l.c, delta: l.rq })), 'recv', rid, '🚢 ' + x.factory + ' · ' + x.no);
-        const diffL = diff2.map(l => ({ c: l.c, q: l.q, rq: l.rq }));
         await S.DB.update('inbound', x.id, { lines: L, st: 'done', recvAt: now, recvBy: S.user.email, receiptId: rid, diff: diffL });
-        if (diffL.length) { try { const N = await import('./notify.js'); await N.queue({ kind: 'inboundDiff', pushOnly: true, toStaff: true, subject: '[THE ONE] ⚠️ ' + bt('입고 수량 차이', 'Receiving differences') + ' — ' + x.factory, text: '⚠️ ' + x.factory + ' · ' + x.no + '\n' + diffL.map(l => l.c + ' ' + bt('보냄', 'sent') + ' ' + l.q + ' → ' + bt('받음', 'got') + ' ' + l.rq).join('\n'), url: N.appUrl('stock/inb') }); } catch (e) {} }
+        if (diffL.length) { try { const N = await import('./notify.js'); await N.queue({ kind: 'inboundDiff', pushOnly: true, toStaff: true, subject: '[THE ONE] ⚠️ ' + bt('입고 수량 차이', 'Receiving differences') + ' — ' + x.factory, text: '⚠️ ' + x.factory + ' · ' + x.no + '\n' + diffL.map(z => z.c + ' ' + bt('보냄', 'sent') + ' ' + z.q + ' → ' + bt('받음', 'got') + ' ' + z.rq + (z.extra ? ' (' + bt('인보이스에 없음', 'not on invoice') + ')' : '') + (z.issue ? ' — ' + z.issue : '')).join('\n'), url: N.appUrl('stock/inb') }); } catch (e) {} }
         closeModal(); toast('📥 ' + x.no + ' — ' + bt('재고에 더했습니다', 'added to stock') + (diffL.length ? ' · ⚠️ ' + diffL.length : ''), 'good'); paint(box);
       } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
       busy(false);
