@@ -23,7 +23,7 @@ const fmtTz = (d, tz, f) => { const p = Object.fromEntries(new Intl.DateTimeForm
       PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) },
       GmailApp: { search: () => msgs.length ? [{ getMessages: () => msgs, addLabel: () => labeled.push(1) }] : [], getUserLabelByName: () => ({}), createUserLabel: () => ({}) } };
     vm.createContext(ctx); vm.runInContext(gs + '\n' + code, ctx);
-    ctx.inboundCatalog_ = () => CAT; ctx.inboundAoa_ = att => att.aoa; ctx.today_ = () => '2026-11-11';
+    ctx.inboundCatalog_ = () => CAT; ctx.inboundAoa_ = att => att.aoa; ctx.inboundBook_ = att => [{ name: 'Sheet1', rows: att.aoa }]; ctx.today_ = () => '2026-11-11'; ctx.listAll_ = () => []; ctx.MailApp = { sendEmail: () => {} }; ctx.inboundSaveFile_ = () => '';
     ctx.query_ = (col, f, v) => Object.entries(store[col] || {}).map(([id, d]) => Object.assign({ _id: id }, d)).filter(d => String(d[f]) === String(v));
     ctx.patch_ = (col, id, d) => { store[col] = store[col] || {}; store[col][id] = Object.assign({}, store[col][id] || {}, d); };
     const n = ctx.inboundMailRun_(); return { n, store, labeled: labeled.length };

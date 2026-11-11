@@ -75,3 +75,30 @@ export function matchFactory(name, facs) {
   const strong = Array.from(a).some(x => x !== 'QUINGDAO' && x !== 'QINGDAO' && x !== 'ZHEJIANG' && W(best.name + ' ' + best.code).has(x));
   return strong ? best : null;
 }
+/** 📨 공장이 보낸 명세서(Statement · Account) ↔ 경영 → 🏭 공장 장부 대조 (v0.8.184 관리자: "Status 나 Account 같은 파일도 경영 자료와 비교")
+ *   P = parseFactoryStatement(...) · app = { inv: [{ d, amt, type }], pay: [{ d, amt }] } (그 공장의 factoryInvoices · factoryPayments)
+ *   · 잔액: 파일 마지막 탭의 BALANCE (없으면 파일 줄로 계산) ↔ 앱 잔액 (파일 마지막 날짜까지 · 지금)
+ *   · 줄: 파일이 덮는 기간(첫 날짜 ~ 마지막 날짜, 이월 줄 빼고) 안에서 날짜 + 금액이 같은 줄끼리 짝 → 남는 줄 = 한쪽에만 있음
+ *         금액은 같은데 날짜만 10일 안으로 다르면 "날짜 다름"으로 따로 */
+export function compareStatement(P, app) {
+  const inv = (P && P.inv) || [], pay = (P && P.pay) || [], A = app || {};
+  const aInv = (A.inv || []).filter(x => x && x.d), aPay = (A.pay || []).filter(x => x && x.d);
+  const last = (P && P.sheets && P.sheets[P.sheets.length - 1]) || { hdr: {} };
+  const dates = inv.filter(x => x.type !== '이월').concat(pay).map(x => x.d).filter(Boolean).sort();
+  const from = dates[0] || '', to = dates[dates.length - 1] || '';
+  const sumA = L => R2(L.reduce((a, x) => a + (Number(x.amt) || 0), 0));
+  const fileBal = last.hdr && last.hdr.balance != null ? R2(last.hdr.balance) : R2(sumA(inv) - sumA(pay));
+  const appBal = R2(sumA(aInv) - sumA(aPay)), appBalAt = to ? R2(sumA(aInv.filter(x => x.d <= to)) - sumA(aPay.filter(x => x.d <= to))) : appBal;
+  const inR = x => from && x.d >= from && x.d <= to;
+  const days = (a, b) => Math.abs((new Date(a + 'T12:00:00Z') - new Date(b + 'T12:00:00Z')) / 86400000);
+  const pair = (F, Ap) => {
+    const f = F.map(x => ({ d: x.d, amt: R2(x.amt), note: x.note || '' })), a = Ap.map(x => ({ d: x.d, amt: R2(x.amt), id: x.id || '', note: x.note || '' })), used = new Set(), left = [], moved = [];
+    f.forEach(x => { const i = a.findIndex((y, k) => !used.has(k) && y.d === x.d && Math.abs(y.amt - x.amt) < 0.011); if (i >= 0) used.add(i); else left.push(x); });
+    const onlyFile = []; left.forEach(x => { const i = a.findIndex((y, k) => !used.has(k) && Math.abs(y.amt - x.amt) < 0.011 && days(y.d, x.d) <= 10); if (i >= 0) { used.add(i); moved.push({ amt: x.amt, fileD: x.d, appD: a[i].d }); } else onlyFile.push(x); });
+    return { onlyFile, onlyApp: a.filter((y, k) => !used.has(k)), moved };
+  };
+  const I = pair(inv.filter(x => x.type !== '이월'), aInv.filter(x => x.type !== '이월' && inR(x))), Pm = pair(pay, aPay.filter(inR));
+  const diff = R2(fileBal - appBalAt);
+  return { from, to, fileBal, fileHdr: last.hdr || {}, appBal, appBalAt, diff, fileInv: sumA(inv.filter(x => x.type !== '이월')), filePay: sumA(pay),
+    inv: I, pay: Pm, ok: Math.abs(diff) < 0.011 && !I.onlyFile.length && !I.onlyApp.length && !Pm.onlyFile.length && !Pm.onlyApp.length };
+}
