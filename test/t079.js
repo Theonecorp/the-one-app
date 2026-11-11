@@ -12,8 +12,8 @@ const path = require('path');
   const txt = async (pg, q) => ((await pg.textContent(q).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   /* 세일즈맨 */
   let pg = await mk('brandon@x.com');
-  if (!(await pg.$('[data-hg="credit/new"]'))) errs.push('salesman home should have a credit tile');
-  await pg.click('[data-hg="credit/new"]'); await pg.waitForSelector('#crStore', { timeout: 8000 });
+  if (!(await pg.$('[data-hg="order/credit"]'))) errs.push('salesman home should have a credit tile');   /* v0.8.187: 세일즈맨 홈의 ↩ 은 주문처럼 담는 크레딧(t193) — 바로 발행하는 이 화면은 주소로 */
+  await pg.evaluate(() => { location.hash = '#/credit/new'; }); await pg.waitForSelector('#crStore', { timeout: 8000 });
   if (!(await pg.evaluate(() => document.getElementById('crGo').disabled))) errs.push('confirm disabled until filled');
   await pg.fill('#crStore', 'ali'); await pg.waitForSelector('#crHits [data-a="1111"]'); await pg.click('#crHits [data-a="1111"]'); await pg.waitForTimeout(800);
   const acc = await txt(pg, '#crAcc'); log('acc:', acc); if (!/A 10%/.test(acc) || !/최근 인보이스 1/.test(acc)) errs.push('store discount and recent invoices should show');

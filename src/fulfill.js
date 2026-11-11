@@ -618,6 +618,7 @@ export async function assignOpts() {
 }
 /** 주문들을 픽킹 직원에게 할당 (접수 → 픽킹 중) — 팝업에서 사람을 고름. 창고 직원(pick1~4)이 먼저 · 지금 맡은 건수 표시. 픽킹 인보이스 인쇄는 선택 */
 export async function assignPicker(orders, done) {
+  const crs = orders.filter(o => o.kind === 'credit'); if (crs.length) { orders = orders.filter(o => o.kind !== 'credit'); toast('↩ ' + bt('크레딧', 'Credit') + ' ' + crs.length + bt('건은 픽킹이 없습니다 — 열어서 크레딧 확정', ' are credits — open them to confirm'), orders.length ? '' : 'bad'); if (!orders.length) return; }   // v0.8.187
   const noCf = orders.filter(o => !o.cfOk);   // 순서: 세일즈맨 확인 → 픽킹 배정
   if (noCf.length && !(await confirmBox('❓ ' + noCf.length + bt('건은 아직 세일즈맨 확인 전입니다. 그래도 픽킹에 배정할까요?', ' orders are not confirmed by the salesman yet. Assign anyway?'), bt('그래도 배정', 'Assign anyway')))) return;
   const opts = await assignOpts(), me = S.user.email;
