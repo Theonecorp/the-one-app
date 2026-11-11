@@ -47,7 +47,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.183';
+export const VER = 'v0.8.184';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -444,6 +444,7 @@ async function afterLogin(user) {
   paintNav();
   setTimeout(() => { Notify.start(); Msg.start(); }, snap ? 1500 : 0);
   setTimeout(() => { Notify.autoOn(); }, 4000);
+  loadWatch();   /* ⏳ 15초 넘게 도는 "읽는 중" → 다시 연결 · 🔄 다시 시도 (v0.8.184) */
   Offline.autoStart();   /* 📦 세일즈맨: 인터넷이 되면 앱을 열 때마다 · 다시 연결될 때 · 돌아올 때 오프라인 자료를 자동 준비 (v0.8.181) */   /* 🔔 알림 항상 켜짐 — 허락됐으면 기기 등록, 아직이면 처음 누를 때 물어봄 (v0.8.179) */   // 📱💻 알림을 허락한 기기면 하루 한 번 등록 확인 (앱을 닫아도 팝업)   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
   const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) goHash('#/' + navFor(S.role)[0][0]);
@@ -505,3 +506,24 @@ async function boot() {
   });
 }
 boot();
+
+/* ⏳ 멈춘 "읽는 중" 지킴이 (v0.8.184 — 입고 예정 · 주문 화면이 1분 넘게 안 열리던 일)
+ *   화면의 .load 가 10초 넘게 그대로면 Firestore 연결을 다시 붙이고(DB.kick), 15초 넘으면 그 자리에 "🔄 다시 시도"(앱 새로 고침) 단추 */
+let LW = null;
+function loadWatch() {
+  if (LW) return; const seen = new WeakMap();
+  LW = setInterval(() => {
+    document.querySelectorAll('.load').forEach(el => {
+      if (!el.isConnected || el.offsetParent === null) return;
+      const t0 = seen.get(el); if (!t0) { seen.set(el, Date.now()); return; }
+      const ms = Date.now() - t0;
+      if (ms > 10000 && !el.dataset.kicked) { el.dataset.kicked = '1'; try { S.DB && S.DB.kick && S.DB.kick('spinner'); } catch (e) {} }
+      if (ms > 15000 && !el.querySelector('.lwRetry')) {
+        const d = document.createElement('div'); d.className = 'lwRetry'; d.style.cssText = 'font-size:12.5px;font-weight:500';
+        d.innerHTML = bt('인터넷이 느리거나 연결이 멈췄습니다', 'The connection is slow or stuck') + '<br><button class="b-blue b-sm" style="margin-top:8px">🔄 ' + bt('다시 시도', 'Try again') + '</button>';
+        d.querySelector('button').onclick = () => { try { location.reload(); } catch (e) {} };
+        el.appendChild(d);
+      }
+    });
+  }, 2500);
+}

@@ -91,3 +91,30 @@ export function dateOf(v, year) {
   m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0');
   return '';
 }
+/* ---------- 📎 메일 첨부가 무엇인지 (v0.8.184 관리자: "inbound 에 다른 엑셀 · 전체 밸런스 같은 파일이 와도 구별") ----------
+ *   읽는 곳: 엑셀 파일 이름 + 각 시트 이름 + 시트 맨 위 6줄(제목) · 메일 제목.  돌려주는 값: { kind, why }
+ *   kind: 'invoice'  — 아이템 코드 · 수량이 읽히고 명세서 · 진행표 표시가 없음 (패킹리스트도 여기 — 같은 메일의 인보이스와 합침)
+ *         'statement' — 공장 장부(Date · PAID DATE · DEPOSIT MONEY · ACCOUNT · 결재내역서 모양) 이거나 对账单 · BALANCE · STATEMENT · ACCOUNT 같은 제목
+ *         'status'    — 생산 · 주문 진행표 (STATUS · 进度 · 生产 · ORDER LIST) — 송금 · 잔액이 있으면 장부와 대조
+ *         'other'     — 그 밖 (읽을 수 없음) */
+export const STMT_RE = /对账|對賬|对帐|對帳|余额|餘額|欠款|往来|往來|应付|應付|STATEMENT|BALANCE|ACCOUNT|\bSOA\b|LEDGER|잔액|명세/i;
+export const STATUS_RE = /STATUS|进度|進度|生产|生產|PRODUCTION|ORDER\s*LIST|PROGRESS|订单|訂單|생산|진행/i;
+/* 시트 제목은 订单 · ORDER 를 빼고 봄 — 중국 인보이스 머리에 흔한 "订单号 · PO" 때문에 진행표로 잘못 보지 않게 (파일 이름은 STATUS_RE 전부) */
+export const STATUS_TITLE_RE = /STATUS|进度|進度|生产计划|生產計劃|PRODUCTION\s*(PLAN|SCHEDULE|STATUS)|PROGRESS|생산|진행/i;
+export const INV_RE = /INVOICE|发票|發票|PACKING|装箱|裝箱|인보이스|패킹/i;
+export const PACK_RE = /PACKING|装箱|裝箱|패킹/i;
+export function classifyFile(o) {
+  const name = S_(o.name), sheets = o.sheets || [], inv = o.inv || { err: 'nocode' };
+  const title = name + ' ' + sheets.slice(0, 4).map(s => S_(s.name) + ' ' + (s.rows || []).slice(0, 6).map(r => (r || []).map(S_).join(' ')).join(' ')).join(' ');
+  if (o.ledger) return STATUS_RE.test(name) || STATUS_TITLE_RE.test(title) ? { kind: 'status', why: '진행표 + 송금 · 잔액 (장부와 대조)' } : { kind: 'statement', why: '공장 장부 (인보이스 · 송금 · 잔액)' };
+  const invOk = !inv.err && inv.lines && inv.lines.length;
+  if (invOk && INV_RE.test(title) && !STMT_RE.test(name)) return { kind: 'invoice', why: '아이템 코드 · 수량 + 인보이스/패킹 제목' };
+  if (STMT_RE.test(name) || (!invOk && (STMT_RE.test(title) || /^\s*(STATEMENT|ACCOUNT|BALANCE|对账)/i.test(S_(o.subject))))) return { kind: 'statement', why: '파일 이름 · 제목에 명세서 · 잔액 표시 (' + ((name + ' ' + title).match(STMT_RE) || [''])[0] + ')' };
+  if (STATUS_RE.test(name) || STATUS_TITLE_RE.test(title)) return { kind: 'status', why: '파일 이름 · 제목에 진행표 표시 (' + (name.match(STATUS_RE) || title.match(STATUS_TITLE_RE) || [''])[0] + ')' };
+  if (invOk) return { kind: 'invoice', why: '아이템 코드 · 수량' };
+  return { kind: 'other', why: inv.err === 'nocode' ? '아이템 코드 칸 없음' : '수량 있는 줄 없음' };
+}
+/** 같은 출고인지 — 코드:수량 묶음 (인보이스 + 패킹리스트가 한 메일에 같이 올 때) */
+export function invSig(lines) { return (lines || []).map(l => l.c + ':' + l.q).sort().join('|'); }
+/** 인보이스인지 확실하지 않음 — 인보이스 번호 · 단가가 없고 메일 제목 · 파일 이름에도 INVOICE 가 없으면 바로 등록하지 않고 🔎 확인 대기 */
+export function unsureInvoice(R, body, subject, name) { const priced = (R.lines || []).some(l => (l.p || 0) > 0); return !R.no && !(body && body.no) && !priced && !INV_RE.test(S_(subject)) && !INV_RE.test(S_(name)); }

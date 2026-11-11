@@ -1,0 +1,50 @@
+# 🪞 GitLab 거울 — GitHub 에 무엇이 올라가든(브랜치 · main 머지 · 태그) 같은 모양으로 GitLab 에도 (2026-11-11 관리자: "GitLab 은 항상 거울처럼")
+#   GitHub 이 다시 막혀도(2026-11 계정 정지) 코드가 밖에 그대로 남게. 거울: https://gitlab.com/theonecorp-group/the-one-app
+#   · GitHub 이 원본 — GitLab 쪽은 덮어씀(--force). GitHub 에서 지운 브랜치 · 태그는 GitLab 에서도 지움
+#   · 필요한 것: GitHub 저장소 Settings → Secrets and variables → Actions → 비밀값 GITLAB_TOKEN (write_repository 권한)
+#              GitLab Settings → Repository → Protected branches → main 의 "Allowed to force push" 켜기
+#   · 비밀값이 없으면 경고만 남기고 초록으로 끝남 (거울 때문에 PR · 커밋이 빨갛게 되지 않게)
+#   · GitHub 이 막혔을 때는 거꾸로 sh tools/mirror.sh 로 GitLab 에 직접 (CLAUDE.md "GitHub 이 막혔을 때")
+name: mirror
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  delete:
+  workflow_dispatch:   # 손으로 전체 다시 맞추기 (Actions › mirror › Run workflow)
+concurrency:
+  group: gitlab-mirror
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  gitlab:
+    name: mirror to GitLab
+    runs-on: ubuntu-latest
+    env:
+      GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+      GITLAB_REPO: gitlab.com/theonecorp-group/the-one-app.git
+    steps:
+      - name: token check
+        id: tok
+        run: |
+          if [ -z "$GITLAB_TOKEN" ]; then echo "::warning::GITLAB_TOKEN 비밀값이 없어 GitLab 거울을 건너뜁니다 (Settings → Secrets and variables → Actions)"; echo "ok=0" >> "$GITHUB_OUTPUT"; else echo "ok=1" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.tok.outputs.ok == '1' && github.event_name != 'delete'
+        with:
+          fetch-depth: 0          # 얕은 복사는 GitLab 이 받지 않음 (shallow update not allowed)
+      - name: push branches · tags (force — GitHub 이 원본)
+        if: steps.tok.outputs.ok == '1' && github.event_name != 'delete'
+        run: |
+          git fetch -q --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+          REFS=$(git for-each-ref --format='+%(refname):refs/heads/%(refname:lstrip=3)' refs/remotes/origin | grep -v ':refs/heads/HEAD$')
+          git push --force "https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}" $REFS
+          git push --force "https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}" --tags
+      - name: delete the same branch · tag on GitLab
+        if: steps.tok.outputs.ok == '1' && github.event_name == 'delete'
+        env:
+          KIND: ${{ github.event.ref_type }}
+          NAME: ${{ github.event.ref }}   # 브랜치 이름을 셸에 바로 끼우지 않음 (이름에 $( ) 가 들어가도 명령이 되지 않게)
+        run: |
+          [ "$KIND" = tag ] && REF="refs/tags/$NAME" || REF="refs/heads/$NAME"
+          git init -q m && cd m && git push "https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}" --delete "$REF" || echo "::notice::GitLab 에 $REF 가 이미 없음"

@@ -110,10 +110,19 @@ async function makeFirestoreDB() {
   /* 🐢 느린 연결 — 서버 읽기가 SLOW_MS 안에 안 오면(LTE 가 끊길락 말락 할 때 Firestore 는 오프라인 판정 전까지 몇 십 초씩 기다림) 폰에 저장된 것(persistentLocalCache)을 먼저 돌려줌.
    *   캐시에 없으면 그대로 서버를 기다림. 1분에 한 번 'theone:slow' 로 알림 (main.js 가 토스트) */
   const SLOW_MS = 8000; let slowAt = 0;
+  /* 🔌 멈춘 연결 다시 붙이기 (v0.8.184 — 폰에서 앱을 백그라운드에 두었다가 다시 열면 Firestore 연결이 죽은 채 남아 읽기가 1분 넘게 안 끝나던 일)
+   *   읽기가 KICK_MS 안에 안 오거나 · 1분 넘게 숨겨 두었다가 다시 볼 때 · 인터넷이 다시 연결될 때 → 네트워크를 껐다 켬 (30초에 한 번까지). 쓰기 대기열은 그대로 다시 올라감 */
+  const KICK_MS = 12000; let kickAt = 0, hiddenAt = 0;
+  const kick = why => { const now = Date.now(); if (now - kickAt < 30000) return; kickAt = now; try { console.info('🔌 Firestore 다시 연결 —', why); } catch (e) {} fs.disableNetwork(db).then(() => fs.enableNetwork(db)).catch(() => { fs.enableNetwork(db).catch(() => {}); }); };
+  try {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt > 60000) { hiddenAt = 0; kick('resume'); } });
+    window.addEventListener('online', () => kick('online'));
+  } catch (e) {}
   const slowNote = () => { const now = Date.now(); if (now - slowAt > 60000) { slowAt = now; try { window.dispatchEvent(new CustomEvent('theone:slow')); } catch (e) {} } };
-  const raceCache = (serverP, cacheFn) => new Promise((res, rej) => { let done = false; const t = setTimeout(async () => { if (done) return; try { const r = await cacheFn(); if (r != null && !done) { done = true; DB.cacheAt = Date.now(); slowNote(); res(r); } } catch (e) {} }, SLOW_MS); serverP.then(v => { if (!done) { done = true; clearTimeout(t); res(v); } }, e => { if (!done) { done = true; clearTimeout(t); rej(e); } }); });
+  const raceCache = (serverP, cacheFn) => new Promise((res, rej) => { let done = false; const tk = setTimeout(() => { if (!done) kick('slow read'); }, KICK_MS); serverP.then(() => clearTimeout(tk), () => clearTimeout(tk)); const t = setTimeout(async () => { if (done) return; try { const r = await cacheFn(); if (r != null && !done) { done = true; DB.cacheAt = Date.now(); slowNote(); res(r); } } catch (e) {} }, SLOW_MS); serverP.then(v => { if (!done) { done = true; clearTimeout(t); res(v); } }, e => { if (!done) { done = true; clearTimeout(t); rej(e); } }); });
   const DB = {
     kind: 'firestore',
+    kick: why => kick(why || 'manual'),
     async get(c, id) { const ref = fs.doc(db, c, id); const s = await raceCache(fs.getDoc(ref), async () => { const x = await fs.getDocFromCache(ref); return x.exists() ? x : null; }); return s.exists() ? Object.assign({ id: s.id }, s.data()) : null; },
     async list(c, q) {
       q = q || {};
