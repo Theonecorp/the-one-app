@@ -91,7 +91,7 @@ nav button.on{color:var(--blue)}
 .ipitems,.ippays{border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:22vh}.ipw:not(.wide) .ippays{max-height:34vh}.ipw.wide .ippays{max-height:24vh}.ipw.wide .ipitems{max-height:22vh;min-height:120px}
 .iphd{padding:6px 10px;background:#f8fafc;border-bottom:1px solid var(--line);font-size:13px;position:sticky;top:0;z-index:1}
 .iptbl{width:100%;border-collapse:collapse;font-size:12.5px}.iptbl th{position:sticky;top:0;background:#eef2f7;color:#334155;font-weight:800;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;z-index:1}.ippays .iptbl th,.ipitems .iptbl th{top:31px}.iptbl td{padding:6px 8px;border-bottom:1px solid #eef2f7;vertical-align:top}.iptbl .r{text-align:right;white-space:nowrap}
-.iptbl tr.tap:hover td{background:#f1f5f9}.iptbl tr.on td{background:#dbeafe}.iptbl tr.late td{background:#fef2f2}.iptbl tr.on.late td{background:#fbcfe8}.iptbl td.warn{color:#b91c1c;font-weight:800}.iptbl td.ok{color:#15803d;font-weight:800}.ipmemo{color:#475569;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ipsub td{background:#f8fafc;padding:4px 6px 8px}.ipm2{display:none}.ipsub .iptbl{font-size:12px}
+.iptbl .ipdep{display:block;color:#0f766e;font-size:11px;font-weight:700;white-space:nowrap}.iptbl tr.tap:hover td{background:#f1f5f9}.iptbl tr.on td{background:#dbeafe}.iptbl tr.late td{background:#fef2f2}.iptbl tr.on.late td{background:#fbcfe8}.iptbl td.warn{color:#b91c1c;font-weight:800}.iptbl td.ok{color:#15803d;font-weight:800}.ipmemo{color:#475569;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ipsub td{background:#f8fafc;padding:4px 6px 8px}.ipm2{display:none}.ipsub .iptbl{font-size:12px}
 @media (max-width:640px){.ipinv th:nth-child(5),.ipinv td.ipmemo{display:none}.ipm2{display:block;color:#64748b;font-size:11px;font-weight:600;white-space:normal}.iptbl{font-size:12px}.iptbl td,.iptbl th{padding:5px 6px}}
 #modal .xin{display:none!important}   /* 창 안의 옛 ✕ — 모서리 ✕ 가 있으니 숨김 */
 #modal .mclose{position:absolute;top:-16px;right:10px;width:38px;height:38px;border-radius:50%;background:#fff;color:#0f172a;border:1.5px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.22);font-size:17px;font-weight:800;z-index:3;display:flex;align-items:center;justify-content:center}
@@ -133,6 +133,8 @@ body.kb nav#nav,body.kb .sticky,body.kb .bulkbar{display:none!important}body.kb{
 .dt{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
 .dt th{position:sticky;top:0;background:#f8fafc;color:#475569;font-size:11.5px;font-weight:700;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;z-index:1;user-select:none}
 .dt th[data-dts]{cursor:pointer}.dt th[data-dts]:hover{color:var(--navy)}.dt th.sa::after{content:' ▲';font-size:9px}.dt th.sd::after{content:' ▼';font-size:9px}
+/* 주문 ☰ 목록 — 표가 화면 너비를 넘지 않게: 칸 너비 고정, 아이템 칸이 남는 만큼 (세트 구성품 줄 · 지난번 가격 줄은 …) (v0.8.185 — 폰에서 세트 줄 때문에 수량 칸이 잘림) */
+.dt.olist{table-layout:fixed;width:100%}.dt.olist td.ct{overflow:hidden}
 .dt td{padding:8px 10px;border-bottom:1px solid #eef2f7;vertical-align:middle;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}.dt td.wrap{white-space:normal;max-width:none}
 .dt .r{text-align:right;font-variant-numeric:tabular-nums}.dt .c{text-align:center}.dt th.r{text-align:right}
 .dt tbody tr.tap{cursor:pointer}.dt tbody tr.tap:hover td{background:#f8fafc}.dt tbody tr.dim td{opacity:.6}.dt tbody tr.hid td{opacity:.6}
