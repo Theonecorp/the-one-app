@@ -327,7 +327,7 @@ async function invFmtScan() {
 }
 
 async function importer() {
-  $('adminBody').innerHTML = anyImportCard() + '<details class="card" id="impOld"><summary><b>📥 종류별로 따로 올리기</b> <span class="muted">— 위 "파일 올리기" 하나로 다 되지만, 예전처럼 하나씩 올리려면 여기</span></summary><div id="impOldBody" style="margin-top:10px"></div></details>' + invFmtCard() + exportCard();
+  $('adminBody').innerHTML = sbSyncCard() + anyImportCard() + '<details class="card" id="impOld"><summary><b>📥 종류별로 따로 올리기</b> <span class="muted">— 위 "파일 올리기" 하나로 다 되지만, 예전처럼 하나씩 올리려면 여기</span></summary><div id="impOldBody" style="margin-top:10px"></div></details>' + invFmtCard() + exportCard();
   $('impOldBody').innerHTML = acctImportCard() +
     '<div class="card"><h2>📥 옛 시트에서 가져오기 (하나씩)</h2><div class="muted">구글 시트를 <b>파일 → 다운로드 → Microsoft Excel</b> 로 받은 파일을 올립니다. 같은 ID 는 덮어쓰므로 여러 번 올려도 됩니다. 순서: ① 수금 입력 파일 → ② SALES 파일 → ③ 커미션 파일.</div>' +
     '<div class="fg" style="margin-top:10px"><label>① The One 수금 입력 (2026).xlsx — 거래처 · 세일즈맨 · 수금 · <b>미수금(AR 탭)</b></label><input type="file" id="f1" accept=".xlsx"></div>' +
@@ -342,7 +342,7 @@ async function importer() {
     '<div class="card"><h2>④ THE ONE 수금 대시보드.xlsx — 공장 장부 · 1099 · 오피스 보너스 · 배분표 · 1099 대상 · 커미션 공제 · 정산 옵션</h2><div class="muted">경영 파일을 그대로 올리세요. 탭 이름(🏭 공장 이름 · 1099 2026 · 오피스 보너스 …)으로 찾고, 시트 안의 ID 를 그대로 써서 다시 올려도 두 번 쌓이지 않습니다.</div>' +
     '<div class="fg" style="margin-top:10px"><input type="file" id="f4" accept=".xlsx"></div><div id="bossOut"></div>' +
     '<details style="margin-top:6px"><summary class="muted">변환해 둔 SEED_DATA(.js) 파일로 넣기</summary><div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="seedPick">📂 파일 고르기</button><button class="b-ghost" id="seedPaste">📋 붙여넣기</button><input type="file" id="seedFile" accept=".js,.json,.txt" style="display:none"></div></details></div>';
-  bindExport(); bindAcctImport(S, readBook, aoa); bindAnyImport();
+  bindExport(); bindAcctImport(S, readBook, aoa); bindAnyImport(); bindSbSync();
   if ($('invStatGo')) $('invStatGo').onclick = invStat;
   if ($('invChkGo')) $('invChkGo').onclick = () => invCheck(false);
   if ($('invWipe')) $('invWipe').onclick = () => invCheck(true);
@@ -397,6 +397,38 @@ const KINDS = [
   ['facstmt', '🏭 공장 명세서 (공장별 엑셀 — Date · ITEM · FREIGHT · Amount | PAID DATE · DEPOSIT MONEY)'], ['bank', '🏦 은행 명세서 (CSV · 엑셀 — 날짜 · 내용 · 금액 또는 입금/출금 · 잔액)'], ['bankpdf', '📄 은행 명세서 PDF (매달 — 입금 · 출금 합계 · 잔액)'], ['ar', '📤 미수금(AR) 에이징'], ['acct', '📇 거래처 목록 (account list)'], ['master', '📦 Item Master 엑셀 (아이템 전체 바꾸기)'], ['sbitems', '🐝 SmartBee ALL ITEMS (새 아이템 · 가격 · 바코드 맞추기)'],
   ['sets', '🧩 세트 구성 (SET_MASTER)'], ['bulk', '📄 아이템 일괄 변경 (LEVEL_1_AND_2 · GROUP_NAME_CHANGE · TreeUpdate …)'], ['loc', '📍 창고 위치 (재고 사이트 통로)'], ['pop', '✨ 자주 나가는 아이템 (Item · Qty)'], ['seed', '🧪 SEED_DATA (.js · .json)']];
 const kindName = k => (KINDS.find(x => x[0] === k) || ['', '❓ 모르는 파일 — 종류를 골라 주세요'])[1];
+/* 🐝 SmartBee 를 아직 쓰는 세일즈맨 — AR 과 새 인보이스만 (거래처 · 아이템 · 수금 등 다른 자료는 그대로) · v0.8.182 */
+function sbSyncCard() {
+  const d30 = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().substring(0, 10); })();
+  return '<div class="card" style="border:2px solid #f59e0b"><h2>🐝 ' + bi('SmartBee 업데이트 — AR · 새 인보이스만', 'SmartBee update — A/R and new invoices only') + '</h2>' +
+    '<div class="muted">' + bt('SmartBee 를 아직 쓰는 세일즈맨의 미수금과 새로 만든 인보이스만 앱에 맞춥니다. 거래처 · 아이템 · 수금 · 커미션은 건드리지 않습니다.', 'Brings in only A/R and newly created invoices from SmartBee. Customers, items, payments and commissions are untouched.') + '</div>' +
+    '<div class="sumbox" style="margin-top:8px"><b>① ' + bt('AR 에이징', 'A/R aging') + '</b> <span class="muted" style="font-size:12px">' + bt('SmartBee → AR Aging 내보내기 (엑셀 · CSV, 전체 세일즈맨) — 미리보기 뒤 기준일의 미수금으로 바뀝니다', 'SmartBee A/R Aging export (Excel · CSV, all salesmen) — preview, then replaces A/R as of the date') + '</span>' +
+      '<div class="two" style="margin-top:6px"><div class="fg"><label>' + bt('AR 기준일', 'A/R as of') + '</label><input type="date" id="sbArD" value="' + today() + '"></div><div class="fg"><label>' + bt('AR 파일', 'A/R file') + '</label><input type="file" id="sbArF" accept=".xlsx,.xls,.csv"></div></div><div id="sbArOut"></div></div>' +
+    '<div class="sumbox" style="margin-top:8px"><b>② ' + bt('새 인보이스', 'New invoices') + '</b> <span class="muted" style="font-size:12px">' + bt('SmartBee → 인보이스 목록(sales_invoice) 내보내기 — 앱에 없는 번호만 넣고, 이미 있는 인보이스는 그대로 둡니다', 'SmartBee invoice list (sales_invoice) — only numbers not in the app are added; existing ones stay as they are') + '</span>' +
+      '<div class="two" style="margin-top:6px"><div class="fg"><label>' + bt('이 날짜부터 확인', 'Check from') + '</label><input type="date" id="sbInvFrom" value="' + d30 + '"></div><div class="fg"><label>' + bt('인보이스 목록 파일', 'Invoice list file') + '</label><input type="file" id="sbInvF" accept=".xlsx,.xls,.csv"></div></div><div id="sbInvOut"></div></div></div>';
+}
+function bindSbSync() {
+  if (!$('sbArF')) return;
+  $('sbArF').onchange = () => { const f = $('sbArF').files[0]; $('sbArF').value = ''; if (f) sbArPreview(f, $('sbArOut'), $('sbArD').value || today()); };
+  $('sbInvF').onchange = () => { const f = $('sbInvF').files[0]; $('sbInvF').value = ''; if (f) importInvoices(f, false, $('sbInvOut'), $('sbInvFrom').value || '', { newOnly: true }); };
+}
+/** 🐝 AR — 바꾸기 전에 미리보기: 파일 합계 · 지금 AR 과 비교 · 파일에 한 곳도 없는 세일즈맨(미수금이 $0 이 됨)은 빨갛게 — 확인 뒤 저장 */
+async function sbArPreview(f, out, asOf) {
+  out.innerHTML = '<div class="muted">' + bt('읽는 중…', 'Reading…') + '</div>';
+  try {
+    const { XLSX, wb } = await readBook(f); const { rows } = parseArRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }));
+    if (!rows.length) throw new Error(bt('AR 줄을 찾지 못했습니다 — Invoice # · Balance · Customer # 머리글을 확인하세요', 'No A/R rows — check the Invoice # · Balance · Customer # headers'));
+    const inFile = new Set(rows.map(r => r.acct)), fileAmt = sum(rows, r => r.bal);
+    let cur = []; try { cur = (await S.DB.list('ar')).filter(d => d.id !== '_all' && d.sm !== '_all'); } catch (e) {}
+    const gone = cur.map(d => { const L = (d.stores || []).filter(x => !inFile.has(x.acct)); return { sm: d.sm || d.id, all: (d.stores || []).length, n: L.length, amt: sum(L, x => x.total || 0) }; }).filter(x => x.n);
+    const wiped = gone.filter(x => x.all && x.n === x.all && x.amt > 0.005);
+    out.innerHTML = '<div class="alert a-blu">' + bt('AR 파일', 'A/R file') + ': <b>' + rows.length.toLocaleString() + '</b>' + bt('장', ' invoices') + ' · <b>' + money(fileAmt) + '</b> · ' + bt('가게', 'stores') + ' ' + inFile.size.toLocaleString() + ' · ' + bt('기준일', 'as of') + ' <b>' + esc(asOf) + '</b></div>' +
+      (gone.length ? '<div class="muted" style="font-size:12px">' + bt('파일에 없어 받은 것으로 빠지는 가게', 'Stores not in the file (treated as paid)') + ': ' + gone.map(x => esc(x.sm) + ' ' + x.n + bt('곳', '') + ' ' + money(x.amt)).join(' · ') + '</div>' : '') +
+      (wiped.length ? '<div class="alert a-red">⛔ ' + bt('이 세일즈맨은 파일에 한 곳도 없어 미수금이 $0 이 됩니다', 'These salesmen have no stores in the file — their A/R becomes $0') + ': <b>' + wiped.map(x => esc(x.sm) + ' ' + money(x.amt)).join(' · ') + '</b><br>' + bt('SmartBee 에서 전체 세일즈맨 AR 에이징을 내보냈는지 확인하세요 (일부만 내보내면 다른 세일즈맨 미수금이 지워집니다).', 'Make sure the SmartBee aging export covers all salesmen.') + '</div>' : '') +
+      '<button class="' + (wiped.length ? 'b-ghost' : 'b-blue') + '" id="sbArGo">' + (wiped.length ? '⚠️ ' + bt('그래도 AR 바꾸기', 'Replace A/R anyway') : bt('AR 바꾸기', 'Replace A/R')) + '</button>';
+    $('sbArGo').onclick = async () => { busy(true); try { const r = await saveAr(rows, asOf); try { (await import('./store.js')).dropStoreCache(); } catch (e) {} out.innerHTML = '<div class="alert a-grn">✅ ' + bt('AR 저장', 'A/R saved') + ' — ' + bt('기준일', 'as of') + ' ' + esc(asOf) + ' · ' + bt('가게', 'stores') + ' ' + r.stores.length + ' · ' + money(sum(r.stores, x => x.total)) + (r.unmatched.length ? ' · ' + bt('거래처 목록에 없는 가게', 'not in customers') + ' ' + r.unmatched.length : '') + '</div>'; } catch (e) { out.insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'); } busy(false); };
+  } catch (e) { out.innerHTML = '<div class="alert a-red">' + esc(e.message) + '</div>'; }
+}
 function anyImportCard() {
   return '<div class="card" style="border:2px solid #2563eb"><h2>📥 파일 올리기 <span class="en">Upload any file</span> <span class="muted" style="font-weight:400;font-size:12px">— 종류는 앱이 알아봅니다</span></h2>' +
     '<div class="muted">어떤 파일이든 여기 하나로 올리세요. 탭 이름 · 머리글을 보고 종류를 알아낸 뒤 맞는 자리에 넣습니다: 수금 입력 · SALES · 커미션 · 대시보드 · 인보이스 목록 · 🏦 ACH 시트 · AR · 거래처 목록 · Item Master · <b>SmartBee ALL ITEMS</b> · 세트 구성 · 일괄 변경 · 창고 위치 · 자주 나가는 아이템. 여러 개를 한꺼번에 골라도 됩니다 (순서는 알아서). 바로 저장되는 종류(수금 · SALES · 커미션 · AR)는 바로 들어가고, 나머지는 미리보기 뒤 <b>적용</b>을 누릅니다.</div>' +
@@ -668,7 +700,7 @@ export function parseInvoiceList(aoa, fromD) {
   const noLetter = out.filter(r => !/^[A-Z]{1,2}-?\d{3,}$/.test(r.no)).length;
   return { rows: out, skipped, old, hasBal: ix.bal != null, cols, noLetter };
 }
-async function importInvoices(file, auto, outBox, fromD) {
+async function importInvoices(file, auto, outBox, fromD, opt) {   /* opt.newOnly: 앱에 아직 없는 인보이스만 (🐝 SmartBee 업데이트 · v0.8.182) */
   if (!file) return; const out = outBox || $('invOut'); out.innerHTML = '<div class="muted">읽는 중…</div>';
   try {
     const { XLSX, wb } = await readBook(file);
@@ -677,7 +709,8 @@ async function importInvoices(file, auto, outBox, fromD) {
     /* 이미 있는 인보이스 — 앱에서 만든 것(줄 · 픽킹 기록 있음)은 건드리지 않음. 잔액 열이 없는 파일이면 있던 잔액 · 상태는 그대로 */
     const ds = P.rows.map(r => r.d).sort(), ex = {};
     if (ds.length) (await S.DB.list('invoices', { where: [['d', '>=', ds[0]], ['d', '<=', ds[ds.length - 1]]] })).forEach(v => { ex[invNo(v.id || v.no)] = v; });   // 옛 번호 모양(A43350)도 같은 인보이스로
-    const appMade = P.rows.filter(r => ex[r.id] && ex[r.id].src !== 'legacy'), rows = P.rows.filter(r => !(ex[r.id] && ex[r.id].src !== 'legacy'));
+    const appMade = P.rows.filter(r => ex[r.id] && ex[r.id].src !== 'legacy'), rows = P.rows.filter(r => !(ex[r.id] && ex[r.id].src !== 'legacy') && !(opt && opt.newOnly && ex[r.id]));
+    if (opt && opt.newOnly && !rows.length) { out.innerHTML = '<div class="alert a-grn">✅ ' + bt('새 인보이스가 없습니다 — 파일의 인보이스는 모두 앱에 있습니다', 'No new invoices — everything in the file is already in the app') + ' (' + P.rows.length.toLocaleString() + bt('장 확인', ' checked') + ')</div>'; return; }
     const nNew = rows.filter(r => !ex[r.id]).length;
     /* 세일즈맨 코드 — 이전 시스템 Sales Rep 가 앱 코드와 다르면(이름 · 약자) 거래처의 담당 세일즈맨으로 (세일즈맨 📄 최근 인보이스가 sm 으로 찾음) */
     const codes = new Set((S.sms || []).map(x => String(x.code).toUpperCase())), byName = {}; (S.sms || []).forEach(x => { if (x.name) byName[String(x.name).toUpperCase()] = String(x.code).toUpperCase(); });
@@ -691,7 +724,8 @@ async function importInvoices(file, auto, outBox, fromD) {
       '<div' + (pct < 90 ? ' class="warn"' : '') + '>' + bt('거래처 코드 연결', 'Customer codes') + ': ' + (pct >= 90 ? '✅ ' : '⚠️ ') + okN.toLocaleString() + ' / ' + rows.length.toLocaleString() + ' (' + pct + '%)' + (bad.length ? ' — ' + bt('목록에 없는 코드', 'not in customers') + ': ' + esc(Array.from(new Set(bad.map(r => r.acct || '(빈칸)'))).slice(0, 8).join(', ')) : '') + '</div>' +
       '<table style="margin-top:6px;font-size:12px"><tr><th>' + bt('번호', 'No') + '</th><th>' + bt('날짜', 'Date') + '</th><th>' + bt('코드', 'Acct') + '</th><th>' + bt('가게', 'Store') + '</th><th>SM</th><th class="r">' + bt('합계', 'Total') + '</th></tr>' + rows.slice(0, 5).map(r => '<tr><td><b>' + esc(r.no) + '</b></td><td>' + esc(r.d) + '</td><td>' + esc(r.acct) + '</td><td>' + esc(r.store) + '</td><td>' + esc(r.sm) + '</td><td class="r">' + money(r.total) + '</td></tr>').join('') + '</table>' +
       (P.noLetter || pct < 50 ? '<div class="alert a-red" style="margin-top:6px">⛔ ' + bt('이 상태로 넣으면 인보이스는 보이지만 가게와 연결되지 않습니다. 파일의 열(invoice · customer #)을 확인하고, 이미 잘못 넣은 것이 있으면 위 🧹 로 지운 뒤 다시 올리세요.', 'Saving like this gives invoices that are not linked to stores. Check the invoice · customer # columns; delete a bad import with 🧹 above, then re-upload.') + '</div>' : '') + '</div>';
-    out.innerHTML = '<div class="alert a-blu">인보이스 <b>' + rows.length.toLocaleString() + '</b>장 (새로 ' + nNew.toLocaleString() + ' · 이미 있음 ' + (rows.length - nNew).toLocaleString() + ') · 매출 ' + money(sum(rows, r => r.total)) + (P.hasBal ? ' · 잔액 ' + money(sum(rows, r => r.bal || 0)) : ' · 잔액 열 없음 (미수금은 AR 파일 기준)') + (appMade.length ? '<br>앱에서 발행한 인보이스 ' + appMade.length + '장은 그대로 둠: ' + esc(appMade.slice(0, 8).map(r => r.no).join(', ')) : '') + (old ? ' · 시작일 전 ' + old.toLocaleString() + '장 제외' : '') + (skipped ? ' · 건너뜀 ' + skipped : '') + (smFix ? ' · 세일즈맨 코드 맞춤 ' + smFix.toLocaleString() + '장 (거래처 담당 기준)' : '') + '<br>' + Object.keys(byY).sort().map(y => y + ': ' + byY[y].n.toLocaleString() + '장 ' + money(byY[y].amt)).join(' · ') + '</div>' +
+    const smN = opt && opt.newOnly ? Object.entries(rows.reduce((a, r) => { a[r.sm || '—'] = (a[r.sm || '—'] || 0) + 1; return a; }, {})).sort((x, y) => y[1] - x[1]).map(x => esc(x[0]) + ' ' + x[1]).join(' · ') : '';
+    out.innerHTML = (smN ? '<div class="muted" style="margin-bottom:4px">🐝 ' + bt('새 인보이스 — 세일즈맨별', 'New invoices by salesman') + ': ' + smN + ' · ' + bt('날짜', 'dates') + ' ' + esc(rows.map(r => r.d).sort()[0]) + ' ~ ' + esc(rows.map(r => r.d).sort().pop()) + '</div>' : '') + '<div class="alert a-blu">인보이스 <b>' + rows.length.toLocaleString() + '</b>장 (새로 ' + nNew.toLocaleString() + ' · 이미 있음 ' + (rows.length - nNew).toLocaleString() + ') · 매출 ' + money(sum(rows, r => r.total)) + (P.hasBal ? ' · 잔액 ' + money(sum(rows, r => r.bal || 0)) : ' · 잔액 열 없음 (미수금은 AR 파일 기준)') + (appMade.length ? '<br>앱에서 발행한 인보이스 ' + appMade.length + '장은 그대로 둠: ' + esc(appMade.slice(0, 8).map(r => r.no).join(', ')) : '') + (old ? ' · 시작일 전 ' + old.toLocaleString() + '장 제외' : '') + (skipped ? ' · 건너뜀 ' + skipped : '') + (smFix ? ' · 세일즈맨 코드 맞춤 ' + smFix.toLocaleString() + '장 (거래처 담당 기준)' : '') + '<br>' + Object.keys(byY).sort().map(y => y + ': ' + byY[y].n.toLocaleString() + '장 ' + money(byY[y].amt)).join(' · ') + '</div>' +
       (rows.length > 18000 ? '<div class="alert a-amb">1만 8천 장이 넘습니다 — 무료 요금제면 하루 한도에 걸릴 수 있습니다. 시작일을 올리거나 Blaze 로 바꾼 뒤 넣으세요.</div>' : '') +
       chk + '<button class="' + (P.noLetter || pct < 50 ? 'b-ghost' : 'b-blue') + '" id="invGo">' + (P.noLetter || pct < 50 ? '⚠️ 그래도 넣기' : '넣기') + '</button><div id="invProg" class="muted" style="margin-top:6px"></div>';
     const run = async () => {
