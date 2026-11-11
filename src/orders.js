@@ -168,6 +168,7 @@ export function openList(st, from, to) { LF.init = true; LF.list = true; LF.st =
 const firstList = () => ({ pick: 'mine', invoice: 'picked', whmgr: 'ups', pickinv: 'cfok', acct: 'inv' }[jobOf()] || 'sent');
 async function pageOrder(arg) {
   if (arg === 'new') return openEditor(null, readWip());
+  if (arg === 'newitems') { WANT_NEW = true; return openEditor(null, readWip()); }   /* 🆕 새 아이템 알림을 누르면 — 새 주문의 🆕 새로 나온 목록으로 (v0.8.182) */
   if (arg && arg.indexOf('bo:') === 0) return Fulfill.openBackorder(arg.substring(3));
   if (arg && arg.indexOf('inv:') === 0) return Fulfill.openInvoice(arg.substring(4));
   if (arg === 'cf') { if (isStaff()) { LF.init = true; LF.list = true; LF.st = 'cfw'; return pageOrder(''); } return Notify.reviewPage(); }
@@ -645,9 +646,11 @@ export async function openEditor(order, wip, lines) {
   O.disc = O.disc || {};
   O.view = O.view || (O.lines.length ? 'cart' : 'add'); O.q = ''; O.path = O.path || [];
   INFO = null; FOCUS = '';
+  if (WANT_NEW) { WANT_NEW = false; O.view = 'add'; O.path = []; O.nw = true; }
   reindex(); saveWip();
   paintEditor();
 }
+let WANT_NEW = false;
 function totals() { const by = splitByType(O.lines, O.disc, 'q'); let qty = 0, amt = 0; Object.values(by).forEach(g => { qty += g.qty; amt += g.total; }); return { n: O.lines.filter(l => l.q > 0).length, qty, amt: R2(amt), by }; }
 
 function paintEditor() {

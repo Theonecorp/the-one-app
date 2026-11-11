@@ -2,6 +2,7 @@
  *  📦 재고 — 창고 직원 · 창고 매니저 · 오피스 · 관리자
  *    · 조회: 코드 · 이름 · 바코드로 찾아 지금 재고(on hand) · 📍 위치 · 최근 움직임
  *    · 입고: 중국에서 들어온 팩킹 리스트(엑셀 · CSV: 코드 + 수량)를 올리면 아이템마다 자동으로 더해짐 — 손으로도 한 줄씩
+ *    · 🚢 입고 예정 (inbound.js): 공장 인보이스 → 오는 중 → 창고에서 받은 수량 확인 → 입고 확정 때 재고에 더함
  *    · 조정: 실사(세어 본 수량으로 맞춤) · ± 조정(이유)
  *    · 자동: 인보이스 발행 → 그 수량만큼 빠짐(세트는 구성품으로) · VOID → 되돌아옴
  *  stock/{code}    = { code, qty, at, by, min }                              ← 지금 재고 · min = 이 아이템의 부족 기준(없으면 설정 stockMin, 기본 12)
@@ -150,12 +151,13 @@ export function parsePacking(aoa, byCode) {
 /* ---------- 화면 ---------- */
 async function page(arg) {
   if (!isStaff() || !can('items')) { $('page').innerHTML = '<div class="card"><div class="none">' + bt('재고는 창고 · 오피스 담당자가 봅니다', 'Inventory is for warehouse and office staff') + '</div></div>'; return; }
-  if (arg && ['find', 'aisle', 'recv', 'log', 'low'].includes(arg)) ST.tab = arg; else if (arg && arg.indexOf('aisle:') === 0) { ST.tab = 'aisle'; ST.aisle = decodeURIComponent(arg.substring(6)); } else if (arg) { ST.tab = 'find'; ST.q = decodeURIComponent(arg); }   // 아이템 코드로 열면 조회 탭에서 그 코드
+  if (arg && ['find', 'aisle', 'inb', 'recv', 'log', 'low'].includes(arg)) ST.tab = arg; else if (arg && arg.indexOf('aisle:') === 0) { ST.tab = 'aisle'; ST.aisle = decodeURIComponent(arg.substring(6)); } else if (arg) { ST.tab = 'find'; ST.q = decodeURIComponent(arg); }   // 아이템 코드로 열면 조회 탭에서 그 코드
   try { await loadCatalog(S); } catch (e) {}
-  const T = [['find', '🔍', '조회', 'Find'], ['aisle', '📍', '통로별', 'By aisle'], ['recv', '📥', '입고', 'Receive'], ['log', '📋', '기록', 'History'], ['low', '⚠️', '부족', 'Low']];
+  const T = [['find', '🔍', '조회', 'Find'], ['aisle', '📍', '통로별', 'By aisle'], ['inb', '🚢', '입고 예정', 'Inbound'], ['recv', '📥', '입고', 'Receive'], ['log', '📋', '기록', 'History'], ['low', '⚠️', '부족', 'Low']];
   $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">📦 ' + bi('재고', 'Inventory') + '</h2>' + itabs(T, ST.tab, 'sk') + '</div><div id="skBody"></div>';
   document.querySelectorAll('[data-sk]').forEach(b => b.onclick = () => { ST.tab = b.dataset.sk; if (ST.tab !== 'aisle') ST.aisle = ''; page(); });
   if (ST.tab === 'aisle') return paintAisle();
+  if (ST.tab === 'inb') { const I = await import('./inbound.js'); return I.paint($('skBody')); }   /* 🚢 공장 인보이스 → 오는 중 → 창고 확인 → 재고 (v0.8.182) */
   if (ST.tab === 'recv') return paintRecv();
   if (ST.tab === 'log') return paintLog();
   if (ST.tab === 'low') return paintLow();

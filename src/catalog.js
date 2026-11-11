@@ -238,6 +238,13 @@ export function newItems(path, start, days) {
   return CAT.items.filter(x => x.at && x.at >= from && !x.h && !x.virt && inPath(x)).sort((a, b) => b.at.localeCompare(a.at) || COLL.compare(a.c, b.c));
 }
 const todayStr = () => new Date().toISOString().substring(0, 10);
+/** 🆕 새 아이템 알림 — 세일즈맨 폰 팝업 (메일 · 챗 없음). Apps Script 가 10분 동안 더 등록이 없으면 한 번에 묶어 영업일 8–19시에 보냄 (newItemsRun_)
+ *  한 번에 40개 넘게 생긴 것은 엑셀 전체 바꾸기 · 복구일 수 있어 알리지 않음 */
+export const NEW_NOTICE_MAX = 40;
+async function newItemNotice(S, rows) {
+  if (rows.length > NEW_NOTICE_MAX) return;
+  try { const N = await import('./notify.js'); await N.queue({ kind: 'newItem', pushOnly: true, toGroup: 'g:sales', n: rows.length, codes: rows.map(r => ({ c: r[0], d: String(r[1] || '').slice(0, 60), p: Number(r[2]) || 0 })), subject: '[THE ONE] 🆕 새 아이템 ' + rows.length + '개', text: rows.slice(0, 5).map(r => r[0] + ' ' + String(r[1] || '').slice(0, 40)).join(', '), url: N.appUrl('order/newitems') }); } catch (e) {}
+}
 
 export async function loadCatalog(S, force) {
   if (S && S.settings && S.settings.catPins) setPins(S.settings.catPins);
@@ -417,7 +424,8 @@ export function parseItemMaster(items, cats) {
 }
 /** 묶음으로 나눠 저장 → meta 의 ver 를 바꿔 모든 폰이 새로 받게 함 */
 export async function publishCatalog(S, parsed) {
-  if (CAT && CAT.rows && CAT.rows.length) { const prev = CAT.byCode || {}; parsed.rows.forEach(r => { while (r.length < 14) r.push(''); if (!r[13]) r[13] = prev[r[0]] ? (prev[r[0]].at || '') : todayStr(); }); }
+  const fresh = [];   /* 🆕 이번에 처음 생긴 아이템 (숨김 빼고) — 세일즈맨 알림 (v0.8.182) */
+  if (CAT && CAT.rows && CAT.rows.length) { const prev = CAT.byCode || {}; parsed.rows.forEach(r => { while (r.length < 14) r.push(''); if (!prev[r[0]] && !r[10]) fresh.push(r); if (!r[13]) r[13] = prev[r[0]] ? (prev[r[0]].at || '') : todayStr(); }); }
   const chunks = []; let cur = [], size = 0;
   parsed.rows.forEach(r => { const s = JSON.stringify(r).length + 1; if (size + s > CHUNK_BYTES && cur.length) { chunks.push(cur); cur = []; size = 0; } cur.push(r); size += s; });
   if (cur.length) chunks.push(cur);
@@ -428,6 +436,7 @@ export async function publishCatalog(S, parsed) {
   /* 묶음을 먼저 쓰고 meta 를 마지막에 — 중간에 끊겨도 폰은 옛 버전을 그대로 씀 */
   for (const o of ops) await S.DB.batch([o]);
   await S.DB.set('catalog', 'meta', { ver, count: parsed.rows.length, chunks: chunks.length, cats: parsed.cats.map(p => p.join('\u0001')), setsVer: (old && old.setsVer) || '', updatedAt: new Date().toISOString(), by: (S.user && S.user.email) || '' });
+  if (fresh.length) await newItemNotice(S, fresh);
   return { ver, chunks: chunks.length };
 }
 /* Firestore 는 배열 안의 배열을 못 담으므로 cats 는 문자열로 저장 → 읽을 때 풀기 */

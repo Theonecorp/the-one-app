@@ -13,6 +13,7 @@ import * as Sales from './sales.js';
 import * as Collect from './collect.js';
 import * as Ach from './ach.js';
 import * as BizDay from './bizday.js';
+import * as Inbound from './inbound.js';
 import * as Mg from './mg.js';
 import * as Mgr from './mgr.js';
 import * as Boss from './boss.js';
@@ -46,7 +47,7 @@ import { setInvTypeMap } from './comm.js';
 import { invTypes } from './invoicing.js';
 import { initLang, LANG, LANGS, setLang } from './i18n.js';
 
-export const VER = 'v0.8.181';
+export const VER = 'v0.8.182';
 export const S = { user: null, me: null, role: '', sms: [], smByCode: {}, accounts: [], settings: {}, DB: null, AUTH: null };
 const ADMIN_EMAILS = ['luke@theonefl.com'];
 
@@ -496,7 +497,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  BizDay.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page);
+  BizDay.register(S); Inbound.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
