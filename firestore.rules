@@ -193,7 +193,8 @@ service cloud.firestore {
     }
     match /backorders/{id} { allow read: if isStaff(); allow write: if ordJob(); }
     match /counters/{id} {
-      allow read: if isStaff();
+      // ↩ 세일즈맨은 크레딧 번호를 받을 때 inv2 를 읽어야 함 (번호 받기 = 읽고 +1 하는 트랜잭션) — 읽기가 막혀 세일즈맨 크레딧이 permission denied 이던 일 (v0.8.185)
+      allow read: if isStaff() || (registered() && mySm() != '' && id == 'inv2');
       allow write: if opsJob();
       // ↩ 크레딧 번호(CM) 는 세일즈맨도 올림 — inv2 문서의 CM 칸만
       // 🔐 L3: 세일즈맨은 CM 칸을 +1 만 (아무 값으로 되돌려 중복 번호를 만들지 못하게)
