@@ -134,6 +134,7 @@ service cloud.firestore {
     match /stock/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /stockLog/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /receipts/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /inbound/{id} { allow read: if isStaff(); allow write: if itemJob(); }   // 🚢 입고 예정 — 공장 인보이스 (단가가 있어 담당자만 읽음)
     match /itemPhotos/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /photoUploads/{id} { allow read, write: if itemJob(); }   // ☁️ 드라이브로 올릴 큰 사진 큐 (스크립트가 올리고 비움)   // 📷 앱에서 올린 아이템 사진 (디자인 · 카탈로그 담당 · 담당자)
     function okSt(st) { return st == 'draft' || st == 'sent'; }
