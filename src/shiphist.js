@@ -9,6 +9,7 @@ import { $, esc, money, toast, confirmBox, today, addDays, Router } from './ui.j
 import { can } from './main.js';
 import { groupShipments } from './track.js';
 import { ICO, svg, css, L3, num1, svcName, imprimir, abrirEdicao } from './balcao.js';
+import { devolver } from './notesups.js';
 
 let S = null;
 const H = { per: '30', de: '', ate: '', q: '', st: '', cli: '', serv: '', cod: '', sm: '', pag: 1, por: 25, sel: '', aba: 'geral', lista: null, chave: '', filtrosAb: false, busy: {} };
@@ -262,7 +263,8 @@ async function cancelar(e, editar) {
   for (const b of e.g.boxes) { try { await S.DB.update('shipments', b.trk, { voided: true, voidAt: now, voidBy: S.user.email }); b.voided = true; } catch (er) {} }
   await addLog(e, { t: editar ? 'edit' : 'void', by: S.user.email, at: now });
   try { if (e.a.adhocId) await S.DB.update('adhoc', e.a.adhocId, { st: 'void', voidAt: now, voidBy: S.user.email, updatedAt: now }); } catch (er) {}
+  let nNotas = 0; if (e.a.adhocId) { try { nNotas = await devolver(e.a.adhocId); } catch (er) {} }   /* Notes UPS 박스는 다시 대기 줄로 */
   H.chave = '';
-  if (editar) return abrirEdicao(e.acct, e.g.boxes.map(b => { const d = String(b.dims || '').split('×').map(Number); return { peso: b.w, c: d[0] || '', l: d[1] || '', a: d[2] || '' }; }), e.a.svc, e.cod || '', e.no);
+  if (editar) return abrirEdicao(e.acct, e.g.boxes.slice(0, Math.max(0, e.g.boxes.length - nNotas)).map(b => { const d = String(b.dims || '').split('×').map(Number); return { peso: b.w, c: d[0] || '', l: d[1] || '', a: d[2] || '' }; }), e.a.svc, e.cod || '', e.no);
   toast('VOID · ' + e.trk, 'good'); await carregar(); page();
 }
