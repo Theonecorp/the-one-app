@@ -99,6 +99,7 @@ export function manage(o, lines) {
     (o.st !== 'x' && (can('invoice') || can('newOrder')) ? '<button class="b-ghost b-sm" id="mDisp">🖼 Notes Display <span id="mDispN"></span></button>' : '') +
     (o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>' : '') +
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
+    (!canEdit(o) && o.st !== 'x' && o.invs && o.invs.length && can('void') ? o.invs.map(no => '<button class="b-ghost b-sm" data-mie="' + esc(no) + '">✏️ ' + bi('인보이스 수정', 'Edit invoice') + ' ' + esc(no) + '</button>').join('') : '') +
     (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
     (o.st === 'picked' ? '<button class="b-ghost b-sm" id="mRepick">↩️ ' + bi('출고 작업으로 되돌리기', 'Return to Fulfillment') + '</button>' : '') +
     (o.st === 'packed' || o.st === 'dlv' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('포장 대기로 되돌리기', 'Back to packing') + '</button>' : '') +
@@ -224,6 +225,7 @@ export function manage(o, lines) {
   if ($('mAssign')) $('mAssign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mReassign')) $('mReassign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mIMemo')) $('mIMemo').onclick = () => imemoForm(o);
+  document.querySelectorAll('[data-mie]').forEach(b => b.onclick = async () => { const x = await S.DB.get('invoices', b.dataset.mie); if (!x) return toast(bt('인보이스를 찾지 못했습니다', 'Invoice not found'), 'bad'); const IE = await import('./invedit.js'); IE.setState(S); IE.editInvoice(x, () => { closeModal(); goOrder(o.id); }); });   /* ✏️ 발행된 인보이스 직접 고치기 (v0.8.189) */
   if ($('mAch')) $('mAch').onclick = async () => { const A = await import('./ach.js'); const L = (await Promise.all(o.invs.map(no => S.DB.get('invoices', no)))).filter(Boolean); A.startFor(L, o.id); };
   if ($('mPickDone')) $('mPickDone').onclick = async () => {
     const pk = await choosePicker(o); if (!pk) return;   // 👷 실제로 피킹한 사람 (2026-11-12 오피스: "피킹 끝난 후 피킹한 사람을 선택할 수 있게")
