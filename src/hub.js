@@ -12,6 +12,7 @@ export function register(state) { S = state; Router.on('hub', page); }
 /** 묶음 → [route, 아이콘, 한글, 영어, 설명(한), 설명(영), 보이는 조건] */
 export const HUBS = {
   money: { icon: '💵', ko: '수금', en: 'Payments', items: [
+    ['entry', '✍️', '수금 입력', 'Record a payment', '체크 · 캐쉬 · Zelle 받은 것 입력 (세일즈맨 고름)', 'checks · cash · Zelle received (pick the salesman)', () => can('verify') || can('cod')],   // 회계 담당 · 오피스 매니저도 직접 입력 (v0.8.202)
     ['verify', '💵', '수금 확인', 'Payments', '세일즈맨 수금 · 체크 수령 · 접수 확인', 'field payments · checks received', () => can('verify')],
     ['cod', '💳', 'COD · 카드', 'COD · Card', 'COD · 카드 입력 · 승인번호', 'COD · card entry', () => can('cod')],
     ['ach', '🏦', 'ACH', 'ACH', 'ACH 셋업 · 인출 · NSF', 'ACH setup · draws', () => can('ach')],
