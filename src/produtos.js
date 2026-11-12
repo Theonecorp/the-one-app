@@ -692,9 +692,10 @@ function modalProduto(e, comQtd) {
     if (ev.target.closest('[data-pscan]')) openScanner(code => { const i = $('pBarcode'); if (i) i.value = code; }, { title: t('sc_abrir') });
     if (ev.target.closest('[data-pbar]')) { const i = $('pBarcode'); if (String(i.value || '').trim()) return toast(t('bar_ja_tem'), 'bad'); const C = catalog(); i.value = proxBarcode(C ? C.rows : [], []); toast(t('bar_no_campo', { cod: i.value }), 'good'); }
   });
-  w.querySelector('#pSalvar').onclick = () => salvarProduto(e, comQtd, so);
+  w.querySelector('#pSalvar').onclick = () => salvarProduto(e, comQtd, so, w);
 }
-async function salvarProduto(e, comQtd, so) {
+async function salvarProduto(e, comQtd, so, w) {
+  const $ = id => (w && w.querySelector('#' + id)) || document.getElementById(id);   // 이 창 안의 칸만 읽음 (같은 id 가 다른 곳에 있어도)
   const corr = $('pCorredor').value;
   const locNovo = e && corr === e.corredor ? e.loc : corr;   // 같은 통로면 선반 · 칸까지 적힌 위치를 그대로
   if (so) { E.fecharModal(); busy(true); try { await editCatalog(S, rows => setLoc(rows, [e.id], locNovo)); toast(t('prod_atualizado'), 'good'); montar(); } catch (x) { toast(String(x.message || x), 'bad'); } busy(false); return render(); }

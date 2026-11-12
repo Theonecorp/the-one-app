@@ -57,7 +57,8 @@ const path = require('path');
   /* ⑤ */
   await pg.click('.pm-dw [data-act="editar-produto"]'); await pg.waitForSelector('.es-mw #pDesc');
   await pg.fill('.es-mw #pDesc', 'NOVA DESCRICAO'); await pg.fill('.es-mw #pPreco', '9.75'); await pg.fill('.es-mw #pCusto', '2.5'); await pg.fill('.es-mw #pEnvP', '1.5');
-  await pg.click('.es-mw #pSalvar'); await pg.waitForTimeout(1200);
+  await pg.waitForFunction(() => { const x = document.querySelector('.es-mw #pCusto'); return x && x.value === '2.5'; }, null, { timeout: 3000 }).catch(() => errs.push('⑤ cost field keeps 2.5 before saving :: ' + (document.querySelector ? '' : '')));
+  await pg.click('.es-mw #pSalvar'); await pg.waitForFunction(() => window.__MOCK_STORE__.prodCusto && window.__MOCK_STORE__.prodCusto.AHG100 && window.__MOCK_STORE__.prodCusto.AHG100.custo === 2.5, null, { timeout: 4000 }).catch(() => {}); await pg.waitForTimeout(600);
   let r5 = await row(pg, 'AHG100'); log('⑤ row:', JSON.stringify(r5 && r5.slice(0, 13)));
   if (!r5 || r5[1] !== 'NOVA DESCRICAO' || r5[2] !== 9.75 || r5[11] !== '7A') errs.push('⑤ catalog row updated (desc · price · loc kept)');
   const cu = await pg.evaluate(() => window.__MOCK_STORE__.prodCusto.AHG100), ex = await pg.evaluate(() => (window.__MOCK_STORE__.prodExtra || {}).AHG100);
