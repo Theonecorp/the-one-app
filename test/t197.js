@@ -8,11 +8,11 @@
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
-  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8895', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8897', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 1280, height: 1000 } });
-  const mk = async email => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; }, { email }); await pg.goto('http://127.0.0.1:8895/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
+  const mk = async email => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; }, { email }); await pg.goto('http://127.0.0.1:8897/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const shipq = (pg, f) => pg.evaluate(f => Object.entries(window.__MOCK_STORE__.shipq || {}).filter(([, q]) => new Function('q', 'return ' + f)(q)).map(([id, q]) => Object.assign({ _id: id }, q)), f);
   /* ① */
   let pg = await mk('brandon@x.com'); await pg.evaluate(() => { location.hash = '#/balcao'; }); await pg.waitForSelector('.sb', { timeout: 8000 });
