@@ -80,7 +80,7 @@ function run() {
           saveShipments_(q, r);
         } catch (e) { fsPatch_('shipq', q._id, { st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
       } else if (q.st === 'void') {
-        try { voidShip_(q.shipId); fsPatch_('shipq', q._id, { st: 'voided', at: iso_(), err: '' }); }
+        try { voidShip_(q.shipId); fsPatch_('shipq', q._id, { st: 'voided', at: iso_(), err: '' }); String(q.track || '').split(/\s+/).filter(Boolean).forEach(t => { try { fsPatch_('shipments', t, { voided: true, voidAt: iso_(), status: 'Voided', trkSt: 'done' }); } catch (e) {} }); }
         catch (e) { fsPatch_('shipq', q._id, { st: 'voiderr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
       } else if (q.st === 'rate') {
         try { fsPatch_('shipq', q._id, { st: 'ratedone', at: iso_(), err: '', rates: rates_(q, from) }); }
@@ -191,7 +191,7 @@ function rates_(q, from) {
 /** 📦 라벨이 나오면 박스마다 shipments/{트래킹} 기록 — 어느 인보이스가 어느 박스로 나갔는지 */
 function saveShipments_(q, r) {
   const boxes = q.boxes || [], n = r.labels.length, d = iso_().substring(0, 10);
-  r.labels.forEach((l, i) => { const b = boxes[i] || {}; try { fsPatch_('shipments', l.trk, { cost: i === 0 ? (Number(r.charge) || 0) : 0, cod: i === 0 && q.cod && Number(q.cod.valor) > 0 ? Number(q.cod.valor) : 0, adhocId: q.adhocId || '', trk: l.trk, orderId: q.orderId || '', no: q.no || '', acct: q.acct || '', store: q.store || '', sm: q.sm || '', invs: (b.invs && b.invs.length ? b.invs : (q.invs || [])), box: i + 1, boxes: n, w: Number(b.w) || 0, dims: [b.l, b.wd, b.h].filter(Number).join('×'), svc: String(q.svc || '03'), svcName: SVC_[String(q.svc || '03')] || '', shipDate: d, to: [q.to && q.to.addr1, q.to && q.to.city, q.to && q.to.state, q.to && q.to.zip].filter(Boolean).join(', '), by: q.by || '', src: 'app', env: env_(), status: 'Label created', trkSt: 'open', delivered: false, at: iso_() }); } catch (e) {} });
+  r.labels.forEach((l, i) => { const b = boxes[i] || {}; try { fsPatch_('shipments', l.trk, { shipId: r.shipId || '', lead: (r.labels[0] || {}).trk || '', cost: i === 0 ? (Number(r.charge) || 0) : 0, cod: i === 0 && q.cod && Number(q.cod.valor) > 0 ? Number(q.cod.valor) : 0, adhocId: q.adhocId || '', trk: l.trk, orderId: q.orderId || '', no: q.no || '', acct: q.acct || '', store: q.store || '', sm: q.sm || '', invs: (b.invs && b.invs.length ? b.invs : (q.invs || [])), box: i + 1, boxes: n, w: Number(b.w) || 0, dims: [b.l, b.wd, b.h].filter(Number).join('×'), svc: String(q.svc || '03'), svcName: SVC_[String(q.svc || '03')] || '', shipDate: d, to: [q.to && q.to.addr1, q.to && q.to.city, q.to && q.to.state, q.to && q.to.zip].filter(Boolean).join(', '), by: q.by || '', src: 'app', env: env_(), status: 'Label created', trkSt: 'open', delivered: false, at: iso_() }); } catch (e) {} });
 }
 /** 📍 주소 확인 (UPS Address Validation — Street Level). 돌려주는 값: { valid, ambiguous, none, cls, cands:[{addr1, addr2, city, state, zip, zip4}] }
  *  시험 서버(UPS_ENV=test)는 UPS 규정상 뉴욕(NY) · 캘리포니아(CA) 주소만 확인해 줍니다 — 실제 확인은 live 에서 */

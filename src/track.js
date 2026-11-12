@@ -32,7 +32,7 @@ export function stBadge(x) {
   return '<span class="tag t-g">🏷 ' + bt('출고 · 라벨', 'Label created') + '</span>';
 }
 /** 박스 문서들 → 출고(여러 박스) 단위로 묶기: UPS shipId · 앞 박스(lead) · 주문+날짜 */
-const shpKey = x => x.shipId || x.lead || ((x.orderId || x.trk) + '|' + (x.shipDate || ''));
+const shpKey = x => x.shipId || x.lead || ((x.orderId || x.adhocId || x.trk) + '|' + (x.shipDate || ''));
 const smName = c => { c = String(c || '').toUpperCase(); const s = S.smByCode && S.smByCode[c]; return c ? (s && s.name ? c + ' (' + s.name + ')' : c) : ''; };
 const lb = n => (Number(n) ? (Math.round(Number(n) * 10) / 10) + ' lb' : '');
 export function groupShipments(list) {
