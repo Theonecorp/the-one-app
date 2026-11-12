@@ -1,7 +1,11 @@
 # 🪞 GitLab 거울 — GitHub 에 무엇이 올라가든(브랜치 · main 머지 · 태그) 같은 모양으로 GitLab 에도 (2026-11-11 관리자: "GitLab 은 항상 거울처럼")
 #   GitHub 이 다시 막혀도(2026-11 계정 정지) 코드가 밖에 그대로 남게. 거울: https://gitlab.com/theonecorp-group/the-one-app
 #   · GitHub 이 원본 — GitLab 쪽은 덮어씀(--force). GitHub 에서 지운 브랜치 · 태그는 GitLab 에서도 지움
-#   · 필요한 것: GitHub 저장소 Settings → Secrets and variables → Actions → 비밀값 GITLAB_TOKEN (write_repository 권한)
+#   · 필요한 것 (둘 중 하나 — 둘 다 있으면 SSH 키를 씀):
+#       ① GITLAB_SSH_KEY — GitLab Deploy key(쓰기 허용)의 비밀 키. 만료 없음 · GitLab 체험판과 무관 (2026-11-12 관리자 선택)
+#          GitLab → Settings → Repository → Deploy keys 에 공개 키 + "Grant write permissions" · Protected branches 의 main "Allowed to push and merge" 에 그 키를 더함
+#       ② GITLAB_TOKEN — write_repository 토큰 (최대 1년 · 예전 방식)
+#     GitHub 저장소 Settings → Secrets and variables → Actions 에 넣음
 #              GitLab Settings → Repository → Protected branches → main 의 "Allowed to force push" 켜기
 #   · 비밀값이 없으면 경고만 남기고 초록으로 끝남 (거울 때문에 PR · 커밋이 빨갛게 되지 않게)
 #   · GitHub 이 막혔을 때는 거꾸로 sh tools/mirror.sh 로 GitLab 에 직접 (CLAUDE.md "GitHub 이 막혔을 때")
@@ -23,12 +27,26 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+      GITLAB_SSH_KEY: ${{ secrets.GITLAB_SSH_KEY }}
       GITLAB_REPO: gitlab.com/theonecorp-group/the-one-app.git
     steps:
       - name: token check
         id: tok
         run: |
-          if [ -z "$GITLAB_TOKEN" ]; then echo "::warning::GITLAB_TOKEN 비밀값이 없어 GitLab 거울을 건너뜁니다 (Settings → Secrets and variables → Actions)"; echo "ok=0" >> "$GITHUB_OUTPUT"; else echo "ok=1" >> "$GITHUB_OUTPUT"; fi
+          if [ -z "$GITLAB_TOKEN" ] && [ -z "$GITLAB_SSH_KEY" ]; then echo "::warning::GITLAB_SSH_KEY · GITLAB_TOKEN 비밀값이 없어 GitLab 거울을 건너뜁니다 (Settings → Secrets and variables → Actions)"; echo "ok=0" >> "$GITHUB_OUTPUT"; else echo "ok=1" >> "$GITHUB_OUTPUT"; fi
+      - name: SSH deploy key (있으면) — gitlab.com 호스트 키는 GitLab 이 공개한 지문과 맞는지 확인
+        if: steps.tok.outputs.ok == '1' && env.GITLAB_SSH_KEY != ''
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$GITLAB_SSH_KEY" | tr -d '\r' > ~/.ssh/gitlab_mirror && chmod 600 ~/.ssh/gitlab_mirror
+          ssh-keyscan -t ed25519 gitlab.com 2>/dev/null > ~/.ssh/known_hosts
+          FP=$(ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}')
+          [ "$FP" = "SHA256:eUXGGm1YGsMAS7vkcx6JOJdOGHPem5gQp4taiCfCLB8" ] || { echo "::error::gitlab.com 호스트 키 지문이 GitLab 공개 값과 다릅니다 ($FP) — 거울을 멈춥니다"; exit 1; }
+          echo "GIT_SSH_COMMAND=ssh -i ~/.ssh/gitlab_mirror -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
+          echo "GL_URL=git@gitlab.com:theonecorp-group/the-one-app.git" >> "$GITHUB_ENV"
+      - name: token URL (SSH 키가 없을 때)
+        if: steps.tok.outputs.ok == '1' && env.GITLAB_SSH_KEY == ''
+        run: echo "GL_URL=https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         if: steps.tok.outputs.ok == '1' && github.event_name != 'delete'
         with:
@@ -38,8 +56,8 @@ jobs:
         run: |
           git fetch -q --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
           REFS=$(git for-each-ref --format='+%(refname):refs/heads/%(refname:lstrip=3)' refs/remotes/origin | grep -v ':refs/heads/HEAD$')
-          git push --force "https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}" $REFS
-          git push --force "https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}" --tags
+          git push --force "$GL_URL" $REFS
+          git push --force "$GL_URL" --tags
       - name: delete the same branch · tag on GitLab
         if: steps.tok.outputs.ok == '1' && github.event_name == 'delete'
         env:
@@ -47,4 +65,4 @@ jobs:
           NAME: ${{ github.event.ref }}   # 브랜치 이름을 셸에 바로 끼우지 않음 (이름에 $( ) 가 들어가도 명령이 되지 않게)
         run: |
           [ "$KIND" = tag ] && REF="refs/tags/$NAME" || REF="refs/heads/$NAME"
-          git init -q m && cd m && git push "https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}" --delete "$REF" || echo "::notice::GitLab 에 $REF 가 이미 없음"
+          git init -q m && cd m && git push "$GL_URL" --delete "$REF" || echo "::notice::GitLab 에 $REF 가 이미 없음"
