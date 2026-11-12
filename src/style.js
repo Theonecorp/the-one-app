@@ -1,3 +1,4 @@
+import { THEME } from './theme.js';   // 🎨 v0.8.202 디자인 시스템 — 아래 규칙 뒤에 붙어 덮어씀
 export const CSS = `
 :root{--navy:#0f172a;--blue:#1d4ed8;--blue2:#dbeafe;--green:#15803d;--red:#b91c1c;--amber:#b45309;--bg:#eef2f7;--card:#fff;--ink:#0f172a;--ink2:#334155;--muted:#64748b;--line:#e3e8ef;--r:18px;--sh:0 1px 3px rgba(15,23,42,.06),0 6px 18px -12px rgba(15,23,42,.18);--hdr:56px}
 *{box-sizing:border-box}
@@ -502,4 +503,4 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 .shp2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}.shp2 h3{margin:0 0 6px;font-size:14px}@media (max-width:640px){.shp2{grid-template-columns:1fr}}
 .costbox{border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.5px}.costbox>div{display:flex;justify-content:space-between;padding:7px 10px;border-bottom:1px solid #eef2f7}.costbox>div:last-child{border-bottom:0}.costbox .neg{background:#ecfdf5}.costbox .neg b{color:#15803d}.costbox .tot{background:#f8fafc;font-weight:800}
 .shptbl th,.shptbl td{padding:7px 7px}.shptbl td{max-width:220px}.shptbl tr.tap{cursor:pointer}.shptbl tr.tap:hover td{background:#f8fafc}
-`;
+` + THEME;

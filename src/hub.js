@@ -5,6 +5,7 @@
  * ============================================================ */
 import { $, esc, Router, bi, bt } from './ui.js';
 import { can } from './main.js';
+import { routeIcon } from './icons.js';
 
 let S = null;
 export function register(state) { S = state; Router.on('hub', page); }
@@ -65,8 +66,8 @@ export const hubItems = k => (HUBS[k] ? HUBS[k].items.filter(x => { try { return
 
 function page(arg) {
   const k = HUBS[arg] ? arg : 'look', H = HUBS[k], L = hubItems(k);
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">' + H.icon + ' ' + bi(H.ko, H.en) + '</h2></div>' +
-    '<div class="hgrid hubgrid">' + L.map(x => '<button class="htile" data-hub="' + esc(x[0]) + '"><span class="hi">' + x[1] + '</span><b>' + bi(x[2], x[3]) + '</b><small>' + bt(x[4], x[5]) + '</small></button>').join('') + '</div>' +
+  $('page').innerHTML = '<div class="wd-hd" style="margin-bottom:12px"><div><h1>' + bi(H.ko, H.en) + '</h1></div></div>' +
+    '<div class="hgrid hubgrid">' + L.map(x => '<button class="htile" data-hub="' + esc(x[0]) + '"><span class="hi">' + routeIcon(x[0], x[1], 26) + '</span><b>' + bi(x[2], x[3]) + '</b><small>' + bt(x[4], x[5]) + '</small></button>').join('') + '</div>' +
     (L.length ? '' : '<div class="card"><div class="none">' + bt('이 일에는 볼 화면이 없습니다', 'Nothing here for this job') + '</div></div>');
   document.querySelectorAll('[data-hub]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hub.split('/'); Router.go(r, a); });   // mg/sales 처럼 칸이 있는 화면도
 }
