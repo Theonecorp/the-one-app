@@ -2,6 +2,7 @@
  *  관리 — 사용자 · 세일즈맨(요율) · 설정 · 옛 시트에서 가져오기
  * ============================================================ */
 import { REQ_DEFAULT, reqKindsText, setReqKinds, parseReqKinds } from './reqs.js';
+import { itemSuggest } from './suggest.js';
 import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt, invNo, bi, itabs } from './ui.js';
 import { newId } from './db.js';
 import * as BizDay from './bizday.js';
@@ -1176,6 +1177,7 @@ function setForm(code, sets) {
       '<div class="btns">' + (code ? '<button class="b-ghost" id="sfDel" style="color:#991b1b">세트 삭제</button>' : '') + '<button class="b-blue" id="sfSave">저장</button></div>');
     document.querySelectorAll('[data-sfq]').forEach(inp => inp.onchange = () => { st.k[+inp.dataset.sfq][1] = Math.max(1, Math.floor(Number(inp.value) || 1)); });
     document.querySelectorAll('[data-sfx]').forEach(b => b.onclick = () => { st.k.splice(+b.dataset.sfx, 1); keep(); paint(); });
+    itemSuggest($('sfAdd'), () => { const el = $('sfAdd'); el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });   // 🔎 고르면 바로 넣음 (정확한 코드라 원래 Enter 동작) (v0.8.200)
     $('sfAdd').onkeydown = e => { if (e.key !== 'Enter') return; e.preventDefault(); const it = exactItem($('sfAdd').value); const c = it ? it.c : $('sfAdd').value.trim().toUpperCase(); if (!c) return; const q = Math.max(1, Math.floor(Number($('sfAddQ').value) || 1)); const ex = st.k.find(x => x[0] === c); if (ex) ex[1] += q; else st.k.push([c, q]); keep(); paint(); setTimeout(() => $('sfAdd').focus(), 30); };
     const keep = () => { st.n = $('sfN').value.trim(); st.p = Number($('sfP').value) || 0; if (!code) code = $('sfC').value.trim().toUpperCase(); };
     $('sfSave').onclick = async () => {
