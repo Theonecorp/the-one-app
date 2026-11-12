@@ -140,6 +140,11 @@ service cloud.firestore {
     match /inserts/{id} { allow read: if isStaff(); allow write: if itemJob(); }
     // 📦 상자 라벨 (옛 WMS 의 Estoque · Etiquetas) — 상자 하나 = 라벨 하나(etiquetas) · 라벨 기록(etqEventos) · 되돌리기 요청(estornos). stock 과 같이: 보기는 등록된 사람, 쓰기는 재고 담당
     match /etiquetas/{id} { allow read: if registered(); allow write: if itemJob(); }
+    // 📦 상품 (옛 WMS 의 Produtos) — 카탈로그에 없는 칸: 배송 박스 무게 · 크기 · 많음 기준(prodExtra) · 원가(prodCusto, 관리자 · 오너만) · 확인 요청(rechecagem) · 채우기 요청(reposicao)
+    match /prodExtra/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /prodCusto/{id} { allow read, write: if isAdmin(); }
+    match /rechecagem/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /reposicao/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /etqEventos/{id} { allow read: if registered(); allow create: if itemJob(); }   // 기록은 쌓기만 (고치거나 지우지 않음)
     match /estornos/{id} { allow read: if registered(); allow create: if itemJob(); allow update, delete: if isAdmin(); }   // 요청은 재고 담당이, 승인 · 거절은 관리자 · 오너가
     match /inbound/{id} { allow read: if isStaff(); allow write: if itemJob(); }   // 🚢 입고 예정 — 공장 인보이스 (단가는 아래 inboundCost 에 따로)

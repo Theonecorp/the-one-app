@@ -34,7 +34,7 @@ let PR = [];   // 상품 목록 (그리는 동안)
 
 async function page(arg) {
   E.injetarCss();
-  if (arg) { const a = String(arg); if (a.indexOf('p/') === 0) Object.assign(ES, { modo: 'consulta', vista: 'lista', corredor: '', busca: decodeURIComponent(a.slice(2)), pag: 1 }); else if (a === 'entrada' || a === 'saida' || a === 'consulta') ES.modo = a; }
+  if (arg) { const a = String(arg); if (a.indexOf('p/') === 0) Object.assign(ES, { modo: 'consulta', vista: 'lista', corredor: '', busca: decodeURIComponent(a.slice(2)), pag: 1 }); else if (a === 'entrada' || a === 'saida' || a === 'consulta') ES.modo = a; else if (decodeURIComponent(a).indexOf('entrada/') === 0) Object.assign(ES, { modo: 'entrada', prod: decodeURIComponent(a).slice(8).toUpperCase(), pbusca: '', qtd: '', etqN: '' }); }   // 📦 상품 → "등록 + 입고" 뒤 그 상품으로 바로 입고
   if (!PR.length) $('page').innerHTML = '<div class="sb est-tela"><div class="placeholder">' + esc(t('carregando')) + '</div></div>';
   try { PR = await P(); } catch (e) { toast(String(e.message || e), 'bad'); PR = []; }
   if (location.hash.indexOf('#/estoque') !== 0) return;

@@ -29,7 +29,7 @@ const path = require('path');
   await pg.goBack(); await pg.waitForTimeout(700); h = await pg.evaluate(() => location.hash); log('back 2:', h); if (h !== '#/shome') errs.push('back from the hub should go home');
   /* 📚 조회 · 📦 재고 */
   await pg.click('#nav button[data-go="hub/look"]'); await pg.waitForSelector('[data-hub]'); const look = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('look hub:', look.join(' ')); if (!look.includes('invs') || !look.includes('stores')) errs.push('lookup hub should have invoices and customers');
-  await pg.click('#nav button[data-go="hub/wh"]'); await pg.waitForTimeout(400); const wh = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('wh hub:', wh.join(' ')); if (!wh.includes('estoque') || !wh.includes('items')) errs.push('inventory hub should have estoque (v0.8.197) and items');
+  await pg.click('#nav button[data-go="hub/wh"]'); await pg.waitForTimeout(400); const wh = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('wh hub:', wh.join(' ')); if (!wh.includes('estoque') || !wh.includes('produtos')) errs.push('inventory hub should have estoque (v0.8.197) and produtos (v0.8.199 — replaced items)');
   /* 주문 처리 단계 칩 */
   await pg.click('#nav button[data-go="order"]'); await pg.waitForSelector('.omenu [data-og]', { timeout: 8000 }).catch(() => errs.push('stage groups missing'));
   /* v0.8.174: 단계 단추 대신 모든 칸이 묶음(접수 · 출고 · 완료 · 기타)별로 항상 보임 */
