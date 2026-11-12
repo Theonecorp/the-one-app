@@ -16,6 +16,11 @@ export async function loadAccounts(S) {
   return index(rows);
 }
 export function dropAccountCache() { try { localStorage.removeItem(LS_KEY); } catch (e) {} }
+/** 한 가게만 고친 것을 폰에 보관한 목록에도 바로 반영 (전체를 다시 받지 않음 — 다른 폰은 다음 버전 때 · 주문 저장은 서버에서 다시 읽음) */
+export function patchAccountCache(S, acct, patch) {
+  const a = S.accounts && S.accounts.byCode && S.accounts.byCode[acct]; if (a) Object.assign(a, patch);
+  try { const c = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (c && Array.isArray(c.rows)) { const r = c.rows.find(x => pad4(x.acct || x.id) === acct); if (r) { Object.assign(r, patch); localStorage.setItem(LS_KEY, JSON.stringify(c)); } } } catch (e) {}
+}
 
 function index(rows) {
   rows.forEach(a => { a.acct = pad4(a.acct || a.id); a._n = nz(a.store); a._c = nz(a.city); a._all = nz([a.store, a.city, a.state, a.addr, a.acct, a.tel, a.sm].filter(Boolean).join(' ')); });
