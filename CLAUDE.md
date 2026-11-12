@@ -22,11 +22,24 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 
 - 담당은 `.github/CODEOWNERS` 와 같다 — 그 파일이 바뀌는 PR 에는 담당자에게 리뷰 요청이 자동으로 간다. 관리자는 모든 파일의 담당(최종 승인).
 - **영역 밖 파일**을 고쳐야 하면 최소한으로만 고치고 PR 설명 맨 위에 `영역 밖 변경: 파일 — 이유` 를 적는다. 공용 뼈대(위 표의 관리자 파일)를 크게 바꾸는 일은 관리자에게 넘긴다.
-- **머지**: 자기 영역 파일만 바뀐 PR 은 `check` 초록을 확인한 뒤 담당자가 직접 squash 머지해도 된다 (2026-11-06 부터 — main 보호 규칙은 PR 필수 · check 통과 필수, 승인은 없음). 영역 밖 파일 · 공용 뼈대 · `firestore.rules` · `.github/` · `tools/` 가 바뀐 PR 은 관리자 승인 뒤에 머지한다. 머지 뒤 main 을 다시 받아 `sh build.sh` 로 app.js 가 같은지 확인한다.
+- **머지**: (관리자가 "머지 · 배포" 를 맡기면 아래 「머지 · 배포 위임」 을 따른다) 자기 영역 파일만 바뀐 PR 은 `check` 초록을 확인한 뒤 담당자가 직접 squash 머지해도 된다 (2026-11-06 부터 — main 보호 규칙은 PR 필수 · check 통과 필수, 승인은 없음). 영역 밖 파일 · 공용 뼈대 · `firestore.rules` · `.github/` · `tools/` 가 바뀐 PR 은 관리자 승인 뒤에 머지한다. 머지 뒤 main 을 다시 받아 `sh build.sh` 로 app.js 가 같은지 확인한다.
 - **관리자 세션은 끝까지 알아서** (2026-11-12 관리자): 관리자가 요청한 작업은 따로 묻지 않고 전체 시험 → 커밋 → 푸시 → PR → `check` 초록 → squash 머지 → main 과 맞춤 → `node tools/fbhost.mjs . apply` 배포 → 배포 확인까지 한 번에 끝낸다. `check` 가 빨가면 고칠 때까지 머지 · 배포하지 않는다. 라이브 Firestore 자료 일괄 수정 · `firestore.rules` · Apps Script 반영은 여전히 관리자에게 먼저 묻는다. 다른 담당(디자인 · 창고)의 세션은 지금처럼 PR 까지만.
 - **저장소 밖 반영은 관리자만**: `firestore.rules` 배포, `apps-script/*` 를 Apps Script 에 붙여 넣고 배포, 라이브 Firestore 데이터 일괄 수정. 서비스 계정 키(`FIREBASE_*`)는 관리자 개인 클라우드 환경에만 있다. 다른 담당의 PR 은 설명에 `배포 필요: …` 로 적고 관리자가 반영한다.
 - **팀 공용 클라우드 환경에는 비밀값을 넣지 않는다** — 공용 환경의 변수는 모든 멤버의 세션이 읽는다. `FIREBASE_*` 가 없는 세션은 라이브 Firestore 에 쓰지 않는다.
 - **동시 작업**: 같은 날 여러 PR 이 열린다. 푸시 전마다 `sh tools/sync-main.sh` (최신 main 합치기 · 버전을 main 다음 번호로 · app.js 다시 빌드 · 번역 문구 합치기). PR 이 머지되기 전에 main 이 또 움직였으면 다시 실행.
+
+## 머지 · 배포 위임 (2026-11-12 관리자 결정)
+관리자가 "머지" · "배포" · "머지하고 배포" 라고 하면 **Claude 가 판단해서 바로 한다** (다시 묻지 않는다). 담당자(창고 매니저 · 아이템 · 재고 담당)가 연 PR 도 같다.
+1. **대상**: 관리자가 가리킨 PR, 가리키지 않았으면 열린 PR 전부(초안 제외). 오래된 것부터.
+2. **머지 조건 (모두 맞아야)**: PR 머리 커밋의 `check` 5개 전부 초록 · 충돌 없음(mergeable) · Claude 가 diff 를 읽고 아래 확인. 하나라도 아니면 머지하지 않고 이유를 보고한다 (빨간 check 는 절대 머지 안 함).
+   - 비밀값(키 · 토큰 · 비밀번호) · 사람 이름(UI) · 모델 이름이 없다
+   - 있던 기능을 지우거나 바꿨으면 `test/INDEX.md` 의 그 기능 시험도 맞게 고쳐져 있다 · 새 기능 · 고친 버그에는 새 시험이 있다
+   - 가져오기 · 일괄 저장이 문서를 통째로 덮어쓰지 않는다 (`users` 는 절대)
+   - 영역 밖 · 공용 뼈대 · `firestore.rules` · `.github/` · `tools/` 변경은 Claude 가 특히 꼼꼼히 본다: 권한을 넓히거나(규칙의 allow 확대 · 관리자 판별 변경), 배포 · CI 를 끄거나, 데이터를 지우는 변경이면 **머지하지 않고 관리자에게 묻는다**. 그 밖은 Claude 판단으로 머지
+3. **머지 방법**: squash (`gh api -X PUT repos/Theonecorp/the-one-app/pulls/N/merge -f merge_method=squash`). 여러 PR 이면 하나 머지할 때마다 다음 PR 을 `sh tools/sync-main.sh` 로 다시 맞추고 check 초록을 기다린 뒤 머지 (버전 · app.js 충돌 방지).
+4. **배포**: 머지가 끝나면 main 을 받아 `sh build.sh` 로 app.js 가 같은지 확인 → `node tools/fbhost.mjs . apply` (Firebase Hosting · https://app.theonefl.com). `FIREBASE_*` 가 없는 세션(담당자 세션 등)은 머지까지만 하고 "배포 필요" 를 남긴다.
+5. **저장소 밖 반영**: `firestore.rules` 가 바뀌었으면 `node tools/deploy-rules.js` 까지 (관리자 환경). `apps-script/*` 는 Claude 가 붙일 수 없으니 "Apps Script 반영 필요: 파일 · 할 일" 로 보고.
+6. **보고**: 머지한 PR · 건너뛴 PR(이유) · 배포한 버전 · 남은 할 일을 짧게.
 
 ## 변경 한 번의 순서
 1. `sh tools/sync-main.sh` — **먼저 최신 main 을 합친다** (다른 세션의 변경을 잃지 않기 위해). 버전 세 곳 · app.js · i18n.json 은 이 스크립트가 충돌 없이 처리하고, 남는 충돌은 진짜 src 충돌뿐이다.
