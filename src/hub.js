@@ -28,6 +28,7 @@ export const HUBS = {
     ['stock', '📦', '재고', 'Inventory', '조회 · 입고(팩킹 리스트) · 실사', 'find · receive · count', () => can('items')],
     ['items', '🏷', '아이템 · 위치', 'Items · Locations', '찾기 · 📍 통로 · 등록 · 📋 일괄 등록 · 삭제', 'find · aisle · add · bulk paste · delete', () => can('items')],
     ['shiphist', '📦', 'Shipping History', 'Shipping History', 'UPS 출고 기록 · 다시 인쇄 · 취소', 'UPS shipments · reprint · void', () => can('ship') || can('track')],
+    ['notesups', '🏷', 'Notes UPS', 'Notes UPS', '박스를 재서 라벨 · 가게별 대기 줄', 'Measure and label boxes · queue per store', () => can('ship')],
     ['balcao', '🏪', 'Shipping UPS', 'Shipping UPS', '가게 → 박스 → 라벨 (옛 앱 화면)', 'store → boxes → label (classic screen)', () => can('ship')],
     ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹 · 주문 없이 라벨', 'boxes · tracking · ad-hoc label', () => can('ship')],
     ['insert', '➕', '인서트 만들기', 'Create insert', '틀 · 훅 · 대체품 → 라벨 3가지 (옛 앱 화면)', 'template · hooks · substitutes → 3 labels (classic screen)', () => can('items')],
