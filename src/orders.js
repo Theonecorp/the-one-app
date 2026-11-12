@@ -359,7 +359,7 @@ async function staffHome() {
   if (openG.includes('recv')) openG = openG.map(g => g === 'recv' ? 'sale' : g);   /* 옛 이름(📥 주문 접수) 기억 → 세일 */
   let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + g[1] + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">▾</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
     allT.filter(h => !GRP.some(g => g[4].includes(keyOf(h)))).join('');
-  /* 🏠 v0.8.202 대시보드 — 머리(제목 · 기간) → 핵심 숫자 · 빠른 작업 · 할 일 · 출고 진행 · 매출 · 최근 주문 · 활동 (dash.js) → 아래에 전부 있던 화면 묶음 그대로 */
+  /* 🏠 v0.8.203 대시보드 — 머리(제목 · 기간) → 핵심 숫자 · 빠른 작업 · 할 일 · 출고 진행 · 매출 · 최근 주문 · 활동 (dash.js) → 아래에 전부 있던 화면 묶음 그대로 */
   const dctx = { can, ptxt };
   $('page').innerHTML = (matchMedia('(min-width:900px)').matches ? '<div class="ohead ohome">' + menuHtml(document.body.classList.contains('oscr'), true) + '</div>' : '') +
     '<div class="wd-hd" style="margin-bottom:12px"><div><h1>' + bt('대시보드', 'Dashboard') + '</h1><div class="sub">' + (j === 'whmgr' ? bi('창고', 'Warehouse') : bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</div></div></div><div class="card" style="padding:10px 12px 4px">' + chips + '</div>' +

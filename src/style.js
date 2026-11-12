@@ -1,4 +1,4 @@
-import { THEME } from './theme.js';   // 🎨 v0.8.202 디자인 시스템 — 아래 규칙 뒤에 붙어 덮어씀
+import { THEME } from './theme.js';   // 🎨 v0.8.203 디자인 시스템 — 아래 규칙 뒤에 붙어 덮어씀
 export const CSS = `
 :root{--navy:#0f172a;--blue:#1d4ed8;--blue2:#dbeafe;--green:#15803d;--red:#b91c1c;--amber:#b45309;--bg:#eef2f7;--card:#fff;--ink:#0f172a;--ink2:#334155;--muted:#64748b;--line:#e3e8ef;--r:18px;--sh:0 1px 3px rgba(15,23,42,.06),0 6px 18px -12px rgba(15,23,42,.18);--hdr:56px}
 *{box-sizing:border-box}

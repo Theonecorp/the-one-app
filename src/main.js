@@ -201,7 +201,7 @@ function waitScreen(email) {
 /* 🧭 ☰ 서랍 — 폰 · 태블릿은 팝업, 데스크탑(1200px 이상)은 왼쪽에 고정(dock · 본문이 그만큼 오른쪽으로). ☰ 는 데스크탑에서 고정 켜기 · 끄기 (이 컴퓨터에 기억)
  *   서랍 내용은 한 곳(drawerRender)에서 만들고, 고정 상태에서는 닫기(close)가 아무것도 안 함 · 주소가 바뀌면 켜진 줄만 다시 칠함 (v0.8.175) */
 const DOCK_MQ = '(min-width:1200px)';
-/* 🧭 서랍 묶음 (v0.8.202) — [키, 아이콘, 한글, 영어, 화면 주소들]. 여기에 없는 화면은 "기타" 묶음으로 (지우지 않음) */
+/* 🧭 서랍 묶음 (v0.8.203) — [키, 아이콘, 한글, 영어, 화면 주소들]. 여기에 없는 화면은 "기타" 묶음으로 (지우지 않음) */
 const DGRP = [
   ['ov', 'dashboard', '개요', 'Overview', ['shome', 'own', 'home', 'catmg', 'flow', 'mg/sales', 'mg', 'reports', 'mysales']],
   ['ops', 'truck', '운영', 'Operations', ['order', 'invs', 'notesups', 'balcao', 'shiphist', 'track', 'displays']],
@@ -242,7 +242,7 @@ function drawerRender(dock) {
   const flat = [], seen = new Set();
   items.forEach(x => { if (!/^hub\//.test(x[0])) { flat.push(x); seen.add(x[0]); } });
   items.forEach(x => { if (/^hub\//.test(x[0])) Hub.hubItems(x[0].split('/')[1]).forEach(c => { if (!seen.has(c[0])) { seen.add(c[0]); flat.push([c[0], c[1], c[2], c[3]]); } }); });
-  /* 🧭 v0.8.202 묶음 — 개요 · 운영 · 재고 관리 · 수금 · 재무 · 거래처 · 관리 (+ 기타). 역할이 볼 수 있는 화면만, 묶음에 없는 화면은 기타로 (빠지는 화면 없음)
+  /* 🧭 v0.8.203 묶음 — 개요 · 운영 · 재고 관리 · 수금 · 재무 · 거래처 · 관리 (+ 기타). 역할이 볼 수 있는 화면만, 묶음에 없는 화면은 기타로 (빠지는 화면 없음)
    *   묶음 머리를 누르면 접고 펼침 (이 기기에 기억) · 지금 화면이 든 묶음은 늘 펼침 */
   let fold = []; try { fold = JSON.parse(localStorage.getItem('theone.dfold') || '[]'); if (!Array.isArray(fold)) fold = []; } catch (e) {}
   const grpOf = r => (DGRP.find(g => g[4].includes(r)) || DGRP.find(g => g[4].includes(r.split('/')[0])) || ['etc'])[0];
@@ -411,7 +411,7 @@ function navH() {
   const pg = $('page'); if (pg && pg.clientWidth) document.documentElement.style.setProperty('--cw', pg.clientWidth + 'px');   /* 📐 본문 너비 — 타일 칸 수는 화면이 아니라 본문 너비로 (왼쪽 메뉴가 있는 컴퓨터에서도 줄지 않게) */ const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px'); }
 window.addEventListener('resize', () => setTimeout(() => { navH(); dockDrawer(); }, 50));
 window.addEventListener('hashchange', () => setTimeout(() => { dockMark(); paintTitle(); }, 0));
-/** 🏷 머리띠 제목 = 지금 화면 이름 (메뉴 · 묶음에 적힌 이름 · 없으면 THE ONE) — v0.8.202 */
+/** 🏷 머리띠 제목 = 지금 화면 이름 (메뉴 · 묶음에 적힌 이름 · 없으면 THE ONE) — v0.8.203 */
 function paintTitle() {
   const t = $('hTitle'); if (!t || !S.user) return;
   const h = location.hash.replace(/^#\/?/, ''), r = h.split('/')[0];
