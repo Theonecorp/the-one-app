@@ -150,7 +150,6 @@
 "가져온 파일의 열이 잘못 읽힌 것 같습니다. 🧹 이전 시스템 인보이스를 모두 지우고 customer # 가 있는 Sales Invoice 목록으로 다시 올리세요 (앱에서 발행한 인보이스는 남습니다).":["The imported file was probably read with the wrong columns. Delete all imported invoices with 🧹 and re-upload a Sales Invoice list that has customer #. App-issued invoices are kept.","O arquivo importado provavelmente foi lido com as colunas erradas. Apague as faturas importadas com 🧹 e envie de novo uma lista Sales Invoice com customer #. As faturas emitidas no app ficam."],
 "가져올 때까지 받은 돈":["Paid by import","Pago até a importação"],
 "가지":["items","itens"],
-"같은 것":["same as","igual a"],
 "같은 날 같은 가게에 같은 금액이 이미 있습니다":["Same store, same day, same amount already entered","Mesma loja, mesmo dia e mesmo valor já lançados"],
 "같은 분류 · 같은 목록가 ":["Same category · same list price: ","Mesma categoria · mesmo preço de lista: "],
 "같은 이름의 가게가 이미 있습니다":["A store with this name already exists","Já existe uma loja com este nome"],
