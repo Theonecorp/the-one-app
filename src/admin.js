@@ -589,16 +589,20 @@ async function importMain(file) {
       /* 🔒 앱에서 이미 정산한 수금은 파일을 다시 올려도 그대로 · 있는 건은 set 대신 merge — 앱에서 한 ① 접수 확인 · ② 수령 · ✓ · 정산 · 취소 표시가 파일로 풀리지 않게 */
       const list = parseEntriesSheet(ent), old = {}; (await S.DB.list('entries', { where: [['imported', '==', true]] })).forEach(e => { old[e.id] = e; });
       /* 🔁 세일즈맨이 앱에서 이미 보낸 수금(같은 거래처 + 수표번호)은 파일에 또 있어도 건너뜀 — 11/5 가져오기 때 17건이 두 번 잡혔던 일 (v0.8.174) */
-      const yms = Array.from(new Set(list.map(e => e.ym).filter(Boolean))).slice(0, 10), appRefs = {};
-      if (yms.length) { try { (await S.DB.list('entries', { where: [['ym', 'in', yms]] })).forEach(e => { if (e.imported || e.void) return; (e.pays || []).forEach(p => { if (p.m === 'CHECK' && p.ref) appRefs[(e.acct || '') + '#' + String(p.ref).trim()] = e.id; }); }); } catch (e) {} }
+      /* 🔁 같은 수금이 다른 ID 로 또 들어오지 않게 (v0.8.196 — 11/7 가져오기 때 이미 정산 · 수령된 수금 6건이 새 ID 로 다시 들어와 "체크 수령이 되살아난" 일)
+       *   · 달은 10개씩 나눠 모두 확인 (전에는 처음 10개 달만 봐서 빠짐) · 예전에 가져온 수금끼리도 비교 (세일즈맨 · 날짜 · 거래처 · 금액 · 결제 방법 + 번호가 같으면 같은 수금) */
+      const yms = Array.from(new Set(list.map(e => e.ym).filter(Boolean))), appRefs = {}, same = {};
+      const ckey = e => [String(e.sm || '').toUpperCase(), e.d, e.acct || '', R2(Number(e.total) || 0).toFixed(2), (e.pays || []).map(p => p.m + ':' + String(p.ref || '').trim()).join('+')].join('|');
+      for (let i = 0; i < yms.length; i += 10) { try { (await S.DB.list('entries', { where: [['ym', 'in', yms.slice(i, i + 10)]] })).forEach(e => { if (e.void) return; same[ckey(e)] = e.id; if (e.imported) return; (e.pays || []).forEach(p => { if (p.m === 'CHECK' && p.ref) appRefs[(e.acct || '') + '#' + String(p.ref).trim()] = e.id; }); }); } catch (e) {} }
       let nDone = 0, nKeep = 0, nSkip = 0;
       const cut = settleCut(); let nCut = 0;
       list.forEach(e => { const o = old[e.id]; if (o && o.settled) { nDone++; return; }
         if (!o && (e.pays || []).some(p => p.m === 'CHECK' && p.ref && appRefs[(e.acct || '') + '#' + p.ref])) { nSkip++; return; }
+        if (!o && same[ckey(e)] && same[ckey(e)] !== e.id) { nSkip++; return; }
         if (o) { ['sb', 'rc', 'v', 'void', 'settled', 'settledAt', 'vn', 'disc', 'mismatch', 'env'].forEach(k => { if (o[k]) delete e[k]; }); nKeep++; }
         if (cut && e.d <= cut) { e.settled = 'sheet:' + cut; e.settledAt = cut; e.sb = true; e.rc = true; e.v = true; nCut++; }   /* 📌 마감일까지 = 정산 완료 (수령 · 확인도 끝난 것으로) */
         ops.push({ op: o ? 'merge' : 'set', col: 'entries', id: e.id, data: e }); });
-      nE = list.length - nDone - nSkip; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list.filter(e => !(old[e.id] && old[e.id].settled)), e => e.total)) + (nSkip ? ' · 🔁 앱에서 이미 보낸 수표 ' + nSkip + '건 건너뜀' : '') + (nKeep ? ' · 있던 ' + nKeep + '건은 적은 칸만' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : ''));
+      nE = list.length - nDone - nSkip; say('수금 ' + nE + '건 (VOID 제외) · 합계 ' + money(sum(list.filter(e => !(old[e.id] && old[e.id].settled)), e => e.total)) + (nSkip ? ' · 🔁 이미 있는 수금(같은 수표 · 같은 내용) ' + nSkip + '건 건너뜀' : '') + (nKeep ? ' · 있던 ' + nKeep + '건은 적은 칸만' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : ''));
     }
     await S.DB.batch(ops);
     if (acc) await bumpAccountsVer();

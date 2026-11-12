@@ -12,7 +12,7 @@
  *      · 적용 기록마다 ✕ 되돌리기 · 크레딧 한 장 한도 기본 10000
  * ============================================================ */
 import { $, esc, money, R2, num, today, ym, md, invNo, toast, busy, openModal, closeModal, confirmBox, Router, sortBy, bi, bt, printOpen, debounce } from './ui.js';
-import { loadCatalog, catalog, exactItem, searchItems, thumb } from './catalog.js';
+import { loadCatalog, catalog, exactItem, searchItems, thumb, productLine } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache, monthsOf, getInvoice } from './invoicing.js';
 import { searchAccounts } from './accounts.js';
 import { mySm } from './access.js';
@@ -210,7 +210,7 @@ async function confirm() {
   try {
     const T = creditType(), no = await nextInvoiceNo(S, T), d = today(), now = new Date().toISOString(), C = catalog();
     const doc = { no, id: no, t: T.c, kind: 'credit', src: 'credit', d, ym: ym(d), acct: CR.acct, store: CR.store, sm: CR.sm, why: CR.why, note: CR.note.trim(),
-      lines: CR.lines.map(l => { const it = C && C.byCode[l.c]; return { c: l.c, d: l.d, q: -l.q, p: l.p, lp: l.lp, dc: l.dc, src: l.src, g: it ? (it.l1 || it.g || '') : '', ty: l.t, recent: l.recent ? { no: l.recent.no, d: l.recent.d, p: l.recent.p, disc: l.recent.disc } : null }; }),
+      lines: CR.lines.map(l => { const it = C && C.byCode[l.c]; return { c: l.c, d: l.d, q: -l.q, p: l.p, lp: l.lp, dc: l.dc, src: l.src, g: it ? productLine(it) : '', ty: l.t, recent: l.recent ? { no: l.recent.no, d: l.recent.d, p: l.recent.p, disc: l.recent.disc } : null }; }),
       qty: -t.q, sub: -t.sub, list: -t.list, disc: 0, total: -t.sub, bal: -t.sub, discMap: CR.disc, dback: CR.dback, flags: F, terms: (CR.acc && CR.acc.terms) || '', st: 'open', reviewed: false, createdBy: S.user.email, createdAt: now };
     await S.DB.set('invoices', no, doc);
     dropInvCache(monthsOf([doc]));
@@ -372,7 +372,7 @@ export async function reviewRequest(o, lines) {
     try {
       const T = creditType(), no = await nextInvoiceNo(S, T), d = today(), now = new Date().toISOString(), C = catalog(), acc = S.accounts && S.accounts.byCode ? S.accounts.byCode[o.acct] : null;
       const doc = { no, id: no, t: T.c, kind: 'credit', src: 'credit', d, ym: ym(d), acct: o.acct, store: o.store, sm: o.smFor || o.sm, why: o.why || '', note: (o.memo || '').trim(),
-        lines: L.map(l => { const it = C && C.byCode[l.c]; return { c: l.c, d: l.d, q: -l.q, p: l.p, lp: l.lp, dc: l.dc, src: 'order', g: it ? (it.l1 || it.g || '') : '', ty: l.t, recent: null }; }),
+        lines: L.map(l => { const it = C && C.byCode[l.c]; return { c: l.c, d: l.d, q: -l.q, p: l.p, lp: l.lp, dc: l.dc, src: 'order', g: it ? productLine(it) : '', ty: l.t, recent: null }; }),
         qty: -q, sub: -sub, list: -R2(L.reduce((a, l) => a + l.q * l.lp, 0)), disc: 0, total: -sub, bal: -sub, discMap: o.disc || {}, dback: o.dback != null ? o.dback : null, flags: [], terms: (acc && acc.terms) || '', st: 'open',
         reviewed: true, reviewedBy: S.user.email, reviewedAt: now, createdBy: o.createdBy || S.user.email, createdAt: now, issuedBy: S.user.email, fromOrder: o.id };
       await S.DB.batch([{ op: 'set', col: 'invoices', id: no, data: doc }, { op: 'update', col: 'orders', id: o.id, data: { st: 'done', cmNo: no, invs: [no], doneAt: now, doneBy: S.user.email, updatedAt: now } }]);

@@ -6,7 +6,7 @@
  * ============================================================ */
 import { $, esc, money, R2, toast, busy, openModal, closeModal, confirmBox, bi, bt } from './ui.js';
 import { splitByType, dcPrice, lineTotal, dropInvCache, monthsOf, bumpSalesM } from './invoicing.js';
-import { loadCatalog, catalog, exactItem } from './catalog.js';
+import { loadCatalog, catalog, exactItem, productLine } from './catalog.js';
 import { applyMoves, movesOfLines } from './stock.js';
 
 let S = null;
@@ -45,7 +45,7 @@ export async function editInvoice(x, done) {
       if (!it) return toast(bt('맞는 아이템 코드가 없습니다', 'No item with that code'), 'bad');
       const cur = L.find(l => l.c === it.c);
       if (cur) cur.q = (cur.q || 0) + q;
-      else { const l = { c: it.c, d: it.d, q, p: it.p, lp: it.p, g: it.l1 || it.g || '' }; if (it.k) l.kit = it.k.map(k => ({ c: k[0], q: k[1] })); L.push(l); }
+      else { const l = { c: it.c, d: it.d, q, p: it.p, lp: it.p, g: productLine(it) }; if (it.k) l.kit = it.k.map(k => ({ c: k[0], q: k[1] })); L.push(l); }
       paint(); setTimeout(() => { const f = $('ieAdd'); if (f) f.focus(); }, 0);
     };
     $('ieAddGo').onclick = add; $('ieAdd').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
