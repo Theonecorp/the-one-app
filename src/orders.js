@@ -13,7 +13,7 @@ import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, c
 import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel, reqNoteClean, reqNeedsNote } from './reqs.js';
 import { searchAccounts, accountLabel, patchAccountCache } from './accounts.js';
 import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName, prefixRank } from './catalog.js';
-import { jobOf, can, dockMark } from './main.js';
+import { jobOf, can, dockMark, myJobs } from './main.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
@@ -290,7 +290,7 @@ const STG = [['recv', '📥', '접수', 'Intake', ['sent', 'cfw', 'cfok', 'draft
 export const stageOfChip = st => (STG.find(g => g[4].includes(st)) || [])[0];
 export function goStage(g) { const av = chipsFor(), G = STG.find(x => x[0] === g); const first = G && av.find(c => G[4].includes(c[0])); if (first) { LF.st = first[0]; LF.list = true; } }
 const OPEN_CH = ['mine', 'pick', 'picked', 'done', 'packed', 'dlv'];   // 목록 칩 중 아직 안 끝난 일 (오래된 것이 위)   // 아직 끝나지 않은 주문 (출고 전)
-export function chipsFor() { const j = jobOf(); const keys = JOB_CHIPS[j]; return (keys ? keys.map(k => CHIPS.find(c => c[0] === k)) : CHIPS).filter(c => c[0] !== 'ups' || can('ship')); }
+export function chipsFor() { const J = myJobs(); if (J.some(j => !JOB_CHIPS[j])) return CHIPS.filter(c => c[0] !== 'ups' || can('ship')); const keys = []; J.forEach(j => JOB_CHIPS[j].forEach(k => { if (!keys.includes(k)) keys.push(k); })); keys.sort((a, b) => CHIPS.findIndex(c => c[0] === a) - CHIPS.findIndex(c => c[0] === b)); return (keys.map(k => CHIPS.find(c => c[0] === k)).filter(Boolean)).filter(c => c[0] !== 'ups' || can('ship')); }
 export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div><div><b>…</b><span>🧾 포장 대기 · Packing</span></div><div><b>…</b><span>📮 픽업 대기 · Pickup</span></div></div>'; }
 export async function fillStrip() {
   const el = $('oStrip'); if (!el) return;

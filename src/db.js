@@ -61,7 +61,7 @@ function makeMemoryDB(seed) {
     async set(c, id, data) { col(c)[id] = clone(Object.assign({}, data, { id })); return id; },
     async update(c, id, patch) { if (!col(c)[id]) throw new Error('not found: ' + c + '/' + id); Object.assign(col(c)[id], clone(patch)); },
     async del(c, id) { delete col(c)[id]; },
-    async seq(id, key, start) { const d = col('counters')[id] = col('counters')[id] || { id }; const cur = d[key] != null ? Number(d[key]) : Number(start || 1); d[key] = cur + 1; return cur; },
+    async seq(id, key, start, min) { const d = col('counters')[id] = col('counters')[id] || { id }; const cur = Math.max(d[key] != null ? Number(d[key]) : Number(start || 1), Number(min) || 0); d[key] = cur + 1; return cur; },
     async batch(ops) { for (const o of ops) { if (o.op === 'set') await this.set(o.col, o.id, o.data); else if (o.op === 'merge') await this.set(o.col, o.id, Object.assign({}, col(o.col)[o.id] || {}, o.data)); else if (o.op === 'update') await this.update(o.col, o.id, o.data); else if (o.op === 'del') await this.del(o.col, o.id); } },
     /** 실시간 보기 (시험용 메모리 DB 는 1.5초마다 비교) — 바뀔 때마다 cb(rows), 돌려준 함수를 부르면 멈춤 */
     watch(c, q, cb) { let last = null; const tick = () => this.list(c, q).then(r => { const j = JSON.stringify(r); if (j !== last) { last = j; cb(r); } }); tick(); const t = setInterval(tick, 1500); return () => clearInterval(t); },
@@ -153,10 +153,11 @@ async function makeFirestoreDB() {
     async update(c, id, patch) { await soft(fs.updateDoc(fs.doc(db, c, id), strip(patch))); },
     async del(c, id) { await soft(fs.deleteDoc(fs.doc(db, c, id))); },
     /** 번호 매기기 — counters/{id}.{key} 를 1 올리고 이전 값을 돌려줌 (동시에 눌러도 겹치지 않음) */
-    async seq(id, key, start) {
+    /** 번호표 — 지금 값을 돌려주고 +1 · min 이 있으면 그 아래로는 절대 안 냄 (인보이스 새 번호 구간, v0.8.194) */
+    async seq(id, key, start, min) {
       const ref = fs.doc(db, 'counters', id);
       return fs.runTransaction(db, async tx => {
-        const s = await tx.get(ref); const cur = s.exists() && s.data()[key] != null ? Number(s.data()[key]) : Number(start || 1);
+        const s = await tx.get(ref); const cur = Math.max(s.exists() && s.data()[key] != null ? Number(s.data()[key]) : Number(start || 1), Number(min) || 0);
         tx.set(ref, { [key]: cur + 1 }, { merge: true }); return cur;
       });
     },
@@ -223,7 +224,7 @@ function speed(DB) {
   W.update = (c, id, d) => write(c, () => DB.update(c, id, d));
   W.del = (c, id) => write(c, () => DB.del(c, id));
   W.batch = ops => { const cs = Array.from(new Set(ops.map(o => o.col))); cs.forEach(drop); busyEv(1); return DB.batch(ops).finally(() => { cs.forEach(drop); busyEv(-1); }); };
-  W.seq = (id, k, st) => { drop('counters'); return DB.seq(id, k, st); };
+  W.seq = (id, k, st, min) => { drop('counters'); return DB.seq(id, k, st, min); };
   /** 기억한 것을 버리고 새로 읽게 (새로고침 버튼 등) */
   W.fresh = c => { if (c) drop(c); else M.clear(); };
   return W;
