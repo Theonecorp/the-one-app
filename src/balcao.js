@@ -299,7 +299,8 @@ function ligar(a, foco) {
   cv.oninput = () => { B.codValor = cv.value; cv.classList.remove('erro'); };
   cv.onkeydown = e => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); cv.blur(); } };
   const f = B.foco || foco; B.foco = null;
-  if (f && $(f)) setTimeout(() => { try { $(f).focus(); } catch (e) {} }, 0);
+  /* 바로 커서를 둠 — setTimeout 으로 미루면 빨리 치는 사람 · 스캐너의 첫 글자가 빈 곳으로 감 */
+  if (f && $(f)) { try { $(f).focus(); } catch (e) {} }
   if (!q('.su-tela')) return;
 }
 function zerar() { B.cx = {}; B.caixas = []; B.cot = null; B.cotBusy = false; B.cotSeq++; clearTimeout(B.cotTimer); }
