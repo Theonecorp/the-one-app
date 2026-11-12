@@ -10,7 +10,7 @@
  *  인출 완료(수동 · 자동: 예정일 + 3영업일) → cod 컬렉션에 method 'ACH' 로 넣어 수금 확인 · 정산으로 흐름
  * ============================================================ */
 import { bankHolidays } from './bizday.js';
-import { $, esc, money, num, R2, today, ym, md, addDays, daysBetween, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, pad4, nz, sel, hasWords, invNo } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, addDays, daysBetween, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, pad4, nz, sel, hasWords, invNo, bt } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts, sortStores } from './accounts.js';
 import { invType } from './comm.js';
@@ -71,7 +71,7 @@ function achTag(a) { return !a || !a.ach ? '<span class="tag t-k">신규 · Appl
  *  ① 입력
  * ============================================================ */
 const F = { acct: '', store: '', sm: '', invDate: today(), terms: 'ACH 30', drawOn: '', touched: false, lines: [{ no: '', amt: '' }], note: '' };
-function resetF() { Object.assign(F, { acct: '', store: '', sm: '', invDate: today(), terms: 'ACH 30', drawOn: '', touched: false, lines: [{ no: '', amt: '' }], note: '' }); AOPEN = []; AOPEN_ACCT = ''; }
+function resetF() { Object.assign(F, { acct: '', store: '', sm: '', invDate: today(), terms: 'ACH 30', drawOn: '', touched: false, lines: [{ no: '', amt: '' }], note: '', orderId: '' }); AOPEN = []; AOPEN_ACCT = ''; }
 /* 🛡 미결 인보이스를 읽어 칩으로 — 탭하면 번호 · 잔액이 줄에 그대로 들어감 (손으로 치다 번호 · 금액이 어긋나는 일 방지, COD · 카드 입력과 같음) */
 let AOPEN = [], AOPEN_ACCT = '', AOPEN_P = null, AOPEN_LOADING = false;
 async function loadOpenA(acct) { AOPEN = []; AOPEN_ACCT = acct; AOPEN_LOADING = true; paintOpenA(true); const p = (async () => { try { const { storeInfo } = await import('./store.js'); const info = await storeInfo(acct); if (F.acct !== acct) return; AOPEN = (info.invs || []).filter(v => v.bal > 0.005).map(v => ({ no: invNo(v.no), d: v.d, bal: R2(v.bal) })); AOPEN.sort((x, y) => x.no < y.no ? -1 : 1); } catch (e) {} if (AOPEN_ACCT === acct) AOPEN_LOADING = false; paintOpenA(); paintChkA(); })(); AOPEN_P = p; return p; }
@@ -136,6 +136,14 @@ function bindNew() {
   document.querySelectorAll('[data-lamt]').forEach(el => { el.oninput = () => { el.value = el.value.replace(/[^0-9.]/g, ''); collectNew(); $('aTot').textContent = money(lineTotal()); paintChkA(); }; el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); if (e.ctrlKey || e.metaKey) return saveNew(false); $('aMore').click(); } }; });
   $('aSave').onclick = () => saveNew();
 }
+/** 🏦 ACH 주문의 인보이스로 바로 입력 (주문 화면 🏦 ACH 입력) — 가게 · 인보이스 날짜 · 번호 · 금액을 채워 ➕ 입력 탭으로. 저장하면 주문에 achId (v0.8.189) */
+export function startFor(invs, orderId) {
+  if (!invs || !invs.length) return toast(bt('인보이스가 없습니다', 'No invoices'), 'bad');
+  resetF(); const v0 = invs[0], a = acctInfo(v0.acct);
+  Object.assign(F, { acct: v0.acct, store: v0.store || (a && a.store) || '', sm: v0.sm || (a && a.sm) || '', invDate: v0.d || today(), lines: invs.map(v => ({ no: v.no, amt: String(v.bal != null ? v.bal : v.total) })), note: '', orderId: orderId || '' });
+  if (a && a.terms && /ACH/i.test(a.terms)) F.terms = a.terms.toUpperCase().replace(/ACH\s*/, 'ACH ');
+  calcDraw(); Router.go('ach', 'new');
+}
 function pickAcct(code) { const a = acctInfo(code); if (!a) return; F.acct = a.acct; F.store = a.store; F.sm = a.sm || ''; if (a.terms && /ACH/i.test(a.terms)) { const t = a.terms.toUpperCase().replace(/ACH\s*/, 'ACH '); F.terms = t; } F.touched = false; paintNew(); loadOpenA(a.acct); setTimeout(() => { const f = document.querySelector('[data-lno]'); if (f) f.focus(); }, 0); }
 async function saveNew(force) {
   collectNew();
@@ -160,7 +168,7 @@ async function saveNew(force) {
   const doc = { id, acct: F.acct, store: F.store, sm: F.sm || '', lines: lines.map(v => ({ no: v.no, t: invType(v.no), amt: R2(num(v.amt)) })), inv: lines.map(v => v.no).join(', '), amt, invDate: F.invDate, terms: F.terms, drawOn: F.drawOn, drawYm: ym(F.drawOn), moved: !!F.moved && !F.touched, fixed: !!F.touched,
     setup: false, setupBy: '', setupAt: '', mail: '', st: '', open: true, done: false, doneOn: '', doneYm: '', doneAmt: 0, auto: false, codId: '', note: F.note.trim(), void: false, createdBy: S.user.email, createdAt: now, updatedAt: now };
   busy(true);
-  try { await S.DB.set('ach', id, doc); drop(); toast('저장했습니다 · ' + money(amt) + ' · 인출 예정 ' + F.drawOn, 'good'); resetF(); paintNew(); }
+  try { await S.DB.set('ach', id, doc); if (F.orderId) { try { await S.DB.update('orders', F.orderId, { achId: id, achAt: now, achBy: S.user.email }); } catch (e) {} } drop(); toast('저장했습니다 · ' + money(amt) + ' · 인출 예정 ' + F.drawOn, 'good'); resetF(); paintNew(); }
   catch (e) { toast('저장 실패: ' + (e.code || e.message), 'bad'); }
   busy(false);
 }

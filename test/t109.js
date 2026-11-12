@@ -38,7 +38,7 @@ const path = require('path');
   await pg.click('#mPick'); await pg.waitForSelector('#prt.on', { timeout: 8000 }); await pg.waitForTimeout(300);
   const pick = (await pg.textContent('#prtbody')).replace(/\s+/g, ' '); if (!/DISPLAY \/ INSERT REQUEST: C4 Insert ×2 · Wall Short ×1/.test(pick)) errs.push('picking list should print the request');
   await pg.evaluate(() => { document.getElementById('prt').classList.remove('on'); });
-  await pg.click('#mPickDone'); await pg.waitForTimeout(150); if (await pg.$('#cfOk')) await pg.click('#cfOk'); await pg.waitForSelector('#mInv', { timeout: 8000 });
+  await pg.click('#mPickDone'); await pg.waitForSelector('#cpOk'); await pg.click('#cpOk'); await pg.waitForSelector('#cfOk'); if (await pg.$('#cfOk')) await pg.click('#cfOk'); await pg.waitForSelector('#mInv', { timeout: 8000 });
   await pg.click('#mInv'); await pg.waitForSelector('#ivOk', { timeout: 5000 }); await pg.click('#ivOk'); await pg.waitForTimeout(1500);
   const inv = await pg.evaluate(id => { const I = window.__MOCK_STORE__.invoices || {}; const k = Object.keys(I).find(n => I[n].orderId === id); return k ? { no: k, req: I[k].req } : null; }, ord.id);
   log('invoice:', inv); if (!inv || !inv.req || inv.req.C4 !== 2) errs.push('invoice should carry req');
