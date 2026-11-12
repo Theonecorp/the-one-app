@@ -205,7 +205,18 @@ export async function invByDigits(S, digits) {
   return out.sort((a, b) => String(a.no).localeCompare(String(b.no)));
 }
 export async function getInvoice(S, no) { for (const k of invNoOld(no)) { const x = await S.DB.get('invoices', k); if (x) return x; } return null; }
-export async function nextInvoiceNo(S, t) { const n = await S.DB.seq('inv2', t.c, t.start || 1); return fmtNo(t, n); }
+/** 🔢 인보이스 새 번호 구간 (2026-11-12 관리자: "지금부터 A 50001 · P 20001 · W 10001 부터 — 그전 것과 겹치지 않게")
+ *   그 아래 번호는 예전 시스템(SmartBee) 번호와 겹쳤음 (앱 A 카운터 43125 < 가져온 A-043868). 설정 invTypes 의 min 이 있으면 그것 */
+export const INV_MIN = { A: 50001, P: 20001, W: 10001 };
+export async function nextInvoiceNo(S, t) {
+  const min = Number(t.min) || INV_MIN[t.c] || 0;
+  for (let i = 0; i < 30; i++) {   // 그 번호의 인보이스가 이미 있으면(옛 번호 모양 포함) 건너뜀 — 이중 안전
+    const n = await S.DB.seq('inv2', t.c, t.start || 1, min), no = fmtNo(t, n);
+    let used = null; try { used = await getInvoice(S, no); } catch (e) {}
+    if (!used) return no;
+  }
+  throw new Error('인보이스 번호를 정하지 못했습니다 (' + t.c + ')');
+}
 
 /* ---------- 회사 정보 (관리 → 설정) ---------- */
 /* 인보이스 꼬리말(footer) — 보통 도매 인보이스에 들어가는 조건들. 관리 → 설정에서 고침. paper: letter(8.5×11) · a4, sig: 수령 서명 줄 */
@@ -275,7 +286,7 @@ export function invoiceHtml(inv, acc, opt) {
     '<tr><td>' + esc(terms) + (inv.pay ? ' · <b>' + esc(inv.pay) + '</b>' : '') + '</td><td>' + esc(fmtD(due)) + '</td><td>' + esc(opt.rep || inv.sm || '') + '</td><td>' + esc(fmtD(inv.d)) + '</td><td>' + esc(opt.shipVia || inv.shipVia || 'UPS Ground') + '</td><td>' + esc(inv.memo || (inv.boxes ? inv.boxes + ' BX' : '')) + '</td></tr></table>' +
     '<table class="ivlines"><thead><tr><th>Item</th><th>Description</th><th class="r">Qty Ord</th><th class="r">Qty Ship</th><th class="r">Price</th><th class="r">DC %</th><th class="r">DC Price</th><th class="r">Amount</th></tr></thead><tbody>' + body + '</tbody></table>' +
     '<div class="ivfoot"><div class="ivfl">' + arBox + '<div class="ivthx">' + esc(co.thanks || '') + '<div class="ivpcs">' + rows.length + ' lines · ' + tq + ' pcs' + (view.kits !== 'closed' && rows.some(l => l.kit && l.kit.length) ? ' · set contents listed under each set (incl.)' : '') + '</div></div></div>' +
-    '<table class="ivtot"><tr><td>Subtotal</td><td class="r">' + n2(inv.sub) + '</td></tr><tr><td>Discount' + (dc ? ' (' + dc + '%)' : '') + '</td><td class="r">' + n2(-discAmt) + '</td></tr><tr><td>Shipping Cost</td><td class="r">' + n2(inv.ship || 0) + '</td></tr><tr class="ivT"><td>Total</td><td class="r">' + n2(total) + '</td></tr><tr class="ivDue"><td>Amount Due</td><td class="r">$' + n2(total) + '</td></tr></table></div>' +
+    '<table class="ivtot"><tr><td>Subtotal</td><td class="r">' + n2(inv.sub) + '</td></tr><tr><td>Discount' + (dc ? ' (' + dc + '%)' : '') + '</td><td class="r">' + n2(-discAmt) + '</td></tr><tr><td>Freight</td><td class="r">' + n2(inv.ship || 0) + '</td></tr><tr class="ivT"><td>Total</td><td class="r">' + n2(total) + '</td></tr><tr class="ivDue"><td>Amount Due</td><td class="r">$' + n2(total) + '</td></tr></table></div>' +
     footerHtml(co) +
     (co.sig !== false ? '<div class="ivsig"><div>Received by (print &amp; sign)</div><div>Date</div><div>Checked by</div></div>' : '') +
     '<div class="ivpg"><span class="ivbc">' + esc(inv.no) + '</span><span>' + esc(inv.acct || '') + ' ' + esc(inv.store || '') + '</span><span>printed ' + esc(new Date().toLocaleString('en-US')) + '</span></div></div>';

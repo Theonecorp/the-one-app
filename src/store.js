@@ -219,7 +219,7 @@ function invhHtml(info) {
 function invRows(info) {
   const ar = {}; (info.invs || []).forEach(v => { ar[invNo(v.no)] = v; });
   const rows = (info.invHist || []).map(x => { const v = ar[invNo(x.no)]; const bal = v ? v.bal : (x.src !== 'legacy' && x.st === 'open') ? num(x.bal != null ? x.bal : x.total) : (info.asOf && x.d <= info.asOf) ? 0 : num(x.bal || 0);
-    return { no: x.no, d: x.d, total: num(x.total), bal: R2(bal), memo: x.memo || '', bk: v ? v.bk : 0, lines: x.lines || [], legacy: x.src === 'legacy', t: x.t || String(x.no).charAt(0) }; });
+    return { no: x.no, d: x.d, total: R2(num(x.total) + num(x.ship || 0)), bal: R2(bal), memo: x.memo || '', bk: v ? v.bk : 0, lines: x.lines || [], legacy: x.src === 'legacy', t: x.t || String(x.no).charAt(0) }; });
   const have = {}; rows.forEach(r => { have[invNo(r.no)] = 1; });
   (info.invs || []).forEach(v => { if (!have[invNo(v.no)]) rows.push({ no: v.no, d: v.d, total: num(v.amt), bal: R2(v.bal), memo: '', bk: v.bk || 0, lines: [], arOnly: true, t: String(v.no).charAt(0) }); });
   return rows.sort((a, b) => String(b.d).localeCompare(String(a.d)) || String(b.no).localeCompare(String(a.no)));
@@ -274,7 +274,7 @@ export async function invDetail(no, acct, back) {
     return;
   }
   const legacy = x && x.src === 'legacy', lines = (x && x.lines) || [];
-  const total = x ? x.total : v.amt, d = x ? x.d : v.d;
+  const total = x ? R2((x.total || 0) + (Number(x.ship) || 0)) : v.amt, d = x ? x.d : v.d;   // 🚚 운임 포함
   const arTxt = v ? (Math.abs(v.bal) < 0.005 ? bt('완납', 'Paid') : money(v.bal)) : info && info.asOf && d <= info.asOf ? bt('완납 (AR 에 없음)', 'Paid (not in A/R)') : x && x.src !== 'legacy' && x.st === 'open' ? money(x.bal != null ? x.bal : x.total) : '—';
   box.innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">📄 ' + esc(no) + ' <span class="tag t-g">' + esc((x && x.t) || String(no).charAt(0)) + '</span>' + (legacy ? ' <span class="tag t-c">' + bt('이전 시스템', 'Legacy') + '</span>' : x ? ' <span class="tag t-b">' + bt('앱', 'App') + '</span>' : ' <span class="tag t-c">AR</span>') + (x && x.st === 'x' ? ' <span class="tag t-r">VOID</span>' : '') + '</h2>' +
     '<div class="tap" id="idStore" style="font-size:17px;font-weight:800;margin-top:6px">🏬 ' + esc((a && a.store) || (x && x.store) || acct) + ' <span class="muted" style="font-weight:400">' + esc(acct) + ' ›</span></div>' +

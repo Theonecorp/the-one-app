@@ -24,17 +24,19 @@ export async function editInvoice(x, done) {
   if (!editable(x)) return toast(bt('이 인보이스는 여기서 고칠 수 없습니다', 'This invoice cannot be edited here'), 'bad');
   try { await loadCatalog(S); } catch (e) {}
   const L = (x.lines || []).map(l => Object.assign({}, l)), memo0 = x.memo || '';
+  L.frt = R2(Number(x.ship) || 0); L.dc = Number(x.disc) || 0;   // 🏷 할인 % (이 인보이스만)   // 🚚 운임 (inv.ship — 합계 · 잔액에 더함, 매출 · 커미션 total 에는 안 들어감)
   const paint = () => {
-    const r = recalc(x, L.filter(l => l.q > 0)), diff = R2(r.total - (x.total || 0)), bal0 = x.bal != null ? x.bal : x.total, bal1 = R2(bal0 + diff);
-    $('mbox').innerHTML = '<h2>✏️ ' + bi('인보이스 수정', 'Edit invoice') + ' ' + esc(x.no) + '</h2><div class="muted">' + esc(x.store || '') + ' · ' + esc(x.d || '') + (x.disc ? ' · DC ' + x.disc + '%' : '') + ' — ' + bt('합계 · 잔액 · 재고가 같이 맞춰집니다. 받은 수금은 그대로.', 'Total, balance and stock follow. Payments stay.') + '</div>' +
+    const xd = Object.assign({}, x, { disc: L.dc }), r = recalc(xd, L.filter(l => l.q > 0)), old = R2((x.total || 0) + (Number(x.ship) || 0)), now = R2(r.total + L.frt), diff = R2(now - old), bal0 = x.bal != null ? x.bal : old, bal1 = R2(bal0 + diff);
+    $('mbox').innerHTML = '<h2>✏️ ' + bi('인보이스 수정', 'Edit invoice') + ' ' + esc(x.no) + '</h2><div class="muted">' + esc(x.store || '') + ' · ' + esc(x.d || '') + ' — ' + bt('합계 · 잔액 · 재고가 같이 맞춰집니다. 받은 수금은 그대로.', 'Total, balance and stock follow. Payments stay.') + '</div>' +
       '<div style="max-height:46vh;overflow:auto;margin-top:8px"><table class="ietbl"><tr><th>' + bt('코드', 'Code') + '</th><th class="r" style="width:70px">' + bt('수량', 'Qty') + '</th><th class="r" style="width:86px">' + bt('가격', 'Price') + '</th><th class="r">' + bt('금액', 'Amount') + '</th><th style="width:34px"></th></tr>' +
-      L.map((l, i) => '<tr' + (l.q > 0 ? '' : ' style="opacity:.45"') + '><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r"><input type="number" inputmode="numeric" min="0" step="1" data-ieq="' + i + '" value="' + (l.q || 0) + '" style="width:62px;text-align:right"></td><td class="r"><input type="number" inputmode="decimal" min="0" step="0.01" data-iep="' + i + '" value="' + l.p + '" style="width:78px;text-align:right"></td><td class="r">' + money(lineTotal(l.q, l.p, x.disc)) + '</td><td><button type="button" class="b-ghost b-sm" data-iex="' + i + '" title="' + esc(bt('줄 지우기', 'Remove line')) + '">🗑</button></td></tr>').join('') + '</table></div>' +
+      L.map((l, i) => '<tr' + (l.q > 0 ? '' : ' style="opacity:.45"') + '><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r"><input type="number" inputmode="numeric" min="0" step="1" data-ieq="' + i + '" value="' + (l.q || 0) + '" style="width:62px;text-align:right"></td><td class="r"><input type="number" inputmode="decimal" min="0" step="0.01" data-iep="' + i + '" value="' + l.p + '" style="width:78px;text-align:right"></td><td class="r">' + money(lineTotal(l.q, l.p, L.dc)) + '</td><td><button type="button" class="b-ghost b-sm" data-iex="' + i + '" title="' + esc(bt('줄 지우기', 'Remove line')) + '">🗑</button></td></tr>').join('') + '</table></div>' +
       '<div style="display:flex;gap:6px;margin-top:8px"><input id="ieAdd" placeholder="' + esc(bt('＋ 아이템 코드 · 바코드', '+ Item code · barcode')) + '" autocapitalize="characters" style="flex:1"><input id="ieAddQ" type="number" inputmode="numeric" min="1" value="1" style="width:64px"><button type="button" class="b-ghost" id="ieAddGo">＋ ' + bi('더하기', 'Add') + '</button></div>' +
-      '<div class="fg" style="margin-top:8px"><label>' + bi('인보이스 메모', 'Invoice memo') + '</label><input id="ieMemo" value="' + esc(L.memo != null ? L.memo : memo0) + '"></div>' +
-      '<div class="kpi" style="margin-top:8px"><div><b>' + money(x.total) + '</b><span>' + bt('옛 합계', 'Old total') + '</span></div><div><b id="ieNew">' + money(r.total) + '</b><span>' + bt('새 합계', 'New total') + '</span></div><div><b' + (diff ? ' style="color:' + (diff > 0 ? '#15803d' : '#b91c1c') + '"' : '') + '>' + (diff > 0 ? '+' : '') + money(diff) + '</b><span>' + bt('차이', 'Change') + '</span></div><div><b' + (bal1 < -0.005 ? ' style="color:#b91c1c"' : '') + '>' + money(bal1) + '</b><span>' + bt('새 잔액', 'New balance') + '</span></div></div>' +
+      '<div class="fg" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><div style="width:120px"><label>🏷 ' + bi('할인', 'Discount') + ' %</label><input id="ieDc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="' + (L.dc || '') + '" placeholder="0"></div><div style="width:140px"><label>🚚 ' + bi('운임', 'Freight') + ' $</label><input id="ieFrt" type="number" inputmode="decimal" min="0" step="0.01" value="' + (L.frt ? L.frt.toFixed(2) : '') + '" placeholder="0.00"></div><div style="flex:1;min-width:180px"><label>' + bi('인보이스 메모', 'Invoice memo') + '</label><input id="ieMemo" value="' + esc(L.memo != null ? L.memo : memo0) + '"></div></div>' +
+      '<div class="kpi" style="margin-top:8px"><div><b>' + money(old) + '</b><span>' + bt('옛 합계', 'Old total') + '</span></div><div><b id="ieNew">' + money(now) + '</b><span>' + bt('새 합계', 'New total') + '</span></div><div><b' + (diff ? ' style="color:' + (diff > 0 ? '#15803d' : '#b91c1c') + '"' : '') + '>' + (diff > 0 ? '+' : '') + money(diff) + '</b><span>' + bt('차이', 'Change') + '</span></div><div><b' + (bal1 < -0.005 ? ' style="color:#b91c1c"' : '') + '>' + money(bal1) + '</b><span>' + bt('새 잔액', 'New balance') + '</span></div></div>' +
       (bal1 < -0.005 ? '<div class="alert a-amb">⚠️ ' + bt('받은 수금이 새 합계보다 많습니다 — 잔액이 마이너스(가게 크레딧)로 남습니다', 'Payments exceed the new total — the balance becomes a credit') + '</div>' : '') +
       '<div class="btns"><button type="button" class="b-ghost" id="ieX">' + bi('닫기', 'Close') + '</button><button type="button" class="b-green" id="ieOk">💾 ' + bi('저장', 'Save') + '</button></div>';
-    const keepMemo = () => { const m = $('ieMemo'); if (m) L.memo = m.value; };
+    const keepMemo = () => { const m = $('ieMemo'); if (m) L.memo = m.value; const f = $('ieFrt'); if (f) L.frt = R2(Math.max(0, Number(f.value) || 0)); const dc = $('ieDc'); if (dc) L.dc = Math.max(0, Math.min(100, Number(dc.value) || 0)); };
+    $('ieFrt').onchange = () => { keepMemo(); paint(); }; $('ieDc').onchange = () => { keepMemo(); paint(); };
     document.querySelectorAll('[data-ieq]').forEach(el => el.onchange = () => { keepMemo(); L[Number(el.dataset.ieq)].q = Math.max(0, Math.floor(Number(el.value) || 0)); paint(); });
     document.querySelectorAll('[data-iep]').forEach(el => el.onchange = () => { keepMemo(); L[Number(el.dataset.iep)].p = R2(Math.max(0, Number(el.value) || 0)); paint(); });
     document.querySelectorAll('[data-iex]').forEach(el => el.onclick = () => { keepMemo(); L[Number(el.dataset.iex)].q = 0; paint(); });
@@ -72,26 +74,29 @@ async function save(x, L, done) {
   if (!lines.length) return toast(bt('줄이 하나도 없습니다 — 인보이스 전체를 없애려면 VOID 하세요', 'No lines left — void the invoice instead'), 'bad');
   const memo = String(L.memo != null ? L.memo : (x.memo || '')).trim();
   const ch = changes(x.lines || [], lines); if (memo !== (x.memo || '')) ch.push('memo');
+  const frt = R2(L.frt != null ? L.frt : (Number(x.ship) || 0)), frt0 = R2(Number(x.ship) || 0); if (frt !== frt0) ch.push('freight $' + frt0 + '→$' + frt);
+  const dc = L.dc != null ? L.dc : (Number(x.disc) || 0), dc0 = Number(x.disc) || 0; if (dc !== dc0) ch.push('DC ' + dc0 + '%→' + dc + '%');
   if (!ch.length) return toast(bt('바뀐 것이 없습니다', 'Nothing changed'));
-  const r = recalc(x, lines), diff = R2(r.total - (x.total || 0)), bal0 = x.bal != null ? x.bal : x.total, bal = R2(bal0 + diff);
-  if (!(await confirmBox('✏️ ' + x.no + ' · ' + money(x.total) + ' → ' + money(r.total) + ' (' + (diff >= 0 ? '+' : '') + money(diff) + ')\n' + ch.slice(0, 8).join(' · ') + (ch.length > 8 ? ' …' : '') + '\n' + bt('잔액', 'Balance') + ' ' + money(bal0) + ' → ' + money(bal) + '\n' + bt('저장할까요?', 'Save?'), bt('저장', 'Save')))) return;
+  const r = recalc(Object.assign({}, x, { disc: dc }), lines), old = R2((x.total || 0) + frt0), diff = R2(r.total + frt - old), bal0 = x.bal != null ? x.bal : old, bal = R2(bal0 + diff);
+  if (!(await confirmBox('✏️ ' + x.no + ' · ' + money(old) + ' → ' + money(R2(r.total + frt)) + ' (' + (diff >= 0 ? '+' : '') + money(diff) + ')\n' + ch.slice(0, 8).join(' · ') + (ch.length > 8 ? ' …' : '') + '\n' + bt('잔액', 'Balance') + ' ' + money(bal0) + ' → ' + money(bal) + '\n' + bt('저장할까요?', 'Save?'), bt('저장', 'Save')))) return;
   busy(true);
   try {
     const now = new Date().toISOString(), fresh = await S.DB.get('invoices', x.id || x.no);
     if (!fresh || fresh.st === 'x') throw new Error(bt('인보이스가 VOID 됐거나 없습니다', 'Invoice was voided or removed'));
-    if (R2(fresh.total) !== R2(x.total)) throw new Error(bt('다른 사람이 먼저 고쳤습니다 — 다시 열어 주세요', 'Someone else changed it — reopen'));
-    const edits = (fresh.edits || []).concat([{ at: now, by: S.user.email, from: fresh.total, to: r.total, what: ch.join(' · ').substring(0, 400) }]);
-    const patch = { lines, qty: r.qty, sub: r.sub, list: r.list, total: r.total, bal, memo, edits, editedAt: now, editedBy: S.user.email };
+    if (R2(fresh.total) !== R2(x.total) || R2(Number(fresh.ship) || 0) !== frt0) throw new Error(bt('다른 사람이 먼저 고쳤습니다 — 다시 열어 주세요', 'Someone else changed it — reopen'));
+    const edits = (fresh.edits || []).concat([{ at: now, by: S.user.email, from: old, to: R2(r.total + frt), what: ch.join(' · ').substring(0, 400) }]);
+    const patch = { lines, qty: r.qty, sub: r.sub, list: r.list, disc: dc, total: r.total, ship: frt, bal, memo, edits, editedAt: now, editedBy: S.user.email };
     if (bal < 0.005 && bal > -0.005 && fresh.st === 'open') patch.bal = 0;
     const ops = [{ op: 'update', col: 'invoices', id: x.id || x.no, data: patch }];
-    if (x.orderId && diff) { const o = await S.DB.get('orders', x.orderId); if (o) ops.push({ op: 'update', col: 'orders', id: x.orderId, data: { amt: R2((o.amt || 0) + diff), updatedAt: now } }); }
+    const mDiff = R2(r.total - (x.total || 0));   // 주문 금액은 물건 금액만 (운임 제외)
+    if (x.orderId && mDiff) { const o = await S.DB.get('orders', x.orderId); if (o) ops.push({ op: 'update', col: 'orders', id: x.orderId, data: { amt: R2((o.amt || 0) + mDiff), updatedAt: now } }); }
     await S.DB.batch(ops);
     const nx = Object.assign({}, fresh, patch);
     try { await bumpSalesM(S, [fresh], -1); await bumpSalesM(S, [nx], 1); } catch (e) {}
     try { await applyMoves(movesOfLines(fresh.lines || [], 1).concat(movesOfLines(lines, -1)), 'invedit', x.no, bt('인보이스 수정', 'Invoice edited')); } catch (e) { console.warn('stock', e); }   // 📦 옛 줄을 되돌리고 새 줄을 뺌 (차이만 움직임)
     dropInvCache(monthsOf([nx]));
     try { const St = await import('./store.js'); St.dropStoreCache && St.dropStoreCache(); } catch (e) {}
-    toast('✏️ ' + x.no + ' → ' + money(r.total), 'good');
+    toast('✏️ ' + x.no + ' → ' + money(R2(r.total + frt)), 'good');
     Object.assign(x, nx);
     if (done) done(); else closeModal();
   } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }

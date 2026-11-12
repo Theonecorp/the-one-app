@@ -15,7 +15,9 @@ const path = require('path'), fs = require('fs');
   if (!/function money\(\) \{ return staffJob\(\['office', 'acct'\]\); \}/.test(R)) errs.push('① money() = office · acct only');
   if (/function itemJob[^\n]*'acct'/.test(R)) errs.push('① itemJob() must exclude acct');
   if (/function ordJob[^\n]*'(acct|catalog|itemmgr)'/.test(R)) errs.push('① ordJob() must exclude acct · catalog · itemmgr');
-  if (!/function staffJob\(jobs\) \{ let r = role\(\); return isAdminEmail\(\) \|\| r == 'admin' \|\| r == 'owner' \|\| \(r == 'manager' && userDoc\(\)\.get\('job', 'office'\) in jobs\); \}/.test(R)) errs.push('① staffJob: admin · owner all, manager by users.job (default office)');
+  /* v0.8.194: 담당자는 주된 일(users.job) 또는 같이 하는 일(users.job2) 중 하나가 맞으면 — users 문서는 관리자만 씀 */
+  if (!/function staffJob\(jobs\) \{ let r = role\(\); return isAdminEmail\(\) \|\| r == 'admin' \|\| r == 'owner' \|\| \(r == 'manager' && \(userDoc\(\)\.get\('job', 'office'\) in jobs \|\| userDoc\(\)\.get\('job2', \[\]\)\.hasAny\(jobs\)\)\); \}/.test(R)) errs.push('① staffJob: admin · owner all, manager by users.job (default office) or users.job2');
+  if (!/match \/users\/\{uid\}[\s\S]{0,300}allow write: if isRealAdmin\(\);/.test(R)) errs.push('① only the real admin writes users (job · job2)');
   /* M2 */
   const inv = block('invoices');
   if (!/request\.resource\.data\.total >= -creditMax\(\)/.test(inv)) errs.push('① salesman credit must be capped by creditMax()');

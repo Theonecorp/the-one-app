@@ -100,6 +100,7 @@ export function manage(o, lines) {
     (o.st !== 'x' && (can('invoice') || can('newOrder')) ? '<button class="b-ghost b-sm" id="mDisp">🖼 Notes Display <span id="mDispN"></span></button>' : '') +
     (o.st !== 'x' && canInv ? '<button class="b-ghost b-sm" id="mStoreChg">🏬 ' + bi('가게 바꾸기', 'Change store') + '</button>' : '') +
     (canEdit(o) && canInv ? '<button class="b-ghost b-sm" id="mEdit">✏️ ' + bi('주문 수정', 'Edit') + '</button>' : '') +
+    (picking && canInv ? '<button class="b-ghost b-sm" id="mDisc">🏷 ' + bi('할인 바꾸기', 'Change discount') + '</button>' : '') +
     (!canEdit(o) && o.st !== 'x' && o.invs && o.invs.length && can('void') ? o.invs.map(no => '<button class="b-ghost b-sm" data-mie="' + esc(no) + '">✏️ ' + bi('인보이스 수정', 'Edit invoice') + ' ' + esc(no) + '</button>').join('') : '') +
     (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
     (o.st === 'picked' ? '<button class="b-ghost b-sm" id="mRepick">↩️ ' + bi('출고 작업으로 되돌리기', 'Return to Fulfillment') + '</button>' : '') +
@@ -226,6 +227,21 @@ export function manage(o, lines) {
   if ($('mAssign')) $('mAssign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mReassign')) $('mReassign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mIMemo')) $('mIMemo').onclick = () => imemoForm(o);
+  /* 🏷 픽킹 중 · 검수 대기에서 종류별 할인 % 바꾸기 — 이 주문만 (가게 기본은 그대로 · 위 "가게 기본으로" 단추로 따로) · 지금 픽킹 수량도 같이 저장 (2026-11-12 관리자) */
+  if ($('mDisc')) $('mDisc').onclick = () => {
+    const T = [...new Set(lines.map(l => l.t || DT()))], ad = acctDisc(acctOf(o.acct));
+    openModal('<h2>🏷 ' + bi('할인 바꾸기', 'Change discount') + ' — ' + esc(o.store) + '</h2><div class="muted">' + bt('이 주문에만 적용됩니다. 인보이스를 확정할 때 이 할인으로 나갑니다.', 'This order only. The invoice is issued with this discount.') + '</div>' +
+      T.map(t => '<div class="fg" style="display:flex;align-items:center;gap:8px;margin-top:8px"><label style="flex:1;margin:0"><b>' + esc(t) + '</b> ' + esc(typeName(t)) + (ad[t] ? ' <span class="muted">(' + bt('가게 기본', 'store default') + ' ' + ad[t] + '%)</span>' : '') + '</label><input type="number" inputmode="decimal" min="0" max="100" step="0.5" data-mdc="' + esc(t) + '" value="' + ((o.disc || {})[t] || '') + '" placeholder="0" style="width:90px;text-align:right"> %</div>').join('') +
+      '<div class="btns"><button class="b-ghost" id="mdX">' + bi('닫기', 'Close') + '</button><button class="b-blue" id="mdOk">' + bi('저장', 'Save') + '</button></div>');
+    $('mdX').onclick = closeModal;
+    $('mdOk').onclick = async () => {
+      const d = Object.assign({}, o.disc || {}); document.querySelectorAll('[data-mdc]').forEach(x => { const v = Math.max(0, Math.min(100, Number(x.value) || 0)); if (v) d[x.dataset.mdc] = v; else delete d[x.dataset.mdc]; });
+      closeModal(); busy(true);
+      try { o.disc = d; await saveLines({ disc: d }); toast('🏷 ' + bt('할인 저장', 'Discount saved'), 'good'); manage(o, lines); }
+      catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  };
   document.querySelectorAll('[data-mie]').forEach(b => b.onclick = async () => { const x = await S.DB.get('invoices', b.dataset.mie); if (!x) return toast(bt('인보이스를 찾지 못했습니다', 'Invoice not found'), 'bad'); const IE = await import('./invedit.js'); IE.setState(S); IE.editInvoice(x, () => { closeModal(); goOrder(o.id); }); });   /* ✏️ 발행된 인보이스 직접 고치기 (v0.8.189) */
   if ($('mAch')) $('mAch').onclick = async () => { const A = await import('./ach.js'); const L = (await Promise.all(o.invs.map(no => S.DB.get('invoices', no)))).filter(Boolean); A.startFor(L, o.id); };
   if ($('mPickDone')) $('mPickDone').onclick = async () => {
@@ -549,15 +565,19 @@ async function confirmInvoice(o, lines) {
     '<table style="margin-top:8px"><tr><th>종류</th><th class="r">수량</th><th class="r">금액</th><th class="r">할인</th><th class="r">합계</th></tr>' + groups.map(g => '<tr><td>' + sel('', types.map(t => [t.c, t.c]), g.t, 'class="tsel" data-ivt="' + esc(g.t) + '" title="' + esc(bt('이 묶음 전체를 다른 종류로', 'Move this group to another type')) + '"') + ' ' + esc(typeName(g.t)) + '</td><td class="r">' + g.qty + '</td><td class="r">' + money(g.sub) + '</td><td class="r"><input type="number" inputmode="decimal" min="0" max="100" step="0.5" data-ivd="' + esc(g.t) + '" value="' + (g.disc || 0) + '" style="width:64px;text-align:right;padding:6px 8px;font-weight:800" title="' + esc(bt('이 종류의 할인 % — 이 주문에만', 'Discount % for this type — this order only')) + '">%</td><td class="r"><b>' + money(g.total) + '</b></td></tr>').join('') + '</table>' +
     '<div class="muted" style="margin-top:4px">🏷 ' + bt('할인 % 는 종류마다 바로 고칠 수 있습니다 — 이 주문의 인보이스에만 적용되고 가게 기본 할인은 그대로입니다', 'Discount % can be changed per type here — applies to this order only; the store default stays') + '</div>' +
     (bo.length ? '<div class="alert a-amb">⏳ 백오더 ' + bo.length + '줄 · ' + bo.reduce((a, l) => a + l.q, 0) + '개 — 백오더 목록에 남겨 두고 나중에 결정합니다</div>' : '') +
+    /* 🚚 운임(Freight) — 인보이스 금액(Amount Due · 잔액)에 더함 · 매출 · 커미션(total)에는 안 들어감 (옛 시스템 Freight 칸과 같은 자리 inv.ship) · 2026-11-12 관리자 */
+    '<div class="fg" style="margin-top:8px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:140px"><label>🚚 ' + bi('운임', 'Freight') + ' <span class="muted" style="font-weight:400">$</span></label><input id="ivFrt" type="number" inputmode="decimal" min="0" step="0.01" value="' + (o.freight ? Number(o.freight).toFixed(2) : '') + '" placeholder="0.00"></div>' +
+    (groups.length > 1 ? '<div style="flex:1;min-width:140px"><label>' + bt('운임을 넣을 인보이스', 'Add freight to') + '</label>' + sel('ivFrtT', groups.map(g => [g.t, g.t + ' · ' + typeName(g.t)]), o.freightT && groups.some(g => g.t === o.freightT) ? o.freightT : groups[0].t) + '</div>' : '') + '</div>' +
     '<div class="fg" style="margin-top:8px"><label>인보이스 메모 (선택)</label><input id="ivMemo" value="' + esc(o.memo || '') + '"></div>' +
     '<div class="btns"><button class="b-ghost" id="ivX">닫기</button><button class="b-green" id="ivOk">확정 · 인쇄</button></div>');
   $('ivX').onclick = closeModal;
   /* 🏷 묶음의 종류 바꾸기 (예: W 로 잡힌 줄을 A 로) — 줄의 종류를 바꾸고 창을 다시 그림 · 확정 때 같이 저장 */
-  document.querySelectorAll('[data-ivt]').forEach(x => x.onchange = () => { const from = x.dataset.ivt, to = x.value; if (from === to) return; lines.forEach(l => { if ((l.t || DT()) === from) l.t = to; }); closeModal(); confirmInvoice(o, lines); });
+  const keepFrt = () => { const f = $('ivFrt'); if (f) o.freight = Math.max(0, Number(f.value) || 0); const t = $('ivFrtT'); if (t) o.freightT = t.value; };
+  document.querySelectorAll('[data-ivt]').forEach(x => x.onchange = () => { keepFrt(); const from = x.dataset.ivt, to = x.value; if (from === to) return; lines.forEach(l => { if ((l.t || DT()) === from) l.t = to; }); closeModal(); confirmInvoice(o, lines); });
   /* 🏷 종류별 할인 바꾸기 — o.disc 에 적고 창을 다시 그림 · 확정 때 주문(disc · discChg) 과 인보이스(disc) 에 같이 저장 */
-  document.querySelectorAll('[data-ivd]').forEach(x => x.onchange = () => { const t = x.dataset.ivd, v = Math.max(0, Math.min(100, Number(x.value) || 0)); o.disc = Object.assign({}, o.disc || {}); if (v) o.disc[t] = v; else delete o.disc[t]; o.discChg = true; closeModal(); confirmInvoice(o, lines); });
+  document.querySelectorAll('[data-ivd]').forEach(x => x.onchange = () => { keepFrt(); const t = x.dataset.ivd, v = Math.max(0, Math.min(100, Number(x.value) || 0)); o.disc = Object.assign({}, o.disc || {}); if (v) o.disc[t] = v; else delete o.disc[t]; o.discChg = true; closeModal(); confirmInvoice(o, lines); });
   $('ivOk').onclick = async () => {
-    const memo = $('ivMemo').value.trim(); closeModal(); busy(true);
+    const memo = $('ivMemo').value.trim(); keepFrt(); const frt = R2(o.freight || 0), frtT = groups.length > 1 && $('ivFrtT') ? $('ivFrtT').value : groups[0].t; closeModal(); busy(true);
     try {
       const fresh = await S.DB.get('orders', o.id);
       if (fresh && (fresh.st === 'done' || fresh.st === 'x')) throw new Error('이미 처리된 주문입니다 (' + fresh.st + ')');
@@ -567,7 +587,7 @@ async function confirmInvoice(o, lines) {
         const no = await nextInvoiceNo(S, t);
         const C = catalog();
         const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, shipTo: o.shipTo || null, sm: o.smFor || o.sm, d, ym: ym(d), lines: g.lines.map(l => { const it = C && C.byCode[l.c]; return Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, g: it ? (it.l1 || it.g || '') : '' }, l.kit ? { kit: l.kit } : {}); }),
-          qty: g.qty, sub: g.sub, list: g.list, disc: g.disc, total: g.total, bal: g.total, terms: (acc && acc.terms) || '', st: 'open', memo, req: o.req || null, reqNote: o.reqNote || null, createdBy: S.user.email, createdAt: now,
+          qty: g.qty, sub: g.sub, list: g.list, disc: g.disc, total: g.total, ship: g.t === frtT ? frt : 0, bal: R2(g.total + (g.t === frtT ? frt : 0)), terms: (acc && acc.terms) || '', st: 'open', memo, req: o.req || null, reqNote: o.reqNote || null, createdBy: S.user.email, createdAt: now,
           imemo: o.imemo || '', pickedBy: o.pickedByName || o.pickerName || '', pay: o.pay || '' };   // 💳 COD · ACH — 인보이스 Terms 칸에 같이 찍힘   // 🔒 내부 메모 · 👷 피킹한 사람 — 사무실 기록 (손님 인보이스 인쇄에는 안 나옴)
         invs.push(inv); ops.push({ op: 'set', col: 'invoices', id: no, data: inv });
       }
@@ -848,12 +868,13 @@ export function iTbl(rowsHtml, srt) {
   return '<div class="dtw"><table class="dt itbl"><thead><tr>' + H('no', bt('인보이스', 'Invoice'), '', 'width:124px') + H('d', bt('날짜', 'Date'), '', 'width:58px') + H('acct', bt('계정 #', 'Cust #'), 'hs', 'width:62px') + H('store', bt('거래처', 'Customer')) + H('sm', bt('세일즈맨', 'Rep'), 'hs', 'width:84px') + H('terms', bt('조건', 'Terms'), 'hs', 'width:70px') + H('order', bt('주문', 'S.O. #'), 'hs', 'width:112px') + H('qty', bt('수량', 'Qty'), 'r hs', 'width:56px') + H('total', bt('합계', 'Total'), 'r', 'width:88px') + H('bal', bt('잔액', 'Balance'), 'r', 'width:88px') + '<th style="width:60px">' + bt('상태', 'Status') + '</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 }
 function invRow(r) {
-  const bal = r.bal != null ? r.bal : r.total, paid = r.st !== 'x' && Math.abs(bal) < 0.005;
-  const stTg = r.st === 'x' ? '<span class="tag t-r">VOID</span>' : paid ? '<span class="tag t-k">' + bt('완납', 'Paid') + '</span>' : bal < r.total - 0.005 ? '<span class="tag t-c">' + bt('부분', 'Partial') + '</span>' : '<span class="tag t-f">' + bt('미결', 'Open') + '</span>';
+  const amt = R2((r.total || 0) + (Number(r.ship) || 0));   // 🚚 운임 포함 금액
+  const bal = r.bal != null ? r.bal : amt, paid = r.st !== 'x' && Math.abs(bal) < 0.005;
+  const stTg = r.st === 'x' ? '<span class="tag t-r">VOID</span>' : paid ? '<span class="tag t-k">' + bt('완납', 'Paid') + '</span>' : bal < amt - 0.005 ? '<span class="tag t-c">' + bt('부분', 'Partial') + '</span>' : '<span class="tag t-f">' + bt('미결', 'Open') + '</span>';
   if (narrow()) return crow({ attr: ' data-go="inv:' + esc(r.no) + '"', cls: 'tap' + (r.st === 'x' ? ' dim' : ''), title: esc(r.store) + ' <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.terms ? ' <span class="tag t-f">' + esc(r.terms) + '</span>' : ''),
     sub: esc(r.no) + ' · ' + esc(md(r.d)) + (r.sm ? ' · ' + esc(r.sm) : '') + (r.acct ? ' · ' + esc(r.acct) : ''), sub2: (r.order ? esc(r.order) + ' · ' : '') + (r.qty || 0) + bt('개', ' pcs') + (r.disc ? ' · ' + r.disc + '%' : ''),
-    badge: stTg, num: money(r.total), numLab: r.st === 'x' ? '' : (bal > 0.005 ? '<span class="warn">' + bt('잔액', 'bal') + ' ' + money(bal) + '</span>' : '') });
-  return '<tr class="tap' + (r.st === 'x' ? ' dim' : '') + '" data-go="inv:' + esc(r.no) + '"><td><b>' + esc(r.no) + '</b> <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.src === 'legacy' ? ' <span class="tag t-c">' + bt('이전', 'Legacy') + '</span>' : '') + '</td><td>' + esc(md(r.d)) + '</td><td class="hs sub0">' + esc(r.acct || '') + '</td><td class="wrap" style="min-width:140px"><b style="font-weight:600">' + esc(r.store) + '</b></td><td class="hs">' + (r.sm ? '<span class="tag t-x">' + esc(r.sm) + '</span>' : '') + '</td><td class="hs">' + (r.terms ? '<span class="tag t-f">' + esc(r.terms) + '</span>' : '') + '</td><td class="hs sub0">' + esc(r.order || '') + (r.disc ? ' · ' + r.disc + '%' : '') + '</td><td class="r hs sub0">' + (r.qty || 0) + '</td><td class="r"><b>' + money(r.total) + '</b></td><td class="r' + (bal > 0.005 ? ' warn' : '') + '">' + (r.st === 'x' ? '' : money(bal)) + '</td><td>' + (r.st === 'x' ? '<span class="tag t-r">VOID</span>' : paid ? '<span class="tag t-k">' + bt('완납', 'Paid') + '</span>' : bal < r.total - 0.005 ? '<span class="tag t-c">' + bt('부분', 'Partial') + '</span>' : '<span class="tag t-f">' + bt('미결', 'Open') + '</span>') + '</td></tr>';
+    badge: stTg, num: money(amt), numLab: r.st === 'x' ? '' : (bal > 0.005 ? '<span class="warn">' + bt('잔액', 'bal') + ' ' + money(bal) + '</span>' : '') });
+  return '<tr class="tap' + (r.st === 'x' ? ' dim' : '') + '" data-go="inv:' + esc(r.no) + '"><td><b>' + esc(r.no) + '</b> <span class="tag t-g">' + esc(r.t || '') + '</span>' + (r.src === 'legacy' ? ' <span class="tag t-c">' + bt('이전', 'Legacy') + '</span>' : '') + '</td><td>' + esc(md(r.d)) + '</td><td class="hs sub0">' + esc(r.acct || '') + '</td><td class="wrap" style="min-width:140px"><b style="font-weight:600">' + esc(r.store) + '</b></td><td class="hs">' + (r.sm ? '<span class="tag t-x">' + esc(r.sm) + '</span>' : '') + '</td><td class="hs">' + (r.terms ? '<span class="tag t-f">' + esc(r.terms) + '</span>' : '') + '</td><td class="hs sub0">' + esc(r.order || '') + (r.disc ? ' · ' + r.disc + '%' : '') + '</td><td class="r hs sub0">' + (r.qty || 0) + '</td><td class="r"><b>' + money(amt) + '</b>' + (r.ship ? '<div class="muted" style="font-size:11px">🚚 ' + money(r.ship) + '</div>' : '') + '</td><td class="r' + (bal > 0.005 ? ' warn' : '') + '">' + (r.st === 'x' ? '' : money(bal)) + '</td><td>' + (r.st === 'x' ? '<span class="tag t-r">VOID</span>' : paid ? '<span class="tag t-k">' + bt('완납', 'Paid') + '</span>' : bal < amt - 0.005 ? '<span class="tag t-c">' + bt('부분', 'Partial') + '</span>' : '<span class="tag t-f">' + bt('미결', 'Open') + '</span>') + '</td></tr>';
 }
 
 export async function openBackorder(id) {
