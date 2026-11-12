@@ -19,7 +19,7 @@ else
   git show origin/main:app.js > app.js
   git show origin/main:i18n.json > i18n.json
   node tools/version.js match origin/main >/dev/null || exit 1
-  git add app.js i18n.json src/main.js index.html sw.js
+  git add app.js i18n.json src/ver.js index.html sw.js 2>/dev/null || git add app.js i18n.json index.html sw.js
   git diff --cached --quiet || git commit -q -m "sync: 버전 · app.js · i18n.json 을 main 값으로 맞춤 (머지 준비)"
   # ② 머지
   if ! git merge --no-edit -q origin/main; then
@@ -36,11 +36,11 @@ if [ -f .git/sync-ours-i18n.json ]; then node tools/i18n.js merge3 .git/sync-bas
 # ④ 버전 · 빌드
 if git diff --quiet origin/main -- src; then node tools/version.js match origin/main >/dev/null
 else
-  MAINV=$(git show origin/main:src/main.js | grep -o "export const VER = 'v[0-9.]*'" | grep -o '[0-9][0-9.]*')
-  CURV=$(grep -o "export const VER = 'v[0-9.]*'" src/main.js | grep -o '[0-9][0-9.]*')
+  MAINV=$( (git show origin/main:src/ver.js 2>/dev/null || git show origin/main:src/main.js) | grep -o "export const VER = 'v[0-9.]*'" | grep -o '[0-9][0-9.]*')
+  CURV=$(grep -o "export const VER = 'v[0-9.]*'" src/ver.js | grep -o '[0-9][0-9.]*')
   [ "$CURV" = "$MAINV" ] && node tools/version.js bump origin/main
 fi
 sh build.sh || exit 1
-git add app.js i18n.json src/main.js index.html sw.js
+git add app.js i18n.json src/ver.js index.html sw.js
 git diff --cached --quiet || git commit -q -m "sync: main 합친 뒤 다시 빌드 · $(node tools/version.js show)"
 echo "✅ main 합치기 끝 — $(node tools/version.js show)"

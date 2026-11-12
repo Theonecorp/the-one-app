@@ -1,7 +1,7 @@
 /* v0.8.174 시험 — 📦 창고 · 사무실 의견 5가지 (새 주문 앱 보완점)
  *   ① 인보이스 문서: 분류 묶음이 앱 분류 순서(세트 "" 먼저 → 주얼리 → [그 외]) — SET ORDER 묶음이 맨 위
  *   ② 세트는 기본으로 한 줄(작은 글씨 SET: 구성) — 구성품 ↳ 줄(.ivkitrow)이 저절로 펼쳐지지 않음 (보기 설정 '구성품 펼침' 으로만)
- *   ③ ④ 피킹 리스트 인쇄 · 화면의 픽킹 목록 — (v0.8.190 부터 관리자 규칙) 📍 통로 순서(동선) 머리 → 같은 통로 안 코드 앞 글자 ABC → 번호 · 위치 없는 아이템은 맨 끝 (자세한 규칙은 t203)
+ *   ③ ④ 피킹 리스트 인쇄 · 화면의 픽킹 목록 — (v0.8.190 부터 관리자 규칙 · v0.8.192 🧩 세트 · 인서트 오더는 늘 맨 위) 📍 통로 순서(동선) 머리 → 같은 통로 안 코드 앞 글자 ABC → 번호 · 위치 없는 아이템은 맨 끝 (자세한 규칙은 t203)
  *   ⑤ 인보이스 확정 창에서 종류별 할인 % 를 바로 고침 → 합계가 바뀌고, 확정하면 인보이스 · 주문(disc · discChg)에 저장 · 가게 기본 할인은 그대로 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
@@ -20,13 +20,13 @@ const path = require('path');
   /* ③ 화면 픽킹 목록 구분줄 */
   await pg.waitForFunction(() => document.querySelectorAll('#mLines tr.pkg').length >= 3, null, { timeout: 6000 }).catch(() => errs.push('③ screen groups by aisle once the catalog is loaded'));
   const seps = await pg.$$eval('#mLines tr.pkg', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim())); log('③ screen groups:', seps.join(' | '));
-  if (seps.length !== 3 || !/01A/.test(seps[0]) || !/04B/.test(seps[1]) || !/위치 없음|NO LOCATION/.test(seps[2])) errs.push('③ screen groups: aisle 01A → 04B → no location (got ' + seps.join(' | ') + ')');
+  if (seps.length !== 3 || !/세트 · 인서트/.test(seps[0]) || !/04B/.test(seps[1]) || !/위치 없음|NO LOCATION/.test(seps[2])) errs.push('③ screen groups: set · insert → aisle 04B → no location (got ' + seps.join(' | ') + ')');
   const order = await pg.$$eval('#mLines tr:not(.pkg) td:first-child b', e => e.map(x => x.textContent)); log('③ screen order:', order.join(' '));
-  if (order.join(' ') !== 'FLSIDE52 AHG100 AHG105 EB103') errs.push('③ screen order: aisle 01A → 04B (AHG100 · AHG105) → no location (got ' + order.join(' ') + ')');
+  if (order.join(' ') !== 'FLSIDE52 AHG100 AHG105 EB103') errs.push('③ screen order: set → aisle 04B (AHG100 · AHG105) → no location (got ' + order.join(' ') + ')');
   /* ③ ④ 피킹 리스트 인쇄 */
   await pg.click('#mPickPrint'); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(300);
   const P = await pg.evaluate(() => { const b = document.getElementById('prtbody'); return { heads: [...b.querySelectorAll('tr.pktype')].map(x => x.textContent.trim()), codes: [...b.querySelectorAll('tbody tr:not(.pktype):not(.pkfam):not(.fin) td:nth-child(3) b')].map(x => x.textContent), rule: (b.querySelector('.pkrule') || {}).textContent || '' }; }); log('④ print:', JSON.stringify(P));
-  if (P.heads.length !== 3 || !/AISLE 01A/.test(P.heads[0]) || !/AISLE 04B · 2 lines · 30 pcs/.test(P.heads[1]) || !/NO LOCATION/.test(P.heads[2])) errs.push('④ picking list headers: AISLE 01A → AISLE 04B (2 lines · 30 pcs) → NO LOCATION');
+  if (P.heads.length !== 3 || !/SET · INSERT ORDER/.test(P.heads[0]) || !/AISLE 04B · 2 lines · 30 pcs/.test(P.heads[1]) || !/NO LOCATION/.test(P.heads[2])) errs.push('④ picking list headers: SET · INSERT ORDER → AISLE 04B (2 lines · 30 pcs) → NO LOCATION');
   if (P.codes.join(' ') !== 'FLSIDE52 AHG100 AHG105 EB103') errs.push('③ printed order by aisle (got ' + P.codes.join(' ') + ')');
   if (!/AISLE/.test(P.rule)) errs.push('④ the rule line is printed at the top');
   await pg.click('#prtClose'); await pg.waitForTimeout(200);
