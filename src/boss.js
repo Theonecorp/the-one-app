@@ -223,7 +223,7 @@ function smRows() {
   const why = { early: all.filter(e => e.d < P.from && !e.settled && !carried(e)).length, late: all.filter(e => e.d > P.to && !e.settled).length, closed: all.filter(e => inR(e) && e.settled).length, min: all.length ? all.map(e => e.d).sort()[0] : '', max: all.length ? all.map(e => e.d).sort().pop() : '' };
   return { mine, field, wait, cods, merged, why, codDiag };
 }
-/* 🧾 인보이스 기준 정산 (v0.8.204) — 이 세일즈맨 줄에 적힌 인보이스를 읽어 종류 · 할인 % · 금액을 comm.js 에 등록 → byInvoice 가 배분 · 할인 줄 나눔 */
+/* 🧾 인보이스 기준 정산 (v0.8.203) — 이 세일즈맨 줄에 적힌 인보이스를 읽어 종류 · 할인 % · 금액을 comm.js 에 등록 → byInvoice 가 배분 · 할인 줄 나눔 */
 const INV_TRIED = new Set();
 async function loadInvInfo(rows) {
   const nos = new Set(); (rows.mine || []).concat(rows.cods || []).forEach(x => (x.invs || []).forEach(i => { if (i.no && !INV_TRIED.has(invKey(i.no))) nos.add(i.no); }));
