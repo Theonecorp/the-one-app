@@ -12,7 +12,7 @@ import { reqText, reqCount } from './reqs.js';
 import { narrow, crow, cgrp } from './ui.js';
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, printOpen, debounce, bi, bt, hasWords, localDay, pickDates, sortInv, invParts, itabs, footBtns } from './ui.js';
 import { jobOf, can, jobCan } from './main.js';
-import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort, prefixRank, cleanName } from './catalog.js';
+import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort, prefixRank, cleanName, productLine, isDiscL1 } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, monthsOf, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
 import { storeInfo } from './store.js';
 import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip, sendStamp, smShow, payTag } from './orders.js';
@@ -50,8 +50,14 @@ const typeName = c => { const t = invTypes(S).find(x => x.c === c); return t ? t
 /* ============================================================
  *  주문 처리 화면
  * ============================================================ */
+/** 🗄 단종 상품 줄의 인보이스 종류 바로잡기 — v0.8.196 전에는 단종 폴더의 주얼리가 그 외(P)로 잡혔음. 인보이스 전 주문만 · W(사무실이 고른 것)는 그대로 */
+export function fixDiscT(o, lines) {
+  const C = catalog(); if (!C || /^(done|shipped|x|dlv)$/.test(String((o && o.st) || ''))) return lines;
+  lines.forEach(l => { const it = C.byCode[l.c]; if (!it || !isDiscL1(it.l1) || l.t === 'W') return; const t = typeOfItem(S, it); if (t && t !== l.t) l.t = t; });
+  return lines;
+}
 export function manage(o, lines) {
-  lines = lines.map(l => Object.assign({}, l, l.t ? {} : { t: DT() }));   // 종류 없는 옛 줄은 기본 종류(A)로
+  lines = fixDiscT(o, lines.map(l => Object.assign({}, l, l.t ? {} : { t: DT() })));   // 종류 없는 옛 줄은 기본 종류(A)로
   const picking = o.st === 'pick' || o.st === 'ok' || o.st === 'picked';   // 픽킹 수량을 만질 수 있는 상태 (픽킹 완료 뒤에도 사무실이 고칠 수 있음)
   if (picking) lines.forEach(l => { if (l.pq == null) l.pq = l.q; });
   const acc = acctOf(o.acct), ad = acctDisc(acc);
@@ -459,7 +465,7 @@ function addrDiffs(logs, refresh) {
 }
 
 async function printPicking(o, lines) {
-  if (lines.some(l => l.kit)) { try { await loadCatalog(S); } catch (e) {} }
+  try { await loadCatalog(S); } catch (e) {}   // 세트 구성품 · 단종 상품 종류 바로잡기 (v0.8.196)
   printOpen(pickingHtml(o, lines));
 }
 /* ---------- 🧭 픽킹 순서 규칙 (2026-11-12 관리자: "픽킹하는 사람이 헷갈리지 않게 — 통로별로(통로 순서 = 동선), 같은 종류끼리 ABC 1234, CVEG 01~16 다음에 CVNG") · v0.8.190 ----------
@@ -483,7 +489,20 @@ export function pickSortGrouped(a, b) {
 }
 const aisleLabel = g => g.set ? '🧩 ' + bt('세트 · 인서트 오더', 'SET · INSERT ORDER') : g.aisle ? '📍 ' + bt('통로', 'AISLE') + ' ' + g.aisle : '❔ ' + bt('위치 없음', 'NO LOCATION');
 export const PICK_RULE = '🧩 SET · INSERT ORDER first  ·  📍 AISLE 00 → 01A → 01B → … → WAREHOUSE → NO LOCATION  ·  same code letters together A→Z  ·  numbers 1→9 (CVEG01…CVEG16, then CVNG)';
+/** 💍 / 🧴 픽킹 리스트를 주얼리 · 그 외 제품 두 장으로 (2026-11-12 관리자: "주얼리랑 그외 제품이랑 두 개가 따로따로") — 그 외 = 커미션 P 종류 · v0.8.196
+ *   주얼리 = A · W(세트 · 디스플레이) 등 나머지 · 한 종류만 있으면 한 장 (머리에 어느 쪽인지 표시) */
+export function pickParts(o, lines) {
+  const L = fixDiscT(o, lines.map(l => Object.assign({}, l)));
+  const other = new Set(invTypes(S).filter(t => t.comm === 'P' || t.c === 'P').map(t => t.c)), isO = l => other.has(l.t || DT());
+  const J = L.filter(l => !isO(l)), P = L.filter(isO);
+  return [['JEWELRY', J], ['OTHER PRODUCTS', P]].filter(x => x[1].length);
+}
 export function pickingHtml(o, lines) {
+  const parts = pickParts(o, lines);
+  if (!parts.length) return pickingPart(o, lines, '', '');
+  return parts.map((p, i) => pickingPart(o, p[1], p[0], parts.length > 1 ? (i + 1) + ' / ' + parts.length : '')).join('');
+}
+function pickingPart(o, lines, part, pg) {
   const acc = acctOf(o.acct);
   const showKits = pickKits();   // 🧩 구성품 줄은 옵션 (기본 숨김)
   const rows = lines.slice().sort(pickSortGrouped);   // 🧭 📍 통로(동선) → 코드 앞 글자 ABC → 번호
@@ -494,7 +513,7 @@ export function pickingHtml(o, lines) {
    *   표 머리는 장마다 다시 · 줄은 장 사이에서 안 잘림 · 용지는 인보이스 설정(Letter / A4) · 여러 장 묶어 찍으면 주문마다 새 장 */
   const paper = ((invView(S).paper || company(S).paper) === 'a4') ? 'A4' : 'letter';   // 인보이스 인쇄와 같은 용지
   return ('<style>@page{size:' + paper + ';margin:.4in}</style><div class="pk"><div class="iv pkhd">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
-    '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
+    '<div class="meta">' + (part ? '<span class="pkpart">' + (part === 'JEWELRY' ? '💍 ' : '🧴 ') + esc(part) + (pg ? ' <span>· ' + esc(pg) + '</span>' : '') + '</span> ' : '') + '<b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
     '<br>Rep. ' + esc(o.smFor || o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true, o.reqNote)) : '') + '</div><div class="pkrule">' + esc(PICK_RULE) + '</div></div>' +
     '<table class="pktbl"><thead><tr><th style="width:26px">#</th><th style="width:100px">LOC</th><th style="width:82px">CODE</th><th>DESCRIPTION</th><th style="width:40px">TYPE</th><th class="r" style="width:52px">ORDER</th><th class="r" style="width:56px">PICKED</th><th style="width:70px">NOTE</th></tr></thead><tbody>' +
     rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td class="pkloc"><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td></td><td>' + esc(l.note || '') + '</td></tr>' +
@@ -557,6 +576,7 @@ function dlvDone(o) {
 async function confirmInvoice(o, lines) {
   if (/^N\d{6}-/.test(String(o.acct || ''))) { const NA = await import('./newacct.js'); toast('🆕 ' + bt('신규 거래처라 아직 코드가 없습니다 — 코드를 먼저 붙여 주세요', 'New account has no code yet — assign the code first'), 'bad'); if (NA.canAssign()) NA.pendingModal(() => goOrder(o.id)); return; }
   try { await loadCatalog(S); } catch (e) {}
+  fixDiscT(o, lines);   // 🗄 단종 주얼리는 A (목록이 늦게 읽혔을 때도) · v0.8.196
   const groups = Object.values(splitByType(lines, o.disc, 'pq')).filter(g => g.qty > 0);
   const bo = lines.filter(l => (l.pq || 0) < l.q).map(l => Object.assign({ c: l.c, d: l.d, q: l.q - (l.pq || 0), p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }, l.kit ? { kit: l.kit } : {}));
   if (!groups.length) return toast('픽킹된 수량이 없습니다 — 주문을 취소하거나 수량을 넣으세요', 'bad');
@@ -586,7 +606,7 @@ async function confirmInvoice(o, lines) {
         const t = types.find(x => x.c === g.t) || { c: g.t, start: 1, pad: 5 };
         const no = await nextInvoiceNo(S, t);
         const C = catalog();
-        const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, shipTo: o.shipTo || null, sm: o.smFor || o.sm, d, ym: ym(d), lines: g.lines.map(l => { const it = C && C.byCode[l.c]; return Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, g: it ? (it.l1 || it.g || '') : '' }, l.kit ? { kit: l.kit } : {}); }),
+        const inv = { no, t: g.t, order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, shipTo: o.shipTo || null, sm: o.smFor || o.sm, d, ym: ym(d), lines: g.lines.map(l => { const it = C && C.byCode[l.c]; return Object.assign({ c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, g: it ? productLine(it) : '' }, l.kit ? { kit: l.kit } : {}); }),
           qty: g.qty, sub: g.sub, list: g.list, disc: g.disc, total: g.total, ship: g.t === frtT ? frt : 0, bal: R2(g.total + (g.t === frtT ? frt : 0)), terms: (acc && acc.terms) || '', st: 'open', memo, req: o.req || null, reqNote: o.reqNote || null, createdBy: S.user.email, createdAt: now,
           imemo: o.imemo || '', pickedBy: o.pickedByName || o.pickerName || '', pay: o.pay || '' };   // 💳 COD · ACH — 인보이스 Terms 칸에 같이 찍힘   // 🔒 내부 메모 · 👷 피킹한 사람 — 사무실 기록 (손님 인보이스 인쇄에는 안 나옴)
         invs.push(inv); ops.push({ op: 'set', col: 'invoices', id: no, data: inv });
@@ -718,7 +738,7 @@ export async function assignPicker(orders, done) {
     try {
       await S.DB.batch(orders.map(o => ({ op: 'update', col: 'orders', id: o.id, data: { st: 'pick', picker: p.email, pickerName: p.name, pickAt: now, pickBy: me, updatedAt: now } })));
       toast('👷 ' + p.name + ' ← ' + (one ? one.store : orders.length + bt('건', ' orders')), 'good');
-      if (pr) { const all = []; for (const o of orders) { const L = await S.DB.get('orderLines', o.id); all.push(pickingHtml(Object.assign({}, o, { st: 'pick', pickerName: p.name }), (L && L.lines) || [])); } printOpen(all.join('')); }
+      if (pr) { try { await loadCatalog(S); } catch (e) {} const all = []; for (const o of orders) { const L = await S.DB.get('orderLines', o.id); all.push(pickingHtml(Object.assign({}, o, { st: 'pick', pickerName: p.name }), (L && L.lines) || [])); } printOpen(all.join('')); }
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false); if (done) done();
   };

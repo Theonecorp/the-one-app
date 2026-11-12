@@ -73,6 +73,14 @@ export function prefixRank(name) {
 }
 /** Level 1 이름 → Group (인보이스 종류): "" " → Set & Display(W) · [ < * z → Other(P) · 보통 이름 → Jewelry(A) */
 export function familyOf(l1) { const r = prefixRank(l1); return r <= 1 ? 'Set & Display' : r === 2 ? 'Jewelry' : 'Other'; }
+/* 🗄 단종 폴더 (<DISCONTINUE ITEM>) — 폴더는 맨 뒤 "Other" 묶음이지만 안에는 주얼리(ANKLET · GRILLZ · SET UNIT …)와 그 외 제품(EDGE BOOSTER · BELLATIQUE …)이 섞여 있음
+ *   → 인보이스 종류 · 픽킹 리스트는 Level 2 · 3 이름으로: 아래 그 외 제품 이름이면 Other(P), 아니면 Jewelry(A)
+ *   → 손님 인보이스의 제품 라인은 "DISCONTINUE ITEM" 이 아니라 Level 2 이름 (2026-11-12 관리자) · v0.8.196 */
+export const isDiscL1 = s => /DISCONTINU/i.test(String(s || ''));
+export const DISC_OTHER = /EDGE BOOSTER|BELLATIQUE|KING CURL|PERFUME|FRAGRANCE|CHEMICAL|NEXONE/i;
+export function discFamily(it) { return DISC_OTHER.test([it && it.l2, it && it.l3].join(' ')) ? 'Other' : 'Jewelry'; }
+/** 인보이스에 찍히는 제품 라인 — 보통은 Level 1 (EARRING · NECKLACE …), 단종 상품은 Level 2 */
+export function productLine(it) { if (!it) return ''; return isDiscL1(it.l1) ? (cleanName(it.l2 || '') || cleanName(it.l3 || '') || 'OTHERS') : (it.l1 || it.g || ''); }
 /** 깨끗한 이름 — 화면에 보일 때는 "" [ ] < > 를 뗌 */
 export function cleanName(name) { return String(name || '').replace(/^""|""$/g, '').replace(/^["\[<*]+|["\]>*]+$/g, '').replace(/^zz?(?=[A-Z])/, '').trim() || String(name || ''); }
 const COLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });

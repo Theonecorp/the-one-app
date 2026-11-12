@@ -7,7 +7,7 @@
  * ============================================================ */
 import { esc, money, R2, addDays, invNo, invNoOld } from './ui.js';
 import { reqText } from './reqs.js';
-import { catalog, kvGet, kvSet, prefixRank } from './catalog.js';
+import { catalog, kvGet, kvSet, prefixRank, isDiscL1, discFamily, productLine } from './catalog.js';
 
 /* 새로 시작하는 인보이스 종류 (2026-10) — 영문 한 글자 + 다섯 자리 번호, 99999 를 넘으면 다음 단계 (J99999 → JA00001 → JB00001 …)
  *  comm: 커미션 계산 때 어느 칸으로 셀지 (A 기본 · P · W) */
@@ -30,7 +30,8 @@ export function invTypes(S) {
 export function typeOfItem(S, it) {
   const types = invTypes(S);
   if (!it) return types[0].c;
-  const names = [it.g, it.l1, it.l2, it.l3].map(x => String(x || '').trim().toUpperCase()).filter(Boolean);
+  /* 🗄 단종 폴더 상품은 폴더(Group Other · Level 1)를 보지 않고 Level 2 · 3 으로 — 주얼리는 그대로 주얼리 (v0.8.196) */
+  const names = (isDiscL1(it.l1) ? [discFamily(it), it.l2, it.l3] : [it.g, it.l1, it.l2, it.l3]).map(x => String(x || '').trim().toUpperCase()).filter(Boolean);
   const code = String(it.c || '').toUpperCase();
   for (const t of types.slice(1).concat(types.slice(0, 1))) {
     const terms = String(t.match || '').split(',').map(x => x.trim().toUpperCase()).filter(Boolean);
@@ -245,7 +246,8 @@ export function footerHtml(co) {
 export function invoiceHtml(inv, acc, opt) {
   opt = opt || {}; const co = opt.co || CO_DEFAULT;
   const C = catalog(), view = Object.assign({}, INV_VIEW_DEFAULT, opt.view || {});
-  const grpOf = l => { if (l.g) return l.g; const it = C && C.byCode[l.c]; return it ? (it.l1 || it.g || '') : ''; };
+  /* 🗄 단종 상품은 "DISCONTINUE ITEM" 대신 Level 2 이름 — 이미 발행된 인보이스(g 에 단종 폴더 이름이 적힘)도 인쇄 때 고쳐 찍음 (v0.8.196) */
+  const grpOf = l => { if (l.g && !isDiscL1(l.g)) return l.g; const it = C && C.byCode[l.c]; return it ? productLine(it) : l.g ? 'OTHERS' : ''; };
   const byGroup = view.sort === 'group';
   /* 손님 보기 순서 — 제품 라인(Level 1)별로 묶고, 그 안에서 세부 라인(Level 2 · 3) → 코드 순 */
   const subOf = l => { const it = C && C.byCode[l.c]; return it ? [it.l2 || '', it.l3 || ''].join('\u0001') : ''; };
