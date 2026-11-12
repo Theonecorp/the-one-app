@@ -93,7 +93,7 @@ const path = require('path'), fs = require('fs');
   /* 두드려서 픽킹: 1번 줄 — 한 번 = ✓ 통과, 두 번째 = ⏳ 백오더(0) */
   await pg.click('[data-pkt="1"]'); await pg.waitForTimeout(80); await pg.click('[data-pkt="1"]'); await pg.waitForTimeout(80); await pg.click('[data-pkt="0"]'); await pg.waitForTimeout(80);
   log('pick taps:', await pg.$$eval('.pkb', b => b.map(x => x.className + ' ' + x.textContent.replace(/\s+/g, ''))));
-  await pg.click('#mPickDone'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(900);
+  await pg.click('#mPickDone'); await pg.waitForSelector('#cpOk'); await pg.click('#cpOk'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(900);
   log('after pick done:', (await txt(pg, '#page h2')).slice(0, 60), 'btns:', await pg.$$eval('#page .btns button', b => b.map(x => x.id).filter(Boolean)));
   if (!(await pg.$('#mInv'))) errs.push('picked state should offer invoice');
   await pg.click('#mInv'); await pg.waitForSelector('#ivOk'); await pg.click('#ivOk'); await pg.waitForTimeout(1500); if (await pg.$('#prt.on')) await pg.click('#prtClose');

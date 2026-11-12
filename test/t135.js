@@ -25,7 +25,7 @@ const path = require('path');
   await pg.click('[data-dup="mPickSave"]'); await pg.waitForTimeout(500);
   const hit = await pg.evaluate(() => window.__hit); log('① bottom save → top save clicked:', hit); if (hit !== 1) errs.push('① tapping the bottom 💾 must trigger the top 💾 exactly once');
   /* 아래 ✅ 작업 완료 → 확인 → 🧾 인보이스 발행 */
-  await pg.click('[data-dup="mPickDone"]'); await pg.waitForSelector('#cfOk', { timeout: 5000 }).catch(() => errs.push('① bottom ✅ 작업 완료 should ask to confirm'));
+  await pg.click('[data-dup="mPickDone"]'); await pg.waitForSelector('#cpOk', { timeout: 5000 }).then(() => pg.click('#cpOk')).catch(() => {}); await pg.waitForSelector('#cfOk', { timeout: 5000 }).catch(() => errs.push('① bottom ✅ 작업 완료 should ask to confirm'));
   if (await pg.$('#cfOk')) { await pg.click('#cfOk'); await pg.waitForSelector('#mInv', { timeout: 8000 }).catch(() => errs.push('① after completing, the 🧾 issue button should show')); }
   const s2 = await pg.evaluate(() => ({ st: window.__MOCK_STORE__.orders['O261014-AAAA'].st, dupInv: !!document.querySelector('[data-dup="mInv"]') }));
   log('① after done:', JSON.stringify(s2)); if (s2.st !== 'picked') errs.push('① order should be picked after the bottom ✅'); if (!s2.dupInv) errs.push('① 🧾 issue button mirrored at the bottom too');
