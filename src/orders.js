@@ -14,7 +14,7 @@ import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel, reqNoteClean, reqNeed
 import { searchAccounts, accountLabel, patchAccountCache } from './accounts.js';
 import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName, prefixRank } from './catalog.js';
 import { jobOf, can, dockMark, myJobs } from './main.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount, obWhole, obFix, obDisc } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
 import * as Notes from './notes.js';
@@ -731,7 +731,7 @@ function askSmFor(a) {
   });
 }
 let WANT_NEW = false;
-function totals() { const by = splitByType(O.lines, O.disc, 'q'); let qty = 0, amt = 0; Object.values(by).forEach(g => { qty += g.qty; amt += g.total; }); return { n: O.lines.filter(l => l.q > 0).length, qty, amt: R2(amt), by }; }
+function totals() { crDisc(); const by = splitByType(O.lines, O.disc, 'q'); let qty = 0, amt = 0; Object.values(by).forEach(g => { qty += g.qty; amt += g.total; }); return { n: O.lines.filter(l => l.q > 0).length, qty, amt: R2(amt), by }; }
 
 function paintEditor() {
   const t = totals();
@@ -924,22 +924,35 @@ export function flexTypes(lines) {
   return lines;
 }
 /* 🏷 타사 제품 리턴 — 우리 코드가 없는 물건은 가격대로 (v0.8.187 관리자: "타 회사 제품은 가격으로 정리 — 1.99 · 2.49 · 2.99 … 9.49 · 9.99 · … 39.99" · "특이사항은 크레딧을 수동으로")
- *   가격 단추를 누를 때마다 그 가격 줄 +1 (코드 OB-1.99 · 종류 OB) · ✍️ 직접 = 설명 · 단가 · 수량. 이 줄들은 가게 할인 · 할인 백을 빼지 않음 (그 가격 그대로) */
+ *   가격 단추를 누를 때마다 그 가격 줄 +1 (코드 OB-1.99 · 종류 OB) · ✍️ 직접 = 설명 · 단가 · 수량
+ *   v0.8.198: 가격 단추 = 물건에 붙은 소매가 → 크레딧은 우리 판매가 (9.99 → 5.00) · 이 줄들도 할인 백(없으면 가게 기본 할인)을 뺌 ($5 · 10% → $4.50) */
 const OB = 'OB';
 export const OB_PRICES = (() => { const a = []; for (let v = 1.99; v < 10; v += 0.5) a.push(Math.round(v * 100) / 100); for (let v = 10.99; v < 40; v += 1) a.push(Math.round(v * 100) / 100); return a; })();
-function obAdd(c, d, p, q) { let l = IDX[c]; if (l) l.q += q; else { l = { c, d, q, p, lp: p, t: OB }; O.lines.push(l); IDX[c] = l; } saveWip(); refreshTotals(); }
+function obAdd(c, d, p, q, rp) { let l = IDX[c]; if (l) l.q += q; else { l = { c, d, q, p, lp: p, t: OB }; if (rp != null) l.rp = rp; O.lines.push(l); IDX[c] = l; } saveWip(); refreshTotals(); }
+/* 💎 바디 주얼리는 소매가 ÷ 2 공식을 안 따름 (2026-11-12 관리자: "실제로는 $2 인데 판매가는 4.99 인 제품이 대부분") → 우리 판매가를 바로 누름
+ *   단추 = 상품 목록의 BODY JEWELRY 판매가들 ($2.00 · $3.00 · $3.50 · $4.00 · $5.00 …) · 소매가가 적힌 상품이 있으면 옆에 (소매 $4.99) */
+function bodyPrices() {
+  const C = catalog(), m = {}; if (C) Object.values(C.byCode).forEach(it => { if (cleanName(it.l1 || '').toUpperCase() !== 'BODY JEWELRY') return; const p = Number(it.p) || 0; if (!(p > 0 && p < 20)) return; const k = p.toFixed(2), r = Number(it.s) || 0; m[k] = m[k] || {}; if (r > 0) m[k][r.toFixed(2)] = (m[k][r.toFixed(2)] || 0) + 1; });
+  const ks = Object.keys(m).length ? Object.keys(m) : ['2.00', '3.00', '3.50', '4.00', '5.00'];
+  return ks.map(Number).sort((a, b) => a - b).map(p => { const r = Object.entries(m[p.toFixed(2)] || {}).sort((a, b) => b[1] - a[1])[0]; return { p, r: r ? Number(r[0]) : (p === 2 ? 4.99 : null) }; });
+}
 function otherSheet() {
+  const BODY = bodyPrices();
   const paint = () => {
+    const bb = $('obBody');
+    if (bb) { bb.innerHTML = BODY.map(x => { const c = 'OBB-' + x.p.toFixed(2), n = IDX[c] ? IDX[c].q : 0; return '<button type="button" class="' + (n ? 'on' : '') + '" data-obb="' + x.p.toFixed(2) + '">$' + x.p.toFixed(2) + (n ? ' <b>×' + n + '</b>' : '') + (x.r ? '<small class="obr">' + bt('소매', 'retail') + ' $' + x.r.toFixed(2) + '</small>' : '') + '</button>'; }).join('');
+      bb.querySelectorAll('[data-obb]').forEach(b => b.onclick = () => { const v = Number(b.dataset.obb); obAdd('OBB-' + v.toFixed(2), 'BODY JEWELRY (OTHER BRAND)', v, 1); paint(); }); }
     const box = $('obGrid'); if (!box) return;
-    box.innerHTML = OB_PRICES.map(v => { const c = 'OB-' + v.toFixed(2), n = IDX[c] ? IDX[c].q : 0; return '<button type="button" class="' + (n ? 'on' : '') + '" data-obp="' + v.toFixed(2) + '">$' + v.toFixed(2) + (n ? ' <b>×' + n + '</b>' : '') + '</button>'; }).join('');
-    box.querySelectorAll('[data-obp]').forEach(b => b.onclick = () => { const v = Number(b.dataset.obp); obAdd('OB-' + v.toFixed(2), bt('타사 제품', 'Other brand') + ' $' + v.toFixed(2), v, 1); paint(); });
+    box.innerHTML = OB_PRICES.map(v => { const c = 'OB-' + v.toFixed(2), n = IDX[c] ? IDX[c].q : 0; return '<button type="button" class="' + (n ? 'on' : '') + '" data-obp="' + v.toFixed(2) + '">$' + v.toFixed(2) + (n ? ' <b>×' + n + '</b>' : '') + '<small>→ ' + money(obWhole(v)) + '</small></button>'; }).join('');
+    box.querySelectorAll('[data-obp]').forEach(b => b.onclick = () => { const v = Number(b.dataset.obp); obAdd('OB-' + v.toFixed(2), 'OTHER BRAND (RETAIL $' + v.toFixed(2) + ')', obWhole(v), 1, v); paint(); });
     const man = O.lines.filter(l => l.t === OB && /^MAN-/.test(l.c));
     $('obMan').innerHTML = man.length ? man.map(l => '<div>✍️ ' + esc(l.d) + ' · ' + l.q + ' × ' + money(l.p) + ' = <b>' + money(R2(l.q * l.p)) + '</b></div>').join('') : '';
     const ob = O.lines.filter(l => l.t === OB && l.q > 0); $('obTot').textContent = ob.length ? ob.reduce((a, l) => a + l.q, 0) + bt('개 · ', ' pcs · ') + '−' + money(R2(ob.reduce((a, l) => a + l.q * l.p, 0))) : '';
   };
-  openModal('<h2>🏷 ' + bi('타사 제품 · 가격으로', 'Other brands · by price') + '</h2><div class="muted">' + bt('우리 코드가 없는 물건은 가격대를 누르세요 — 누를 때마다 1개. 이 줄은 할인 없이 그 가격 그대로 크레딧됩니다. 수량은 ✅ 크레딧 확인에서 고칠 수 있습니다.', 'For goods without our code, tap the price — one per tap. These lines are credited at that price with no discount. Fix quantities in Review.') + '</div>' +
+  openModal('<h2>🏷 ' + bi('타사 제품 · 가격으로', 'Other brands · by price') + '</h2><div class="muted">' + bt('우리 코드가 없는 물건은 붙어 있는 소매가를 누르세요 — 누를 때마다 1개. 크레딧은 우리 판매가(→ 옆 금액, 예: $9.99 → $5.00)에서 할인 백(없으면 가게 기본 할인)을 뺀 금액입니다. 수량은 ✅ 크레딧 확인에서 고칠 수 있습니다.', 'Tap the retail price on the item — one per tap. The credit is our selling price (→, e.g. $9.99 → $5.00) minus the discount back (or the store discount). Fix quantities in Review.') + '</div>' +
     '<div class="obgrid" id="obGrid"></div>' +
-    '<div class="card" style="margin:10px 0 0;padding:10px"><b>✍️ ' + bt('직접 입력 — 특이사항', 'Manual — special cases') + '</b><div class="two" style="margin-top:6px"><input id="obD" placeholder="' + esc(bt('설명 (예: 가발 리턴 · 가격 조정)', 'Description')) + '"><div style="display:flex;gap:6px"><input id="obP" type="number" step="0.01" inputmode="decimal" placeholder="' + esc(bt('단가 $', 'Unit $')) + '" style="flex:1 1 0;min-width:0"><input id="obQ" type="number" inputmode="numeric" value="1" style="flex:0 0 64px;min-width:0"><button type="button" class="b-blue b-sm" id="obAdd" style="flex:0 0 auto;width:auto">＋</button></div></div><div id="obMan" class="muted" style="font-size:12.5px;margin-top:6px"></div></div>' +
+    '<div class="card" style="margin:10px 0 0;padding:10px"><b>💎 ' + bt('바디 주얼리 — 우리 판매가를 바로 누르세요', 'Body jewelry — tap our selling price') + '</b><div class="muted" style="font-size:12px">' + bt('바디 주얼리는 소매가 ÷ 2 가 아닙니다 (예: 소매 $4.99 → 판매가 $2.00)', 'Body jewelry is not retail ÷ 2 (e.g. retail $4.99 → our price $2.00)') + '</div><div class="obgrid" id="obBody" style="max-height:none"></div></div>' +
+    '<div class="card" style="margin:10px 0 0;padding:10px"><b>✍️ ' + bt('직접 입력 — 특이사항', 'Manual — special cases') + '</b><div class="two" style="margin-top:6px"><input id="obD" placeholder="' + esc(bt('설명 (예: 가발 리턴 · 가격 조정)', 'Description')) + '"><div style="display:flex;gap:6px"><input id="obP" type="number" step="0.01" inputmode="decimal" placeholder="' + esc(bt('판매가 $', 'Our price $')) + '" style="flex:1 1 0;min-width:0"><input id="obQ" type="number" inputmode="numeric" value="1" style="flex:0 0 64px;min-width:0"><button type="button" class="b-blue b-sm" id="obAdd" style="flex:0 0 auto;width:auto">＋</button></div></div><div id="obMan" class="muted" style="font-size:12.5px;margin-top:6px"></div></div>' +
     '<div class="btns"><span class="muted" id="obTot" style="align-self:center;flex:1"></span><button class="b-blue" id="obDone">' + bt('닫기', 'Done') + '</button></div>');
   $('obAdd').onclick = () => { const d = $('obD').value.trim(), p = R2($('obP').value), q = Math.max(1, Math.floor(Number($('obQ').value) || 1)); if (!d) return toast(bt('설명을 적으세요', 'Enter a description'), 'bad'); if (!(p > 0)) return toast(bt('단가를 적으세요', 'Enter the unit price'), 'bad'); obAdd('MAN-' + Date.now().toString(36).toUpperCase(), d, p, q); $('obD').value = ''; $('obP').value = ''; $('obQ').value = '1'; paint(); };
   $('obDone').onclick = () => { closeModal(); paintEditor(); };
@@ -949,7 +962,12 @@ function otherSheet() {
 const CR_WHY = [['대미지', 'Damaged'], ['오래된 물건 교환', 'Old stock exchange'], ['잘못 보낸 물건', 'Wrong item shipped'], ['가격 조정', 'Price adjustment'], ['기타', 'Other']];
 const CR_DB = [0, 5, 10, 15, 20, 25, 30];
 /** 🏷 할인 백 — 고르면 모든 종류에 그 % (기본 = 가게 기본 할인). 줄을 새로 담아도 저장 · 확인 때 다시 맞춤 */
-function crDisc() { if (!isCr() || O.dback == null) return; const ty = {}; O.lines.forEach(l => { ty[l.t || DT()] = 1; }); ty[DT()] = 1; Object.keys(O.disc || {}).forEach(k => { ty[k] = 1; }); O.disc = {}; Object.keys(ty).forEach(k => { if (k !== OB) O.disc[k] = O.dback; }); }
+function crDisc() {
+  if (!isCr()) return;
+  O.lines.forEach(obFix);   // 🏷 옛 OB 줄(소매가로 담김) → 판매가 (v0.8.198)
+  if (O.dback == null) { O.disc = Object.assign({}, O.disc || {}); delete O.disc[OB]; const a = obDisc(O, DT()); if (a) O.disc[OB] = a; return; }   // 🏷 OB 줄은 가게 기본 할인(첫 종류)
+  const ty = {}; O.lines.forEach(l => { ty[l.t || DT()] = 1; }); ty[DT()] = 1; Object.keys(O.disc || {}).forEach(k => { ty[k] = 1; }); O.disc = {}; Object.keys(ty).forEach(k => { O.disc[k] = O.dback; });   // 할인 백은 OB 줄까지 모든 줄 (v0.8.198)
+}
 function paintCrMemo() {
   crDisc();
   const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null, def = accDiscOf(), defT = Object.keys(def).length ? Object.keys(def).map(k => k + ' ' + def[k] + '%').join(' · ') : '0%';
