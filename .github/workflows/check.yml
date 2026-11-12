@@ -22,17 +22,17 @@ jobs:
             echo "::error::app.js 가 src 와 다릅니다 — sh build.sh 를 돌려 app.js 를 함께 커밋하세요 (main 머지 뒤에도 다시 빌드)"; git --no-pager diff --stat -- app.js; exit 1; fi
       - name: i18n.json one entry per line (sorted) — keeps parallel PRs from conflicting
         run: node tools/i18n.js check
-      - name: VER (src/main.js) · app.js?v= (index.html) · CACHE (sw.js) must match
+      - name: VER (src/ver.js) · app.js?v= (index.html) · CACHE (sw.js) must match
         run: |
-          VER=$(grep -o "export const VER = 'v[0-9.]*'" src/main.js | grep -o 'v[0-9.]*')
+          VER=$(grep -o "export const VER = 'v[0-9.]*'" src/ver.js | grep -o 'v[0-9.]*')
           IDX=$(grep -o 'app.js?v=[0-9.]*' index.html | head -1 | sed 's/app.js?v=/v/')
-          echo "main.js $VER · index.html $IDX"
-          [ "$VER" = "$IDX" ] || { echo "::error::버전이 다릅니다: src/main.js $VER · index.html $IDX"; exit 1; }
+          echo "ver.js $VER · index.html $IDX"
+          [ "$VER" = "$IDX" ] || { echo "::error::버전이 다릅니다: src/ver.js $VER · index.html $IDX"; exit 1; }
           if [ "${{ github.event_name }}" = pull_request ]; then
             git fetch -q origin "${{ github.base_ref }}" --depth=1
             if ! git diff --quiet "origin/${{ github.base_ref }}" -- app.js; then
               git diff --quiet "origin/${{ github.base_ref }}" -- sw.js && { echo "::error::app.js 가 바뀌었는데 sw.js 의 CACHE 이름이 그대로입니다 — 폰이 옛 앱을 계속 씁니다"; exit 1; }
-              [ "$VER" != "$(git show origin/${{ github.base_ref }}:src/main.js | grep -o "export const VER = 'v[0-9.]*'" | grep -o 'v[0-9.]*')" ] || { echo "::error::app.js 가 바뀌었는데 VER 이 그대로입니다"; exit 1; }
+              [ "$VER" != "$( (git show origin/${{ github.base_ref }}:src/ver.js 2>/dev/null || git show origin/${{ github.base_ref }}:src/main.js) | grep -o "export const VER = 'v[0-9.]*'" | grep -o 'v[0-9.]*')" ] || { echo "::error::app.js 가 바뀌었는데 VER 이 그대로입니다"; exit 1; }
             fi
           fi
   tests:

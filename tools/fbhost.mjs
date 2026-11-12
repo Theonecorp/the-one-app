@@ -14,7 +14,7 @@ const FILES = ['index.html', 'app.js', 'sw.js', 'manifest.webmanifest', 'icon-19
 const gz = {}, hashes = {};
 for (const f of FILES) { const z = zlib.gzipSync(fs.readFileSync(path.join(DIR, f)), { level: 9 }); gz['/' + f] = z; hashes['/' + f] = crypto.createHash('sha256').update(z).digest('hex'); }
 console.log('폴더', DIR, '· 파일', FILES.length, FILES.map(f => f + ' ' + Math.round(fs.statSync(path.join(DIR, f)).size / 1024) + 'KB').join(' · '));
-const ver = (fs.readFileSync(path.join(DIR, 'src/main.js'), 'utf8').match(/VER = '([^']+)'/) || [])[1] || (fs.readFileSync(path.join(DIR, 'index.html'), 'utf8').match(/app\.js\?v=([\d.]+)/) || [])[1];
+const verSrc = fs.existsSync(path.join(DIR, 'src/ver.js')) ? 'src/ver.js' : 'src/main.js', ver = (fs.readFileSync(path.join(DIR, verSrc), 'utf8').match(/VER = '([^']+)'/) || [])[1] || (fs.readFileSync(path.join(DIR, 'index.html'), 'utf8').match(/app\.js\?v=([\d.]+)/) || [])[1];
 console.log('앱 버전', ver);
 if (!APPLY) { console.log('(미리보기 — apply 를 주면 실제로 올림)'); process.exit(0); }
 const config = { headers: [

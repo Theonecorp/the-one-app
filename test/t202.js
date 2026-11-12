@@ -2,7 +2,8 @@
  *   ① 📄 인보이스(📅 기간별) 표: 거래처 머리글 → 가게 이름 ABC 순 (묶음 없이 한 줄로) · 한 번 더 → 반대 · 한 번 더 → 원래 날짜 묶음
  *   ② 세일즈맨 머리글 → 세일즈맨 순 (같은 세일즈맨 안은 가게 이름) · 인보이스 머리글 → 번호 순 · 합계 머리글 → 큰 것부터
  *   ③ 폰(좁은 화면): 표 머리글 대신 ↕ 정렬 칩 줄 — 거래처 칩 → 가게 이름 순 · ✕ 묶음으로
- *   ④ 세일즈맨 📄 인보이스 찾기(최근)도 같은 정렬 칩 · 표 머리글 */
+ *   ④ 세일즈맨 📄 인보이스 찾기(최근)도 같은 정렬 칩 · 표 머리글
+ *   ⑤ (v0.8.191 · 옛 Sales Invoice List 사진) 계정 # · 조건(Terms) · 주문 #(S.O.) · 수량 칸도 머리글 정렬 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -28,6 +29,9 @@ const path = require('path');
   await pg.click('#iList th[data-isort="sm"]'); await pg.waitForTimeout(500); const o2 = await order(pg); log('② by rep:', o2.join(' ')); if (o2.join() !== 'A-000012,A-000011,A-000010,A-000009') errs.push('② rep header → ALEX (BETA, ZETA) · BRANDON · SOO');
   await pg.click('#iList th[data-isort="no"]'); await pg.waitForTimeout(500); const o3 = await order(pg); log('② by invoice #:', o3.join(' ')); if (o3.join() !== 'A-000009,A-000010,A-000011,A-000012') errs.push('② invoice header → number order');
   await pg.click('#iList th[data-isort="total"]'); await pg.waitForTimeout(500); const o4 = await order(pg); log('② by total:', o4.join(' ')); if (o4.join() !== 'A-000009,A-000010,A-000012,A-000011') errs.push('② total header → largest first');
+  /* ⑤ (v0.8.191) 옛 Sales Invoice List 처럼 계정 # · 조건 · 주문 # · 수량 머리글도 */
+  for (const k of ['acct', 'terms', 'order', 'qty']) if (!(await pg.$('#iList th[data-isort="' + k + '"]'))) errs.push('⑤ sortable header ' + k);
+  await pg.click('#iList th[data-isort="acct"]'); await pg.waitForTimeout(500); const o5 = await order(pg); log('⑤ by cust #:', o5.join(' ')); if (o5.join() !== 'A-000009,A-000010,A-000012,A-000011') errs.push('⑤ Cust # header → account number order');
   /* ③ */
   const ph = await open('luke@theonefl.com', 400);
   await ph.evaluate(() => { location.hash = '#/invs'; }); await ph.waitForSelector('[data-im="date"]', { timeout: 8000 }); await ph.click('[data-im="date"]'); await ph.waitForSelector('#iList .kpi', { timeout: 8000 }); await ph.waitForTimeout(400);

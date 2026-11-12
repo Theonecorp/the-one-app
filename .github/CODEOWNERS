@@ -1,27 +1,20 @@
-# 담당 영역 — 이 파일이 바뀌는 PR 에는 담당자에게 리뷰 요청이 자동으로 갑니다 (CLAUDE.md 「팀 · 담당 영역」 과 같은 표)
-#   아래쪽 줄이 위쪽 줄보다 우선합니다. 한 줄에 여러 명이면 그중 한 명의 승인으로 충분합니다.
-#   관리자(@Theonecorp)는 모든 파일의 담당 = 최종 승인.
-#   디자인 담당 · 창고 매니저는 저장소 협업자 초대를 수락한 뒤 GitHub 아이디(@아이디)를 해당 줄 끝에 더합니다.
-#   창고 매니저(아이템 · 재고 담당): joao@theonefl.com — GitHub 계정에 확인된 이메일이어야 리뷰 요청이 감 · 디자인 담당: (초대 수락 뒤 추가)
+# 🔒 큰 틀 잠금 (2026-11-12 관리자) — 여기 적힌 파일이 바뀌는 PR 은 관리자(@Theonecorp) 승인이 있어야 머지됩니다.
+#   GitHub 설정의 브랜치 보호 "Require review from Code Owners" 가 켜져 있어야 실제로 막힙니다.
+#   여기 없는 파일(화면 · 기능 · 버전 src/ver.js · index.html · sw.js · app.js · i18n.json · 시험)은 주인이 없어서
+#   check 초록이면 담당자(창고 매니저 겸 배포 담당)가 직접 머지 · 배포할 수 있습니다.
+#   아래쪽 줄이 위쪽 줄보다 우선합니다.
 
-*                           @Theonecorp
-
-# 🎨 디자인 담당 — 사진 · 라벨 · 카탈로그 화면 · 분류 일괄 변경
-/src/photos.js              @Theonecorp
-/src/labels.js              @Theonecorp
-/src/catpage.js             @Theonecorp
-/src/lvtool.js              @Theonecorp
-/apps-script/SharePhotos.gs @Theonecorp
-/data/photo-index.json      @Theonecorp
-
-# 📦 창고 매니저 — 재고 · UPS · 픽업 · 배송 · 아이템 · 출고 흐름
-/src/stock.js               @Theonecorp joao@theonefl.com
-/src/ship.js                @Theonecorp joao@theonefl.com
-/src/pickup.js              @Theonecorp joao@theonefl.com
-/src/track.js               @Theonecorp joao@theonefl.com
-/src/items.js               @Theonecorp joao@theonefl.com
-/src/catalog.js             @Theonecorp joao@theonefl.com
-/src/scan.js                @Theonecorp joao@theonefl.com
-/src/fulfill.js             @Theonecorp joao@theonefl.com
-/src/flow.js                @Theonecorp joao@theonefl.com
-/apps-script/UPS.gs         @Theonecorp joao@theonefl.com
+# 로그인 · 역할 · 관리자 판별 · 라우터 · 자료 층
+/src/main.js                @Theonecorp
+/src/db.js                  @Theonecorp
+# 권한 규칙
+/firestore.rules            @Theonecorp
+# CI(check) · 거울 · 담당 표 · 배포 도구 · 빌드
+/.github/                   @Theonecorp
+/tools/                     @Theonecorp
+/build.sh                   @Theonecorp
+/package.json               @Theonecorp
+/package-lock.json          @Theonecorp
+# 작업 규칙 · Claude 설정
+/CLAUDE.md                  @Theonecorp
+/.claude/                   @Theonecorp

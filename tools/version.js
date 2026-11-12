@@ -1,13 +1,15 @@
-/* 버전 세 곳 — src/main.js 의 VER · index.html 의 app.js?v= · sw.js 의 CACHE(theone-shell-vNNN) 를 한꺼번에
+/* 버전 세 곳 — src/ver.js 의 VER (v0.8.192 전에는 src/main.js) · index.html 의 app.js?v= · sw.js 의 CACHE(theone-shell-vNNN) 를 한꺼번에
  *   node tools/version.js show              지금 값
  *   node tools/version.js match <git ref>   그 ref(예: origin/main) 의 세 값으로 맞춤 (머지 전 충돌 막기)
  *   node tools/version.js bump [git ref]    그 ref(없으면 지금) 값에서 하나씩 올림 — VER 끝자리 +1 · CACHE 번호 +1
  * 여러 사람이 동시에 작업해도 버전은 "main 다음 번호" 하나로 정해지게 하려는 것 (tools/sync-main.sh 가 씀) */
 const fs = require('fs'), path = require('path'), { execSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..');
-const F = { main: 'src/main.js', idx: 'index.html', sw: 'sw.js' };
+const F = { main: 'src/ver.js', idx: 'index.html', sw: 'sw.js' };
 const RE = { main: /export const VER = 'v([0-9.]+)'/, idx: /app\.js\?v=([0-9.]+)/, sw: /const CACHE = 'theone-shell-v([0-9]+)'/ };
-const read = (ref, f) => ref ? execSync('git show ' + ref + ':' + f, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 }) : fs.readFileSync(path.join(ROOT, f), 'utf8');
+const read0 = (ref, f) => ref ? execSync('git show ' + ref + ':' + f, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'ignore'] }) : fs.readFileSync(path.join(ROOT, f), 'utf8');
+/* src/ver.js 가 없는 옛 ref(v0.8.191 까지)는 src/main.js 에서 읽음 */
+const read = (ref, f) => { try { return read0(ref, f); } catch (e) { if (f === 'src/ver.js') return read0(ref, 'src/main.js'); throw e; } };
 const get = ref => { const o = {}; for (const k in F) { const m = read(ref, F[k]).match(RE[k]); if (!m) throw new Error(F[k] + ' 에서 버전을 못 찾음'); o[k] = m[1]; } return o; };
 const put = v => {
   const sub = { main: s => s.replace(RE.main, "export const VER = 'v" + v.ver + "'"), idx: s => s.replace(/app\.js\?v=[0-9.]+/g, 'app.js?v=' + v.ver), sw: s => s.replace(RE.sw, "const CACHE = 'theone-shell-v" + v.shell + "'") };
