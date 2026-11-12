@@ -95,12 +95,17 @@ export function checkLine(L, cs) {
   else { out.blocked = true; out.wFix = 0; out.why = blankOther ? '인보이스 번호는 있는데 금액이 비어 있어 계산할 수 없습니다' : '받은 돈과 인보이스 합이 달라 어느 숫자가 맞는지 알 수 없습니다'; }
   return out;
 }
+/** 🏷 할인 초과(DISC 구역) — 20.01% 부터 (2026-11-12 관리자: "디스카운트 20.01% 이상부터 커미션 10%")
+ *   수금의 할인 칸은 % 숫자(10 · 15 · 20 · 25) · 설정 discLimit 는 0.20(비율) — v0.8.198 전에는 둘을 그대로 비교해서 10% · 15% · 20% 할인도 모두 DISC(10%)로 계산됐음
+ *   둘 다 % 로 맞춰 비교 (1 보다 작은 할인 값은 비율로 보고 ×100) */
+export function discPct(v) { if (v === '' || v == null) return null; const n = Number(v); if (!isFinite(n)) return null; return n > 0 && n < 1 ? n * 100 : n; }
+export function discOver(v, cs) { const d = discPct(v); if (d == null) return false; const lim = Number(cs && cs.DISC_LIMIT != null ? cs.DISC_LIMIT : 0.2); return d > (lim <= 1 ? lim * 100 : lim) + 1e-9; }
 export function secOf(L, cs) {
   const up = String(L.store || '').toUpperCase();
   const hasW = L.hasAlloc ? L.W > 0 : L.invs.some(x => /^W/i.test(x));
   const noA = L.hasAlloc ? L.A === 0 : !L.invs.some(x => /^A/i.test(x));
   if (cs.keywords.some(k => k && up.includes(k))) return 'SPECIAL';
-  if (L.disc !== '' && Number(L.disc) > cs.DISC_LIMIT + 1e-9) return 'DISC';
+  if (discOver(L.disc, cs)) return 'DISC';
   if (hasW && noA) return 'NEWDP';
   return 'REG';
 }
