@@ -56,6 +56,8 @@ const isStaff = () => S.role !== 'salesman';
 const mySm = () => (S.me && S.me.sm ? String(S.me.sm).toUpperCase() : '');
 /** 주문의 세일즈맨을 골라 넣어야 하는 사람 — 담당자 · 관리자 모드, 또는 세일즈 모드인데 자기 세일즈맨 코드가 없는 관리자 (v0.8.172) */
 const needSm = () => isStaff() || !mySm();
+/** 👤 다른 세일즈맨 가게에 넣은 주문 — 쓴 사람(sm)은 그대로 두고(규칙 · 목록), 인보이스 · 커미션은 smFor 이름으로 (v0.8.188) */
+export const smShow = o => esc(o.sm || '') + (o.smFor && o.smFor !== o.sm ? ' → <b>' + esc(o.smFor) + '</b>' : '');
 const OUT_KEY = 'theone.outbox.v1';
 /* 작성 중 주문은 로그인한 사람별로 보관 (한 기기를 여럿이 쓸 때 섞이지 않게) */
 const WIP_KEY_ = 'theone.order.wip', wipKey = k => WIP_KEY_ + (k === 'credit' ? '.cr' : '') + '.' + ((S && S.user && S.user.email) || '');   // ↩ 크레딧 작성 중은 따로 (주문 작성 중과 섞이지 않게, v0.8.187)
@@ -512,7 +514,7 @@ function orderRow(o, local, err, ck, sg) {
     num: money(o.amt), act: ck && assignMode() && o.st === 'sent' ? '<span class="cact"><button type="button" class="b-ghost b-sm qa" data-open="' + esc(o.id) + '">📄</button></span>' : '' });
   return '<tr class="tap" data-oid="' + esc(o.id) + '"' + sga + '>' + (ck ? '<td><span class="ckw" data-ckw="' + esc(o.id) + '"><input type="checkbox" class="ck-big" data-ck="' + esc(o.id) + '"></span></td>' : '') +
     '<td class="ct wrap" style="min-width:150px"><b>' + esc(o.store || '-') + '</b> ' + stTag(local ? 'local' : o.st) + agT + flags + ty + (err ? '<div class="warn" style="font-size:11.5px">' + esc(err) + '</div>' : '') + '</td>' +
-    '<td><b>' + esc(md(o.d)) + '</b>' + (o.d0 ? '<div class="muted" style="font-size:11px">' + esc(md(o.d0)) + '~</div>' : '') + '</td><td class="sub0">' + esc(o.no) + '</td><td class="hs">' + (o.sm ? '<span class="tag t-x">' + esc(o.sm) + '</span>' : '') + '</td>' +
+    '<td><b>' + esc(md(o.d)) + '</b>' + (o.d0 ? '<div class="muted" style="font-size:11px">' + esc(md(o.d0)) + '~</div>' : '') + '</td><td class="sub0">' + esc(o.no) + '</td><td class="hs">' + (o.sm ? '<span class="tag t-x">' + smShow(o) + '</span>' : '') + '</td>' +
     '<td class="r"><b>' + money(o.amt) + '</b></td><td class="r hs sub0">' + (o.n || 0) + ' · ' + (o.qty || 0) + '</td><td class="wrap sub0" style="min-width:120px">' + notes + '</td>' +
     (ck && assignMode() ? '<td>' + (o.st === 'sent' ? '<button type="button" class="b-ghost b-sm qa" data-open="' + esc(o.id) + '" title="' + esc(bt('주문 내용 보기', 'Open order')) + '">📄</button>' : '') + '</td>' : '') + '</tr>';
 }
@@ -537,7 +539,8 @@ function viewOrder(o, lines, local) {
   const acc = S.accounts.byCode ? S.accounts.byCode[o.acct] : null;
   const by = splitByType(lines, o.disc, 'q'), pd = priceDiff(lines, 'q');
   let h = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">' + esc(o.no) + ' ' + stTag(local ? 'local' : o.st) + '</h2>' +
-    '<div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div><div class="muted">' + esc([o.acct, acc ? [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : ''].filter(Boolean).join(' · ')) + '</div><div class="muted">' + esc(o.sm) + ' · ' + esc(o.d) + '</div></div>' +
+    '<div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div><div class="muted">' + esc([o.acct, acc ? [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : ''].filter(Boolean).join(' · ')) + '</div><div class="muted">' + smShow(o) + ' · ' + esc(o.d) + '</div></div>' +
+    (o.smFor && o.smFor !== o.sm ? '<div class="alert a-amb">👤 ' + bi('다른 세일즈맨 가게 — 인보이스 이름', 'Another salesman\'s store — invoiced as') + ' <b>' + esc(o.smFor) + '</b> (' + bt('주문한 사람', 'ordered by') + ' ' + esc(o.sm) + ')</div>' : '') +
     '<button class="b-ghost b-sm" id="oBack">‹ 목록</button></div>' + typeSummary(by) +
     (pd.n ? '<div class="alert a-amb">가격 수정 ' + pd.n + '줄 · 목록가 대비 ' + (pd.diff >= 0 ? '+' : '') + money(pd.diff) + ' (' + pd.pct + '%)</div>' : '') +
     (o.st === 'x' ? '<div class="alert a-red">✕ <b>' + bi('취소된 주문', 'Cancelled order') + '</b>' + (o.cancelWhy ? ' — ' + bi('사유', 'Reason') + ': <b>' + esc(o.cancelWhy) + '</b>' : '') + (o.cancelAt ? ' <span class="muted">' + esc(String(o.cancelAt).substring(0, 16).replace('T', ' ')) + '</span>' : '') + '</div>' : '') +
@@ -655,7 +658,7 @@ export async function openEditor(order, wip, lines) {
   if (wip) O = wip;
   else if (order) {
     if (!lines) { const L = await S.DB.get('orderLines', order.id); lines = (L && L.lines) || []; }
-    O = { id: order.id, no: order.no, st: order.st, sm: order.sm, acct: order.acct, store: order.store, memo: order.memo || '', req: Object.assign({}, order.req || {}), reqNote: Object.assign({}, order.reqNote || {}), disc: Object.assign({}, order.disc || {}), lines: lines.map(l => Object.assign({}, l)), createdAt: order.createdAt, createdBy: order.createdBy, d: order.d, sentAt: order.sentAt || '' };
+    O = { id: order.id, no: order.no, st: order.st, sm: order.sm, smFor: order.smFor || '', acct: order.acct, store: order.store, memo: order.memo || '', req: Object.assign({}, order.req || {}), reqNote: Object.assign({}, order.reqNote || {}), disc: Object.assign({}, order.disc || {}), lines: lines.map(l => Object.assign({}, l)), createdAt: order.createdAt, createdBy: order.createdBy, d: order.d, sentAt: order.sentAt || '' };
   } else O = { id: '', no: '', st: 'draft', sm: isStaff() ? '' : mySm(), acct: '', store: '', memo: '', req: {}, disc: {}, lines: [], d: today() };
   if (order && order.kind === 'credit' && !wip) { O.kind = 'credit'; O.why = order.why || ''; }
   O.disc = O.disc || {};
@@ -664,6 +667,20 @@ export async function openEditor(order, wip, lines) {
   if (WANT_NEW) { WANT_NEW = false; O.view = 'add'; O.path = []; O.nw = true; }
   reindex(); saveWip();
   paintEditor();
+  if (!order && O.acct && O.smFor === undefined) askSmFor(S.accounts.byCode && S.accounts.byCode[O.acct]);   // 가게 창 · 크레딧 화면에서 "이 가게로" 시작한 경우
+}
+/** 👤 세일즈맨이 다른 세일즈맨 가게를 골랐을 때 한 번 묻기 — 그 세일즈맨 이름으로 할지, 내 이름으로 할지 (2026-11-12 관리자: "그 세일즈맨으로 그대로 오더를 넣을 건지 내 이름으로 넣을 건지"). 물었으면 true
+ *  주문 문서의 sm 은 쓴 사람 그대로(규칙 · 내 목록 · 확인 요청), smFor 가 인보이스 · CM 의 세일즈맨 */
+function askSmFor(a) {
+  return new Promise(res => {
+    const me = mySm(), other = a && a.sm ? String(a.sm).toUpperCase() : '';
+    if (!O || needSm() || !me || !other || other === me) { if (O && O.smFor === undefined) { O.smFor = ''; saveWip(); } return res(false); }
+    let done = false; const fin = v => { if (done) return; done = true; if (O) { O.smFor = v ? other : ''; saveWip(); paintEditor(); } res(true); };
+    openModal('<h2>👤 ' + bi('다른 세일즈맨의 가게입니다', 'Another salesman\'s store') + '</h2><div class="muted" style="font-size:15px;line-height:1.45"><b>' + esc(a.store) + '</b> — ' + bt('담당', 'salesman') + ' <b>' + esc(other) + '</b><br>' + bt('이 주문을 누구 이름으로 넣을까요? (인보이스 · 커미션이 그 이름으로 갑니다)', 'Whose name goes on this order? (invoice and commission)') + '</div>' +
+      '<div class="btns" style="flex-direction:column;align-items:stretch;margin-top:12px"><button type="button" class="b-blue" id="sfOther">👤 ' + esc(other) + ' ' + bi('이름으로', 'name') + '</button><button type="button" class="b-ghost" id="sfMe">🙋 ' + bi('내 이름으로', 'My name') + ' (' + esc(me) + ')</button></div>', { onClose: () => fin(false) });
+    $('sfOther').onclick = () => { fin(true); closeModal(); };
+    $('sfMe').onclick = () => { fin(false); closeModal(); };
+  });
 }
 let WANT_NEW = false;
 function totals() { const by = splitByType(O.lines, O.disc, 'q'); let qty = 0, amt = 0; Object.values(by).forEach(g => { qty += g.qty; amt += g.total; }); return { n: O.lines.filter(l => l.q > 0).length, qty, amt: R2(amt), by }; }
@@ -719,7 +736,9 @@ function paintEditor() {
         const a = S.accounts.byCode[code]; if (!a) return; O.acct = a.acct; O.store = a.store;
         if (needSm()) O.sm = a.sm ? String(a.sm).toUpperCase() : '';   // 가게를 바꾸면 세일즈맨도 그 가게 기본값으로 (앞 가게 세일즈맨이 남지 않게 · v0.8.188)
         O.disc = acctDisc(a);   // 가게 기본 할인으로 시작
+        O.smFor = '';
         saveWip(); paintEditor();
+        if (await askSmFor(a)) return;   // 다른 세일즈맨 가게 — 누구 이름으로 할지 물은 뒤에는 가게 기록 창은 띄우지 않음
         if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
         toast('✓ ' + a.store + ' 선택 · selected', 'good');
         /* 고르자마자 가게 기록 — 받을 돈이 있으면 창으로 보여 주고, 없으면 그냥 넘어감 */
@@ -1271,6 +1290,7 @@ async function saveOrder(st) {
   const base = { id: O.id, no: O.no, d: O.d || today(), ym: ym(O.d || today()), sm: O.sm, acct: O.acct || '', store: O.store, st, memo: O.memo || '', req: reqClean(O.req), reqNote: reqNoteClean(O.reqNote), updatedAt: now,
     createdBy: O.createdBy || S.user.email, createdAt: O.createdAt || now, catVer: catalog().ver || '' };
   if (isCr()) Object.assign(base, { kind: 'credit', why: O.why, dback: O.dback == null ? null : O.dback });
+  if (O.smFor && O.smFor !== O.sm) base.smFor = O.smFor; else if (O.id) base.smFor = '';
   if (st === 'sent') base.sentAt = O.sentAt || now;
   const lines = flexTypes(O.lines.filter(l => l.q > 0).map(l => { const x = { c: l.c, d: l.d, q: l.q, p: l.p, lp: l.lp != null ? l.lp : l.p, t: l.t || DT() }; if (l.pq != null) x.pq = l.pq; if (l.note) x.note = l.note; if (l.kit) x.kit = l.kit; return x; }));
   /* 매니저가 이미 처리 중인 주문 — 상태 · 픽킹 기록은 그대로 두고 바로 저장 */
