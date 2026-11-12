@@ -30,6 +30,8 @@ export const HUBS = {
     ['shiphist', '📦', 'Shipping History', 'Shipping History', 'UPS 출고 기록 · 다시 인쇄 · 취소', 'UPS shipments · reprint · void', () => can('ship') || can('track')],
     ['balcao', '🏪', 'Shipping UPS', 'Shipping UPS', '가게 → 박스 → 라벨 (옛 앱 화면)', 'store → boxes → label (classic screen)', () => can('ship')],
     ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹 · 주문 없이 라벨', 'boxes · tracking · ad-hoc label', () => can('ship')],
+    ['insert', '➕', '인서트 만들기', 'Create insert', '틀 · 훅 · 대체품 → 라벨 3가지 (옛 앱 화면)', 'template · hooks · substitutes → 3 labels (classic screen)', () => can('items')],
+    ['inserts', '🧩', '완성된 인서트', 'Ready inserts', '바코드 · 구성 · 재고 있음 / 판매됨', 'barcode · composition · available / sold', () => can('items')],
     ['displays', '🖼', 'Notes Display', 'Notes Display', 'Empty Display 요청 · 준비 · UPS 박스', 'empty displays · prepare · UPS boxes', () => can('ship') || can('invoice') || can('newOrder')]
   ] },
   /* 🧑‍💼 세일즈맨 (v0.8.135) */

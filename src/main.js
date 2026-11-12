@@ -36,6 +36,7 @@ import * as CatPage from './catpage.js';
 import * as Track from './track.js';
 import * as Balcao from './balcao.js';
 import * as ShipHist from './shiphist.js';
+import * as Inserts from './inserts.js';
 import * as Reports from './reports.js';
 import * as Flow from './flow.js';
 import * as Invlook from './invlook.js';
@@ -449,7 +450,7 @@ async function afterLogin(user) {
   setTimeout(() => { Notify.autoOn(); }, 4000);
   loadWatch();   /* ⏳ 15초 넘게 도는 "읽는 중" → 다시 연결 · 🔄 다시 시도 (v0.8.184) */
   Offline.autoStart();   /* 📦 세일즈맨: 인터넷이 되면 앱을 열 때마다 · 다시 연결될 때 · 돌아올 때 오프라인 자료를 자동 준비 (v0.8.181) */   /* 🔔 알림 항상 켜짐 — 허락됐으면 기기 등록, 아직이면 처음 누를 때 물어봄 (v0.8.179) */   // 📱💻 알림을 허락한 기기면 하루 한 번 등록 확인 (앱을 닫아도 팝업)   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
-  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/balcao') === 0 || location.hash.indexOf('#/shiphist') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
+  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/balcao') === 0 || location.hash.indexOf('#/shiphist') === 0 || location.hash.indexOf('#/insert') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) goHash('#/' + navFor(S.role)[0][0]);
   Router.stack = [];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
@@ -501,7 +502,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  BizDay.register(S); Inbound.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page);
+  BizDay.register(S); Inbound.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
