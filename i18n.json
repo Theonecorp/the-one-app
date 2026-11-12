@@ -1,5 +1,6 @@
 {
 "p":{
+" 기본 세일즈맨 → ":[" salesman → "," vendedor → "],
 " 외 ":[" and "," e mais "],
 "14일 넘음":["Over 14 days","Mais de 14 dias"],
 "1~2분 걸립니다":["takes 1–2 min","leva 1–2 min"],
@@ -1162,6 +1163,7 @@
 "이 가게에 잔액 있는 인보이스가 없습니다":["No open invoices for this store","Nenhuma fatura em aberto para esta loja"],
 "이 가게에 크레딧 · 리턴 — 주문은 그대로 남음":["Credit / return for this store — the order stays","Crédito / devolução para esta loja — o pedido fica"],
 "이 가게에서 받은 수금이 있나요?":["Any payment from this store?","Recebeu algum pagamento desta loja?"],
+"이 가게의 기본 세일즈맨으로 저장 — 다음부터 묻지 않음":["Save as this store's salesman — won't ask again","Salvar como vendedor desta loja — não pergunta de novo"],
 "이 가게의 인보이스 기록이 앱에 없습니다 — 코드로 담고 🏷 할인 백을 고르세요":["No invoices for this store in the app — add by code and pick the discount back","Sem faturas desta loja no app — adicione por código e escolha o desconto de volta"],
 "이 가격으로":["Use this","Usar este"],
 "이 기간 인보이스 없음":["No invoices in this period","Sem faturas no período"],

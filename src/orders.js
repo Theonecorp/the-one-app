@@ -11,7 +11,7 @@
  * ============================================================ */
 import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, confirmBox, Router, sel, sortBy, debounce, bi, bt, hasWords, addDays, daysBetween, localDay, sum, groupBy, pickDates, guardSync, pageHead, narrow, crow, cgrp, footBtns } from './ui.js';
 import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel, reqNoteClean, reqNeedsNote } from './reqs.js';
-import { searchAccounts, accountLabel } from './accounts.js';
+import { searchAccounts, accountLabel, patchAccountCache } from './accounts.js';
 import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName, prefixRank } from './catalog.js';
 import { jobOf, can, dockMark } from './main.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount } from './invoicing.js';
@@ -717,7 +717,7 @@ function paintEditor() {
   }
   async function pickStore(code, seen) {
         const a = S.accounts.byCode[code]; if (!a) return; O.acct = a.acct; O.store = a.store;
-        if (needSm() && !O.sm && a.sm) O.sm = String(a.sm).toUpperCase();
+        if (needSm()) O.sm = a.sm ? String(a.sm).toUpperCase() : '';   // 가게를 바꾸면 세일즈맨도 그 가게 기본값으로 (앞 가게 세일즈맨이 남지 않게 · v0.8.188)
         O.disc = acctDisc(a);   // 가게 기본 할인으로 시작
         saveWip(); paintEditor();
         if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
@@ -730,7 +730,7 @@ function paintEditor() {
           if (info.bal > 0.005) { await Store.storeSheet(a.acct); toast((over > 0.005 ? '⚠️ 60일 넘은 미수 ' + money(over) + ' · ' : '') + '미수금 ' + money(info.bal) + ' — 수금도 챙겨 주세요', over > 0.005 ? 'bad' : ''); }
         } catch (e) {}
   }
-  if ($('eSm')) $('eSm').onchange = () => { O.sm = $('eSm').value; saveWip(); };
+  if ($('eSm')) $('eSm').onchange = () => { O.sm = $('eSm').value; saveWip(); rememberSm(O.acct, O.sm); };
   document.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => { O.view = b.dataset.ev; saveWip(); paintEditor(); });
   if ($('eDraft')) $('eDraft').onclick = () => saveOrder('draft');
   if ($('eClose')) $('eClose').onclick = async () => { if (!(await confirmBox('저장하지 않고 닫을까요? 작성 중인 내용은 폰에 남아 있어 주문 목록에서 이어서 할 수 있습니다. / Close without saving?', '닫기 Close'))) return; saveWip(); Router.go('order'); };
@@ -1085,16 +1085,27 @@ function refreshCard(c) {
   if (n && !m) { m = document.createElement('button'); m.className = 'gm'; m.dataset.gm = c; m.textContent = '−'; m.onclick = e => { e.stopPropagation(); setQty(c, (IDX[c] ? IDX[c].q : 0) - 1); sure(c); refreshCard(c); }; el.appendChild(m); }
   if (!n && m) m.remove();
 }
+/** 가게 기본 세일즈맨을 고칠 수 있는 사람 — 규칙의 accounts 쓰기(opsJob)와 같음: 관리자 · 오너 · 담당자(아이템 전담 제외) */
+const canSaveSm = () => { const r = S.me && S.me.role; if (r === 'admin' || r === 'owner') return true; if (r !== 'manager') return false; return ['office', 'acct', 'pickinv', 'invoice', 'whmgr', 'pick'].includes((S.me && S.me.job) || 'office'); };
+/** 👤 기본 세일즈맨이 없는 가게에 고른 세일즈맨을 가게 기본값으로 저장 — 다음 주문부터 다시 묻지 않음 (2026-11-12 관리자: "가게 선택하면 또 세일즈맨 넣으라고 계속 나옴" · v0.8.188).
+ *  sm 한 칸만 update · 이미 기본 세일즈맨이 있는 가게는 바꾸지 않음 (그 주문만 다른 세일즈맨) */
+async function rememberSm(acct, sm) {
+  if (!acct || !sm || !canSaveSm()) return;
+  const a = S.accounts && S.accounts.byCode ? S.accounts.byCode[acct] : null; if (!a || String(a.sm || '').trim()) return;
+  try { await S.DB.update('accounts', acct, { sm, smAt: new Date().toISOString(), smBy: S.user.email }); patchAccountCache(S, acct, { sm }); toast('👤 ' + (a.store || acct) + bt(' 기본 세일즈맨 → ', ' salesman → ') + sm, 'good'); } catch (e) {}
+}
 /** 👤 세일즈맨 고르기 창 (담당자) — 가게에 기본 세일즈맨이 없을 때 저장하면 뜸 · 요약의 세일즈맨 칸을 눌러도. 고른 코드 또는 null (v0.8.172) */
 function pickSm() {
   return new Promise(res => {
     const L = (S.sms || []).filter(x => x.active !== false);
     if (!L.length) { toast(bt('등록된 세일즈맨이 없습니다 — 관리 → 사용자', 'No salesmen registered — Admin → Users'), 'bad'); return res(null); }
     let done = false; const fin = v => { if (done) return; done = true; res(v); };
+    const acc = O.acct && S.accounts && S.accounts.byCode ? S.accounts.byCode[O.acct] : null, noDef = !!(acc && !String(acc.sm || '').trim() && canSaveSm());
     openModal('<h2>👤 ' + bi('세일즈맨을 고르세요', 'Pick a salesman') + '</h2><div class="muted">' + bt('이 주문의 세일즈맨 — 커미션 · 수금 · 리포트가 이 사람 앞으로 갑니다. 가게에 기본 세일즈맨이 없어 직접 고릅니다.', 'The salesman for this order — commission, payments and reports go to this person. This store has no default salesman.') + '</div>' +
       '<div id="smPick" style="margin-top:10px">' + L.map(x => '<button type="button" class="pick' + (O.sm === x.code ? ' on' : '') + '" data-smp="' + esc(x.code) + '" style="width:100%;text-align:left;background:#fff"><span class="ck">✓</span><span class="pm"><b>' + esc(x.code) + '</b><small>' + esc(x.name || '') + '</small></span></button>').join('') + '</div>' +
+      (noDef ? '<label class="ckl" style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px"><input type="checkbox" id="smKeep" checked style="width:20px;height:20px"> ' + bi('이 가게의 기본 세일즈맨으로 저장 — 다음부터 묻지 않음', 'Save as this store\'s salesman — won\'t ask again') + '</label>' : '') +
       '<div class="btns"><button type="button" class="b-ghost" id="smPickX">' + bi('닫기', 'Close') + '</button></div>', { onClose: () => fin(null) });
-    document.querySelectorAll('[data-smp]').forEach(b => b.onclick = () => { O.sm = b.dataset.smp; saveWip(); if ($('eSm')) $('eSm').value = O.sm; if ($('eSmK')) { $('eSmK').textContent = O.sm; $('eSmK').classList.remove('warn'); } fin(O.sm); closeModal(); });
+    document.querySelectorAll('[data-smp]').forEach(b => b.onclick = () => { O.sm = b.dataset.smp; saveWip(); if ($('eSm')) $('eSm').value = O.sm; if ($('eSmK')) { $('eSmK').textContent = O.sm; $('eSmK').classList.remove('warn'); } if (!$('smKeep') || $('smKeep').checked) rememberSm(O.acct, O.sm); fin(O.sm); closeModal(); });
     $('smPickX').onclick = closeModal;
   });
 }
