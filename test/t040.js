@@ -63,7 +63,7 @@ const path = require('path'), fs = require('fs');
   await shot(pg, 'p4_picking');
   log('sum:', (await pg.textContent('#mSum')).replace(/\s+/g, ' '));
   /* 작업 완료(검수 대기) 를 거쳐야 인보이스 발행 버튼이 나옴 */
-  await pg.click('#mPickDone'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForSelector('#mInv'); await pg.waitForTimeout(200);
+  await pg.click('#mPickDone'); await pg.waitForSelector('#cpOk'); await pg.click('#cpOk'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForSelector('#mInv'); await pg.waitForTimeout(200);
   log('status after pick done:', await pg.textContent('#page h2 .tag'));
   await pg.click('#mInv'); await pg.waitForTimeout(200); await shot(pg, 'p5_confirm'); await pg.click('#ivOk'); await pg.waitForTimeout(800);
   await pg.screenshot({ path: path.resolve(__dirname, 'out', 'p6_invoice_print.png') }); await pg.click('#prtClose'); await pg.waitForTimeout(400);
