@@ -397,16 +397,18 @@ export function searchItems(q, path, limit, start, all) {
   if (path && path.length) pool = pool.filter(x => { const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); });
   const words = String(q || '').toUpperCase().split(/\s+/).filter(Boolean);
   if (!words.length) return pool.slice(0, limit);
-  const out = [], ex = exactItem(q);
-  if (ex && pool.includes(ex)) out.push(ex);
+  const ex = exactItem(q), hits = [];
   const nw = words.map(w => ({ w, n: norm(w) }));
-  for (const x of pool) {
-    if (out.length >= limit) break;
-    if (x === ex) continue;
-    if (nw.every(({ w, n }) => x._n.includes(w) || (n && x._n.includes(n)))) out.push(x);
-  }
-  return out;
+  for (const x of pool) { if (x === ex) continue; if (nw.every(({ w, n }) => x._n.includes(w) || (n && x._n.includes(n)))) hits.push(x); }
+  /* 🔎 가까운 순 (v0.8.200 — 2026-11-12 관리자: "CV 를 치면 CV 로 시작하는 아이템이 먼저") — 코드가 그 글자로 시작 > 코드 안에 > 설명이 그 글자로 시작 > 그 밖. 같은 급은 코드 번호 순(CVAG01 → CVAG02 …) · 그 밖은 원래(분류) 순서 */
+  const W = words[0], Wn = norm(W) || W, idx = new Map(hits.map((x, i) => [x, i]));
+  const score = x => { const c = String(x.c || '').toUpperCase(), cn = norm(c) || c; if (c.indexOf(W) === 0 || cn.indexOf(Wn) === 0) return 1; if (c.includes(W) || cn.includes(Wn)) return 2; if (String(x.d || '').toUpperCase().indexOf(W) === 0) return 3; return 4; };
+  const sc = new Map(hits.map(x => [x, score(x)]));
+  hits.sort((a, b) => sc.get(a) - sc.get(b) || (sc.get(a) <= 2 ? SCOLL.compare(a.c, b.c) : idx.get(a) - idx.get(b)));
+  const out = ex && pool.includes(ex) ? [ex] : [];
+  return out.concat(hits).slice(0, limit);
 }
+const SCOLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 /** 사진 — Shopify 사진은 작은 크기로 받아 빨리 뜨게 */
 export function thumb(url, w) {
   if (!url) return '';
