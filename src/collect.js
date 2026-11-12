@@ -247,10 +247,22 @@ function bindEntry() {
   if ($('btnCancelEdit')) $('btnCancelEdit').onclick = () => { resetForm(); toast('수정을 취소했습니다. · Edit cancelled.'); Router.go(isSales() ? 'mine' : 'verify'); };
 }
 function paintVisitTotal() { const el = document.querySelector('.paytot'); if (el) el.innerHTML = '이번 방문 합계 Visit total <b>' + money(payTotal()) + '</b> (' + F.pays.length + '건)'; }
+/* 👤 다른 세일즈맨 가게의 수금 — 세일즈 모드로 들어온 관리자 · 직원(실제 역할이 세일즈맨이 아닌 사람)은 그 가게 담당 이름으로 넣을지 고름
+ *   (2026-11-12 관리자: BEAUTY EXCHANGE #13 — ALEX 가게 수금을 세일즈 모드로 넣었더니 LUKE 로 들어가 ALEX 의 수령 대기 · 정산에 안 보였음)
+ *   진짜 세일즈맨은 규칙상 자기 이름으로만 넣을 수 있어 그대로 */
+function askSmFor(a) {
+  const base = S.me && S.me.role, own = (S.me && S.me.sm) ? String(S.me.sm).toUpperCase() : '', other = a && a.sm ? String(a.sm).toUpperCase() : '';
+  if (!isSales() || base === 'salesman' || !other || other === (F.sm || own)) return;
+  openModal('<h2>👤 ' + bi('다른 세일즈맨의 가게입니다', 'Another salesman\'s store') + '</h2><div class="muted" style="font-size:15px;line-height:1.45"><b>' + esc(a.store) + '</b> — ' + bt('담당', 'salesman') + ' <b>' + esc(other) + '</b><br>' + bt('이 수금을 누구 이름으로 넣을까요? 담당 이름으로 넣어야 그 세일즈맨의 수금 확인 · 수령 대기 · 정산에 나옵니다.', 'Whose payment is this? Use the store salesman so it shows in their review · receipt · settlement.') + '</div>' +
+    '<div class="btns" style="flex-direction:column;align-items:stretch;margin-top:12px"><button type="button" class="b-blue" id="cfSmOther">👤 ' + esc(other) + ' ' + bi('이름으로', 'name') + '</button><button type="button" class="b-ghost" id="cfSmMe">' + bi('내 이름으로', 'My name') + (own ? ' (' + esc(own) + ')' : '') + '</button></div>');
+  $('cfSmOther').onclick = () => { F.sm = other; closeModal(); paintEntry(); toast('👤 ' + other, 'good'); };
+  $('cfSmMe').onclick = () => { F.sm = ''; closeModal(); paintEntry(); };
+}
 function pickStore(acct) {
   const a = S.accounts.byCode[acct]; if (!a) return;
   F.acct = a.acct; F.store = a.store; F.newStore = false; F.addr = ''; F.picked = []; F.invs = F.invs.filter(v => v.other); F.arList = null;
   if (!isSales() && !F.sm && a.sm) F.sm = String(a.sm).toUpperCase();
+  askSmFor(a);   // 👤 세일즈 모드의 관리자 · 직원이 다른 세일즈맨 가게 수금을 넣을 때 — 누구 수금인지 (v0.8.202)
   paintEntry();
   if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
   toast('✓ 등록된 거래처입니다 · ' + a.store, 'good');
@@ -284,7 +296,7 @@ async function origLook(i) {
 async function paintArPick() {
   const box = $('arPick'); if (!box) return;
   if (!F.acct || F.editing) { box.innerHTML = ''; return; }
-  if (!F.arList) { box.innerHTML = '<div class="arpick"><div class="aph"><span>📋 미결 인보이스 불러오는 중… Loading open invoices</span></div></div>'; const r = await openInvoices(F.acct); if (!$('arPick')) return; F.arList = r.list; F.arAsOf = r.asOf; }
+  if (!F.arList) { box.innerHTML = '<div class="arpick"><div class="aph"><span>📋 미결 인보이스 불러오는 중… Loading open invoices</span></div></div>'; const r = await openInvoices(F.acct, me()); if (!$('arPick')) return; F.arList = r.list; F.arAsOf = r.asOf; }
   const list = F.arList;
   if (!list.length) { box.innerHTML = '<div class="arpick"><div class="aph"><span>📋 AR 에 미결 인보이스 없음 · No open invoices</span><span>' + (F.arAsOf ? '기준일 ' + esc(F.arAsOf) : '') + '</span></div><div class="hint" style="margin:0">새로 발행된 인보이스는 아래 [＋ 목록에 없는 인보이스] 로 넣으세요.</div></div>'; return; }
   box.innerHTML = '<div class="arpick"><div class="aph"><span>📋 미결 인보이스 ' + list.length + '건 — 탭해서 고르기 · Tap to pick</span><span>' + (F.arAsOf ? 'AR 기준일 ' + esc(F.arAsOf) : '') + '</span></div>' +
@@ -308,7 +320,7 @@ function othSearch(i) {
 function othPick(i, a) { collectForm(); const v = F.invs[i]; if (!v) return; v.acct = a.acct; v.store = a.store; paintEntry(); setTimeout(() => { const el = document.querySelector('[data-ino="' + i + '"]'); if (el && !el.value) el.focus(); }, 0); }
 async function othPickPaint(i) {
   const v = F.invs[i], host = document.querySelector('[data-oap="' + i + '"]'); if (!v || !host || !v.acct) return;
-  if (!F.othAr[v.acct]) { host.innerHTML = '<div class="aph">📋 미결 인보이스 불러오는 중… Loading</div>'; const r = await openInvoices(v.acct); F.othAr[v.acct] = r.list; if (!document.querySelector('[data-oap="' + i + '"]')) return; }
+  if (!F.othAr[v.acct]) { host.innerHTML = '<div class="aph">📋 미결 인보이스 불러오는 중… Loading</div>'; const r = await openInvoices(v.acct, me()); F.othAr[v.acct] = r.list; if (!document.querySelector('[data-oap="' + i + '"]')) return; }
   const list = F.othAr[v.acct];
   if (!list.length) { host.innerHTML = '<div class="aph">📋 AR 에 미결 인보이스 없음 — 번호 · 금액을 직접 적어 주세요</div>'; return; }
   const picked = {}; F.invs.forEach(x => { if (x.ar && x.other && x.acct === v.acct) picked[x.no] = 1; });
