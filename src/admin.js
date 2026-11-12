@@ -618,7 +618,7 @@ async function importSales(file) {
   if (!file) return; busy(true); outEl().innerHTML = '';
   try {
     const { XLSX, wb } = await readBook(file);
-    const ops = []; let nC = 0, nF = 0, missing = 0, nShift = 0, nDone = 0, nCut = 0; const cut = settleCut();
+    const ops = []; let nC = 0, nF = 0, missing = 0, nShift = 0, nDone = 0, nCut = 0, nTwin = 0; const cut = settleCut();
     const cod = aoa(XLSX, wb, 'COD 입력');
     /* 🔒 앱에서 이미 정산한 건(settled)은 파일을 다시 올려도 건드리지 않음 — 안 그러면 정산이 풀려 또 정산해야 함. 있는 문서는 set 이 아니라 merge(적은 칸만) */
     const codOld = {}; if (cod) (await S.DB.list('cod')).forEach(x => { codOld[x.id] = x; });
@@ -634,6 +634,9 @@ async function importSales(file) {
         /* ID 칸이 비어 있으면 줄 내용으로 같은 ID 를 만듦 — 같은 파일을 다시 올려도 두 번 들어가지 않게 */
         const id = String(r[H.id] || '').trim() || ('C' + hash36([String(r[H.sm]).trim().toUpperCase(), d, pad4(r[H.acct]), method, String(r[H.ref] || '').trim(), R2(num(r[H.amt])), invs.map(v => v.no).join(',')].join('|')));
         const old = codOld[id]; if (old && old.settled) { nDone++; continue; }
+        /* 👯 같은 수금이 다른 ID 로 이미 있으면(ACH 시트 · 앱 ACH 완료 · 다른 파일) 건너뜀 — 가게 · 날짜 · 금액 · 방법이 같으면 같은 수금 (v0.8.199) */
+        const mth = /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', twin = !old && Object.values(codOld).find(x => !x.void && x.id !== id && x.acct === pad4(r[H.acct]) && x.d === d && Math.abs((Number(x.amt) || 0) - R2(num(r[H.amt]))) < 0.005 && String(x.method || '').toUpperCase() === mth);
+        if (twin) { nTwin++; continue; }
         const data = { id, d, ym: ym(d), sm: String(r[H.sm]).trim().toUpperCase(), acct: pad4(r[H.acct]), store: String(r[H.store] || '').trim(), method: /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', ref: String(r[H.ref] || '').trim(), amt: R2(num(r[H.amt])), invs, disc: r[H.disc] === '' ? '' : num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1), note: String(r[H.note] || '').trim(), v: r[H.v] === true || /TRUE/i.test(String(r[H.v])), vn: String(r[H.vn] || '').trim(), settled: '', void: false, imported: true };
         if (old) { delete data.settled; if (old.void) delete data.void; if (old.v && !data.v) { delete data.v; delete data.vn; } }   /* 있는 건: 앱에서 한 ✓ · 취소 표시를 파일이 되돌리지 않음 */
         if (cut && d <= cut) { data.settled = 'sheet:' + cut; data.settledAt = cut; data.v = true; nCut++; }   /* 📌 마감일까지 = 정산 완료 */
@@ -660,7 +663,7 @@ async function importSales(file) {
     Object.values(ents).forEach(e => { if (e._p) ops.push({ op: 'update', col: 'entries', id: e.id, data: e._p }); });
     await S.DB.batch(ops);
     dropBossCache();
-    say('COD·카드·ACH ' + nC + '건' + (nShift ? ' (칸 밀린 옛 줄 ' + nShift + '건 바로잡음)' : '') + ' · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
+    say('COD·카드·ACH ' + nC + '건' + (nTwin ? ' · 👯 이미 있는 같은 수금 ' + nTwin + '건 건너뜀' : '') + (nShift ? ' (칸 밀린 옛 줄 ' + nShift + '건 바로잡음)' : '') + ' · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
   } catch (e) { outEl().insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
 }

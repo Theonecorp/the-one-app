@@ -408,7 +408,7 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
   #drawer.dock{inset:auto;left:0;top:0;bottom:0;width:var(--dock);z-index:45;display:block}
   #drawer.dock .dback{display:none}#drawer.dock .dpanel{position:static;width:var(--dock);height:100%;animation:none;box-shadow:none;border-right:1px solid rgba(255,255,255,.08)}#drawer.dock #dX{display:none}
   #drawer.dock .dbody{padding:4px 8px 10px}#drawer.dock .dsec>button{padding:7px 10px}
-  body.dock{padding-left:var(--dock)}
+  body.dock{padding-left:var(--dock)}body.dock .bulkbar{left:var(--dock)}body.dock .cfbar,body.dock .updbar{left:calc(var(--dock) + 8px)}body.dock #instBar{left:calc(var(--dock) + 10px)}
   body.dock .ohead .omenu{left:var(--dock)}
   body.dock #hMenu{opacity:.55}
   /* 🧭 v0.8.181: 고정 서랍 = 데스크탑의 하나뿐인 메뉴 — 위 머리띠 메뉴 단추 · 주문 화면의 왼쪽 기둥(같은 칸이 서랍에 있음)은 숨김 */

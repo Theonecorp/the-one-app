@@ -246,7 +246,7 @@ function rateTag(L, rate) {
 }
 const isSal = sm => !!((S.smByCode[sm] || {}).salaried);
 /* ---- 🧮 정산 대조 (수금 흐름 ⑤) — 담당자가 건넨 기록 vs 시스템 "수금 완료" · 걸리는 것(미도착 · 미발송 · 미확인) 목록 ---- */
-const BLK_LABEL = { miss: ['📭 미도착 신고 체크', '#b91c1c'], transit: ['📦 봉투로 보냈지만 아직 도착 전', '#1e40af'], notsent: ['✉️ 아직 회사로 안 보낸 체크', '#b45309'], codpend: ['💳 확인 안 된 COD · ACH · 카드', '#b45309'], noauth: ['💳 카드 승인번호 없음', '#b91c1c'], repl: ['🔁 대체 체크 수금 (원래 수금이 셈)', '#6d28d9'], bounce: ['↩️ 바운스 — 미해결 (잔액 · 커미션에서 빠짐)', '#b91c1c'] };
+const BLK_LABEL = { miss: ['📭 미도착 신고 체크', '#b91c1c'], transit: ['📦 봉투로 보냈지만 아직 도착 전', '#1e40af'], notsent: ['✉️ 아직 회사로 안 보낸 체크', '#b45309'], codpend: ['💳 확인 안 된 COD · ACH · 카드', '#b45309'], noauth: ['💳 카드 승인번호 없음', '#b91c1c'], repl: ['🔁 대체 체크 수금 (원래 수금이 셈)', '#6d28d9'], bounce: ['↩️ 바운스 — 미해결 (잔액 · 커미션에서 빠짐)', '#b91c1c'], dup: ['👯 같은 수금이 두 번 들어 있음 — 하나를 취소(VOID)하세요', '#b91c1c'] };
 function blockersOf(rows) {
   const B = [], inR = r => P.all || (r.d >= P.from && r.d <= P.to);
   rows.mine.filter(e => e.envMiss && !e.rc).forEach(e => B.push({ k: 'miss', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
@@ -257,6 +257,11 @@ function blockersOf(rows) {
   rows.cods.filter(x => !x.v && !x.vbad).forEach(x => B.push({ k: 'codpend', d: x.d, store: x.store, amt: x.amt, ref: x.method + (x.ref ? ' ' + x.ref : ''), id: x.id, col: 'cod' }));
   rows.cods.filter(x => x.method === 'CREDIT CARD' && !x.ref).forEach(x => B.push({ k: 'noauth', d: x.d, store: x.store, amt: x.amt, ref: '', id: x.id, col: 'cod' }));
   C.ents.filter(e => e.sm === P.sm && e.bounced && inR(e)).forEach(e => B.push({ k: 'bounce', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' ') + (e.settled ? ' · 정산됨' : ''), id: e.id, col: 'entries' }));
+  /* 👯 같은 수금이 두 기록으로 (예: ACH 시트 가져오기 ACH-… + SALES 파일 COD 입력 D… · 2026-11-12: 22쌍 — 한쪽만 정산돼 나머지가 계속 다시 올라오거나 두 번 정산됨) — 가게 · 날짜 · 금액 · 방법이 같으면 (v0.8.199) */
+  const ck = x => [x.acct || '', x.d || '', R2(Number(x.amt) || 0).toFixed(2), String(x.method || '').toUpperCase()].join('|'), cg = groupBy((C.cod || []).filter(x => !x.void), ck);
+  rows.cods.forEach(x => { const tw = (cg[ck(x)] || []).filter(y => y.id !== x.id); if (tw.length) B.push({ k: 'dup', d: x.d, store: x.store, amt: x.amt, ref: x.method + ' · ' + bt('같은 것', 'same as') + ' ' + tw.map(y => y.id + (y.settled ? ' (' + bt('정산됨', 'settled') + ')' : '')).join(', '), id: x.id, col: 'cod' }); });
+  const ek = e => [e.sm || '', e.d || '', e.acct || '', R2(Number(e.total) || 0).toFixed(2), (e.pays || []).map(p => p.m + (p.ref || '')).join('+')].join('|'), eg = groupBy((C.ents || []).filter(e => !e.void && !e.repl), ek);
+  rows.mine.forEach(e => { const tw = (eg[ek(e)] || []).filter(y => y.id !== e.id); if (tw.length) B.push({ k: 'dup', d: e.d, store: e.store, amt: e.total, ref: bt('같은 것', 'same as') + ' ' + tw.map(y => y.id + (y.settled ? ' (' + bt('정산됨', 'settled') + ')' : '')).join(', '), id: e.id, col: 'entries' }); });
   C.ents.filter(e => e.sm === P.sm && e.repl && !e.settled && inR(e)).forEach(e => B.push({ k: 'repl', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
   return B;
 }
