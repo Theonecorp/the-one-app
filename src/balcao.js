@@ -11,11 +11,21 @@ import { searchAccounts } from './accounts.js';
 import { adrKey } from './fulfill.js';
 import { bumpAccountsVer } from './mgr.js';
 import { shipmentsOf, groupShipments } from './track.js';
-import { SB_CSS } from './balcao-css.js';
+import { SB_CSS, SH_CSS } from './balcao-css.js';
 import { LANG } from './i18n.js';
 /* 숫자가 끼는 문구 · Enter 같은 영어가 섞인 문구는 사전 바꿔 끼우기가 어색해서 언어별로 바로 */
-const L3 = (ko, en, pt) => LANG === 'pt' ? pt : LANG === 'en' ? en : bt(ko, en);
-const ICO = {
+export const L3 = (ko, en, pt) => LANG === 'pt' ? pt : LANG === 'en' ? en : bt(ko, en);
+export const ICO = {
+  relogio: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+  entra: '<path d="M12 3v9"/><polyline points="8 8 12 12 16 8"/><path d="M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  sai2: '<path d="M12 12V3"/><polyline points="8 7 12 3 16 7"/><path d="M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/>',
+  venda: '<circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.6 12.4a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L22 7H6"/>',
+  busca: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.7" y2="16.7"/>',
+  filtro: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+  olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  copiar: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  esq: '<polyline points="15 18 9 12 15 6"/>',
   mais: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
   troca: '<path d="M3 9a9 9 0 0 1 14.5-4.5L21 8"/><polyline points="21 3 21 8 16 8"/><path d="M21 15a9 9 0 0 1-14.5 4.5L3 16"/><polyline points="3 21 3 16 8 16"/>',
   peso: '<path d="M6.5 8h11l2.3 12.2a1.5 1.5 0 0 1-1.5 1.8H5.7a1.5 1.5 0 0 1-1.5-1.8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
@@ -34,23 +44,25 @@ const ICO = {
   link: '<path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
   ajuda: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
 };
-const svg = (p, n) => '<svg width="' + (n || 17) + '" height="' + (n || 17) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+export const svg = (p, n) => '<svg width="' + (n || 17) + '" height="' + (n || 17) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const num1 = n => { n = Number(n) || 0; return (Math.round(n * 10) / 10).toString(); };
-const SVCS = [['03', 'UPS Ground'], ['12', 'UPS 3 Day Select'], ['02', 'UPS 2nd Day Air'], ['59', 'UPS 2nd Day Air A.M.'], ['13', 'UPS Next Day Air Saver'], ['01', 'UPS Next Day Air'], ['14', 'UPS Next Day Air Early']];
-const svcName = c => (SVCS.find(x => x[0] === String(c)) || [c, 'UPS ' + c])[1];
+export const num1 = n => { n = Number(n) || 0; return (Math.round(n * 10) / 10).toString(); };
+export const SVCS = [['03', 'UPS Ground'], ['12', 'UPS 3 Day Select'], ['02', 'UPS 2nd Day Air'], ['59', 'UPS 2nd Day Air A.M.'], ['13', 'UPS Next Day Air Saver'], ['01', 'UPS Next Day Air'], ['14', 'UPS Next Day Air Early']];
+export const svcName = c => (SVCS.find(x => x[0] === String(c)) || [c, 'UPS ' + c])[1];
 export const SB_OK_MS = 2000;
 
 let S = null;
 /* 카운터 상태 — 화면을 다시 그려도 남음 */
 const B = { cli: '', busca: '', cx: {}, caixas: [], svc: '03', cod: null, codValor: '', codCli: '', cot: null, cotBusy: false, cotSeq: 0, cotTimer: null, av: {}, emit: false, hist: {} };
 export function register(state) { S = state; Router.on('balcao', page); }
+/** ✏️ Shipping History 의 "출고 고치기" — 옛 라벨은 취소한 뒤 같은 가게 · 박스 · 서비스 · COD 로 카운터를 엶 */
+export function abrirEdicao(acct, caixas, svc, cod, de) { zerar(); B.cli = acct; B.busca = ''; B.caixas = caixas.map(c => ({ peso: c.peso, c: c.c, l: c.l, a: c.a })); B.svc = svc || '03'; B.codCli = acct; B.cod = cod ? true : null; B.codValor = cod ? String(cod) : ''; B.editando = de || ''; Router.go('balcao'); }
 export const _B = B;   // 시험용
 
 const acctOf = c => (S.accounts && S.accounts.byCode ? S.accounts.byCode[c] : null);
 const cliAtual = () => B.cli ? acctOf(B.cli) : null;
 
-function css() { if (document.getElementById('sbCss')) return; const st = document.createElement('style'); st.id = 'sbCss'; st.textContent = SB_CSS; document.head.appendChild(st); }
+export function css() { if (document.getElementById('sbCss')) return; const st = document.createElement('style'); st.id = 'sbCss'; st.textContent = SB_CSS + SH_CSS; document.head.appendChild(st); }
 
 /* ---------- 박스 ---------- */
 const cxCompleta = () => { const c = B.cx; return Number(c.peso) > 0 && Number(c.c) > 0 && Number(c.l) > 0 && Number(c.a) > 0; };
@@ -217,6 +229,7 @@ export async function page() {
   let h = '<div class="sb"><div class="su-tela"><div class="su-migalha">Shipping UPS <span>›</span> ' + bt('출고', 'Shipment') + '</div>' +
     cab(L3('UPS 출고', 'UPS shipment', 'Envio UPS'), bt('박스마다 무게와 크기 → 라벨 인쇄', 'Weight and size per box → print'),
       '<button type="button" class="btn" data-act="sb-limpar">' + svg(ICO.x, 15) + ' ' + bt('모두 지우기', 'Clear all') + '</button><button type="button" class="btn" data-act="sb-trocar">' + svg(ICO.troca, 15) + ' ' + bt('가게 바꾸기', 'Change store') + '</button>');
+  if (B.editando) h += '<div class="aviso alerta" style="margin-bottom:14px">' + svg(ICO.lapis, 16) + '<div>' + esc(L3('고치는 중: ' + B.editando + ' — 옛 라벨은 취소됐습니다. 새 라벨을 인쇄하세요', 'Editing ' + B.editando + ' — the old label was voided. Print the new one', 'Editando ' + B.editando + ' — a etiqueta antiga foi anulada (void). Imprima a nova')) + '</div></div>';
   h += '<div class="su-grid"><div class="ups-card ups-card-cx"><div class="ups-card-head su-card-head"><i class="su-num">1</i><div><b>' + bt('박스 무게 · 크기', 'Box weight and size') + '</b><span>' + bt('잰 그대로 넣으세요', 'Enter as measured') + '</span></div>' +
     (ult ? '<button type="button" class="btn sm" data-act="sb-ultima">' + svg(ICO.repetir, 14) + ' ' + bt('지난 박스 크기 쓰기', 'Use last box size') + '</button>' : '') + '</div>' +
     '<div class="su-dims-row"><div class="su-peso-grupo"><div class="su-grupo-rot">' + bt('무게', 'Weight') + '</div><div class="su-peso-campo">' + campo('sbP', ' ', B.cx.peso, ICO.peso, 'Ex: 12.5') + '<span class="su-peso-un">lb</span></div></div>' +
@@ -260,7 +273,7 @@ function ligar(a, foco) {
   on('sb-ultima', () => { const u = B.caixas[B.caixas.length - 1]; if (!u) return; B.cx = { peso: '', c: u.c, l: u.l, a: u.a }; B.foco = 'sbP'; page(); });
   on('sb-tirar', b => { B.caixas.splice(+b.dataset.i, 1); page(); });
   on('sb-mexer', b => { if (cxAndando()) return toast(bt('지금 입력 중인 박스를 먼저 저장하거나 지우세요', 'Save or clear the box being typed first'), 'bad'); B.cx = Object.assign({}, B.caixas[+b.dataset.i]); B.caixas.splice(+b.dataset.i, 1); B.foco = 'sbP'; page(); });
-  on('sb-trocar', () => { B.cli = ''; B.busca = ''; zerar(); page(); });
+  on('sb-trocar', () => { B.cli = ''; B.busca = ''; B.editando = ''; zerar(); page(); });
   on('sb-limpar', async () => { if ((B.caixas.length || cxAndando()) && !(await confirmBox(bt('박스를 모두 지울까요?', 'Clear all boxes?'), bt('지우기', 'Clear')))) return; zerar(); page(); });
   on('sb-cotar', () => { const L = caixasVivas(); if (!L.length) return toast(bt('박스가 없습니다', 'No boxes'), 'bad'); B.cot = null; cotar(a, L, assin(a, L)); });
   on('sb-finalizar', () => finalizar());
@@ -312,7 +325,7 @@ async function finalizar() {
   if (!x || x.st !== 'done') { pintarResumo(caixasVivas()); return overlay('erro', bt('라벨을 만들지 못했습니다', 'Label not created'), x ? 'UPS: ' + (x.err || '') : bt('응답이 없습니다 — 배송 조회에서 확인하세요 (다시 누르면 라벨이 두 번 생길 수 있음)', 'No answer — check Tracking before trying again'), true); }
   try { await S.DB.update('adhoc', id, { track: x.track, shipVia: 'UPS', boxes: (x.labels || []).length, shipCost: x.charge || 0, st: 'shipped', shippedAt: new Date().toISOString(), shippedBy: S.user.email, updatedAt: new Date().toISOString() }); } catch (e) {}
   imprimir(x);
-  B.cli = ''; B.busca = ''; B.cod = null; B.codValor = ''; B.codCli = ''; zerar(); delete B.hist[a.acct];
+  B.cli = ''; B.busca = ''; B.cod = null; B.codValor = ''; B.codCli = ''; B.editando = ''; zerar(); delete B.hist[a.acct];
   let voltou = false; const voltar = () => { if (voltou) return; voltou = true; if (location.hash.indexOf('#/balcao') === 0) page(); };
   const f2 = overlay('ok', '✅ ' + L3('라벨 ' + (x.labels || []).length + '장', (x.labels || []).length + ' label(s)', (x.labels || []).length + ' etiqueta(s)'), (x.track || '') + (x.charge ? ' · ' + money(x.charge) : '') + (cod ? ' · COD $' + cod.valor : ''), false, voltar);
   setTimeout(() => { f2(); voltar(); }, SB_OK_MS);

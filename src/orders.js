@@ -326,6 +326,7 @@ async function staffHome() {
   T.push(tile('shipped', '📬', bi('출고 완료', 'Shipped'), '읽는 중…'));
   if (can('bo')) T.push(tile('bo', '⏳', bi('백오더', 'Backorders'), '읽는 중…'));
   if (can('ship') || can('invoice') || can('newOrder')) T.push(tile('displays', '🖼', 'Notes Display', '읽는 중…', 'amber'));
+  if (can('ship')) T.push(tile('shiphist', '📦', 'Shipping History', bt('UPS 출고 기록 · 다시 인쇄 · 취소', 'UPS shipments · reprint · void')));
   if (can('ship')) T.push(tile('balcao', '🏪', 'Shipping UPS', bt('가게 → 박스 → 라벨 (옛 앱 화면)', 'store → boxes → label (classic screen)')));
   if (can('ship')) T.push(tile('adhoc', '➕', bi('주문 없이 UPS 라벨', 'Ad-hoc UPS label'), bt('가게 · 인보이스 없이 받는 곳만 적어 라벨', 'label with just an address')));
   const A = [];
@@ -345,7 +346,7 @@ async function staffHome() {
   /* 🏭 창고 매니저 — 주문 처리보다 재고 · UPS 출고 · 픽업 · 백오더가 먼저 (주문 처리 타일은 아래 작은 칸) */
   /* 🗂 큰 묶음 4개로 접어 둠 — 머리를 누르면 펼쳐져 세부 타일 (펼친 상태는 이 폰에 기억). 머리에는 핵심 숫자 */
   /* 🛒 세일 = 인보이스 발행까지 (접수 · 확인 · 배정 · 픽킹 · 검수) · 🚚 배송 = 그 뒤 (포장 대기 · UPS 라벨 · 픽업 · 출고 완료 · 백오더 · 디스플레이 · 주문 없이 라벨 · 배송 조회) — v0.8.166 */
-  const GRP = [['sale', '🛒', '세일', 'Sales', ['flow', 'new', 'sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'all']], ['ship', '🚚', '배송', 'Shipping', ['done', 'ups', 'balcao', 'packed', 'dlv', 'shipped', 'bo', 'displays', 'adhoc', 'track']],
+  const GRP = [['sale', '🛒', '세일', 'Sales', ['flow', 'new', 'sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'all']], ['ship', '🚚', '배송', 'Shipping', ['done', 'ups', 'balcao', 'shiphist', 'packed', 'dlv', 'shipped', 'bo', 'displays', 'adhoc', 'track']],
     ['money', '💵', '수금 · 크레딧', 'Payments', ['verify', 'credit', 'bounce']], ['look', '📚', '조회 · 자료', 'Lookup', ['inv', 'stores', 'cat', 'items', 'items/new', 'items/bulk']]];
   const allT = T.concat(A), keyOf = h => (h.match(/data-hg="([^"]+)"/) || [])[1];
   const OKEY = 'theone.hgrp.' + j; let openG = null; try { openG = JSON.parse(localStorage.getItem(OKEY) || 'null'); } catch (e) {}
@@ -369,7 +370,7 @@ async function staffHome() {
     if (k === 'adhoc') return import('./ship.js').then(M => M.adhocShip(() => staffHome()));   /* ➕ 주문 없이 UPS 라벨 */
     if (k.indexOf('/') > 0) { const [r, a] = k.split('/'); return Router.go(r, a); }   /* items/new · items/bulk 처럼 칸이 있는 화면 */
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
-    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit' || k === 'bounce' || k === 'displays' || k === 'balcao') return Router.go(k);
+    if (k === 'stores' || k === 'verify' || k === 'items' || k === 'cat' || k === 'track' || k === 'flow' || k === 'credit' || k === 'bounce' || k === 'displays' || k === 'balcao' || k === 'shiphist') return Router.go(k);
     if (k === 'inv' || k === 'shipped') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
     if (k === 'inv') { LF.im = 'acct'; LF.iacct = ''; LF.iq = ''; }
     LF.st = k; LF.list = true; pageOrder('');
