@@ -19,6 +19,7 @@ import { searchAccounts } from './accounts.js';
 import { reqText, reqLabel, reqClean, reqNoteClean } from './reqs.js';
 import { loadCatalog, catalog } from './catalog.js';
 import * as Msg from './msg.js';
+import { L3 } from './balcao.js';
 
 let S = null;
 export function register(state) { S = state; Router.on('displays', page); }
@@ -54,7 +55,7 @@ async function list(openNew) {
   let L = []; try { L = await S.DB.list('displays'); } catch (e) { box.innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; }
   if (openNew) NEWOPEN = true;
   const wait = sortBy(L.filter(d => d.st === 'open' || d.st === 'prep' || d.st === 'hold'), d => (d.st === 'prep' ? '0' : d.st === 'open' ? '1' : '2') + (d.due || '9999') + (d.createdAt || ''));
-  const done = sortBy(L.filter(d => (d.st === 'done') || ((d.st === 'shipped') && in24(d.shippedAt || d.doneAt)) || (d.st === 'x' && in24(d.cancelAt))), d => d.st === 'done' ? '1' + (d.doneAt || '') : '0' + (d.shippedAt || d.cancelAt || ''), true);
+  const done = sortBy(L.filter(d => (d.st === 'done') || (d.st === 'notes') || ((d.st === 'shipped') && in24(d.shippedAt || d.doneAt)) || (d.st === 'x' && in24(d.cancelAt))), d => d.st === 'done' || d.st === 'notes' ? '1' + (d.doneAt || '') : '0' + (d.shippedAt || d.cancelAt || ''), true);
   const nOpen = L.filter(d => d.st === 'open'), nPrep = L.filter(d => d.st === 'prep'), nHold = L.filter(d => d.st === 'hold'), n24 = L.filter(d => (d.st === 'done' || d.st === 'shipped') && in24(d.doneAt || d.shippedAt));
   const kpi = (ic, cls, ko, en, n, sub) => '<div class="dvk ' + cls + '"><span class="dvki">' + ic + '</span><div><small>' + bi(ko, en) + '</small><b>' + n + '</b>' + (sub != null ? '<small>' + sub + ' ' + bt('박스', 'boxes') + '</small>' : '') + '</div></div>';
   const item = (d, x, i, live) => '<div class="dvit' + (x.ok ? ' ok' : '') + '">' + (live ? '<label class="ckw"><input type="checkbox" class="ck-big" data-dvok="' + esc(d.id) + '|' + i + '"' + (x.ok ? ' checked' : '') + (d.st === 'prep' ? '' : ' disabled') + '></label>' : '') + '<div><b>' + (x.c ? '<span class="tag t-k">' + esc(x.c) + '</span> ' : x.custom ? '✏️ ' : '') + esc(x.n) + ' ×' + (Number(x.q) || 0) + '</b><small>' + esc(specTxt(x)) + (x.note ? (specTxt(x) ? ' · ' : '') + '📝 ' + esc(x.note) : '') + '</small></div></div>';
@@ -62,7 +63,7 @@ async function list(openNew) {
     const live = d.st === 'open' || d.st === 'prep' || d.st === 'hold', allOk = (d.items || []).length && (d.items || []).every(x => x.ok);
     const logs = (d.log || []).slice(-3);
     return '<div class="dvcard' + (d.st === 'prep' ? ' prep' : '') + (d.st === 'hold' ? ' hold' : '') + (d.st === 'x' ? ' dim' : '') + '" data-dv="' + esc(d.id) + '">' +
-      '<div class="dvhd"><b>' + esc(d.store || '') + (d.acct ? ' · ' + esc(d.acct) : '') + '</b>' + (d.st === 'x' ? '<span class="tag t-r">' + bt('취소됨', 'Cancelled') + '</span>' : d.st === 'shipped' ? '<span class="tag t-g">🚚 ' + bt('출고됨', 'Shipped') + '</span>' : d.st === 'done' ? '<span class="tag t-a">📦 ' + bt('UPS 대기', 'Awaiting UPS') + '</span>' : d.st === 'prep' ? '<span class="tag t-b">' + bt('준비 중', 'Preparing') + '</span>' : d.st === 'hold' ? '<span class="tag t-a">⏸ ' + bt('보류', 'On hold') + (d.holdNote ? ' · ' + esc(d.holdNote) : '') + '</span>' : '') + '</div>' +
+      '<div class="dvhd"><b>' + esc(d.store || '') + (d.acct ? ' · ' + esc(d.acct) : '') + '</b>' + (d.st === 'x' ? '<span class="tag t-r">' + bt('취소됨', 'Cancelled') + '</span>' : d.st === 'shipped' ? '<span class="tag t-g">🚚 ' + bt('출고됨', 'Shipped') + '</span>' : d.st === 'done' ? '<span class="tag t-a">📦 ' + bt('UPS 대기', 'Awaiting UPS') + '</span>' : d.st === 'notes' ? '<span class="tag t-a">📦 Notes UPS</span>' : d.st === 'prep' ? '<span class="tag t-b">' + bt('준비 중', 'Preparing') + '</span>' : d.st === 'hold' ? '<span class="tag t-a">⏸ ' + bt('보류', 'On hold') + (d.holdNote ? ' · ' + esc(d.holdNote) : '') + '</span>' : '') + '</div>' +
       '<div class="muted dvsub">' + bt('상품', 'Items') + ' ' + (d.items || []).length + bt('개', '') + ' · ' + bt('박스', 'Boxes') + ' ' + boxesOf(d) + bt('개', '') + '</div>' +
       '<div class="dvrow"><div class="dvits">' + (d.items || []).map((x, i) => item(d, x, i, live && canShip())).join('') + '</div>' +
       '<div class="dvbtn">' + (d.st === 'open' && canShip() ? '<button class="b-blue b-sm" data-dvgo="' + esc(d.id) + '">' + bi('준비 시작', 'Start') + '</button>' : '') +
@@ -73,6 +74,7 @@ async function list(openNew) {
       (d.st === 'hold' && canShip() ? '<button class="b-blue b-sm" data-dvresume="' + esc(d.id) + '">▶ ' + bt('다시 진행', 'Resume') + '</button>' : '') +
       (d.st === 'done' && canShip() ? '<button class="b-ghost b-sm" data-dvredo="' + esc(d.id) + '" title="' + esc(bt('완료를 취소하고 다시 준비', 'Undo done — prepare again')) + '">↩ ' + bt('다시 준비', 'Redo') + '</button>' : '') +
       ((live || d.st === 'done') && canShip() ? '<button class="b-ghost b-sm" data-dvlog="' + esc(d.id) + '">⚠️ ' + bt('문제 기록', 'Log issue') + '</button>' : '') +
+      (d.st === 'done' && can('ship') ? '<button class="b-blue b-sm" data-dvnu="' + esc(d.id) + '" title="' + esc(L3('단위마다 박스 한 개를 Notes UPS 대기 줄에 넣고 라벨 인쇄 — Shipping UPS 에서 그 가게 박스와 함께 보냄', 'One box per unit goes to the Notes UPS queue (labels print) — ship it with the store in Shipping UPS', 'Uma caixa por unidade vai para a fila do Notes UPS (imprime as etiquetas) — despache junto no Shipping UPS')) + '">📦 ' + L3('Notes UPS 로', 'To Notes UPS', 'Enviar ao Notes UPS') + '</button>' : '') +
       ((d.st === 'done' || d.st === 'shipped') && canShip() ? '<button class="b-green b-sm" data-dvu="' + esc(d.id) + '">🚚 ' + bi(d.st === 'done' ? 'UPS 라벨' : '라벨 · 트래킹', d.st === 'done' ? 'UPS label' : 'Labels · tracking') + '</button>' : '') +
       (live && canWrite() ? '<button class="b-ghost b-sm" data-dve="' + esc(d.id) + '">✏️</button>' : '') +
       (live && canWrite() ? '<button class="b-ghost b-sm" data-dvx="' + esc(d.id) + '" style="color:#b91c1c">' + bt('취소', 'Cancel') + '</button>' : '') + '</div></div>' +
@@ -106,6 +108,7 @@ async function list(openNew) {
     await upd(d.id, { st: 'done', doneAt: new Date().toISOString(), doneBy: me(), doneByName: myName(), boxes: boxesOf(d) }, '✅ ' + bt('완료 — UPS 라벨을 만드세요', 'Done — make the UPS label'));
     ups(Object.assign({}, d, { st: 'done' }));
   });
+  box.querySelectorAll('[data-dvnu]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvnu); if (!d) return; busy(true); try { const NU = await import('./notesups.js'); const ids = await NU.deDisplay(d); await S.DB.update('displays', d.id, { st: 'notes', notesAt: new Date().toISOString(), notesBy: me(), noteIds: ids, updatedAt: new Date().toISOString() }); toast('📦 Notes UPS · ' + ids.length, 'good'); } catch (e) { toast(String(e.message || e.code), 'bad'); } busy(false); list(); });
   box.querySelectorAll('[data-dvu]').forEach(b => b.onclick = () => { const d = L.find(x => x.id === b.dataset.dvu); if (d) ups(d); });
   box.querySelectorAll('[data-dve]').forEach(b => b.onclick = () => { NEWOPEN = false; form(L.find(d => d.id === b.dataset.dve) || {}, false); });
   box.querySelectorAll('[data-dvx]').forEach(b => b.onclick = async () => {

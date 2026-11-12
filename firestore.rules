@@ -208,6 +208,7 @@ service cloud.firestore {
     }
     match /pickups/{id} { allow read: if isStaff(); allow write: if ordJob(); }
     match /displays/{id} { allow read: if isStaff(); allow write: if ordJob(); }
+    match /upsnotes/{id} { allow read: if isStaff(); allow write: if ordJob(); }   // 📦 Notes UPS 박스 (v0.8.194)
     match /adhoc/{id} { allow read: if isStaff(); allow write: if ordJob(); }                                                                           // ➕ 주문 없이 만든 UPS 라벨 (임의 출고)
     match /pushTokens/{id} {                                                                                                         // 📱💻 웹 푸시 기기 — 자기 것만 적고 지움 (보내기는 Apps Script)
       // 🔐 L2: 등록된 사용자만, 고칠 때는 원래 주인이어야
