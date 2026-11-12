@@ -16,10 +16,11 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 
 | 역할 | 영역 | 주 파일 |
 |---|---|---|
-| 관리자 | 전체 · 공용 뼈대 · 배포 · 데이터 | 전부. 특히 `ui.js` `style.js` `main.js` `db.js` `i18n.js` `sw.js` `index.html` `build.sh` `firestore.rules` `.github/` `tools/` |
+| 관리자 (luke@theonefl.com · joao@theonefl.com) | 전체 · 공용 뼈대 · 배포 · 데이터 | 전부. 특히 `ui.js` `style.js` `main.js` `db.js` `i18n.js` `sw.js` `index.html` `build.sh` `firestore.rules` `.github/` `tools/` |
 | 디자인 담당 | 사진 · 라벨 · 카탈로그 화면 · 분류 일괄 변경 | `src/photos.js` `src/labels.js` `src/catpage.js` `src/lvtool.js` `apps-script/SharePhotos.gs` `data/photo-index.json` |
 | 창고 매니저 | 재고 · UPS · 픽업 · 배송 · 아이템 · 출고 흐름 | `src/stock.js` `src/ship.js` `src/pickup.js` `src/track.js` `src/items.js` `src/catalog.js` `src/scan.js` `src/fulfill.js` `src/flow.js` `apps-script/UPS.gs` |
 
+- **관리자는 두 명** (2026-11-12 부터): luke@theonefl.com · joao@theonefl.com (창고 매니저 겸, GitHub @pzrk2rcdpm-cmyk). 둘 중 한 명의 승인 · 머지 · 저장소 밖 반영이면 된다. 자기가 낸 PR 도 `check` 초록이면 직접 머지할 수 있다.
 - 담당은 `.github/CODEOWNERS` 와 같다 — 그 파일이 바뀌는 PR 에는 담당자에게 리뷰 요청이 자동으로 간다. 관리자는 모든 파일의 담당(최종 승인).
 - **영역 밖 파일**을 고쳐야 하면 최소한으로만 고치고 PR 설명 맨 위에 `영역 밖 변경: 파일 — 이유` 를 적는다. 공용 뼈대(위 표의 관리자 파일)를 크게 바꾸는 일은 관리자에게 넘긴다.
 - **머지**: 자기 영역 파일만 바뀐 PR 은 `check` 초록을 확인한 뒤 담당자가 직접 squash 머지해도 된다 (2026-11-06 부터 — main 보호 규칙은 PR 필수 · check 통과 필수, 승인은 없음). 영역 밖 파일 · 공용 뼈대 · `firestore.rules` · `.github/` · `tools/` 가 바뀐 PR 은 관리자 승인 뒤에 머지한다. 머지 뒤 main 을 다시 받아 `sh build.sh` 로 app.js 가 같은지 확인한다.

@@ -1,27 +1,27 @@
 # 담당 영역 — 이 파일이 바뀌는 PR 에는 담당자에게 리뷰 요청이 자동으로 갑니다 (CLAUDE.md 「팀 · 담당 영역」 과 같은 표)
 #   아래쪽 줄이 위쪽 줄보다 우선합니다. 한 줄에 여러 명이면 그중 한 명의 승인으로 충분합니다.
-#   관리자(@Theonecorp)는 모든 파일의 담당 = 최종 승인.
+#   관리자(@Theonecorp · @pzrk2rcdpm-cmyk = joao@theonefl.com, 2026-11-12 부터)는 모든 파일의 담당 = 최종 승인.
 #   디자인 담당 · 창고 매니저는 저장소 협업자 초대를 수락한 뒤 GitHub 아이디(@아이디)를 해당 줄 끝에 더합니다.
 #   창고 매니저(아이템 · 재고 담당): joao@theonefl.com — GitHub 계정에 확인된 이메일이어야 리뷰 요청이 감 · 디자인 담당: (초대 수락 뒤 추가)
 
-*                           @Theonecorp
+*                           @Theonecorp @pzrk2rcdpm-cmyk
 
 # 🎨 디자인 담당 — 사진 · 라벨 · 카탈로그 화면 · 분류 일괄 변경
-/src/photos.js              @Theonecorp
-/src/labels.js              @Theonecorp
-/src/catpage.js             @Theonecorp
-/src/lvtool.js              @Theonecorp
-/apps-script/SharePhotos.gs @Theonecorp
-/data/photo-index.json      @Theonecorp
+/src/photos.js              @Theonecorp @pzrk2rcdpm-cmyk
+/src/labels.js              @Theonecorp @pzrk2rcdpm-cmyk
+/src/catpage.js             @Theonecorp @pzrk2rcdpm-cmyk
+/src/lvtool.js              @Theonecorp @pzrk2rcdpm-cmyk
+/apps-script/SharePhotos.gs @Theonecorp @pzrk2rcdpm-cmyk
+/data/photo-index.json      @Theonecorp @pzrk2rcdpm-cmyk
 
 # 📦 창고 매니저 — 재고 · UPS · 픽업 · 배송 · 아이템 · 출고 흐름
-/src/stock.js               @Theonecorp joao@theonefl.com
-/src/ship.js                @Theonecorp joao@theonefl.com
-/src/pickup.js              @Theonecorp joao@theonefl.com
-/src/track.js               @Theonecorp joao@theonefl.com
-/src/items.js               @Theonecorp joao@theonefl.com
-/src/catalog.js             @Theonecorp joao@theonefl.com
-/src/scan.js                @Theonecorp joao@theonefl.com
-/src/fulfill.js             @Theonecorp joao@theonefl.com
-/src/flow.js                @Theonecorp joao@theonefl.com
-/apps-script/UPS.gs         @Theonecorp joao@theonefl.com
+/src/stock.js               @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/src/ship.js                @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/src/pickup.js              @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/src/track.js               @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/src/items.js               @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/src/catalog.js             @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/src/scan.js                @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/src/fulfill.js             @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/src/flow.js                @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
+/apps-script/UPS.gs         @Theonecorp @pzrk2rcdpm-cmyk joao@theonefl.com
