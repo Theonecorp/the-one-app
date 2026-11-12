@@ -540,8 +540,10 @@ function viewOrder(o, lines, local) {
   const by = splitByType(lines, o.disc, 'q'), pd = priceDiff(lines, 'q');
   let h = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">' + esc(o.no) + ' ' + stTag(local ? 'local' : o.st) + '</h2>' +
     '<div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div><div class="muted">' + esc([o.acct, acc ? [acc.addr, acc.city, acc.state].filter(Boolean).join(', ') : ''].filter(Boolean).join(' · ')) + '</div><div class="muted">' + smShow(o) + ' · ' + esc(o.d) + payTag(o) + '</div></div>' +
+    '<button class="b-ghost b-sm" id="oBack">‹ 목록</button></div>' +
+    (!local && !isStaff() ? stageBar(o) : '') +
     (o.smFor && o.smFor !== o.sm ? '<div class="alert a-amb">👤 ' + bi('다른 세일즈맨 가게 — 인보이스 이름', 'Another salesman\'s store — invoiced as') + ' <b>' + esc(o.smFor) + '</b> (' + bt('주문한 사람', 'ordered by') + ' ' + esc(o.sm) + ')</div>' : '') +
-    '<button class="b-ghost b-sm" id="oBack">‹ 목록</button></div>' + typeSummary(by) +
+    typeSummary(by) +
     (pd.n ? '<div class="alert a-amb">가격 수정 ' + pd.n + '줄 · 목록가 대비 ' + (pd.diff >= 0 ? '+' : '') + money(pd.diff) + ' (' + pd.pct + '%)</div>' : '') +
     (o.st === 'x' ? '<div class="alert a-red">✕ <b>' + bi('취소된 주문', 'Cancelled order') + '</b>' + (o.cancelWhy ? ' — ' + bi('사유', 'Reason') + ': <b>' + esc(o.cancelWhy) + '</b>' : '') + (o.cancelAt ? ' <span class="muted">' + esc(String(o.cancelAt).substring(0, 16).replace('T', ' ')) + '</span>' : '') + '</div>' : '') +
     (reqCount(o.req) ? '<div class="alert a-amb">🎁 ' + bi('인서트 · 디스플레이 요청', 'Insert · display request') + ': <b>' + reqText(o.req, false, o.reqNote) + '</b></div>' : '') +
@@ -560,6 +562,7 @@ function viewOrder(o, lines, local) {
   if (!local && o.cfReq && !o.cfOk && o.sm === mySm() && o.st !== 'x') B.push('<button class="b-green" id="oCfOk">✅ ' + bi('맞습니다 · 확인', 'Confirm') + '</button>');
   /* ✕ 세일즈맨 취소 — 폰에만 있는 주문은 지우기 · 임시/접수(작업 전)는 바로 취소 · 작업 시작 뒤에는 사무실에 취소 요청 */
   const mine = o.sm === mySm() || local;
+  if (!local && mine && REQ_ST.includes(o.st) && !o.cfIssueOpen) B.push('<button class="b-blue" id="oReq">📣 ' + bi('사무실에 요청', 'Ask the office') + '</button>');   /* 🛑 홀드 · ✏️ 수정 · 🖼 디스플레이 추가 · 💬 기타 (v0.8.190) */
   if (mine && local && !(readOut()[o.id] && readOut()[o.id].err)) B.push('<button class="b-ghost" id="oCxLocal" style="color:#991b1b">✕ ' + bi('주문 취소', 'Cancel order') + '</button>');
   else if (!local && mine && (o.st === 'draft' || o.st === 'sent')) B.push('<button class="b-ghost" id="oCx" style="color:#991b1b">✕ ' + bi('주문 취소', 'Cancel order') + '</button>');
   else if (mine && ['pick', 'ok', 'picked'].includes(o.st) && !o.cfIssueOpen) B.push('<button class="b-ghost" id="oCxReq" style="color:#991b1b">✕ ' + bi('취소 요청 (작업 중)', 'Ask to cancel') + '</button>');
@@ -580,6 +583,7 @@ function viewOrder(o, lines, local) {
   if ($('oStoreChg')) $('oStoreChg').onclick = () => Fulfill.changeStore(o, () => goOrder(o.id));
   if ($('oCfOk')) $('oCfOk').onclick = async () => { busy(true); try { await S.DB.update('orders', o.id, { cfOk: true, cfAt: new Date().toISOString(), cfBy: S.user.email }); toast('✅ 확인했습니다 — 사무실에 표시됩니다', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('oStoreI')) $('oStoreI').onclick = () => Store.storeSheet(o.acct);
+  if ($('oReq')) $('oReq').onclick = () => smRequest(o);
   if ($('oMsg')) $('oMsg').onclick = async () => { const M = await import('./msg.js'); M.compose({ to: 'g:office', ref: { kind: 'order', id: o.id, label: o.no + ' · ' + o.store } }); };
   if ($('oCx')) $('oCx').onclick = () => Fulfill.cancelAsk(o, true);
   if ($('oCxLocal')) $('oCxLocal').onclick = async () => { if (!(await confirmBox(bt('아직 회사로 안 간 주문입니다. 폰에서 지울까요?', 'This order has not reached the office yet. Delete it from this phone?') + '\n' + (o.store || '') + ' · ' + money(o.amt || 0), '✕ ' + bt('지우기', 'Delete')))) return; const b = readOut(); delete b[o.id]; writeOut(b); toast(bt('지웠습니다', 'Deleted'), 'good'); Router.go('order'); };
@@ -587,6 +591,47 @@ function viewOrder(o, lines, local) {
   if ($('oDropLocal')) $('oDropLocal').onclick = async () => { if (!(await confirmBox('회사로 못 간 이 주문을 폰에서 지울까요? (' + readOut()[o.id].err + ')', '지우기'))) return; const b = readOut(); delete b[o.id]; writeOut(b); Router.go('order'); };
   if ($('oSyncOne')) $('oSyncOne').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast('인터넷이 안 됩니다 — 폰에 그대로 있습니다', 'bad'); else goOrder(o.id); };
   if ($('oSend')) $('oSend').onclick = async () => { const ol = Object.assign({}, o, sendStamp(o)); putOut(ol, lines); await syncOutbox(false); goOrder(o.id); };
+}
+/* ---------- 📍 세일즈맨이 보는 주문 단계 · 📣 사무실에 요청 (2026-11-12 관리자: "오더를 보낸 뒤 오피스에서 작업 중이면 어느 단계인지 보고, 수정 · 홀드 · 디스플레이 추가 등을 메시지 · 노티스로") · v0.8.190 ---------- */
+const REQ_ST = ['sent', 'ok', 'pick', 'picked', 'done', 'packed', 'dlv'];
+const t5 = v => v ? esc(String(v).substring(5, 16).replace('T', ' ')) : '';
+/** 단계 칸 아래 시간 — 오늘이면 시:분, 아니면 월/일 (칸이 좁아서) */
+const stT = v => { if (!v) return ''; const d = new Date(v); if (isNaN(d)) return ''; const p = n => String(n).padStart(2, '0'); return localDay(d) === today() ? p(d.getHours()) + ':' + p(d.getMinutes()) : (d.getMonth() + 1) + '/' + d.getDate(); };
+/** 단계 막대 — 📤 접수 → ❓ 확인 → 👷 픽킹 → 🔍 검수 → 🧾 인보이스 → 📦 포장 · 🚗 딜리버리 → 🚚 출고 · 지금 단계 · 그 단계에서 바꿀 수 있는 것 */
+export function stageBar(o) {
+  if (o.st === 'draft' || o.st === 'x') return '';
+  const S7 = [['sent', '📤', '접수', 'Received', o.sentAt], ['cf', '❓', '확인', 'Confirmed', o.cfOk ? o.cfAt : ''], ['pick', '👷', '픽킹', 'Picking', o.pickAt], ['picked', '🔍', '검수', 'Review', o.pickDoneAt], ['done', '🧾', '인보이스', 'Invoiced', o.doneAt], ['pack', o.st === 'dlv' ? '🚗' : '📦', o.st === 'dlv' ? '딜리버리' : '포장', o.st === 'dlv' ? 'Delivery' : 'Packed', o.st === 'dlv' ? o.dlvAt : o.packAt], ['shipped', '🚚', '출고', 'Shipped', o.shipAt || o.dlvDoneAt]];
+  const cur = { sent: o.cfOk ? 1 : 0, ok: 2, pick: 2, picked: 3, done: 4, packed: 5, dlv: 5, shipped: 6 }[o.st]; if (cur == null) return '';
+  const hint = cur <= 1 ? bt('아직 창고 작업 전 — ✏️ 수정으로 바로 고칠 수 있습니다', 'Not started yet — edit it directly') : cur <= 3 ? bt('창고에서 작업 중 — 바꿀 것이 있으면 📣 사무실에 요청', 'Being picked — use 📣 Ask the office for changes') : cur === 4 ? bt('인보이스 발행됨 — 바꿀 것은 📣 요청 (사무실이 인보이스를 고침)', 'Invoiced — ask the office to edit the invoice') : bt('나가는 중 · 나감 — 바꿀 것은 📣 요청 또는 크레딧', 'Leaving or left — ask the office or give a credit');
+  return '<div class="stagebar" id="oStage">' + S7.map((x, i) => '<div class="stg' + (i < cur ? ' done' : i === cur ? ' cur' : '') + '"><span class="i">' + (i < cur ? '✓' : x[1]) + '</span><b>' + bi(x[2], x[3]) + '</b>' + (x[4] && i <= cur ? '<small>' + stT(x[4]) + '</small>' : '') + '</div>').join('') + '</div>' +
+    '<div class="muted" style="font-size:12.5px;margin-top:4px">📍 ' + hint + '</div>' +
+    (o.cfIssue ? '<div class="alert ' + (o.cfIssueOpen ? 'a-amb' : 'a-grn') + '" style="margin-top:6px">' + (o.cfIssueOpen ? '⏳ ' + bt('사무실에 보낸 요청 — 확인 중', 'Request sent — office reviewing') : '✅ ' + bt('사무실이 처리함', 'Handled by the office') + ' ' + t5(o.cfIssueDoneAt)) + '<br><b>' + esc(o.cfIssue) + '</b> <span class="muted">' + t5(o.cfIssueAt) + '</span></div>' : '');
+}
+const REQ_KINDS2 = [['hold', '🛑', '홀드', 'Hold'], ['edit', '✏️', '수정', 'Change'], ['disp', '🖼', '디스플레이 추가', 'Add display'], ['etc', '💬', '기타', 'Other']];
+/** 📣 사무실에 요청 — 종류 + 내용 → 주문의 ⚠️ 문제 알림 칸(cfIssue · 담당자 화면 빨간 띠 · ✅ 처리) + 사무실 알림(메일 · 챗) */
+function smRequest(o) {
+  let kind = 'hold';
+  const paint = () => {
+    $('mbox').innerHTML = '<h2>📣 ' + bi('사무실에 요청', 'Ask the office') + '</h2><div class="sumbox"><b>' + esc(o.no || o.id) + '</b> · ' + esc(o.store) + ' · ' + money(o.amt || 0) + ' · ' + stTag(o.st) + '</div>' +
+      '<div class="chips" style="margin-top:8px">' + REQ_KINDS2.map(k => '<button type="button" class="' + (kind === k[0] ? 'on' : '') + '" data-rqk="' + k[0] + '">' + k[1] + ' ' + bi(k[2], k[3]) + '</button>').join('') + '</div>' +
+      '<div class="fg" style="margin-top:8px"><label>' + bi('내용 (필수)', 'Details (required)') + '</label><textarea id="rqT" rows="3" placeholder="' + esc(kind === 'hold' ? bt('예: 가게가 돈 준비될 때까지 보내지 말아 주세요', 'e.g. hold until the store is ready to pay') : kind === 'edit' ? bt('예: AHG100 10개 → 20개 · CTE04 빼기', 'e.g. AHG100 10 → 20 · remove CTE04') : kind === 'disp' ? bt('예: C4 디스플레이 1개 같이', 'e.g. add one C4 display') : '') + '"></textarea></div>' +
+      '<div class="btns"><button type="button" class="b-ghost" id="rqX">' + bi('닫기', 'Close') + '</button><button type="button" class="b-blue" id="rqGo">📣 ' + bi('보내기', 'Send') + '</button></div>';
+    document.querySelectorAll('[data-rqk]').forEach(b => b.onclick = () => { const t = $('rqT').value; kind = b.dataset.rqk; paint(); $('rqT').value = t; });
+    $('rqX').onclick = closeModal;
+    $('rqGo').onclick = async () => {
+      const txt = $('rqT').value.trim(); if (!txt) return toast(bt('내용을 적어 주세요', 'Write the details'), 'bad');
+      const k = REQ_KINDS2.find(x => x[0] === kind), head = k[1] + ' ' + k[2] + ' ' + bt('요청', 'request');
+      busy(true);
+      try {
+        const now = new Date().toISOString();
+        await S.DB.update('orders', o.id, { cfIssue: k[1] + ' ' + k[2] + ' 요청: ' + txt, cfIssueAt: now, cfIssueOpen: true });
+        try { await Notify.queue({ kind: 'smReq', toStaff: true, chat: true, orderId: o.id, subject: '[THE ONE] ' + k[1] + ' ' + k[2] + ' 요청 — ' + o.store + ' (' + o.sm + ')', text: k[1] + ' ' + k[2] + ' 요청 ' + o.sm + ' · ' + o.store + ' (' + (o.no || o.id) + ', ' + money(o.amt || 0) + ', ' + stName(o.st) + ')\n' + txt, url: Notify.appUrl('order/' + o.id) }); } catch (e) {}
+        closeModal(); toast('📣 ' + head + ' — ' + bt('사무실에 보냈습니다', 'sent to the office'), 'good'); goOrder(o.id);
+      } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+      busy(false);
+    };
+  };
+  openModal(''); paint();
 }
 /** ✕ 작업이 시작된 주문 — 세일즈맨은 바로 못 지우고 사무실에 취소 요청 (⚠️ 문제 알림과 같은 칸 → 담당자 화면 빨간 띠 · 알림) */
 function cancelReq(o) {

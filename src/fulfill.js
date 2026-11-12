@@ -22,6 +22,7 @@ import { searchAccounts, sortStores } from './accounts.js';
 import { fillPinned } from './notes.js';
 import * as Ship from './ship.js';
 import * as Pickup from './pickup.js';
+import * as SH from './sorthead.js';
 import { stockOut, stockBack } from './stock.js';
 
 let S = null;
@@ -707,7 +708,7 @@ export function periodRange(p, from, to) {
   return [from || addD(t, -7), to || t];
 }
 export async function invBrowser(LF, head) {
-  LF.ip = LF.ip || 'month'; LF.iq = LF.iq || ''; LF.it = LF.it || ''; LF.im = LF.im || 'acct';
+  LF.ip = LF.ip || 'month'; LF.iq = LF.iq || ''; LF.it = LF.it || ''; LF.im = LF.im || 'acct'; LF.srt = LF.srt || { k: '', desc: false };   // ↕ 머리글 정렬 (v0.8.190)
   const types = invTypes(S);
   let q = LF.iq.trim();
   /* 🔢 숫자만 쳤을 때 (43350) — A · P · W · CM 중 그 번호로 있는 인보이스: 하나면 바로, 여럿이면 골라서 */
@@ -771,13 +772,14 @@ export async function invBrowser(LF, head) {
   if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 ' + bi('가게 창', 'Store') + '</button></div></div>';
   h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스 Invoices</span></div><div><b>' + money(tot) + '</b><span>합계 Total</span></div><div><b>' + money(bal) + '</b><span>미수 Balance</span></div><div><b>' + new Set(rows.map(r => r.d)).size + '</b><span>날짜 Days</span></div></div>' +
     '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : latest ? bt('가장 최근 200장', 'Latest 200') : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#">⬇️ CSV</a>' : '') + (rows.length > 1 ? ' · <a id="iSort" href="#">' + (LF.idesc ? bt('오래된 날부터 ↑', 'Oldest day first ↑') : bt('최근 날부터 ↓', 'Newest day first ↓')) + '</a>' : '') + '</div>' +
-    (rows.length ? iTbl(dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); const gl = '<div class="gline"><b>' + labelOf(d) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>'; return (narrow() ? cgrp(gl) : '<tr class="grp"><td colspan="9">' + gl + '</td></tr>') + L.map(r => invRow(r)).join(''); }).join('')) : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
+    (rows.length && LF.srt.k ? iTbl(SH.sortRows(rows, LF.srt).map(r => invRow(r)).join(''), LF.srt) : rows.length ? iTbl(dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); const gl = '<div class="gline"><b>' + labelOf(d) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>'; return (narrow() ? cgrp(gl) : '<tr class="grp"><td colspan="9">' + gl + '</td></tr>') + L.map(r => invRow(r)).join(''); }).join(''), LF.srt) : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
   $('iList').innerHTML = h;
   /* 인보이스를 누르면 인보이스 · AR 잔액 · 수금을 한 화면에 (가게 창 · 미수금과 같은 화면) */
   document.querySelectorAll('#iList [data-go]').forEach(el => el.onclick = () => { const g = el.dataset.go; if (g.indexOf('inv:') === 0) invDetail(g.substring(4)); else Router.go('order', g); });
   if (isNo && !rows.length && $('iList')) { $('iList').insertAdjacentHTML('afterbegin', '<div class="card"><button class="b-blue" id="iArFind">🔎 ' + bt('AR(미수금)에서 이 번호 찾기', 'Look up this number in A/R') + '</button></div>'); $('iArFind').onclick = () => invDetail(q.toUpperCase()); }
   if ($('iAcc')) $('iAcc').onclick = () => storeSheet(acc.acct, null, 'invh');
   if ($('iSort')) $('iSort').onclick = e => { e.preventDefault(); LF.idesc = !LF.idesc; invBrowser(LF, head); };
+  SH.bindSort($('iList'), LF.srt, () => invBrowser(LF, head));
   document.querySelectorAll('#iList [data-ist]').forEach(b => b.onclick = () => { LF.ist = b.dataset.ist; LF.ict = ''; invBrowser(LF, head); });
   document.querySelectorAll('#iList [data-ict]').forEach(b => b.onclick = () => { LF.ict = b.dataset.ict; invBrowser(LF, head); });
   if ($('iCsv')) $('iCsv').onclick = e => { e.preventDefault();
@@ -825,9 +827,11 @@ function acctList(LF, head, modeSeg) {
   if (!('ontouchstart' in window)) $('iqQ').focus();
 }
 /* 📊 인보이스 표 — 번호 · 종류 · 날짜 · 거래처 · 세일즈맨 · 주문 · 수량 · 합계 · 잔액 · 상태. 줄을 누르면 인보이스 */
-export function iTbl(rowsHtml) {
-  if (narrow()) return '<div class="crows itbl">' + rowsHtml + '</div>';
-  return '<div class="dtw"><table class="dt itbl"><thead><tr><th style="width:124px">' + bt('인보이스', 'Invoice') + '</th><th style="width:52px">' + bt('날짜', 'Date') + '</th><th>' + bt('거래처', 'Customer') + '</th><th class="hs" style="width:78px">' + bt('세일즈맨', 'Rep') + '</th><th class="hs" style="width:112px">' + bt('주문', 'Order') + '</th><th class="r hs" style="width:52px">' + bt('수량', 'Qty') + '</th><th class="r" style="width:88px">' + bt('합계', 'Total') + '</th><th class="r" style="width:88px">' + bt('잔액', 'Balance') + '</th><th style="width:60px">' + bt('상태', 'Status') + '</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+/** 인보이스 표 — srt 를 주면 머리글을 눌러 정렬 (인보이스 # · 날짜 · 거래처 · 세일즈맨 · 합계 · 잔액, v0.8.190) · 폰은 정렬 칩 줄 */
+export function iTbl(rowsHtml, srt) {
+  if (narrow()) return (srt ? SH.chipsBar(srt) : '') + '<div class="crows itbl">' + rowsHtml + '</div>';
+  const H = (k, lab, cls, st) => srt ? SH.th(k, lab, srt, cls, st) : '<th' + (cls ? ' class="' + cls + '"' : '') + (st ? ' style="' + st + '"' : '') + '>' + lab + '</th>';
+  return '<div class="dtw"><table class="dt itbl"><thead><tr>' + H('no', bt('인보이스', 'Invoice'), '', 'width:124px') + H('d', bt('날짜', 'Date'), '', 'width:58px') + H('store', bt('거래처', 'Customer')) + H('sm', bt('세일즈맨', 'Rep'), 'hs', 'width:84px') + '<th class="hs" style="width:112px">' + bt('주문', 'Order') + '</th><th class="r hs" style="width:52px">' + bt('수량', 'Qty') + '</th>' + H('total', bt('합계', 'Total'), 'r', 'width:88px') + H('bal', bt('잔액', 'Balance'), 'r', 'width:88px') + '<th style="width:60px">' + bt('상태', 'Status') + '</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 }
 function invRow(r) {
   const bal = r.bal != null ? r.bal : r.total, paid = r.st !== 'x' && Math.abs(bal) < 0.005;
