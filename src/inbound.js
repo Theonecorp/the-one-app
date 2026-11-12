@@ -13,7 +13,7 @@
  * ============================================================ */
 import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, bi, bt, today, md, sortBy } from './ui.js';
 import { loadCatalog, catalog, exactItem } from './catalog.js';
-import { can, isTop, jobOf } from './main.js';
+import { can, isTop, jobOf, myJobs } from './main.js';
 import { newId } from './db.js';
 import * as Stock from './stock.js';
 import { S_, num, norm, codeFinder, similarCode, parseFactoryInvoice, dateOf } from './inbound-parse.js';
@@ -24,8 +24,8 @@ let S = null;
 export function register(state) { S = state; }
 const ST = { f: 'open', draft: null };
 /** 등록 · 지우기 — 관리자 · 오너 · 오피스 매니저 / 받기 — + 창고 매니저 · 창고 직원 · 출고 담당 */
-export const canAdd = () => isTop() || (S.role === 'manager' && jobOf() === 'office');
-export const canRecv = () => canAdd() || (S.role === 'manager' && ['whmgr', 'pick', 'pickinv'].includes(jobOf()));
+export const canAdd = () => isTop() || (S.role === 'manager' && myJobs().includes('office'));
+export const canRecv = () => canAdd() || (S.role === 'manager' && myJobs().some(j => ['whmgr', 'pick', 'pickinv'].includes(j)));
 /** 공장 단가(원가)는 관리자만 — 단가는 따로 inboundCost/{id} 에 두고 firestore.rules 로 관리자만 읽음 (오피스는 등록할 때 쓰기만) */
 const seeCost = () => !!(S && S.me && S.me.role === 'admin');
 /** 금액 — 위안이면 ¥ */

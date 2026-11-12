@@ -661,7 +661,7 @@ export async function pickers() {
   if (PICKERS) return PICKERS;
   /* 순서: 창고 직원(pick1 · pick2 …) → 오피스 · 인보이스 담당(EUNJI · EUNJU · BEA …) → 창고 매니저, 같은 묶음 안은 이름 순 (숫자 순서로) */
   const rank = u => u.job === 'pick' ? 0 : u.job === 'whmgr' ? 2 : 1, coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-  try { PICKERS = (await S.DB.list('users', {})).filter(u => u.active !== false && u.role === 'manager' && jobCan(u.job || 'office', 'pick')).map(u => ({ email: u.email || u.id, name: u.name || (u.email || u.id).split('@')[0], job: u.job || 'office', pick: u.job === 'pick' || u.job === 'whmgr', rank: rank(u) })).sort((a, b) => a.rank - b.rank || coll.compare(a.name, b.name)); }
+  try { PICKERS = (await S.DB.list('users', {})).filter(u => u.active !== false && u.role === 'manager' && [u.job || 'office'].concat(Array.isArray(u.job2) ? u.job2 : []).some(j => jobCan(j, 'pick'))).map(u => ({ email: u.email || u.id, name: u.name || (u.email || u.id).split('@')[0], job: u.job || 'office', pick: u.job === 'pick' || u.job === 'whmgr', rank: rank(u) })).sort((a, b) => a.rank - b.rank || coll.compare(a.name, b.name)); }
   catch (e) { PICKERS = []; }
   return PICKERS;
 }
