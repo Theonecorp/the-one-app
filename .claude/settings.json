@@ -2,13 +2,17 @@
   "permissions": {
     "allow": [
       "Bash(node tools/fbhost.mjs:*)",
-      "Bash(cd /home/user/the-one-app && node tools/fbhost.mjs:*)"
+      "Bash(cd /home/user/the-one-app && node tools/fbhost.mjs:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh api -X PUT repos/Theonecorp/the-one-app/pulls/:*)",
+      "Bash(gh api -X PUT repos/theonecorp/the-one-app/pulls/:*)"
     ]
   },
   "autoMode": {
     "allow": [
       "$defaults",
-      "Deploying this app to Firebase Hosting with node tools/fbhost.mjs (the admin's own deploy script; the admin asked for deploys to run after the test suite passes without a separate confirmation)"
+      "Deploying this app to Firebase Hosting with node tools/fbhost.mjs (the admin's own deploy script; the admin asked for deploys to run after the test suite passes without a separate confirmation)",
+      "Squash-merging pull requests of Theonecorp/the-one-app (gh pr merge, or PUT /repos/Theonecorp/the-one-app/pulls/N/merge) when the admin asked to merge or merge-and-deploy, once the 'check' workflow is green on the PR's head commit and Claude has reviewed the diff against the rules in CLAUDE.md ('머지 · 배포 위임'). This includes pull requests opened by the teammate (the items · inventory owner); the admin delegated that merge decision to Claude on 2026-11-12."
     ]
   }
 }

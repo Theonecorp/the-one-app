@@ -1,61 +1,51 @@
-/* v0.8.188 시험 — 🏪 Shipping UPS (카운터): 옛 앱 화면 그대로 — 가게 찾기 → 박스 (Enter 로 다음 칸 · 높이 Enter = 저장 · 크기는 다음 박스로 안 넘어감) → 요금 자동(shipq rate) → COD → 🖨 라벨(shipq wait · adhocId · cod) → 끝나면 adhoc shipped · 저절로 가게 찾기로
- *   ① 세일즈맨: 권한 없음 · 관리자: 홈 타일 · 가게 찾기 칸
- *   ② 계정 번호로 찾기 → 두 칼럼 (박스 | 받는 곳 · 요약) · 받는 곳 카드에 가게 · 계정 · 주소
- *   ③ 박스 입력: 무게 Enter → 길이 … 높이 Enter → 박스 저장 · 칸이 비워짐 · 커서는 무게
- *   ④ 요금: shipq 에 rate 요청 (박스 1개 · 받는 주소) → (UPS.gs 흉내) ratedone → 운임 표시 · 다른 서비스
- *   ⑤ COD: 켜고 금액 없이 인쇄 → 막힘 · 금액 넣고 인쇄 → shipq wait (adhocId · cod 25.50 · 박스 2개) · adhoc 문서
- *   ⑥ (UPS.gs 흉내) done → adhoc shipped · 트래킹 · 화면은 2초 뒤 저절로 가게 찾기 · 칸 안의 Enter 는 인쇄하지 않음 */
+/* v0.8.188 시험 — 👤 기본 세일즈맨 없는 가게에 한 번 고른 세일즈맨을 가게 기본값으로 저장 → 다음 주문부터 묻지 않음 (2026-11-12 관리자: "오더 넣을 때 가게 선택하면 또 세일즈맨 넣으라고 계속 나오네")
+ *   ① 오피스 담당자 · 기본 세일즈맨 없는 가게 → 💾 저장 → 고르는 창에 "이 가게의 기본 세일즈맨으로 저장" (기본 체크) → ALEX → 주문 sm ALEX · accounts.sm ALEX (sm 칸만 · 다른 칸 그대로)
+ *   ② 같은 가게로 새 주문 → 가게를 고르자마자 세일즈맨 ALEX · 저장 때 창 없음
+ *   ③ 체크를 끄고 고르면 그 주문만 (가게 기본값 그대로 빈칸)
+ *   ④ 기본 세일즈맨이 있는 가게는 창에서 다른 사람을 골라도 가게 기본값은 바뀌지 않음 · 체크 칸도 없음
+ *   ⑤ 가게를 바꾸면 세일즈맨도 새 가게 것으로 (앞 가게 세일즈맨이 남지 않음) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
-  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8895', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8865', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
-  const ctx = await br.newContext({ viewport: { width: 1280, height: 1000 } });
-  const mk = async email => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; }, { email }); await pg.goto('http://127.0.0.1:8895/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
-  const shipq = (pg, f) => pg.evaluate(f => Object.entries(window.__MOCK_STORE__.shipq || {}).filter(([, q]) => new Function('q', 'return ' + f)(q)).map(([id, q]) => Object.assign({ _id: id }, q)), f);
+  const SEED = "s.users.push({ id: 'office@x.com', email: 'office@x.com', name: 'O', role: 'manager', job: 'office', active: true }); s.accounts.push({ id: '9777', acct: '9777', store: 'NO SM STORE', addr: '1 ST', city: 'MIAMI', state: 'FL', zip: '33101', tel: '305' }, { id: '9778', acct: '9778', store: 'OTHER NOSM SHOP', addr: '2 ST', city: 'MIAMI', state: 'FL', zip: '33101' });";
+  const pg = await (await br.newContext({ viewport: { width: 430, height: 900 } })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
+  await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email: 'office@x.com', seed: SEED });
+  await pg.goto('http://127.0.0.1:8865/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
+  const chg = async () => { await pg.click('#eStoreX'); await pg.waitForTimeout(300); if (await pg.$('#cfOk')) await pg.click('#cfOk'); await pg.waitForSelector('#eStoreQ'); };
+  const pick = async q => { await pg.fill('#eStoreQ', q); await pg.waitForTimeout(250); await pg.click('#eStoreHits [data-ac]'); await pg.waitForTimeout(900); if (await pg.$('#modal.on')) { await pg.click('#modal .mclose'); await pg.waitForTimeout(200); } };
+  const newOrder = async q => { await pg.evaluate(() => { localStorage.removeItem('theone.order.wip.office@x.com'); location.hash = '#/order'; }); await pg.waitForTimeout(300); await pg.evaluate(() => { location.hash = '#/order/new'; }); await pg.waitForSelector('#eStoreQ'); await pick(q);
+    await pg.fill('#eQ1', 'AHG100'); await pg.press('#eQ1', 'Enter'); await pg.waitForTimeout(400); };
+  const acc = id => pg.evaluate(id => Object.assign({}, window.__MOCK_STORE__.accounts[id]), id);
+  const orders = st => pg.evaluate(st => Object.values(window.__MOCK_STORE__.orders || {}).filter(o => o.store === st).map(o => o.sm), st);
+  const save = async () => { await pg.waitForTimeout(600); await pg.click('#eDraft'); await pg.waitForTimeout(500); };
+  const finish = async () => { if (await pg.$('#cfOk')) await pg.click('#cfOk'); await pg.waitForTimeout(1200); if (await pg.$('#acNo')) { await pg.click('#acNo'); await pg.waitForTimeout(300); } };
   /* ① */
-  let pg = await mk('brandon@x.com'); await pg.evaluate(() => { location.hash = '#/balcao'; }); await pg.waitForSelector('.sb', { timeout: 8000 });
-  if (await pg.$('#sbBusca')) errs.push('① salesman must not get the counter'); await pg.close();
-  pg = await mk('luke@theonefl.com');
-  await pg.evaluate(() => { location.hash = '#/balcao'; }); await pg.waitForSelector('#sbBusca', { timeout: 8000 }).catch(() => errs.push('① staff sees the store search'));
-  const font = await pg.evaluate(() => getComputedStyle(document.querySelector('.sb')).fontFamily); log('① font:', font); if (!/Inter/.test(font)) errs.push('① old font stack (Inter …)');
+  await newOrder('NO SM'); await save();
+  await pg.waitForSelector('#smPick', { timeout: 5000 }).catch(() => errs.push('① picker opens'));
+  const keep = await pg.$('#smKeep'); log('① keep box:', !!keep, keep && await keep.isChecked()); if (!keep || !(await keep.isChecked())) errs.push('① "save as this store\'s salesman" is shown and checked');
+  await pg.click('[data-smp="ALEX"]'); await pg.waitForTimeout(400); await finish();
+  const a1 = await acc('9777'); log('① account:', a1.sm, a1.tel, a1.store, '| orders:', JSON.stringify(await orders('NO SM STORE')));
+  if (a1.sm !== 'ALEX' || a1.tel !== '305' || a1.store !== 'NO SM STORE' || a1.smBy !== 'office@x.com') errs.push('① account sm = ALEX (only the sm field changes)');
+  if ((await orders('NO SM STORE')).join() !== 'ALEX') errs.push('① order saved with ALEX');
   /* ② */
-  await pg.fill('#sbBusca', '3001'); await pg.waitForSelector('[data-sb-cli="3001"]', { timeout: 4000 }).catch(() => errs.push('② account search finds 3001'));
-  await pg.press('#sbBusca', 'Enter'); await pg.waitForSelector('#sbP', { timeout: 5000 });
-  const card = await pg.evaluate(() => document.querySelector('.sb .ups-cli-sel').textContent); log('② card:', card.replace(/\s+/g, ' ').slice(0, 160));
-  if (!/BEAUTY EXCHANGE ORLANDO/.test(card) || !/#3001/.test(card) || !/77 ORANGE AVE/.test(card)) errs.push('② destination card: store, account, address');
-  const cols = await pg.evaluate(() => { const a = document.querySelector('.sb .ups-card-cx').getBoundingClientRect(), b = document.querySelector('.sb .su-col3').getBoundingClientRect(); return { a: Math.round(a.left), b: Math.round(b.left), top: Math.abs(a.top - b.top) < 40 }; }); log('② columns:', JSON.stringify(cols));
-  if (!(cols.b > cols.a + 200 && cols.top)) errs.push('② two columns side by side on desktop');
-  const foc0 = await pg.evaluate(() => document.activeElement && document.activeElement.id); if (foc0 !== 'sbP') errs.push('② cursor starts on weight :: ' + foc0);
+  await newOrder('NO SM'); const top = await pg.$eval('#eSm', e => e.value); log('② salesman after picking the store:', top); if (top !== 'ALEX') errs.push('② picking the store fills ALEX');
+  await save(); if (await pg.$('#smPick')) errs.push('② no picker the second time'); await finish();
+  if ((await orders('NO SM STORE')).join() !== 'ALEX,ALEX') errs.push('② second order saved with ALEX');
   /* ③ */
-  await pg.keyboard.type('12.5'); await pg.keyboard.press('Enter'); await pg.keyboard.type('16'); await pg.keyboard.press('Enter'); await pg.keyboard.type('12'); await pg.keyboard.press('Enter'); await pg.keyboard.type('10'); await pg.keyboard.press('Enter');
-  await pg.waitForSelector('.sb .su-feita', { timeout: 4000 }).catch(() => errs.push('③ Enter on height saves the box'));
-  const after3 = await pg.evaluate(() => ({ n: document.querySelectorAll('.sb .su-feita').length, vals: ['sbP', 'sbC', 'sbL', 'sbA'].map(i => document.getElementById(i).value).join(''), foc: document.activeElement && document.activeElement.id, txt: document.querySelector('.sb .su-feita').textContent }));
-  log('③', JSON.stringify(after3)); if (after3.n !== 1 || after3.vals !== '' || after3.foc !== 'sbP' || !/12\.5 lb/.test(after3.txt) || !/16 × 12 × 10/.test(after3.txt)) errs.push('③ one box saved · form cleared · cursor on weight');
+  await newOrder('OTHER NOSM'); await save(); await pg.waitForSelector('#smPick', { timeout: 5000 }).catch(() => errs.push('③ picker opens'));
+  if (await pg.$('#smKeep')) await pg.uncheck('#smKeep'); await pg.click('[data-smp="BRANDON"]'); await pg.waitForTimeout(400); await finish();
+  const a3 = await acc('9778'); log('③ account sm:', JSON.stringify(a3.sm), '| orders:', JSON.stringify(await orders('OTHER NOSM SHOP')));
+  if (a3.sm) errs.push('③ unchecked → the store keeps no default'); if ((await orders('OTHER NOSM SHOP')).join() !== 'BRANDON') errs.push('③ order saved with BRANDON');
   /* ④ */
-  await pg.waitForFunction(() => Object.values(window.__MOCK_STORE__.shipq || {}).some(q => q.st === 'rate'), null, { timeout: 6000 }).catch(() => errs.push('④ a rate request goes to shipq'));
-  const R = (await shipq(pg, "q.st === 'rate'"))[0] || {}; log('④ rate req:', JSON.stringify({ acct: R.acct, boxes: R.boxes, to: R.to && R.to.addr1 }));
-  if (R.acct !== '3001' || (R.boxes || []).length !== 1 || R.boxes[0].w !== 12.5 || R.boxes[0].l !== 16 || !R.to || R.to.zip !== '32801') errs.push('④ rate request: account · 1 box 12.5 lb 16×12×10 · ship-to zip');
-  await pg.evaluate(id => Object.assign(window.__MOCK_STORE__.shipq[id], { st: 'ratedone', env: 'live', rates: [{ svc: '03', name: 'UPS Ground', total: 21.6, list: 30, days: '2' }, { svc: '12', name: 'UPS 3 Day Select', total: 40.6, list: 50, days: '3' }] }), R._id);
-  await pg.waitForFunction(() => /\$21\.60/.test((document.getElementById('sbPreco') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => errs.push('④ freight shows $21.60'));
-  const other = await pg.evaluate(() => (document.getElementById('sbCotacao') || {}).textContent || ''); if (!/3 Day Select/.test(other) || !/\$40\.60/.test(other)) errs.push('④ other services listed');
-  /* ⑤ COD */
-  await pg.check('#sbCod'); await pg.fill('#sbP', '8'); await pg.keyboard.press('Enter'); await pg.keyboard.type('10'); await pg.keyboard.press('Enter'); await pg.keyboard.type('10'); await pg.keyboard.press('Enter'); await pg.keyboard.type('10'); await pg.keyboard.press('Enter');
-  await pg.waitForFunction(() => document.querySelectorAll('.sb .su-feita').length === 2, null, { timeout: 4000 }).catch(() => errs.push('⑤ second box saved'));
-  const codOnStill = await pg.evaluate(() => document.getElementById('sbCod').checked); if (!codOnStill) errs.push('⑤ COD stays on after saving a box');
-  await pg.click('.sb [data-act="sb-finalizar"]'); await pg.waitForTimeout(300);
-  if ((await shipq(pg, "q.st === 'wait'")).length) errs.push('⑤ COD without amount must not create a label');
-  await pg.fill('#sbCodValor', '25.5'); await pg.click('.sb [data-act="sb-finalizar"]');
-  await pg.waitForFunction(() => Object.values(window.__MOCK_STORE__.shipq || {}).some(q => q.st === 'wait'), null, { timeout: 6000 }).catch(() => errs.push('⑤ label request goes to shipq'));
-  const W = (await shipq(pg, "q.st === 'wait'"))[0] || {}; log('⑤ label req:', JSON.stringify({ adhocId: W.adhocId, cod: W.cod, boxes: (W.boxes || []).map(b => b.w), store: W.store, svc: W.svc }));
-  if (!W.adhocId || W.adhocId !== W._id || !W.cod || W.cod.valor !== '25.50' || (W.boxes || []).map(b => b.w).join(',') !== '12.5,8' || W.store !== 'BEAUTY EXCHANGE ORLANDO' || W.orderId !== '') errs.push('⑤ label request: adhocId · COD 25.50 · 2 boxes in typed order · no order');
-  const A = await pg.evaluate(id => window.__MOCK_STORE__.adhoc[id], W._id); if (!A || A.acct !== '3001' || A.src !== 'balcao' || A.st !== 'open') errs.push('⑤ adhoc doc for the store');
-  /* ⑥ */
-  await pg.evaluate(id => Object.assign(window.__MOCK_STORE__.shipq[id], { st: 'done', track: '1Z999AA10123456784 1Z999AA10123456793', charge: 33.4, labels: [{ trk: '1Z999AA10123456784', img: '' }, { trk: '1Z999AA10123456793', img: '' }] }), W._id);
-  await pg.waitForFunction(id => { const a = window.__MOCK_STORE__.adhoc[id]; return a && a.st === 'shipped'; }, W._id, { timeout: 15000 }).catch(() => errs.push('⑥ adhoc shipped when UPS finishes'));
-  const A2 = await pg.evaluate(id => window.__MOCK_STORE__.adhoc[id], W._id); if (!A2 || A2.boxes !== 2 || A2.shipCost !== 33.4 || !/1Z999AA10123456784/.test(A2.track || '')) errs.push('⑥ adhoc: 2 boxes · cost · tracking');
-  await pg.waitForSelector('#sbBusca', { timeout: 6000 }).catch(() => errs.push('⑥ screen returns to the store search by itself'));
+  await newOrder('ali'); await pg.click('[data-ev="memo"]'); await pg.waitForSelector('[data-smk]'); await pg.$eval('[data-smk]', e => e.click()); await pg.waitForSelector('#smPick');
+  if (await pg.$('#smKeep')) errs.push('④ no keep box for a store that already has a salesman');
+  await pg.click('[data-smp="ALEX"]'); await pg.waitForTimeout(500); const a4 = await acc('1111'); log('④ ALI default stays:', a4.sm); if (a4.sm !== 'BRANDON') errs.push('④ store default unchanged');
+  /* ⑤ */
+  await chg(); await pick('OTHER NOSM'); const t5 = await pg.$eval('#eSm', e => e.value); log('⑤ after switching to a store with no salesman:', JSON.stringify(t5)); if (t5 !== '') errs.push('⑤ switching stores clears the previous store\'s salesman');
+  await chg(); await pick('NO SM'); const t6 = await pg.$eval('#eSm', e => e.value); log('⑤ after switching to NO SM STORE:', t6); if (t6 !== 'ALEX') errs.push('⑤ switching stores takes the new store\'s salesman');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();
