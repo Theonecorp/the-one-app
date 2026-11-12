@@ -19,6 +19,7 @@ import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
 import * as Notes from './notes.js';
 import { stageAge } from './flow.js';
+import * as SH from './sorthead.js';
 import { stockOf } from './stock.js';
 import * as NewAcct from './newacct.js';
 import * as Notify from './notify.js';
@@ -150,7 +151,7 @@ async function pageHome() {
 /* ============================================================
  *  목록
  * ============================================================ */
-let LF = { st: 'sent', sm: '', grp: 'day' };   /* 담당자 목록 기본 = 📅 날짜별 (v0.8.174) */
+let LF = { st: 'sent', sm: '', grp: 'day', osrt: { k: '', desc: false } };   /* osrt: ↕ 머리글 정렬 (v0.8.198) */   /* 담당자 목록 기본 = 📅 날짜별 (v0.8.174) */
 /* 접수(sent) 를 세 칸으로 — 📥 신규(확인 요청 전) · ❓ 확인 대기(세일즈맨 답 기다림) · 👍 확인 완료(배정 대기) */
 const NEWK = { sent: 1, cfw: 1, cfok: 1 };
 const subOf = o => o.cfOk ? 'cfok' : o.cfReq ? 'cfw' : 'sent';
@@ -243,6 +244,7 @@ async function pageOrder(arg) {
   h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' + (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문이 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead(); fillStrip();
+  SH.bindSort($('page'), LF.osrt, () => pageOrder(''));   // ↕ 머리글 정렬 (v0.8.198)
   if ($('dayCfL')) Notify.dayCard($('dayCfL'));
   if ($('oOld')) $('oOld').onclick = () => { LF.old = !LF.old; pageOrder(''); };
   NewAcct.pendingBanner($('naBanL'));
@@ -481,8 +483,10 @@ function bindHead() {
 }
 /** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */
 function dayGroups(rows) {
-  if (!isStaff()) return oTbl(rows.map(o => orderRow(o)).join(''));
-  const ck = (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine');
+  const ck = isStaff() && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine');
+  /* ↕ 머리글(폰은 정렬 칩)을 누르면 묶음 없이 그 칸 순서로 · 세 번째 누르면 원래 묶음 (v0.8.198) */
+  if (LF.osrt.k) { rows.forEach(o => { const a = isStaff() ? stageAge(o) : null; o._since = a ? a.since : (o.sentAt || o.createdAt || ''); }); return oTbl(SH.sortRows(rows, LF.osrt).map(o => orderRow(o, false, '', ck)).join(''), ck, LF.osrt); }
+  if (!isStaff()) return oTbl(rows.map(o => orderRow(o)).join(''), false, LF.osrt);
   if (LF.grp !== 'day' && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'picked' || LF.st === 'mine')) {
     const by = {}; rows.forEach(o => { const k = o.sm || '—'; (by[k] = by[k] || []).push(o); });
     const nc = oCols(ck);
@@ -491,7 +495,7 @@ function dayGroups(rows) {
   const days = {}; rows.forEach(o => { const k = localDay(o.st === 'sent' && o.sentAt ? o.sentAt : o.updatedAt || o.createdAt || o.d); (days[k] = days[k] || []).push(o); });
   const asc = !!NEWK[LF.st] || OPEN_CH.includes(LF.st);   // 안 끝난 칸은 오래된 날짜가 위
   const nc = oCols(ck);
-  return oTbl((asc ? Object.keys(days).sort() : Object.keys(days).sort().reverse()).map(d => { const L = days[d]; return grpRow(nc, '<div class="gline"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>') + L.map(o => orderRow(o, false, '', ck)).join(''); }).join(''), ck);
+  return oTbl((asc ? Object.keys(days).sort() : Object.keys(days).sort().reverse()).map(d => { const L = days[d]; return grpRow(nc, '<div class="gline"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>') + L.map(o => orderRow(o, false, '', ck)).join(''); }).join(''), ck, LF.osrt);
 }
 const WDK = ['일', '월', '화', '수', '목', '금', '토'];
 function dayLbl(d) { const t = today(); const x = new Date(d + 'T12:00:00'); return (d === t ? '오늘 Today · ' : '') + Number(d.substring(5, 7)) + '/' + Number(d.substring(8, 10)) + ' (' + WDK[x.getDay()] + ')'; }
@@ -500,9 +504,11 @@ export const cfTag = o => (o.cfIssueOpen ? ' <span class="tag t-r" title="' + es
 const oCols = ck => (ck ? 1 : 0) + 7 + (ck && assignMode() ? 1 : 0);
 /** 묶음 머리 — 표에서는 tr.grp, 폰 카드에서는 .cgrp */
 const grpRow = (nc, inner, attr, cls) => narrow() ? cgrp(inner, attr, cls) : '<tr class="grp ' + (cls || '') + '"' + (attr || '') + '><td colspan="' + nc + '">' + inner + '</td></tr>';
-function oTbl(rowsHtml, ck) {
-  if (narrow()) return '<div class="crows otbl">' + rowsHtml + '</div>';
-  return '<div class="dtw"><table class="dt otbl"><thead><tr>' + (ck ? '<th style="width:30px"></th>' : '') + '<th>' + bt('가게', 'Store') + '</th><th style="width:62px">' + bt('날짜', 'Date') + '</th><th style="width:118px">' + bt('번호', 'No.') + '</th><th class="hs" style="width:78px">' + bt('세일즈맨', 'Rep') + '</th><th class="r" style="width:88px">' + bt('금액', 'Amount') + '</th><th class="r hs" style="width:58px">' + bt('줄 · 개', 'Lines · pcs') + '</th><th>' + bt('메모', 'Notes') + '</th>' + (ck && assignMode() ? '<th style="width:40px"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+/* srt 가 있으면(주문 목록) 머리글을 눌러 정렬 — 가게 · 날짜 · 번호 · 세일즈맨 · 금액 · 줄 · 개 · 메모(⏱ 기다린 시간) · 폰은 정렬 칩 줄 (v0.8.198) */
+function oTbl(rowsHtml, ck, srt) {
+  const T = (k, label, cls, style) => srt ? SH.th(k, label, srt, cls, style) : '<th' + (cls ? ' class="' + cls + '"' : '') + (style ? ' style="' + style + '"' : '') + '>' + label + '</th>';
+  if (narrow()) return (srt ? SH.chipsBar(srt, ['store', 'd', 'ono', 'sm', 'amt', 'wait']) : '') + '<div class="crows otbl">' + rowsHtml + '</div>';
+  return '<div class="dtw"><table class="dt otbl"><thead><tr>' + (ck ? '<th style="width:30px"></th>' : '') + T('store', bt('가게', 'Store')) + T('d', bt('날짜', 'Date'), '', 'width:62px') + T('ono', bt('번호', 'No.'), '', 'width:118px') + T('sm', bt('세일즈맨', 'Rep'), 'hs', 'width:78px') + T('amt', bt('금액', 'Amount'), 'r', 'width:88px') + T('lines', bt('줄 · 개', 'Lines · pcs'), 'r hs', 'width:58px') + T('wait', bt('메모 · ⏱ 대기', 'Notes · ⏱ waiting')) + (ck && assignMode() ? '<th style="width:40px"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 }
 function orderRow(o, local, err, ck, sg) {
   const flags = payTag(o) + (o.kind === 'credit' ? ' <span class="tag crtag">↩ ' + bt('크레딧', 'Credit') + (o.cmNo ? ' ' + esc(o.cmNo) : '') + (o.why ? ' · ' + esc(o.why) : '') + '</span>' : '') + (NewAcct.isTemp(o.acct) ? ' <span class="tag t-b">🆕 ' + bt('신규 거래처', 'New account') + '</span>' : '') + (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '') + (isStaff() ? cfTag(o) : (o.cfReq && !o.cfOk ? ' <span class="tag t-c">❓ 확인 요청</span>' : o.cfOk ? ' <span class="tag t-k">✅ 확인함</span>' : ''));

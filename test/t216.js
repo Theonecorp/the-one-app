@@ -7,7 +7,7 @@
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
-  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8886', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8900', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const open = async (email, oldReq) => { const pg = await (await br.newContext({ viewport: { width: 420, height: 900 } })).newPage(); pg.on('pageerror', e => errs.push(email + ': ' + e.message)); pg.on('dialog', d => d.accept());
@@ -15,7 +15,7 @@ const path = require('path');
       s.accounts.find(a => a.acct === '1111').disc = { A: 10 };
       if (o.oldReq) { s.orders.push({ id: 'O261112-CRED', no: 'O261112-CRED', kind: 'credit', st: 'sent', d: '2026-11-12', ym: '2026-11', sm: 'BRANDON', acct: '1111', store: 'ALI B/S # 1', why: '기타', disc: { A: 10 }, n: 1, qty: 2, amt: -19.98, createdBy: 'brandon@x.com', createdAt: '2026-11-12T10:00:00Z', sentAt: '2026-11-12T10:00:00Z' });
         s.orderLines.push({ id: 'O261112-CRED', sm: 'BRANDON', lines: [{ c: 'OB-9.99', d: '타사 제품 $9.99', q: 2, p: 9.99, lp: 9.99, t: 'OB' }] }); } }; }, { email, oldReq });
-    await pg.goto('http://127.0.0.1:8886/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
+    await pg.goto('http://127.0.0.1:8900/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const sm = await open('brandon@x.com', false);
   await sm.evaluate(() => { location.hash = '#/order/credit'; }); await sm.waitForSelector('#eStoreQ', { timeout: 8000 }); await sm.fill('#eStoreQ', 'ali'); await sm.waitForTimeout(300); await sm.click('#eStoreHits [data-ac="1111"]'); await sm.waitForTimeout(900);
   if (await sm.$('#modal.on')) { await sm.click('#modal .mclose'); await sm.waitForTimeout(300); }
