@@ -22,6 +22,7 @@ import { searchAccounts, sortStores } from './accounts.js';
 import { fillPinned } from './notes.js';
 import * as Ship from './ship.js';
 import * as Pickup from './pickup.js';
+import * as SH from './sorthead.js';
 import { stockOut, stockBack } from './stock.js';
 
 let S = null;
@@ -153,7 +154,7 @@ export function manage(o, lines) {
     let lastG = null;
     $('mLines').innerHTML = '<table class="pk"><tr><th>코드</th><th class="r">주문</th>' + (picking ? '<th class="r">픽</th>' : '') + '<th class="r">가격</th><th class="r">금액</th></tr>' + rows.slice(0, 2500).map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001, bo = picking && l.ok && (l.pq || 0) < l.q;
-      let sep = ''; if (picking && !q) { const g = pickGroup(l); if (g.key !== lastG) { lastG = g.key; sep = '<tr class="pkg"><td colspan="5"><span class="tag t-g">' + esc(g.t) + '</span> ' + esc(catLabel(g)) + '</td></tr>'; } }
+      let sep = ''; if (picking && !q) { const g = pickGroup(l); if (g.key !== lastG) { lastG = g.key; sep = '<tr class="pkg"><td colspan="5">' + esc(aisleLabel(g)) + '</td></tr>'; } }
       const qq = picking ? (l.pq || 0) : l.q;
       const loc = picking ? locOf(l.c) : '';
       return sep + '<tr class="' + (bo ? 'bo' : '') + (picking && l.ok && !bo ? ' okd' : '') + '"><td>' + (loc ? '<span class="loc">📍' + esc(loc) + '</span> ' : '') + '<b>' + esc(l.c) + '</b> ' + (office ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
@@ -443,30 +444,35 @@ async function printPicking(o, lines) {
   if (lines.some(l => l.kit)) { try { await loadCatalog(S); } catch (e) {} }
   printOpen(pickingHtml(o, lines));
 }
-/** 픽킹 줄 묶음 키 — [종류 순서, 분류 순위, 분류 1, 분류 2] (v0.8.174: 알파벳 순으로만 찍혀 정신없다는 창고 의견 → 종류 → 분류별로 나눠 찍음) */
-function pickGroup(l) {
-  const C = catalog(), it = C && C.byCode[l.c], T = invTypes(S), ti = T.findIndex(x => x.c === (l.t || DT()));
-  const l1 = it ? (it.l1 || it.g || '') : '', l2 = it ? (it.l2 || '') : '';
-  return { ti: ti < 0 ? 99 : ti, t: l.t || DT(), rank: it ? prefixRank(l1) : 9, l1, l2, key: (l.t || DT()) + '\u0001' + l1 };   // 머리는 분류 1단계마다 (2단계까지 나누면 줄이 너무 많아 장수가 늘어남)
-}
+/* ---------- 🧭 픽킹 순서 규칙 (2026-11-12 관리자: "픽킹하는 사람이 헷갈리지 않게 — 통로별로(통로 순서 = 동선), 같은 종류끼리 ABC 1234, CVEG 01~16 다음에 CVNG") · v0.8.190 ----------
+ *   ① 📍 통로 순서 = 걷는 순서: 00 → 01A → 01B → 02A … → 20A → WAREHOUSE01 … → 위치 없음은 맨 끝
+ *   ② 같은 통로 안에서는 코드의 앞 글자(종류)끼리 ABC 순: AHG → CVEG → CVNG …
+ *   ③ 같은 종류 안에서는 번호 순: CVEG01 → CVEG02 … → CVEG16 (종류가 섞이지 않음) */
 const COLLP = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
-export function pickSortGrouped(a, b) { const A = pickGroup(a), B = pickGroup(b); return (A.ti - B.ti) || (A.rank - B.rank) || COLLP.compare(A.l1, B.l1) || COLLP.compare(A.l2, B.l2) || pickSort(a, b); }
-const catLabel = g => g.l1 ? cleanName(g.l1) : 'NO CATEGORY';
+/** 코드 → [종류(뒤 숫자 뺀 앞부분), 번호] — CVEG01 → ['CVEG', 1] · 18KCNG06 → ['18KCNG', 6] · AHG100 → ['AHG', 100] */
+export function codeFam(c) { const m = String(c || '').toUpperCase().match(/^(.*?)(\d+)$/); return m && m[1] ? [m[1], Number(m[2])] : [String(c || '').toUpperCase(), -1]; }
+function pickGroup(l) { const loc = locOf(l.c), a = loc ? aisleOf(loc) : ''; return { aisle: a, loc, key: a || '\uffff', fam: codeFam(l.c)[0] }; }
+export function pickSortGrouped(a, b) {
+  const A = pickGroup(a), B = pickGroup(b), fa = codeFam(a.c), fb = codeFam(b.c);
+  if (!A.aisle !== !B.aisle) return A.aisle ? -1 : 1;   // 위치 없는 아이템은 맨 끝
+  return COLLP.compare(A.aisle, B.aisle) || COLLP.compare(fa[0], fb[0]) || (fa[1] - fb[1]) || COLLP.compare(a.c, b.c);
+}
+const aisleLabel = g => g.aisle ? '📍 ' + bt('통로', 'AISLE') + ' ' + g.aisle : '❔ ' + bt('위치 없음', 'NO LOCATION');
+export const PICK_RULE = '📍 AISLE 00 → 01A → 01B → … → WAREHOUSE → NO LOCATION  ·  same code letters together A→Z  ·  numbers 1→9 (CVEG01…CVEG16, then CVNG)';
 export function pickingHtml(o, lines) {
   const acc = acctOf(o.acct);
-  const rows = lines.slice().sort(pickSortGrouped);   // 종류(A · P …) → 분류(세트 먼저) → 📍 통로 · 선반 → 코드
-  let lastT = null, lastK = null;
-  const typeRow = l => { const g = pickGroup(l); let h = ''; if (g.t !== lastT) { lastT = g.t; lastK = null; const n = rows.filter(x => (x.t || DT()) === g.t); h += '<tr class="pktype"><td colspan="8">' + esc(typeName(g.t).toUpperCase()) + ' — TYPE ' + esc(g.t) + ' · ' + n.length + ' lines · ' + n.reduce((a, x) => a + x.q, 0) + ' pcs</td></tr>'; }
-    if (g.key !== lastK) { lastK = g.key; h += '<tr class="pkcat"><td colspan="8">' + esc(catLabel(g)) + '</td></tr>'; } return h; };
-  const aisleRow = typeRow;
+  const rows = lines.slice().sort(pickSortGrouped);   // 🧭 📍 통로(동선) → 코드 앞 글자 ABC → 번호
+  let lastK = null, lastF = null;
+  /* 통로가 바뀔 때마다 굵은 머리 줄 (몇 줄 · 몇 개) · 같은 통로 안에서 종류(코드 앞 글자)가 바뀌면 가는 선 */
+  const aisleRow = l => { const g = pickGroup(l); let h = ''; if (g.key !== lastK) { lastK = g.key; lastF = g.fam; const n = rows.filter(x => pickGroup(x).key === g.key); h += '<tr class="pktype"><td colspan="8">' + esc(g.aisle ? 'AISLE ' + g.aisle : 'NO LOCATION') + ' · ' + n.length + (n.length === 1 ? ' line · ' : ' lines · ') + n.reduce((a, x) => a + x.q, 0) + ' pcs</td></tr>'; } else if (g.fam !== lastF) { lastF = g.fam; h += '<tr class="pkfam"><td colspan="8"></td></tr>'; } return h; };
   /* 🖨 한 장에 머리 → 바로 아래 표 (예전엔 머리 칸이 인보이스용 "다음 장으로 넘김" 을 가져가 첫 장에 머리만 나오고 표는 둘째 장부터였음)
    *   표 머리는 장마다 다시 · 줄은 장 사이에서 안 잘림 · 용지는 인보이스 설정(Letter / A4) · 여러 장 묶어 찍으면 주문마다 새 장 */
   const paper = ((invView(S).paper || company(S).paper) === 'a4') ? 'A4' : 'letter';   // 인보이스 인쇄와 같은 용지
   return ('<style>@page{size:' + paper + ';margin:.4in}</style><div class="pk"><div class="iv pkhd">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
     '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
-    '<br>Rep. ' + esc(o.smFor || o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true, o.reqNote)) : '') + '</div></div>' +
-    '<table class="pktbl"><thead><tr><th style="width:26px">#</th><th style="width:52px">LOC</th><th style="width:82px">CODE</th><th>DESCRIPTION</th><th style="width:40px">TYPE</th><th class="r" style="width:52px">ORDER</th><th class="r" style="width:56px">PICKED</th><th style="width:70px">NOTE</th></tr></thead><tbody>' +
-    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td></td><td>' + esc(l.note || '') + '</td></tr>' +
+    '<br>Rep. ' + esc(o.smFor || o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true, o.reqNote)) : '') + '</div><div class="pkrule">' + esc(PICK_RULE) + '</div></div>' +
+    '<table class="pktbl"><thead><tr><th style="width:26px">#</th><th style="width:100px">LOC</th><th style="width:82px">CODE</th><th>DESCRIPTION</th><th style="width:40px">TYPE</th><th class="r" style="width:52px">ORDER</th><th class="r" style="width:56px">PICKED</th><th style="width:70px">NOTE</th></tr></thead><tbody>' +
+    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td class="pkloc"><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td></td><td>' + esc(l.note || '') + '</td></tr>' +
       (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td>' + esc(locOf(k.c)) + '</td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
     '<tr class="fin"><td colspan="5">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></tbody></table>' +
     '<div class="sig"><div>Picked by</div><div>Checked by</div><div>Date</div></div></div>');
@@ -707,7 +713,7 @@ export function periodRange(p, from, to) {
   return [from || addD(t, -7), to || t];
 }
 export async function invBrowser(LF, head) {
-  LF.ip = LF.ip || 'month'; LF.iq = LF.iq || ''; LF.it = LF.it || ''; LF.im = LF.im || 'acct';
+  LF.ip = LF.ip || 'month'; LF.iq = LF.iq || ''; LF.it = LF.it || ''; LF.im = LF.im || 'acct'; LF.srt = LF.srt || { k: '', desc: false };   // ↕ 머리글 정렬 (v0.8.190)
   const types = invTypes(S);
   let q = LF.iq.trim();
   /* 🔢 숫자만 쳤을 때 (43350) — A · P · W · CM 중 그 번호로 있는 인보이스: 하나면 바로, 여럿이면 골라서 */
@@ -771,13 +777,14 @@ export async function invBrowser(LF, head) {
   if (acc) h += '<div class="card" style="border:2px solid #bfdbfe"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:17px">' + esc(acc.store) + '</b><div class="muted">' + esc(acc.acct) + (acc.sm ? ' · ' + esc(acc.sm) : '') + (acc.terms ? ' · ' + esc(acc.terms) : '') + (acc.tel ? ' · ' + esc(acc.tel) : '') + '</div></div><button class="b-ghost b-sm" id="iAcc">📋 ' + bi('가게 창', 'Store') + '</button></div></div>';
   h += '<div class="card"><div class="kpi"><div><b>' + live.length + '</b><span>인보이스 Invoices</span></div><div><b>' + money(tot) + '</b><span>합계 Total</span></div><div><b>' + money(bal) + '</b><span>미수 Balance</span></div><div><b>' + new Set(rows.map(r => r.d)).size + '</b><span>날짜 Days</span></div></div>' +
     '<div class="muted" style="margin:8px 0 4px">' + (acc ? '이 가게 인보이스 전부' : isNo ? '번호로 찾음' : latest ? bt('가장 최근 200장', 'Latest 200') : esc(md(from)) + ' ~ ' + esc(md(to))) + (rows.length ? ' · <a id="iCsv" href="#">⬇️ CSV</a>' : '') + (rows.length > 1 ? ' · <a id="iSort" href="#">' + (LF.idesc ? bt('오래된 날부터 ↑', 'Oldest day first ↑') : bt('최근 날부터 ↓', 'Newest day first ↓')) + '</a>' : '') + '</div>' +
-    (rows.length ? iTbl(dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); const gl = '<div class="gline"><b>' + labelOf(d) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>'; return (narrow() ? cgrp(gl) : '<tr class="grp"><td colspan="9">' + gl + '</td></tr>') + L.map(r => invRow(r)).join(''); }).join('')) : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
+    (rows.length && LF.srt.k ? iTbl(SH.sortRows(rows, LF.srt).map(r => invRow(r)).join(''), LF.srt) : rows.length ? iTbl(dayKeys.map(d => { const L = days[d], lv = L.filter(r => r.st !== 'x'); const gl = '<div class="gline"><b>' + labelOf(d) + '</b><span>' + lv.length + '건 · ' + money(lv.reduce((a, r) => a + (r.total || 0), 0)) + '</span></div>'; return (narrow() ? cgrp(gl) : '<tr class="grp"><td colspan="9">' + gl + '</td></tr>') + L.map(r => invRow(r)).join(''); }).join(''), LF.srt) : '<div class="none">' + (q ? '맞는 인보이스가 없습니다' : '이 기간에 인보이스가 없습니다') + '</div>') + '</div>';
   $('iList').innerHTML = h;
   /* 인보이스를 누르면 인보이스 · AR 잔액 · 수금을 한 화면에 (가게 창 · 미수금과 같은 화면) */
   document.querySelectorAll('#iList [data-go]').forEach(el => el.onclick = () => { const g = el.dataset.go; if (g.indexOf('inv:') === 0) invDetail(g.substring(4)); else Router.go('order', g); });
   if (isNo && !rows.length && $('iList')) { $('iList').insertAdjacentHTML('afterbegin', '<div class="card"><button class="b-blue" id="iArFind">🔎 ' + bt('AR(미수금)에서 이 번호 찾기', 'Look up this number in A/R') + '</button></div>'); $('iArFind').onclick = () => invDetail(q.toUpperCase()); }
   if ($('iAcc')) $('iAcc').onclick = () => storeSheet(acc.acct, null, 'invh');
   if ($('iSort')) $('iSort').onclick = e => { e.preventDefault(); LF.idesc = !LF.idesc; invBrowser(LF, head); };
+  SH.bindSort($('iList'), LF.srt, () => invBrowser(LF, head));
   document.querySelectorAll('#iList [data-ist]').forEach(b => b.onclick = () => { LF.ist = b.dataset.ist; LF.ict = ''; invBrowser(LF, head); });
   document.querySelectorAll('#iList [data-ict]').forEach(b => b.onclick = () => { LF.ict = b.dataset.ict; invBrowser(LF, head); });
   if ($('iCsv')) $('iCsv').onclick = e => { e.preventDefault();
@@ -825,9 +832,11 @@ function acctList(LF, head, modeSeg) {
   if (!('ontouchstart' in window)) $('iqQ').focus();
 }
 /* 📊 인보이스 표 — 번호 · 종류 · 날짜 · 거래처 · 세일즈맨 · 주문 · 수량 · 합계 · 잔액 · 상태. 줄을 누르면 인보이스 */
-export function iTbl(rowsHtml) {
-  if (narrow()) return '<div class="crows itbl">' + rowsHtml + '</div>';
-  return '<div class="dtw"><table class="dt itbl"><thead><tr><th style="width:124px">' + bt('인보이스', 'Invoice') + '</th><th style="width:52px">' + bt('날짜', 'Date') + '</th><th>' + bt('거래처', 'Customer') + '</th><th class="hs" style="width:78px">' + bt('세일즈맨', 'Rep') + '</th><th class="hs" style="width:112px">' + bt('주문', 'Order') + '</th><th class="r hs" style="width:52px">' + bt('수량', 'Qty') + '</th><th class="r" style="width:88px">' + bt('합계', 'Total') + '</th><th class="r" style="width:88px">' + bt('잔액', 'Balance') + '</th><th style="width:60px">' + bt('상태', 'Status') + '</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+/** 인보이스 표 — srt 를 주면 머리글을 눌러 정렬 (인보이스 # · 날짜 · 거래처 · 세일즈맨 · 합계 · 잔액, v0.8.190) · 폰은 정렬 칩 줄 */
+export function iTbl(rowsHtml, srt) {
+  if (narrow()) return (srt ? SH.chipsBar(srt) : '') + '<div class="crows itbl">' + rowsHtml + '</div>';
+  const H = (k, lab, cls, st) => srt ? SH.th(k, lab, srt, cls, st) : '<th' + (cls ? ' class="' + cls + '"' : '') + (st ? ' style="' + st + '"' : '') + '>' + lab + '</th>';
+  return '<div class="dtw"><table class="dt itbl"><thead><tr>' + H('no', bt('인보이스', 'Invoice'), '', 'width:124px') + H('d', bt('날짜', 'Date'), '', 'width:58px') + H('store', bt('거래처', 'Customer')) + H('sm', bt('세일즈맨', 'Rep'), 'hs', 'width:84px') + '<th class="hs" style="width:112px">' + bt('주문', 'Order') + '</th><th class="r hs" style="width:52px">' + bt('수량', 'Qty') + '</th>' + H('total', bt('합계', 'Total'), 'r', 'width:88px') + H('bal', bt('잔액', 'Balance'), 'r', 'width:88px') + '<th style="width:60px">' + bt('상태', 'Status') + '</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 }
 function invRow(r) {
   const bal = r.bal != null ? r.bal : r.total, paid = r.st !== 'x' && Math.abs(bal) < 0.005;

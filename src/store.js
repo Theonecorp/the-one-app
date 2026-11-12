@@ -11,6 +11,7 @@ import { recentYms, stTag } from './orders.js';
 import * as Notes from './notes.js';
 import { shipmentsOf, shipmentsHtml, bindShipments, openStore } from './track.js';
 import { acctAccess, requestAccess, untilTxt } from './access.js';
+import * as SH from './sorthead.js';
 
 let S = null;
 export function register(state) { S = state; Notes.register(state); }
@@ -231,13 +232,13 @@ function payRows(info) {
   (info.cods || []).forEach(c => R.push({ m: c.method || 'COD', d: c.d, amt: num(c.amt), ty: c.method || 'COD', ref: c.ref || '', dep: '', invs: (c.invs || []).map(v => v.no).concat(c.inv ? [c.inv] : []).filter(Boolean), sm: c.sm || '' }));
   return R.sort((a, b) => String(b.d).localeCompare(String(a.d)));
 }
-let IP = { sel: '', open: false };
+let IP = { sel: '', open: false, srt: { k: '', desc: false } };   // srt: ↕ 머리글 정렬 (v0.8.190)
 function ipHtml(info) {
-  const wide = matchMedia('(min-width:900px)').matches, rows = invRows(info).filter(r => !IP.open || Math.abs(r.bal) > 0.005), P = payRows(info), td = today();
+  const wide = matchMedia('(min-width:900px)').matches, rows = SH.sortRows(invRows(info).filter(r => !IP.open || Math.abs(r.bal) > 0.005), IP.srt), P = payRows(info), td = today();
   const items = r => r.lines.length ? '<table class="iptbl"><tr><th>' + bt('아이템', 'Item #') + '</th><th>' + bt('이름', 'Description') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('가격', 'Price') + '</th></tr>' + r.lines.map(l => '<tr><td><b>' + esc(l.c) + '</b></td><td>' + esc(l.d || '') + '</td><td class="r">' + num(l.q) + '</td><td class="r">' + money(l.p) + '</td></tr>').join('') + '</table>'
     : '<div class="muted" style="padding:8px">' + (r.legacy ? bt('이전 시스템(SmartBee) 인보이스 — 품목 줄이 앱에 없습니다', 'SmartBee invoice — no line items in the app') : r.arOnly ? bt('AR 에만 있는 인보이스 — 품목 없음', 'Only in A/R — no line items') : bt('품목 없음', 'No line items')) + '</div>';
   const sel = rows.find(r => r.no === IP.sel);
-  const invT = '<table class="iptbl ipinv"><tr><th>' + bt('인보이스', 'Invoice #') + '</th><th>' + bt('날짜', 'Date') + '</th><th class="r">' + bt('합계', 'Total') + '</th><th class="r">' + bt('잔액', 'Balance') + '</th><th>' + bt('메모', 'Remark') + '</th></tr>' +
+  const invT = '<table class="iptbl ipinv"><tr>' + SH.th('no', bt('인보이스', 'Invoice #'), IP.srt) + SH.th('d', bt('날짜', 'Date'), IP.srt) + SH.th('total', bt('합계', 'Total'), IP.srt, 'r') + SH.th('bal', bt('잔액', 'Balance'), IP.srt, 'r') + '<th>' + bt('메모', 'Remark') + '</th></tr>' +
     (rows.length ? rows.map(r => '<tr class="tap' + (r.no === IP.sel ? ' on' : '') + (r.bal > 0.005 && r.bk >= 3 ? ' late' : '') + '" data-ipi="' + esc(r.no) + '"><td><b>' + esc(r.no) + '</b>' + (r.memo ? '<small class="ipm2">' + esc(r.memo) + '</small>' : '') + '</td><td>' + esc(md(r.d)) + '</td><td class="r">' + money(r.total) + '</td><td class="r' + (r.bal > 0.005 ? ' warn' : r.bal < -0.005 ? ' ok' : '') + '">' + (Math.abs(r.bal) > 0.005 ? money(r.bal) : '.00') + '</td><td class="ipmemo">' + esc(r.memo) + '</td></tr>' + (!wide && r.no === IP.sel ? '<tr class="ipsub"><td colspan="5">' + items(r) + '<button class="b-ghost b-sm" data-ipd="' + esc(r.no) + '">📄 ' + bt('자세히', 'Details') + '</button></td></tr>' : '')).join('') : '<tr><td colspan="5"><div class="none">' + bt('인보이스 없음', 'No invoices') + '</div></td></tr>') + '</table>';
   /* 받은 날 밑에 💰 디파짓 날짜 (체크는 늘 · 그 밖은 받은 날과 다를 때) — 후일 수표는 🟠 후일 (v0.8.185 관리자: "받은 날짜 말고 디파짓 되는 날짜도") */
   const depTxt = p => { const dp = p.dep || (p.m === 'CHECK' ? p.d : ''); if (!dp || (p.m !== 'CHECK' && dp === p.d)) return ''; return '<small class="ipdep">' + (dp > td ? '<span class="tag t-c">' + bt('후일', 'PDC') + '</span> ' : '') + bt('디파짓', 'Dep') + ' ' + esc(md(dp)) + '</small>'; };
@@ -414,6 +415,7 @@ export async function storeSheet(acct, onPick, opt0) {
     document.querySelectorAll('[data-ipi]').forEach(el => el.onclick = () => { IP.sel = IP.sel === el.dataset.ipi ? '' : el.dataset.ipi; const y = $('mbox').querySelector('.ipl') ? $('mbox').querySelector('.ipl').scrollTop : 0; paint(); const l = $('mbox').querySelector('.ipl'); if (l) l.scrollTop = y; });
     document.querySelectorAll('[data-ipd]').forEach(el => el.onclick = e => { e.stopPropagation(); invDetail(el.dataset.ipd, acct, paint); });
     document.querySelectorAll('[data-ipf]').forEach(b => b.onclick = () => { IP.open = b.dataset.ipf === 'open'; paint(); });
+    SH.bindSort($('mbox'), IP.srt, paint);   // ↕ 인보이스 # · 날짜 · 합계 · 잔액 머리글
     if ($('ssReq')) $('ssReq').onclick = () => requestAccess({ acct });
     if ($('ssPick')) $('ssPick').onclick = () => { closeModal(); onPick(acct); };
     const back = L => { notes = L; tab = 'note'; openModal(''); paint(); };
