@@ -154,7 +154,7 @@ export function manage(o, lines) {
     let lastG = null;
     $('mLines').innerHTML = '<table class="pk"><tr><th>코드</th><th class="r">주문</th>' + (picking ? '<th class="r">픽</th>' : '') + '<th class="r">가격</th><th class="r">금액</th></tr>' + rows.slice(0, 2500).map(l => {
       const chg = l.lp != null && Math.abs(l.lp - l.p) > 0.0001, bo = picking && l.ok && (l.pq || 0) < l.q;
-      let sep = ''; if (picking && !q) { const g = pickGroup(l); if (g.key !== lastG) { lastG = g.key; sep = '<tr class="pkg"><td colspan="5"><span class="tag t-g">' + esc(g.t) + '</span> ' + esc(catLabel(g)) + '</td></tr>'; } }
+      let sep = ''; if (picking && !q) { const g = pickGroup(l); if (g.key !== lastG) { lastG = g.key; sep = '<tr class="pkg"><td colspan="5">' + esc(aisleLabel(g)) + '</td></tr>'; } }
       const qq = picking ? (l.pq || 0) : l.q;
       const loc = picking ? locOf(l.c) : '';
       return sep + '<tr class="' + (bo ? 'bo' : '') + (picking && l.ok && !bo ? ' okd' : '') + '"><td>' + (loc ? '<span class="loc">📍' + esc(loc) + '</span> ' : '') + '<b>' + esc(l.c) + '</b> ' + (office ? sel('', types.map(t => [t.c, t.c]), l.t || DT(), 'class="tsel" data-t="' + l._i + '"') : '<span class="tag t-g">' + esc(l.t || DT()) + '</span>') +
@@ -444,30 +444,35 @@ async function printPicking(o, lines) {
   if (lines.some(l => l.kit)) { try { await loadCatalog(S); } catch (e) {} }
   printOpen(pickingHtml(o, lines));
 }
-/** 픽킹 줄 묶음 키 — [종류 순서, 분류 순위, 분류 1, 분류 2] (v0.8.174: 알파벳 순으로만 찍혀 정신없다는 창고 의견 → 종류 → 분류별로 나눠 찍음) */
-function pickGroup(l) {
-  const C = catalog(), it = C && C.byCode[l.c], T = invTypes(S), ti = T.findIndex(x => x.c === (l.t || DT()));
-  const l1 = it ? (it.l1 || it.g || '') : '', l2 = it ? (it.l2 || '') : '';
-  return { ti: ti < 0 ? 99 : ti, t: l.t || DT(), rank: it ? prefixRank(l1) : 9, l1, l2, key: (l.t || DT()) + '\u0001' + l1 };   // 머리는 분류 1단계마다 (2단계까지 나누면 줄이 너무 많아 장수가 늘어남)
-}
+/* ---------- 🧭 픽킹 순서 규칙 (2026-11-12 관리자: "픽킹하는 사람이 헷갈리지 않게 — 통로별로(통로 순서 = 동선), 같은 종류끼리 ABC 1234, CVEG 01~16 다음에 CVNG") · v0.8.190 ----------
+ *   ① 📍 통로 순서 = 걷는 순서: 00 → 01A → 01B → 02A … → 20A → WAREHOUSE01 … → 위치 없음은 맨 끝
+ *   ② 같은 통로 안에서는 코드의 앞 글자(종류)끼리 ABC 순: AHG → CVEG → CVNG …
+ *   ③ 같은 종류 안에서는 번호 순: CVEG01 → CVEG02 … → CVEG16 (종류가 섞이지 않음) */
 const COLLP = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
-export function pickSortGrouped(a, b) { const A = pickGroup(a), B = pickGroup(b); return (A.ti - B.ti) || (A.rank - B.rank) || COLLP.compare(A.l1, B.l1) || COLLP.compare(A.l2, B.l2) || pickSort(a, b); }
-const catLabel = g => g.l1 ? cleanName(g.l1) : 'NO CATEGORY';
+/** 코드 → [종류(뒤 숫자 뺀 앞부분), 번호] — CVEG01 → ['CVEG', 1] · 18KCNG06 → ['18KCNG', 6] · AHG100 → ['AHG', 100] */
+export function codeFam(c) { const m = String(c || '').toUpperCase().match(/^(.*?)(\d+)$/); return m && m[1] ? [m[1], Number(m[2])] : [String(c || '').toUpperCase(), -1]; }
+function pickGroup(l) { const loc = locOf(l.c), a = loc ? aisleOf(loc) : ''; return { aisle: a, loc, key: a || '\uffff', fam: codeFam(l.c)[0] }; }
+export function pickSortGrouped(a, b) {
+  const A = pickGroup(a), B = pickGroup(b), fa = codeFam(a.c), fb = codeFam(b.c);
+  if (!A.aisle !== !B.aisle) return A.aisle ? -1 : 1;   // 위치 없는 아이템은 맨 끝
+  return COLLP.compare(A.aisle, B.aisle) || COLLP.compare(fa[0], fb[0]) || (fa[1] - fb[1]) || COLLP.compare(a.c, b.c);
+}
+const aisleLabel = g => g.aisle ? '📍 ' + bt('통로', 'AISLE') + ' ' + g.aisle : '❔ ' + bt('위치 없음', 'NO LOCATION');
+export const PICK_RULE = '📍 AISLE 00 → 01A → 01B → … → WAREHOUSE → NO LOCATION  ·  same code letters together A→Z  ·  numbers 1→9 (CVEG01…CVEG16, then CVNG)';
 export function pickingHtml(o, lines) {
   const acc = acctOf(o.acct);
-  const rows = lines.slice().sort(pickSortGrouped);   // 종류(A · P …) → 분류(세트 먼저) → 📍 통로 · 선반 → 코드
-  let lastT = null, lastK = null;
-  const typeRow = l => { const g = pickGroup(l); let h = ''; if (g.t !== lastT) { lastT = g.t; lastK = null; const n = rows.filter(x => (x.t || DT()) === g.t); h += '<tr class="pktype"><td colspan="8">' + esc(typeName(g.t).toUpperCase()) + ' — TYPE ' + esc(g.t) + ' · ' + n.length + ' lines · ' + n.reduce((a, x) => a + x.q, 0) + ' pcs</td></tr>'; }
-    if (g.key !== lastK) { lastK = g.key; h += '<tr class="pkcat"><td colspan="8">' + esc(catLabel(g)) + '</td></tr>'; } return h; };
-  const aisleRow = typeRow;
+  const rows = lines.slice().sort(pickSortGrouped);   // 🧭 📍 통로(동선) → 코드 앞 글자 ABC → 번호
+  let lastK = null, lastF = null;
+  /* 통로가 바뀔 때마다 굵은 머리 줄 (몇 줄 · 몇 개) · 같은 통로 안에서 종류(코드 앞 글자)가 바뀌면 가는 선 */
+  const aisleRow = l => { const g = pickGroup(l); let h = ''; if (g.key !== lastK) { lastK = g.key; lastF = g.fam; const n = rows.filter(x => pickGroup(x).key === g.key); h += '<tr class="pktype"><td colspan="8">' + esc(g.aisle ? 'AISLE ' + g.aisle : 'NO LOCATION') + ' · ' + n.length + (n.length === 1 ? ' line · ' : ' lines · ') + n.reduce((a, x) => a + x.q, 0) + ' pcs</td></tr>'; } else if (g.fam !== lastF) { lastF = g.fam; h += '<tr class="pkfam"><td colspan="8"></td></tr>'; } return h; };
   /* 🖨 한 장에 머리 → 바로 아래 표 (예전엔 머리 칸이 인보이스용 "다음 장으로 넘김" 을 가져가 첫 장에 머리만 나오고 표는 둘째 장부터였음)
    *   표 머리는 장마다 다시 · 줄은 장 사이에서 안 잘림 · 용지는 인보이스 설정(Letter / A4) · 여러 장 묶어 찍으면 주문마다 새 장 */
   const paper = ((invView(S).paper || company(S).paper) === 'a4') ? 'A4' : 'letter';   // 인보이스 인쇄와 같은 용지
   return ('<style>@page{size:' + paper + ';margin:.4in}</style><div class="pk"><div class="iv pkhd">' + docHead(company(S), 'PICKING LIST', [['Date', o.d.substring(5, 7) + '/' + o.d.substring(8, 10) + '/' + o.d.substring(2, 4)], ['S.O. No.', o.no]]) +
     '<div class="meta"><b>' + esc(o.store) + '</b> (' + esc(o.acct || '신규') + ')' + (o.shipTo || acc ? ' · ' + esc([(o.shipTo || acc).addr, (o.shipTo || acc).city, (o.shipTo || acc).state, (o.shipTo || acc).zip].filter(Boolean).join(', ')) : '') +
-    '<br>Rep. ' + esc(o.smFor || o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true, o.reqNote)) : '') + '</div></div>' +
-    '<table class="pktbl"><thead><tr><th style="width:26px">#</th><th style="width:52px">LOC</th><th style="width:82px">CODE</th><th>DESCRIPTION</th><th style="width:40px">TYPE</th><th class="r" style="width:52px">ORDER</th><th class="r" style="width:56px">PICKED</th><th style="width:70px">NOTE</th></tr></thead><tbody>' +
-    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td></td><td>' + esc(l.note || '') + '</td></tr>' +
+    '<br>Rep. ' + esc(o.smFor || o.sm) + (o.pickerName ? ' · PICKER: <b>' + esc(o.pickerName) + '</b>' : '') + ' · printed ' + esc(new Date().toLocaleString('en-US')) + (o.memo ? '<br><b>MEMO:</b> ' + esc(o.memo) : '') + (reqCount(o.req) ? '<br><b>DISPLAY / INSERT REQUEST:</b> ' + esc(reqText(o.req, true, o.reqNote)) : '') + '</div><div class="pkrule">' + esc(PICK_RULE) + '</div></div>' +
+    '<table class="pktbl"><thead><tr><th style="width:26px">#</th><th style="width:100px">LOC</th><th style="width:82px">CODE</th><th>DESCRIPTION</th><th style="width:40px">TYPE</th><th class="r" style="width:52px">ORDER</th><th class="r" style="width:56px">PICKED</th><th style="width:70px">NOTE</th></tr></thead><tbody>' +
+    rows.map((l, i) => aisleRow(l) + '<tr><td>' + (i + 1) + '</td><td class="pkloc"><b>' + esc(locOf(l.c)) + '</b></td><td><b>' + esc(l.c) + '</b>' + (l.kit ? ' 🧩' : '') + '</td><td>' + esc(l.d) + '</td><td>' + esc(l.t || DT()) + '</td><td class="r"><b>' + l.q + '</b></td><td></td><td>' + esc(l.note || '') + '</td></tr>' +
       (l.kit ? l.kit.map(k => { const it = catalog() && catalog().byCode[k.c]; return '<tr style="color:#444"><td></td><td>' + esc(locOf(k.c)) + '</td><td style="padding-left:18px">└ ' + esc(k.c) + '</td><td>' + esc(it ? it.d : '') + '</td><td></td><td class="r">' + (k.q * l.q) + '</td><td></td><td>' + k.q + ' × ' + l.q + '</td></tr>'; }).join('') : '')).join('') +
     '<tr class="fin"><td colspan="5">' + rows.length + ' lines</td><td class="r">' + rows.reduce((a, l) => a + l.q, 0) + '</td><td></td><td></td></tr></tbody></table>' +
     '<div class="sig"><div>Picked by</div><div>Checked by</div><div>Date</div></div></div>');

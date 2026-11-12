@@ -1,7 +1,7 @@
 /* v0.8.174 시험 — 📦 창고 · 사무실 의견 5가지 (새 주문 앱 보완점)
  *   ① 인보이스 문서: 분류 묶음이 앱 분류 순서(세트 "" 먼저 → 주얼리 → [그 외]) — SET ORDER 묶음이 맨 위
  *   ② 세트는 기본으로 한 줄(작은 글씨 SET: 구성) — 구성품 ↳ 줄(.ivkitrow)이 저절로 펼쳐지지 않음 (보기 설정 '구성품 펼침' 으로만)
- *   ③ ④ 피킹 리스트 인쇄: 인보이스 종류(A 주얼리 → P 그 외) 머리 → 분류(세트 먼저) 머리 → 위치 · 코드 순 · 화면의 픽킹 목록에도 분류 구분줄
+ *   ③ ④ 피킹 리스트 인쇄 · 화면의 픽킹 목록 — (v0.8.190 부터 관리자 규칙) 📍 통로 순서(동선) 머리 → 같은 통로 안 코드 앞 글자 ABC → 번호 · 위치 없는 아이템은 맨 끝 (자세한 규칙은 t203)
  *   ⑤ 인보이스 확정 창에서 종류별 할인 % 를 바로 고침 → 합계가 바뀌고, 확정하면 인보이스 · 주문(disc · discChg)에 저장 · 가게 기본 할인은 그대로 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
@@ -10,7 +10,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   /* 주문: 세트(FLSIDE52 · SET ORDER) + 주얼리 2줄 + 그 외(EB103 · P) — 픽킹 완료 상태, 가게 기본 할인 A 10% */
-  const SEED = "const c0 = s.catalog.find(x => x.id === 'c0'); const rows = JSON.parse(c0.j); rows.forEach(r => { if (r[0] === 'FLSIDE52') { r[5] = 'Set & Display'; r[6] = 'SET ORDER\"\"'; r[7] = 'FLOOR'; r[8] = 'BODY J'; } }); c0.j = JSON.stringify(rows);" +
+  const SEED = "const c0 = s.catalog.find(x => x.id === 'c0'); const rows = JSON.parse(c0.j); rows.forEach(r => { if (r[0] === 'FLSIDE52') { r[5] = 'Set & Display'; r[6] = 'SET ORDER\"\"'; r[7] = 'FLOOR'; r[8] = 'BODY J'; r[11] = '01A'; } if (r[0] === 'AHG100' || r[0] === 'AHG105') r[11] = '04B'; if (r[0] === 'EB103') r[11] = ''; }); c0.j = JSON.stringify(rows);" +
     "s.orders[0].st = 'picked'; s.orders[0].picker = 'office@theonefl.com'; s.orders[0].disc = { A: 10 }; const acc = s.accounts.find(a => a.acct === '3001'); if (acc) acc.disc = { A: 10 };" +
     "s.orderLines[0].lines = [{ c: 'EB103', d: 'EDGE BOOSTER ITEM 3', q: 4, pq: 4, ok: true, p: 3.25, t: 'P' }, { c: 'AHG100', d: 'Aluminum Gold ITEM 0', q: 20, pq: 20, ok: true, p: 2.5, t: 'A' }, { c: 'FLSIDE52', d: 'FL INT #52 - BODY J - CHIN (66PC)', q: 1, pq: 1, ok: true, p: 198, t: 'A', kit: [{ c: 'AHG100', q: 6 }, { c: 'AHG105', q: 6 }] }, { c: 'AHG105', d: 'Aluminum Gold ITEM 5', q: 10, pq: 10, ok: true, p: 3.75, t: 'A' }];";
   const pg = await br.newPage({ viewport: { width: 1200, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
@@ -18,17 +18,17 @@ const path = require('path');
   await pg.goto('http://127.0.0.1:8830/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300);
   await pg.evaluate(() => { location.hash = '#/order/O261014-AAAA'; }); await pg.waitForSelector('#mInv', { timeout: 8000 }).catch(() => errs.push('order screen (picked) should offer invoice'));
   /* ③ 화면 픽킹 목록 구분줄 */
-  await pg.waitForFunction(() => document.querySelectorAll('#mLines tr.pkg').length && ![...document.querySelectorAll('#mLines tr.pkg')].some(x => /NO CATEGORY/.test(x.textContent)), null, { timeout: 6000 }).catch(() => errs.push('③ screen groups should get category names once the catalog is loaded'));
+  await pg.waitForFunction(() => document.querySelectorAll('#mLines tr.pkg').length >= 3, null, { timeout: 6000 }).catch(() => errs.push('③ screen groups by aisle once the catalog is loaded'));
   const seps = await pg.$$eval('#mLines tr.pkg', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim())); log('③ screen groups:', seps.join(' | '));
-  if (seps.length < 3 || !/^A SET ORDER/.test(seps[0])) errs.push('③ screen list starts with the A › SET ORDER group then other groups (got ' + seps.join(' | ') + ')');
+  if (seps.length !== 3 || !/01A/.test(seps[0]) || !/04B/.test(seps[1]) || !/위치 없음|NO LOCATION/.test(seps[2])) errs.push('③ screen groups: aisle 01A → 04B → no location (got ' + seps.join(' | ') + ')');
   const order = await pg.$$eval('#mLines tr:not(.pkg) td:first-child b', e => e.map(x => x.textContent)); log('③ screen order:', order.join(' '));
-  if (order.join(' ') !== 'FLSIDE52 AHG100 AHG105 EB103') errs.push('③ screen order: set → jewelry → other (got ' + order.join(' ') + ')');
+  if (order.join(' ') !== 'FLSIDE52 AHG100 AHG105 EB103') errs.push('③ screen order: aisle 01A → 04B (AHG100 · AHG105) → no location (got ' + order.join(' ') + ')');
   /* ③ ④ 피킹 리스트 인쇄 */
   await pg.click('#mPickPrint'); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(300);
-  const P = await pg.evaluate(() => { const b = document.getElementById('prtbody'); return { types: [...b.querySelectorAll('tr.pktype')].map(x => x.textContent.trim()), cats: [...b.querySelectorAll('tr.pkcat')].map(x => x.textContent.trim()), codes: [...b.querySelectorAll('tbody tr:not(.pktype):not(.pkcat):not(.fin) td:nth-child(3) b')].map(x => x.textContent) }; }); log('④ print:', JSON.stringify(P));
-  if (P.types.length !== 2 || !/JEWELRY.*TYPE A/.test(P.types[0]) || !/TYPE P/.test(P.types[1])) errs.push('④ picking list has a Jewelry (A) section then an Other (P) section');
-  if (!P.cats.length || !/^SET ORDER/.test(P.cats[0])) errs.push('③ first category header is SET ORDER (got ' + P.cats[0] + ')');
-  if (P.codes.join(' ') !== 'FLSIDE52 AHG100 AHG105 EB103') errs.push('③ printed order set → jewelry → other (got ' + P.codes.join(' ') + ')');
+  const P = await pg.evaluate(() => { const b = document.getElementById('prtbody'); return { heads: [...b.querySelectorAll('tr.pktype')].map(x => x.textContent.trim()), codes: [...b.querySelectorAll('tbody tr:not(.pktype):not(.pkfam):not(.fin) td:nth-child(3) b')].map(x => x.textContent), rule: (b.querySelector('.pkrule') || {}).textContent || '' }; }); log('④ print:', JSON.stringify(P));
+  if (P.heads.length !== 3 || !/AISLE 01A/.test(P.heads[0]) || !/AISLE 04B · 2 lines · 30 pcs/.test(P.heads[1]) || !/NO LOCATION/.test(P.heads[2])) errs.push('④ picking list headers: AISLE 01A → AISLE 04B (2 lines · 30 pcs) → NO LOCATION');
+  if (P.codes.join(' ') !== 'FLSIDE52 AHG100 AHG105 EB103') errs.push('③ printed order by aisle (got ' + P.codes.join(' ') + ')');
+  if (!/AISLE/.test(P.rule)) errs.push('④ the rule line is printed at the top');
   await pg.click('#prtClose'); await pg.waitForTimeout(200);
   /* ⑤ 할인 바꾸기 → 확정 */
   await pg.click('#mInv'); await pg.waitForSelector('#ivOk');
