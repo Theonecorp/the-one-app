@@ -91,13 +91,13 @@ async function users() {
     grp.map(([r, L]) => '<div class="card"><h2 style="font-size:15px">' + r[1] + ' ' + r[2] + ' <span class="en">' + r[3] + '</span> <span class="muted" style="font-weight:400">' + L.length + '명</span></h2>' +
       L.map(u => { const ex = (u.extra || []).filter(x => x !== u.role);
         return '<div class="pr tap" data-u="' + esc(u.email) + '"><div class="ct"><b>' + esc(u.name || u.email) + (u.active === false ? ' <span class="tag t-g">비활성</span>' : '') + '</b>' +
-          '<small>' + esc(u.email) + '</small><small>' + [u.role === 'manager' ? '일: ' + esc(jobLabel(u.job || 'office').split(' ')[0]) : '', u.sm ? '세일즈맨 코드 ' + esc(u.sm) : '', ex.length ? '추가 화면: ' + ex.map(x => (ROLES.find(y => y[0] === x) || ['', '', x])[2]).join(' · ') : '', u.achAccess ? 'ACH 은행' : ''].filter(Boolean).join(' · ') + '</small></div></div>'; }).join('') + '</div>').join('');
+          '<small>' + esc(u.email) + '</small><small>' + [u.role === 'manager' ? '일: ' + esc([u.job || 'office'].concat(Array.isArray(u.job2) ? u.job2 : []).map(j => (JOBS.find(x => x[0] === j) || [j, j])[1]).join(' + ')) : '', u.sm ? '세일즈맨 코드 ' + esc(u.sm) : '', ex.length ? '추가 화면: ' + ex.map(x => (ROLES.find(y => y[0] === x) || ['', '', x])[2]).join(' · ') : '', u.achAccess ? 'ACH 은행' : ''].filter(Boolean).join(' · ') + '</small></div></div>'; }).join('') + '</div>').join('');
   $('uNew').onclick = () => userForm(null);
   document.querySelectorAll('[data-u]').forEach(el => el.onclick = () => userForm(list.find(u => u.email === el.dataset.u)));
 }
 function userForm(u) {
   u = u || {};
-  const F = { role: u.role || 'salesman', job: u.job || 'office', extra: (u.extra || []).slice(), ach: !!u.achAccess, active: u.active !== false };
+  const F = { role: u.role || 'salesman', job: u.job || 'office', job2: (Array.isArray(u.job2) ? u.job2 : []).slice(), extra: (u.extra || []).slice(), ach: !!u.achAccess, active: u.active !== false };
   const isMe = u.email && u.email === S.user.email;
   openModal('<h2>' + (u.email ? '👤 ' + esc(u.name || u.email) : '＋ 사용자 추가') + '</h2>' +
     '<div class="fg"><label>① 구글 이메일 <span class="en">Google email</span></label><input id="uEmail" value="' + esc(u.email || '') + '" ' + (u.email ? 'readonly style="background:#f1f5f9"' : '') + ' placeholder="name@gmail.com" autocapitalize="off"></div>' +
@@ -113,18 +113,22 @@ function userForm(u) {
     if (r === 'admin') h += '<div class="muted" style="margin:4px 0 8px">관리자는 모든 화면을 보고, 위쪽 이름을 눌러 👑 오너 · 🧑‍💼 담당자 · 🚗 세일즈맨 화면으로 바꿔 볼 수 있습니다.</div>' + smInput(false, '세일즈맨 화면에서 "내 가게"로 볼 코드 (예: LUKE).');
     if (r === 'owner') h += chk('uExS', F.extra.includes('salesman'), '🚗 세일즈맨 화면도', '자기 세일즈맨 코드로 내 가게 · 주문 · 수금 입력 · 정산서') + '<div id="uSmBox"></div>' +
       chk('uExM', F.extra.includes('manager'), '🧑‍💼 담당자 화면도', '아래에서 고른 일의 화면 (주문 처리 · 수금 확인 …)') + '<div id="uJobBox"></div>' + chk('uAchP', F.ach, '🏦 ACH 은행 정보 보기', '고객 은행 계좌 · 라우팅 번호 — 꼭 필요한 사람만');
-    if (r === 'manager') h += '<div class="fg"><label>일 <span class="en">Job</span> — 화면이 달라집니다</label><div class="rolepick sm">' + JOBS.map(j => '<button type="button" class="' + (F.job === j[0] ? 'on' : '') + '" data-uj="' + j[0] + '"><b>' + j[1] + ' <span class="en">' + j[2] + '</span></b><small>' + (JOB_TXT[j[0]] || '') + '</small></button>').join('') + '</div></div>' +
+    if (r === 'manager') h += '<div class="fg"><label>일 <span class="en">Job</span> — 화면이 달라집니다</label><div class="rolepick sm">' + JOBS.map(j => '<button type="button" class="' + (F.job === j[0] ? 'on' : '') + '" data-uj="' + j[0] + '"><b>' + j[1] + ' <span class="en">' + j[2] + '</span></b><small>' + (JOB_TXT[j[0]] || '') + '</small></button>').join('') + '</div></div>' + '<div id="uJob2"></div>' +
       chk('uExS', F.extra.includes('salesman'), '🚗 세일즈맨 화면도', '직접 가게를 맡는 담당자 — 자기 세일즈맨 코드로') + '<div id="uSmBox"></div>' +
       chk('uAchP', F.ach, '🏦 ACH 은행 정보 보기', '고객 은행 계좌 · 라우팅 번호 — 꼭 필요한 사람만');
     if (r === 'salesman') h += smInput(true, '수금 · 주문 · 미수금이 이 코드로 묶입니다.');
     $('uMore').innerHTML = h + '</div>';
     const subSm = () => { const b = $('uSmBox'); if (b) b.innerHTML = F.extra.includes('salesman') ? smInput(true, '') : ''; };
     const subJob = () => { const b = $('uJobBox'); if (b) b.innerHTML = F.extra.includes('manager') ? '<div class="rolepick sm">' + JOBS.map(j => '<button type="button" class="' + (F.job === j[0] ? 'on' : '') + '" data-uj="' + j[0] + '"><b>' + j[1] + '</b><small>' + (JOB_TXT[j[0]] || '') + '</small></button>').join('') + '</div>' : ''; bindJob(); };
-    const bindJob = () => document.querySelectorAll('[data-uj]').forEach(b => b.onclick = () => { F.job = b.dataset.uj; document.querySelectorAll('[data-uj]').forEach(x => x.classList.toggle('on', x === b)); });
+    /* 👥 같이 하는 일 — 한 사람에게 일을 여럿 (예: 창고 직원 + 출고 · 인보이스). 할 수 있는 것 · 메뉴가 합쳐짐 (2026-11-12 관리자) */
+    const paintJob2 = () => { const b = $('uJob2'); if (!b) return; F.job2 = F.job2.filter(j => j !== F.job);
+      b.innerHTML = '<div class="fg"><label>👥 ' + bt('같이 하는 일 (선택 · 여러 개)', 'Also does (optional · several)') + '</label><div class="chips">' + JOBS.filter(j => j[0] !== F.job).map(j => '<button type="button" class="' + (F.job2.includes(j[0]) ? 'on' : '') + '" data-uj2="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div><div class="muted" style="font-size:12px">' + bt('예: 창고 직원 + 출고 · 인보이스 → 피킹 · 출고 · 인보이스를 한 사람이', 'e.g. Warehouse Staff + Fulfillment & Invoicing → one person picks, ships and invoices') + '</div></div>';
+      b.querySelectorAll('[data-uj2]').forEach(x => x.onclick = () => { const k = x.dataset.uj2; F.job2 = F.job2.includes(k) ? F.job2.filter(j => j !== k) : F.job2.concat([k]); x.classList.toggle('on', F.job2.includes(k)); }); };
+    const bindJob = () => document.querySelectorAll('[data-uj]').forEach(b => b.onclick = () => { F.job = b.dataset.uj; document.querySelectorAll('[data-uj]').forEach(x => x.classList.toggle('on', x === b)); paintJob2(); });
     const tog = (id, key) => { const el = $(id); if (!el) return; el.onclick = () => { const on = !F.extra.includes(key); F.extra = F.extra.filter(x => x !== key); if (on) F.extra.push(key); el.classList.toggle('on', on); if (key === 'salesman') subSm(); if (key === 'manager') subJob(); }; };
     tog('uExS', 'salesman'); tog('uExM', 'manager');
     if ($('uAchP')) $('uAchP').onclick = () => { F.ach = !F.ach; $('uAchP').classList.toggle('on', F.ach); };
-    subSm(); subJob(); bindJob();
+    subSm(); subJob(); bindJob(); paintJob2();
   };
   document.querySelectorAll('[data-ur]').forEach(b => b.onclick = () => { F.role = b.dataset.ur; document.querySelectorAll('[data-ur]').forEach(x => x.classList.toggle('on', x === b)); paintMore(); });
   $('uActP').onclick = () => { F.active = !F.active; $('uActP').classList.toggle('on', F.active); };
@@ -138,7 +142,7 @@ function userForm(u) {
     if (r === 'salesman' && !smv) smv = name.toUpperCase().split(/\s+/)[0];
     if (extra.includes('salesman') && !smv) return toast('세일즈맨 화면을 주려면 세일즈맨 코드를 넣으세요', 'bad');
     if (r !== 'salesman' && r !== 'admin' && !extra.includes('salesman')) smv = '';
-    const doc = { email, name, role: r, job: r === 'manager' || extra.includes('manager') ? F.job : '', sm: smv, extra, achAccess: r === 'admin' ? true : (r === 'salesman' ? false : F.ach), active: F.active, updatedAt: new Date().toISOString() };
+    const doc = { email, name, role: r, job: r === 'manager' || extra.includes('manager') ? F.job : '', job2: r === 'manager' ? F.job2.filter(j => j !== F.job) : [], sm: smv, extra, achAccess: r === 'admin' ? true : (r === 'salesman' ? false : F.ach), active: F.active, updatedAt: new Date().toISOString() };
     if (isMe && r !== 'admin') return toast('내 계정은 관리자로 둡니다', 'bad');
     busy(true); try {
       let made = '';

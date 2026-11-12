@@ -106,14 +106,17 @@ export function viewsOf(me) {
   return r === 'salesman' ? ['salesman'] : v;
 }
 const VIEW_KEY = () => 'theone.view.' + ((S.user && S.user.email) || '');
-export function can(cap) { if (S.role === 'admin' || S.role === 'owner') return true; if (S.role !== 'manager') return false; return jobCan(jobOf(), cap); }
+export function can(cap) { if (S.role === 'admin' || S.role === 'owner') return true; if (S.role !== 'manager') return false; return myJobs().some(j => jobCan(j, cap)); }
 /** 지금 화면의 일 — 담당자는 사용자 기록의 job (없으면 office), 그 외는 역할 그대로 */
 export function jobOf() { if (S.role !== 'manager') return S.role; const j = S.me && S.me.job; return JOBS.some(x => x[0] === j) ? j : 'office'; }
 export function jobLabel(j) { const x = JOBS.find(k => k[0] === j); return x ? x[1] + ' ' + x[2] : j; }
+/** 👥 한 사람의 일 전부 — 주된 일(users.job) + 같이 하는 일(users.job2 — 2026-11-12 관리자: "한 사람에게 일 두 개", 예: 창고 직원 + 출고 · 인보이스). 권한 · 메뉴 · 칩은 이것을 합쳐서 봄 */
+export function myJobs() { if (S.role !== 'manager') return [S.role]; const p = jobOf(), ex = (S.me && Array.isArray(S.me.job2) ? S.me.job2 : []).filter(j => j !== p && JOBS.some(x => x[0] === j)); return [p].concat(ex.filter((j, i) => ex.indexOf(j) === i)); }
 /* 홈 · 세일 · 인보이스 · 거래처는 모든 역할에 늘 고정 (예전 시험용 "주문 탭 보이기" 스위치는 없앰) */
 function navFor(r) {
   const key = r === 'manager' ? jobOf() : r;
   let items = (NAV[key] || NAV.office).slice();
+  if (r === 'manager') myJobs().slice(1).forEach(j => (NAV[j] || []).forEach(x => { if (!items.some(y => y[0] === x[0])) items.push(x); }));   // 👥 같이 하는 일의 메뉴도 (겹치는 것은 한 번)
   if (r === 'salesman') items = items.filter(x => x[0] !== 'mine');   // 내 기록은 홈 안의 버튼으로
   if (!items.length) items = [['stores', '🏬', '거래처', 'Stores']];
   /* 🔁 모드 탭 — 여러 화면을 쓰는 사람(오너 겸 세일즈 등)은 아래 메뉴에서 바로 바꿈 */
@@ -390,7 +393,7 @@ function paintNav() {
   /* 🗂 묶음 안의 화면 — ‹ 뒤로 · 폰 뒤로가기는 그 묶음으로, 아래 메뉴도 그 묶음이 켜짐 */
   Router.parent = {}; items.filter(x => /^hub\//.test(x[0])).forEach(x => Hub.hubItems(x[0].split('/')[1]).forEach(c => { const r = c[0].split('/')[0]; if (!items.some(y => y[0] === c[0] || y[0] === r)) Router.parent[r] = x[0]; }));
   navH(); dockDrawer();
-  $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? (JOBS.find(j => j[0] === jobOf()) || ['', ''])[1] : roleLabel(S.role).split(' ')[0]);
+  $('hWho').textContent = S.me && S.me.sm && S.role === 'salesman' ? S.me.sm : (S.me && S.me.sm ? S.me.sm + ' · ' : '') + (S.role === 'manager' ? myJobs().map(k => (JOBS.find(j => j[0] === k) || ['', ''])[1]).join(' + ') : roleLabel(S.role).split(' ')[0]);
   const multi = viewsOf(S.me).length > 1, hw = $('hWho'); if (hw) { if (multi) hw.textContent += ' ▾'; hw.style.cursor = multi ? 'pointer' : ''; hw.onclick = multi ? modePicker : null; }   // 여러 화면 쓰는 사람은 이름을 눌러 바로 바꿈
 }
 
@@ -461,7 +464,7 @@ async function afterLogin(user) {
       if (!m2 || m2.active === false) { waitScreen(email); return; }
       bootSave(email, m2, sms2, st2);
       if (healed2) { S.role = 'admin'; try { localStorage.setItem(VIEW_KEY(), 'admin'); } catch (e) {} }
-      const roleChg = healed2 || m2.role !== snap.me.role || (m2.job || '') !== (snap.me.job || '') || (m2.sm || '') !== (snap.me.sm || '') || JSON.stringify(m2.views || m2.extra || null) !== JSON.stringify(snap.me.views || snap.me.extra || null);
+      const roleChg = healed2 || m2.role !== snap.me.role || (m2.job || '') !== (snap.me.job || '') || JSON.stringify(m2.job2 || []) !== JSON.stringify(snap.me.job2 || []) || (m2.sm || '') !== (snap.me.sm || '') || JSON.stringify(m2.views || m2.extra || null) !== JSON.stringify(snap.me.views || snap.me.extra || null);
       const accChg = String((st2 || {}).accountsVer || '0') !== String((snap.settings || {}).accountsVer || '0');
       S.me = m2; applyBase(sms2, st2);
       if (accChg) { try { S.accounts = await loadAccounts(S); } catch (e) {} }
