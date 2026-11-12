@@ -23,6 +23,7 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 - 담당은 `.github/CODEOWNERS` 와 같다 — 그 파일이 바뀌는 PR 에는 담당자에게 리뷰 요청이 자동으로 간다. 관리자는 모든 파일의 담당(최종 승인).
 - **영역 밖 파일**을 고쳐야 하면 최소한으로만 고치고 PR 설명 맨 위에 `영역 밖 변경: 파일 — 이유` 를 적는다. 공용 뼈대(위 표의 관리자 파일)를 크게 바꾸는 일은 관리자에게 넘긴다.
 - **머지**: 자기 영역 파일만 바뀐 PR 은 `check` 초록을 확인한 뒤 담당자가 직접 squash 머지해도 된다 (2026-11-06 부터 — main 보호 규칙은 PR 필수 · check 통과 필수, 승인은 없음). 영역 밖 파일 · 공용 뼈대 · `firestore.rules` · `.github/` · `tools/` 가 바뀐 PR 은 관리자 승인 뒤에 머지한다. 머지 뒤 main 을 다시 받아 `sh build.sh` 로 app.js 가 같은지 확인한다.
+- **관리자 세션은 끝까지 알아서** (2026-11-12 관리자): 관리자가 요청한 작업은 따로 묻지 않고 전체 시험 → 커밋 → 푸시 → PR → `check` 초록 → squash 머지 → main 과 맞춤 → `node tools/fbhost.mjs . apply` 배포 → 배포 확인까지 한 번에 끝낸다. `check` 가 빨가면 고칠 때까지 머지 · 배포하지 않는다. 라이브 Firestore 자료 일괄 수정 · `firestore.rules` · Apps Script 반영은 여전히 관리자에게 먼저 묻는다. 다른 담당(디자인 · 창고)의 세션은 지금처럼 PR 까지만.
 - **저장소 밖 반영은 관리자만**: `firestore.rules` 배포, `apps-script/*` 를 Apps Script 에 붙여 넣고 배포, 라이브 Firestore 데이터 일괄 수정. 서비스 계정 키(`FIREBASE_*`)는 관리자 개인 클라우드 환경에만 있다. 다른 담당의 PR 은 설명에 `배포 필요: …` 로 적고 관리자가 반영한다.
 - **팀 공용 클라우드 환경에는 비밀값을 넣지 않는다** — 공용 환경의 변수는 모든 멤버의 세션이 읽는다. `FIREBASE_*` 가 없는 세션은 라이브 Firestore 에 쓰지 않는다.
 - **동시 작업**: 같은 날 여러 PR 이 열린다. 푸시 전마다 `sh tools/sync-main.sh` (최신 main 합치기 · 버전을 main 다음 번호로 · app.js 다시 빌드 · 번역 문구 합치기). PR 이 머지되기 전에 main 이 또 움직였으면 다시 실행.
