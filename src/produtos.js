@@ -589,7 +589,7 @@ function pintarDrawer() {
     '<div class="dr-actions">' + acoes + '</div><div class="tabs">' + [['geral', 'aba_geral'], ['forn', 'aba_forn'], ['mov', 'aba_mov']].map(x => '<button class="tab ' + (PM.aba === x[0] ? 'active' : '') + '" data-act="aba" data-aba="' + x[0] + '">' + esc(t(x[1])) + '</button>').join('') + '</div></div><div class="dr-body">' + corpo + '</div>';
   let w = document.querySelector('.pm-dw');
   if (!w) {
-    w = document.createElement('div'); w.className = 'sb pm-dw'; w.style.cssText = 'position:fixed;inset:0;z-index:170;padding:0;margin:0;min-height:0;background:transparent';
+    w = document.createElement('div'); w.className = 'sb pm-raiz pm-dw';   // pm-raiz: 서랍도 상품 CSS(.sb.pm-raiz …) 를 받게 (body 아래라 화면 밖) w.style.cssText = 'position:fixed;inset:0;z-index:170;padding:0;margin:0;min-height:0;background:transparent';
     w.innerHTML = '<div class="scrim show" data-act="fechar-drawer"></div><div class="drawer show" id="pmDrawer"></div>';
     w.addEventListener('click', clique); document.body.appendChild(w);
   }
