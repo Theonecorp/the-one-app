@@ -209,5 +209,7 @@
 | t246 | v0.8.214 | 🖼 Notes Display: 옛 WMS 의 Notes Display 흐름 그대로 (notasDisplay · 가게마다 카드 · 맡기 · 끝내면 Notes UPS 박스 + 6×4 라벨) |
 | t247 | v0.8.214 | 📦 Notes UPS: 옛 WMS 의 Notes UPS 화면 그대로 (숫자 칸 · 새 박스 · 대기 줄 · 합치기 · 기록) |
 | t249 | v0.8.214 | ⚙️ 설정 화면에서 👤 사용자 만들기 · 사용자 관리 (관리자만) — 관리 화면의 사용자 창을 그대로 씀 |
+| t250 | v0.8.214 | 📦 Shipping History 옛 앱과 같게: 출고 × 반품 탭 · UPS 반품 라벨(shipq ret · 메일 mail) · 출고 등록(다른 운송사) + 배송 완료 · 운송사 필터 · UPS 청구서 CSV 가져오기 · 영업 담당 변경 · SHP 번호 · 전체 기간 + 개씩 · 세일즈맨 보기만 |
+| t251 | v0.8.214 | ↩ UPS.gs 반품 라벨 · 반품 라벨 메일 (브라우저 없이 node 로): retShipment_ 의 UPS 요청 모양(ReturnService 9 · ShipFrom = 손님 · ShipTo = 우리 RETURNS · 회사 계정) |
 | t260 | v0.8.214 | 🏪 Shipping UPS 완성: 옛 WMS 의 나머지 — 고객 등록 · 누가 팔았나 · 배송지 수정 · Empty Display 박스 · ZPL/PDF 내려받기 · 오류 창 · 시험 서버 띠 |
 | t261 | v0.8.214 | 🚚 apps-script/UPS.gs 의 카운터 블록 (옛 ups-etiqueta · ups-cotar · ups-ambiente · ups-cancelar 와 맞춘 것) — 브라우저 없이 node 로 |
