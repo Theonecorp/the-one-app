@@ -13,7 +13,7 @@ import { $, esc, money, R2, today, ym, md, toast, busy, openModal, closeModal, c
 import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel, reqNoteClean, reqNeedsNote } from './reqs.js';
 import { searchAccounts, accountLabel, patchAccountCache } from './accounts.js';
 import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName, prefixRank } from './catalog.js';
-import { jobOf, can, dockMark, myJobs } from './main.js';
+import { jobOf, can, dockMark, myJobs, isOwner } from './main.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount, obWhole, obFix, obDisc } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
@@ -360,11 +360,14 @@ async function staffHome() {
   let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + (icon({ sale: 'cart', ship: 'truck', money: 'wallet', look: 'book' }[g[0]], 22) || g[1]) + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">' + icon('chevDown', 18) + '</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
     allT.filter(h => !GRP.some(g => g[4].includes(keyOf(h)))).join('');
   /* 🏠 v0.8.203 대시보드 — 머리(제목 · 기간) → 핵심 숫자 · 빠른 작업 · 할 일 · 출고 진행 · 매출 · 최근 주문 · 활동 (dash.js) → 아래에 전부 있던 화면 묶음 그대로 */
-  const dctx = { can, ptxt };
+  /* 🏠 대시보드 (v0.8.217 · 2026-11-13 관리자): 창고 매니저 · 출고 · 인보이스 담당 = 창고 · 출고 대시보드 · 오피스 매니저 = 접수 · 주문 · 인보이스 대시보드
+   *   매출은 오피스 매니저 · 오너 · 관리자만 (창고 · 출고 쪽에는 매출 칸 · 매출 상세 없음) */
+  const showSales = isOwner() || myJobs().includes('office');
+  const dctx = { can, ptxt, mode: j === 'office' ? 'office' : 'wh', sales: showSales };
   $('page').innerHTML = (matchMedia('(min-width:900px)').matches ? '<div class="ohead ohome">' + menuHtml(document.body.classList.contains('oscr'), true) + '</div>' : '') +
-    '<div class="wd-hd" style="margin-bottom:12px"><div><h1>' + bt('대시보드', 'Dashboard') + '</h1><div class="sub">' + (j === 'whmgr' ? bi('창고', 'Warehouse') : bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</div></div></div><div class="card" style="padding:10px 12px 4px">' + chips + '</div>' +
+    '<div class="wd-hd" style="margin-bottom:12px"><div><h1>' + bt('대시보드', 'Dashboard') + '</h1><div class="sub">' + (j === 'office' ? bi('접수 · 주문 · 인보이스', 'Intake · orders · invoices') : j === 'whmgr' ? bi('창고', 'Warehouse') : bi('출고 · 인보이스', 'Fulfillment · invoicing')) + ' — ' + esc(ptxt) + '</div></div></div><div class="card" style="padding:10px 12px 4px">' + chips + '</div>' +
     '<div id="naBanH"></div><div id="hOld"></div>' + Dash.frame(dctx) + grids +
-    '<details class="wd-det"><summary>' + icon('chart', 18) + bt('매출 상세 — 종류 · 세일즈맨별', 'Sales detail — by type · salesman') + '<span class="hga">' + icon('chevDown', 18) + '</span></summary><div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div></details>';
+    (showSales ? '<details class="wd-det"><summary>' + icon('chart', 18) + bt('매출 상세 — 종류 · 세일즈맨별', 'Sales detail — by type · salesman') + '<span class="hga">' + icon('chevDown', 18) + '</span></summary><div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div></details>' : '');
   document.querySelectorAll('[data-hp]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp; staffHome(); });
   document.querySelectorAll('.ohome [data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') return staffHome(); LF.st = b.dataset.lf; LF.list = true; pageOrder(''); });
   /* ◀ ▶ — 같은 길이만큼 앞뒤로 (달 단위 기간은 달로) */
@@ -385,27 +388,29 @@ async function staffHome() {
   });
   /* 🏠 대시보드 단추 — 원래 있던 화면 · 목록으로 (새 화면 없음) */
   const dOpen = k => {
-    if (k === 'recv' || k === 'inb') return Router.go('stock', k);
+    if (k === 'recv') return Router.go('recebimento');   /* 📥 입고 = 조의 상품 받기(REC) (v0.8.215) */
+    if (k === 'inb') return Router.go('stock', k);
     if (k === 'low') return Router.go('stock', 'low');
     if (k === 'nobar') return Router.go('items', 'nobar');
-    if (k === 'notesups' || k === 'cat' || k === 'displays') return Router.go(k);
+    if (k === 'notesups' || k === 'cat' || k === 'displays' || k === 'stores' || k === 'credit') return Router.go(k);
+    if (k === 'inv') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; LF.im = 'date'; }
     if (k === 'new') { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
     if (k === 'shipped' || k === 'all') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
     LF.st = k; LF.list = true; pageOrder('');
   };
   document.querySelectorAll('[data-wq]').forEach(b => b.onclick = () => dOpen(b.dataset.wq));
-  document.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => dOpen({ in: 'all', pick: 'pick', pack: 'done', ship: 'shipped' }[b.dataset.wk]));
+  document.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => dOpen((dctx.mode === 'office' ? { in: 'sent', cf: 'cfw', rv: 'picked', iv: 'inv' } : { in: 'all', pick: 'pick', pack: 'done', ship: 'shipped' })[b.dataset.wk]));
   try {
     const [live, bo, ords, inv, pinv] = await Promise.all([
       S.DB.list('orders', { where: [['st', 'in', LIVE_ST]] }), S.DB.list('backorders', { where: [['st', '==', 'open']] }),
       S.DB.list('orders', { where: [['d', '>=', addDays(from, -7)], ['d', '<=', to]] }),
-      salesRows(S, from, to), days <= 92 ? salesRows(S, pf, pt) : Promise.resolve(null)]);
-    if (!$('hSales')) return;
+      dctx.sales ? salesRows(S, from, to) : Promise.resolve([]), dctx.sales && days <= 92 ? salesRows(S, pf, pt) : Promise.resolve(null)]);   /* 매출(인보이스)은 볼 수 있는 사람만 읽음 (v0.8.217) */
+    if (!$('wdash') && !$('hSales')) return;
     const inR = iso => { const d = localDay(iso); return d >= from && d <= to; };
     const sentIn = ords.filter(o => o.sentAt && o.st !== 'draft' && o.st !== 'x' && inR(o.sentAt)), doneIn = ords.filter(o => (o.st === 'done' || o.st === 'shipped') && o.doneAt && inR(o.doneAt)), shipIn = ords.filter(o => o.st === 'shipped' && o.shipAt && inR(o.shipAt));
     const wait = live.filter(o => o.st === 'sent'), pk = live.filter(o => o.st === 'pick' || o.st === 'ok'), pkd = live.filter(o => o.st === 'picked'), topack = live.filter(o => o.st === 'done'), mine = pk.filter(o => o.picker === S.user.email);
     const put = (id, v) => { const el = $('ht-' + id); if (el) el.innerHTML = v; };
-    if ($('ht-displays')) S.DB.list('displays', { where: [['st', 'in', ['open', 'prep', 'done']]] }).then(D => { const w = D.filter(d => d.st === 'open' || d.st === 'prep'), late = w.filter(d => d.due && d.due < today()).length, ups = D.filter(d => d.st === 'done').length; put('displays', D.length ? bt('대기', 'waiting') + ' ' + w.length + (ups ? ' · 📦 UPS ' + ups : '') + (late ? ' · <b class="warn">⚠️ ' + late + bt(' 지남', ' late') + '</b>' : '') : bt('없음', 'none')); }).catch(() => put('displays', ''));
+    if ($('ht-displays')) import('./displays.js').then(D => D.resumo()).then(r => { put('displays', r.lojas ? bt('대기', 'waiting') + ' ' + r.lojas + (r.atrasadas ? ' · <b class="warn">⚠️ ' + r.atrasadas + bt(' 지남', ' late') + '</b>' : '') : bt('없음', 'none')); }).catch(() => put('displays', ''));   // 🖼 Notes Display — 옛 WMS 흐름(notasDisplay · 가게 수)
     const nm = (L, f) => L.length ? L.length + '건 · ' + money(L.reduce((a, o) => a + (f ? f(o) : o.amt || 0), 0)) : '없음 · none';
     put('mine', nm(mine)); NewAcct.pendingBanner($('naBanH'));
     /* ⚠️ 하루 넘게 한 단계에 머문 주문 — 누르면 가장 오래된 주문이 있는 칸을 밀린 것만 */
@@ -420,7 +425,7 @@ async function staffHome() {
       alert: k => { if (k === 'old') { const CH = { new: 'sent', cfw: 'cfw', cfok: 'cfok', pick: 'pick', picked: 'picked', done: 'done', packed: 'packed', dlv: 'dlv' }; LF.st = CH[olds[0].a.key] || 'sent'; LF.old = true; LF.list = true; return pageOrder(''); } if (k === 'ups' || k === 'bo') { LF.st = k; LF.list = true; return pageOrder(''); } dOpen(k); },
       openOrder: id => goOrder(id),
       lowStock: async () => { const m = await stockAll(false); await loadCatalog(S); const C = catalog(); const low = Object.keys(m).filter(c => { const q = Number(m[c]) || 0, it = C && C.byCode[c]; return it && !it.h && (q <= 0 || q < minOf(c)); }).length; const nobar = C ? (C.items || []).filter(x => !x.b && !x.virt && !x.h).length : 0; return { low, nobar }; },
-      displaysLate: (can('ship') || can('invoice') || can('newOrder')) ? async () => (await S.DB.list('displays', { where: [['st', 'in', ['open', 'prep']]] })).filter(d => d.due && d.due < today()).length : null,
+      displaysLate: (can('ship') || can('invoice') || can('newOrder')) ? async () => (await (await import('./displays.js')).resumo()).atrasadas : null,
       recvLog: async () => (await S.DB.list('stockLog', { where: [['kind', '==', 'recv']], order: ['at', 'desc'], limit: 5 })) });
     Dash.fill(dctx);
     put('flow', bt('작업 중', 'working') + ' ' + pk.length + ' · 👷 ' + new Set(pk.map(o => o.picker).filter(Boolean)).size + bt('명', '') + ' · ' + bt('출고 전 전체', 'open') + ' ' + live.length);
@@ -454,6 +459,7 @@ async function staffHome() {
       const m = groupBy(iv, x => keyOf(x.d)), vals = keys.map(k => sum(m[k] || [], x => x.total || 0)), bm = Math.max(1, ...vals);
       bars = '<div class="bars" style="height:70px">' + keys.map((k, i) => '<div class="b" style="flex:1;background:#3b82f6;height:' + Math.max(2, Math.round(vals[i] / bm * 100)) + '%" data-v="' + esc(k + ' ' + money(vals[i])) + '" title="' + esc(k + ' ' + money(vals[i])) + '"></div>').join('') + '</div><div class="muted" style="display:flex;justify-content:space-between;font-size:11px"><span>' + esc(keys[0]) + '</span><span>' + esc(keys[keys.length - 1]) + '</span></div>';
     }
+    if (!$('hSales')) return;   /* 매출 상세는 오피스 · 오너 · 관리자만 */
     $('hSales').innerHTML = '<h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + ' · ' + esc(ptxt) + '</h2><div class="hero">' + money(tot) + '</div><div class="heroSub">' + invCount(iv) + '건 · ' + pcs.toLocaleString() + ' pcs' +
       (pv != null ? ' · 바로 앞 기간 ' + money(pv) + ' <b class="' + (tot >= pv ? 'ok' : 'warn') + '">' + (pv ? ((tot - pv) / pv * 100 >= 0 ? '+' : '') + Math.round((tot - pv) / pv * 100) + '%' : '') + '</b>' : '') + '</div>' +
       '<div class="kpi" style="grid-template-columns:1fr 1fr;margin-top:8px">' + Object.keys(byT).sort().map(t => '<div class="tap" data-ivt="' + (t.includes('Jewelry') ? 'J' : 'O') + '"><b>' + money(sum(byT[t], x => x.total || 0)) + '</b><span>' + esc(t) + ' · ' + invCount(byT[t]) + '건</span></div>').join('') + '</div>' + bars +

@@ -5,7 +5,7 @@
  *  세부 화면에서 ‹ 뒤로 · 폰 뒤로가기 = 이 묶음 (Router.parent)
  * ============================================================ */
 import { $, esc, Router, bi, bt } from './ui.js';
-import { can } from './main.js';
+import { can, isOwner } from './main.js';
 import { routeIcon } from './icons.js';
 
 let S = null;
@@ -27,10 +27,9 @@ export const HUBS = {
     ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹 · 받은 날', 'boxes · tracking', () => true],
     ['cat', '📒', '아이템 · 카탈로그', 'Items · Catalog', '검색 · 사진 · 재고 · 위치 · 라벨', 'search · photos · stock · location · labels', () => true]
   ] },
+  /* 📦 재고 묶음 = 조의 화면(옛 WMS)으로 교체 (v0.8.215 · 2026-11-13 관리자: "중복 없애고 조가 만든 것으로 · 주문 흐름은 그대로") — 예전 📦 재고(#/stock) · 🏷 아이템(#/items) 화면은 주소로는 그대로 열림 (주문 화면 · 카탈로그 · 디자인 담당 메뉴가 씀) */
   wh: { icon: '📦', ko: '재고', en: 'Inventory', items: [
-    ['stock', '📦', '재고', 'Inventory', '조회 · 입고(팩킹 리스트) · 실사', 'find · receive · count', () => can('items')],
-    ['items', '🏷', '아이템 · 위치', 'Items · Locations', '찾기 · 📍 통로 · 등록 · 📋 일괄 등록 · 삭제', 'find · aisle · add · bulk paste · delete', () => can('items')],
-    ['estoque', '📦', '재고 (옛 앱 화면)', 'Inventory (classic)', '통로 지도 · 입고 · 출고 · 상자 라벨 (옛 앱 화면)', 'aisle map · stock in · stock out · box labels (classic screen)', () => can('items')],
+    ['estoque', '📦', '재고', 'Inventory', '통로 지도 · 입고 · 출고 · 상자 라벨 (옛 앱 화면)', 'aisle map · stock in · stock out · box labels (classic screen)', () => can('items')],
     ['repor', '🔁', '보충이 필요한 상품', 'Products to restock', '보충 요청 · 시작(한 사람만) · 지난달 판매로 수량 제안 (옛 앱 화면)', 'restock requests · start (one person) · quantity from last month\'s sales (classic screen)', () => can('items'), () => nOpen('reposicao', ['aberta', 'iniciada'])],
     ['recheca', '🔎', '재확인할 상품', 'Products to recheck', '수량 · 통로 확인 요청 · 상자마다 세기 (옛 앱 화면)', 'count · aisle recheck requests · count box by box (classic screen)', () => can('items'), () => nOpen('rechecagem', ['aberta'])],
     ['etiquetas', '🏷', '라벨 출력', 'Print labels', '상품의 상자 · 합치기 · 나누기 · 재고 / 피킹 라벨', 'product boxes · merge · divide · stock / picking labels', () => can('items')],
@@ -62,8 +61,8 @@ export const HUBS = {
   /* 👔 오너 · 관리자 (v0.8.135) */
   biz: { icon: '💼', ko: '경영', en: 'Business', items: [
     ['mg/sales', '📈', '매출', 'Sales', '월별 · 아이템별 · 세일즈맨별 · 연도 비교', 'monthly · by item · by salesman · YoY', () => true],
-    ['mg', '🏭', '경영 현황', 'Business overview', '공장 · 은행 · 1099 · 보너스', 'factories · bank · 1099 · bonus', () => true],
-    ['pay', '🧾', '세일즈맨 정산', 'Salesman settlement', '커미션 · 정산서 · 엑셀', 'commission · statements · Excel', () => S.role === 'admin'],
+    ['mg', '🏭', '경영 현황', 'Business overview', '공장 · 은행 · 1099 · 보너스', 'factories · bank · 1099 · bonus', () => isOwner()],
+    ['pay', '🧾', '세일즈맨 정산', 'Salesman settlement', '커미션 · 정산서 · 엑셀', 'commission · statements · Excel', () => isOwner()],   /* 🔒 관리자 · 오너만 (v0.8.218) */
     ['bossar', '💰', '미수금 현황', 'Receivables', '세일즈맨별 · 에이징 · 오래된 미수', 'by salesman · aging · overdue', () => true],
     ['now', '💵', '수금 현황', 'Collections status', '오늘 · 이번 주 · 세일즈맨별', 'today · this week · by salesman', () => true],
     ['reports', '📊', '판매 리포트', 'Sales reports', '아이템별 · 손님별 · 세일즈맨별 · CSV', 'by item · customer · salesman · CSV', () => true]
