@@ -72,6 +72,13 @@ th{color:var(--muted);font-weight:600}
   body.rail #drawer.dock .dfoot{justify-content:center;margin:8px 6px;padding:8px 0}
   body.dock .wrap{max-width:1360px;padding:20px 24px 0}
 }
+/* 🗂 아래의 옛 홈 묶음 · 매출 상세 — 대시보드 카드와 같은 모양 */
+.hgrp{border:0;border-radius:var(--r);box-shadow:0 0 0 1px var(--line),var(--sh);margin:0 0 12px}.hgrp.open{border:0;box-shadow:0 0 0 1px #bbf7d0,var(--sh)}
+.hgrp .hgh{padding:14px 16px}.hgrp .hgi{width:40px;height:40px;border-radius:10px;background:var(--green2);color:var(--green);display:flex;align-items:center;justify-content:center;flex:none;font-size:20px}
+.hgrp .hgt b{font-size:15.5px;font-weight:800}.hgrp .hgt small b{display:inline;font-size:12.5px}.hgrp .hga{display:inline-flex;color:#94a3b8}
+.wd-det{margin:0 0 12px}.wd-det>summary{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;background:#fff;border-radius:var(--r);box-shadow:0 0 0 1px var(--line),var(--sh);padding:14px 16px;font-weight:700;font-size:14.5px;color:var(--ink2)}.wd-det>summary::-webkit-details-marker{display:none}.wd-det>summary .ic{color:var(--green)}.wd-det>summary .hga{margin-left:auto;display:inline-flex;color:#94a3b8;transition:transform .15s}.wd-det[open]>summary{border-radius:var(--r) var(--r) 0 0}.wd-det[open]>summary .hga{transform:rotate(180deg)}.wd-det>.card{border-radius:0 0 var(--r) var(--r);margin:0}
+.wd-al button span small{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hPrev,#hNext,#hCalT,#hCal{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 /* ---------- 🏠 대시보드 (dash.js) ---------- */
 .wd{display:flex;flex-direction:column;gap:14px;margin-bottom:14px}
 .wd-hd{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}.wd-hd h1{font-size:22px;margin:0;letter-spacing:-.3px}.wd-hd .sub{color:var(--muted);font-size:13.5px;margin-top:2px}

@@ -41,7 +41,7 @@ function quick(ctx) {
   if (can('items')) Q.push(['inb', 'clipCheck', bt('입고 확인', 'Check inbound'), bt('입고 예정 · 대조', 'expected · verify')]);
   if (can('pick')) Q.push([can('assign') ? 'pick' : 'mine', 'cart', bt('픽킹', 'Pick orders'), bt('출고 작업', 'fulfillment')]);
   if (can('ship') || can('invoice')) Q.push(['done', 'package', bt('포장', 'Pack orders'), bt('인보이스 발행 · 포장 대기', 'invoiced · to pack')]);
-  if (can('ship')) Q.push(['notesups', 'truck', bt('UPS 보내기', 'Ship UPS'), bt('박스 · 라벨', 'boxes · label')]);
+  if (can('ship')) Q.push(['notesups', 'truck', bt('택배 보내기 · UPS', 'Ship UPS'), bt('박스 · 라벨', 'boxes · label')]);
   Q.push(['cat', 'search', bt('아이템 찾기', 'Find product'), bt('재고 · 위치 · 사진', 'stock · location · photo')]);
   if (!Q.some(q => q[0] === 'recv') && can('newOrder')) Q.unshift(['new', 'cart', bt('새 주문', 'New order'), bt('가게 고르고 담기', 'pick a store')]);
   return Q.slice(0, 6);
@@ -86,13 +86,13 @@ export function fill(ctx) {
   /* ③ 할 일 · 경고 — 빨강(문제) → 노랑(주의) → 파랑(진행) 순 */
   const A = [];
   if (olds.length) A.push(['old', 'r', 'clock', bt('하루 넘게 밀린 주문', 'Orders waiting 1+ day'), olds.length]);
-  if (ctx.can('ship') && topack.length) A.push(['ups', 'b', 'printer', bt('UPS 라벨 대기', 'UPS labels pending'), topack.length]);
+  if (ctx.can('ship') && topack.length) A.push(['ups', 'b', 'printer', bt('라벨 기다리는 UPS 주문', 'UPS labels pending'), topack.length]);
   if (ctx.can('bo') && bo.length) A.push(['bo', 'a', 'hourglass', bt('백오더', 'Backorders'), bo.length]);
   const al = $('wdAl');
   const paintAl = () => {
     if (!al || !al.isConnected) return;
     const L = A.slice().sort((a, b) => 'rab'.indexOf(a[1]) - 'rab'.indexOf(b[1]));
-    al.innerHTML = L.length ? L.map(a => '<button class="a-' + a[1] + '" data-wa="' + a[0] + '">' + icon(a[2], 18) + '<span>' + a[3] + '</span><em>' + a[4] + '</em><span class="chev" style="flex:none">' + icon('chevRight', 16) + '</span></button>').join('')
+    al.innerHTML = L.length ? L.map(a => '<button class="a-' + a[1] + '" data-wa="' + a[0] + '"' + (a[0] === 'old' ? ' id="hOldB"' : '') + '>' + icon(a[2], 18) + '<span>' + a[3] + (a[0] === 'old' && ctx.oldest ? '<small>' + bt('가장 오래된 것', 'oldest') + ' ' + esc(ctx.oldest.store) + ' · ' + esc(ctx.oldest.t) + '</small>' : '') + '</span><em>' + a[4] + '</em><span class="chev" style="flex:none">' + icon('chevRight', 16) + '</span></button>').join('')
       : '<button class="a-ok" disabled>' + icon('check', 18) + '<span>' + bt('밀린 일 없음 — 모두 정상', 'Nothing pending — all clear') + '</span></button>';
     al.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => ctx.alert(b.dataset.wa));
   };

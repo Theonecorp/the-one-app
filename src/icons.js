@@ -64,6 +64,7 @@ const P = {
   briefcase: '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
   zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
   activity: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+  calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   barcode: '<path d="M3 5v14"/><path d="M8 5v14"/><path d="M12 5v14"/><path d="M17 5v14"/><path d="M21 5v14"/>'
 };
@@ -83,7 +84,7 @@ export const ROUTE_ICON = {
   shiphist: 'history', notesups: 'printer', balcao: 'truck', insert: 'plus', inserts: 'puzzle', displays: 'image',
   entry: 'pen', mine: 'clipList', send: 'send', hist: 'history', ar: 'dollar',
   mysales: 'trend', 'mg/sales': 'trend', mg: 'factory', pay: 'receipt', bossar: 'dollar', reports: 'chart',
-  photos: 'camera', labels: 'printer', admin: 'settings', 'view/menu': 'swap', 'view/salesman': 'car',
+  photos: 'camera', adhoc: 'plus', 'items/new': 'plus', 'items/bulk': 'clipList', new: 'cart', labels: 'printer', admin: 'settings', 'view/menu': 'swap', 'view/salesman': 'car',
   'hub/money': 'wallet', 'hub/smoney': 'wallet', 'hub/look': 'book', 'hub/slook': 'book', 'hub/wh': 'warehouse', 'hub/biz': 'briefcase'
 };
 /** 주문 단계 칸(서랍 · 주문 메뉴) → 아이콘 이름 */
