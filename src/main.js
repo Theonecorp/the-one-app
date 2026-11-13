@@ -206,12 +206,20 @@ function waitScreen(email) {
  *   서랍 내용은 한 곳(drawerRender)에서 만들고, 고정 상태에서는 닫기(close)가 아무것도 안 함 · 주소가 바뀌면 켜진 줄만 다시 칠함 (v0.8.175) */
 const DOCK_MQ = '(min-width:1200px)';
 /* 🧭 서랍 묶음 (v0.8.203) — [키, 아이콘, 한글, 영어, 화면 주소들]. 여기에 없는 화면은 "기타" 묶음으로 (지우지 않음) */
+/* 🧭 v0.8.214 — 옛 WMS 의 왼쪽 메뉴와 같은 묶음 · 같은 순서 (2026-11-13 창고 매니저 요청: "옛 시스템처럼 카테고리를 나눠서")
+ *   메인 · 영업 · 피킹 · 출고 · 인서트 · 조회 · 재고 · 주문 · 재무 · 관리 — 묶음 이름은 옛 앱의 KR / EN / PT 그대로 (PT 는 i18n.json)
+ *   묶음 안의 순서도 이 목록 순서 (옛 메뉴 순서 → 새 앱에만 있는 화면). 옛 앱에 없던 화면은 가장 가까운 묶음에 · 그래도 없으면 "기타" (빠지는 화면 없음) */
 const DGRP = [
-  ['ov', 'dashboard', '개요', 'Overview', ['shome', 'own', 'home', 'catmg', 'flow', 'mg/sales', 'mg', 'reports', 'mysales']],
-  ['ops', 'truck', '운영', 'Operations', ['order', 'invs', 'notesups', 'balcao', 'shiphist', 'track', 'displays']],
-  ['inv', 'warehouse', '재고 관리', 'Inventory', ['stock', 'estoque', 'etiquetas', 'produtos', 'recebimento', 'items', 'cat', 'labels', 'photos', 'insert', 'inserts']],
-  ['fin', 'wallet', '수금 · 재무', 'Finance', ['verify', 'now', 'cod', 'ach', 'bounce', 'credit', 'entry', 'mine', 'send', 'hist', 'ar', 'bossar', 'pay']],
-  ['mgmt', 'settings', '거래처 · 관리', 'Management', ['stores', 'admin']]
+  ['ov', 'dashboard', '메인', 'Main', ['shome', 'own', 'home', 'catmg'], 'Principal'],
+  ['sales', 'cart', '영업', 'Sales', ['order', 'stores', 'mysales'], 'Vendas'],
+  ['sep', 'truck', '피킹', 'Picking', ['flow'], 'Separação'],
+  ['ship', 'truck', '출고', 'Shipping', ['displays', 'notesups', 'balcao', 'shiphist', 'track'], 'Expedição'],
+  ['ins', 'package', '인서트', 'Inserts', ['insert', 'inserts'], 'Inserts'],
+  ['look', 'search', '조회', 'Lookup', ['cat'], 'Consulta'],
+  ['inv', 'warehouse', '재고', 'Inventory', ['produtos', 'etiquetas', 'recebimento', 'estoque', 'repor', 'recheca', 'stock', 'items', 'labels', 'photos'], 'Estoque'],
+  ['mov', 'layers', '주문', 'Orders', [], 'Movimentação'],
+  ['fin', 'wallet', '재무', 'Finance', ['mg', 'mg/sales', 'invs', 'now', 'verify', 'entry', 'mine', 'send', 'hist', 'cod', 'ach', 'bounce', 'credit', 'ar', 'bossar', 'pay'], 'Financeiro'],
+  ['mgmt', 'settings', '관리', 'Management', ['reports', 'admin'], 'Gestão']
 ];
 /** 데스크탑 고정 서랍을 아이콘만 보이게 접었나 (이 컴퓨터에 기억) */
 const railOn = () => { try { return localStorage.getItem('theone.rail') === '1'; } catch (e) { return false; } };
@@ -249,11 +257,12 @@ function drawerRender(dock) {
   let fold = []; try { fold = JSON.parse(localStorage.getItem('theone.dfold') || '[]'); if (!Array.isArray(fold)) fold = []; } catch (e) {}
   const grpOf = r => (DGRP.find(g => g[4].includes(r)) || DGRP.find(g => g[4].includes(r.split('/')[0])) || ['etc'])[0];
   const onR = r => location.hash.indexOf('#/' + r) === 0;
-  const secs = DGRP.concat([['etc', 'layers', '기타', 'Other', []]]).map(g => {
-    const L = flat.filter(x => grpOf(x[0]) === g[0]), withOrd = g[0] === 'ops' && ord;
+  const secs = DGRP.concat([['etc', 'layers', '기타', 'Other', [], 'Outros']]).map(g => {
+    const pos = r => { const k = g[4].indexOf(r); return k >= 0 ? k : g[4].indexOf(r.split('/')[0]) >= 0 ? g[4].indexOf(r.split('/')[0]) : 999; };
+    const L = flat.filter(x => grpOf(x[0]) === g[0]).sort((a, b) => pos(a[0]) - pos(b[0])), withOrd = g[0] === 'sep' && ord;   // 옛 메뉴 순서 · 주문 칸(.dord) = 피킹 묶음
     if (!L.length && !withOrd) return '';
     const live = L.some(x => onR(x[0])) || (withOrd && sNow && sNow !== 'home'), shut = fold.includes(g[0]) && !live;
-    return '<div class="dsec dgrp' + (shut ? ' fold' : '') + '" data-dg="' + g[0] + '"><small class="dgh" data-dgh="' + g[0] + '" role="button" tabindex="0">' + bt(g[2], g[3]) + '<span class="dgc">' + icon('chevDown', 14) + '</span></small>' + L.map(row).join('') + (withOrd ? ord : '') + '</div>';
+    return '<div class="dsec dgrp' + (shut ? ' fold' : '') + '" data-dg="' + g[0] + '"><small class="dgh" data-dgh="' + g[0] + '" role="button" tabindex="0">' + (LANG === 'pt' && g[5] ? esc(g[5]) : bt(g[2], g[3])) + '<span class="dgc">' + icon('chevDown', 14) + '</span></small>' + L.map(row).join('') + (withOrd ? ord : '') + '</div>';
   }).join('');
   const main = '';
   /* ⚙️ 설정 — 서랍에는 한 줄만, 누르면 설정 화면(#/settings) — 서랍을 가볍게 (v0.8.205) */
