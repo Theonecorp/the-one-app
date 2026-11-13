@@ -539,6 +539,10 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 .pl-chips{display:flex;gap:6px;flex-wrap:wrap}.pl-chips button{min-height:40px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);cursor:pointer}.pl-chips button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
 @media (max-width:640px){.pl-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.pl-filters>*{flex:1 1 140px}.pl-filters #plQ,.pl-filters .pl-only{flex:1 1 100%}}
 ` + THEME + `
+/* 🅱 모든 서류(인보이스 · 피킹 · 스테이트먼트 · 크레딧 메모)의 회사 이름 · 손님 이름을 더 굵고 크게 (2026-11-13 관리자: "회사 이름, 손님 이름 등을 강조 — Bold", v0.8.238) */
+#prtbody .ivco{font-weight:900;font-size:23px;letter-spacing:.3px}
+#prtbody .ivpn{font-weight:900;font-size:15px;line-height:1.3}
+#prtbody .docnm{font-weight:900;font-size:15px}#prtbody .doccn{font-weight:900}
 /* ↩ 결제 입력의 미결 CM 칩 (v0.8.232) */
 .chips button.cmchip{background:#fff7ed;border-color:#fdba74;color:#9a3412}
 /* 🏷 타사 제품 — 🧾 담은 것 (맨 위 고정 · 줄마다 − 수량 + 🗑, v0.8.231) */

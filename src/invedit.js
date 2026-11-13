@@ -26,29 +26,47 @@ export async function editInvoice(x, done) {
   try { await loadCatalog(S); } catch (e) {}
   const L = (x.lines || []).map(l => Object.assign({}, l)), memo0 = x.memo || '';
   L.frt = R2(Number(x.ship) || 0); L.dc = Number(x.disc) || 0;   // 🏷 할인 % (이 인보이스만)   // 🚚 운임 (inv.ship — 합계 · 잔액에 더함, 매출 · 커미션 total 에는 안 들어감)
-  const paint = () => {
+  /* ↕ v0.8.238 (관리자: "아이템 하나 넣으면 위로 튀어 올라가고 다시 스크롤 내려 입력") — 전에는 넣을 때마다 창 전체를 새로 그려
+   *   아이템 칸이 새로 만들어짐 → 폰 키보드가 닫히고 화면이 위로 튐. 이제 창 틀(아이템 칸 · 할인 · 운임 · 메모 · 단추)은 한 번만 그리고,
+   *   줄 목록(#ieList)과 합계(#ieSum)만 다시 그림 — 아이템 칸 · 키보드 · 스크롤 자리가 그대로, 방금 넣은 줄이 보이게 목록은 맨 아래로 */
+  const keepMemo = () => { const m = $('ieMemo'); if (m) L.memo = m.value; const f = $('ieFrt'); if (f) L.frt = R2(Math.max(0, Number(f.value) || 0)); const dc = $('ieDc'); if (dc) L.dc = Math.max(0, Math.min(100, Number(dc.value) || 0)); };
+  const linesHtml = () => '<table class="ietbl"><tr><th>' + bt('코드', 'Code') + '</th><th class="r" style="width:70px">' + bt('수량', 'Qty') + '</th><th class="r" style="width:86px">' + bt('가격', 'Price') + '</th><th class="r">' + bt('금액', 'Amount') + '</th><th style="width:34px"></th></tr>' +
+    L.map((l, i) => '<tr' + (l.q > 0 ? '' : ' style="opacity:.45"') + '><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r"><input type="number" inputmode="numeric" min="0" step="1" data-ieq="' + i + '" value="' + (l.q || 0) + '" style="width:62px;text-align:right"></td><td class="r"><input type="number" inputmode="decimal" min="0" step="0.01" data-iep="' + i + '" value="' + l.p + '" style="width:78px;text-align:right"></td><td class="r">' + money(lineTotal(l.q, l.p, L.dc)) + '</td><td><button type="button" class="b-ghost b-sm" data-iex="' + i + '" title="' + esc(bt('줄 지우기', 'Remove line')) + '">🗑</button></td></tr>').join('') + '</table>';
+  const sumHtml = () => {
     const xd = Object.assign({}, x, { disc: L.dc }), r = recalc(xd, L.filter(l => l.q > 0)), old = R2((x.total || 0) + (Number(x.ship) || 0)), now = R2(r.total + L.frt), diff = R2(now - old), bal0 = x.bal != null ? x.bal : old, bal1 = R2(bal0 + diff);
+    return '<div class="kpi" style="margin-top:8px"><div><b>' + money(old) + '</b><span>' + bt('옛 합계', 'Old total') + '</span></div><div><b id="ieNew">' + money(now) + '</b><span>' + bt('새 합계', 'New total') + '</span></div><div><b' + (diff ? ' style="color:' + (diff > 0 ? '#15803d' : '#b91c1c') + '"' : '') + '>' + (diff > 0 ? '+' : '') + money(diff) + '</b><span>' + bt('차이', 'Change') + '</span></div><div><b' + (bal1 < -0.005 ? ' style="color:#b91c1c"' : '') + '>' + money(bal1) + '</b><span>' + bt('새 잔액', 'New balance') + '</span></div></div>' +
+      (bal1 < -0.005 ? '<div class="alert a-amb">⚠️ ' + bt('받은 수금이 새 합계보다 많습니다 — 잔액이 마이너스(가게 크레딧)로 남습니다', 'Payments exceed the new total — the balance becomes a credit') + '</div>' : '');
+  };
+  /** 줄 목록 · 합계만 다시 (아이템 칸 · 메모 칸은 그대로) — toEnd: 방금 넣은 줄이 보이게 목록 맨 아래로 */
+  let LIVE = false;
+  const live = toEnd => {
+    if (LIVE) return setTimeout(() => live(toEnd), 0);   // 칸을 고치다(blur → change) 목록을 다시 그리는 중이면 끝난 뒤에
+    const ls = $('ieList'), y = ls ? ls.scrollTop : 0; if (!ls) return;
+    LIVE = true; try {
+    ls.innerHTML = linesHtml(); $('ieSum').innerHTML = sumHtml();
+    ls.scrollTop = toEnd ? ls.scrollHeight : y;
+    document.querySelectorAll('[data-ieq]').forEach(el => el.onchange = () => { keepMemo(); L[Number(el.dataset.ieq)].q = Math.max(0, Math.floor(Number(el.value) || 0)); live(); });
+    document.querySelectorAll('[data-iep]').forEach(el => el.onchange = () => { keepMemo(); L[Number(el.dataset.iep)].p = R2(Math.max(0, Number(el.value) || 0)); live(); });
+    document.querySelectorAll('[data-iex]').forEach(el => el.onclick = () => { keepMemo(); L[Number(el.dataset.iex)].q = 0; live(); });
+    } finally { LIVE = false; }
+  };
+  const paint = () => {
     $('mbox').innerHTML = '<h2>✏️ ' + bi('인보이스 수정', 'Edit invoice') + ' ' + esc(x.no) + '</h2><div class="muted">' + esc(x.store || '') + ' · ' + esc(x.d || '') + ' — ' + bt('합계 · 잔액 · 재고가 같이 맞춰집니다. 받은 수금은 그대로.', 'Total, balance and stock follow. Payments stay.') + '</div>' +
-      '<div style="max-height:46vh;overflow:auto;margin-top:8px"><table class="ietbl"><tr><th>' + bt('코드', 'Code') + '</th><th class="r" style="width:70px">' + bt('수량', 'Qty') + '</th><th class="r" style="width:86px">' + bt('가격', 'Price') + '</th><th class="r">' + bt('금액', 'Amount') + '</th><th style="width:34px"></th></tr>' +
-      L.map((l, i) => '<tr' + (l.q > 0 ? '' : ' style="opacity:.45"') + '><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r"><input type="number" inputmode="numeric" min="0" step="1" data-ieq="' + i + '" value="' + (l.q || 0) + '" style="width:62px;text-align:right"></td><td class="r"><input type="number" inputmode="decimal" min="0" step="0.01" data-iep="' + i + '" value="' + l.p + '" style="width:78px;text-align:right"></td><td class="r">' + money(lineTotal(l.q, l.p, L.dc)) + '</td><td><button type="button" class="b-ghost b-sm" data-iex="' + i + '" title="' + esc(bt('줄 지우기', 'Remove line')) + '">🗑</button></td></tr>').join('') + '</table></div>' +
+      '<div id="ieList" style="max-height:46vh;overflow:auto;margin-top:8px"></div>' +
       /* ＋ 아이템 추가 — 코드 칸이 단추에 눌려 안 보이던 것(2026-11-12) → 코드 칸이 줄 대부분 · 치면 맞는 아이템 목록(🔎 suggest.js)에서 고름 (v0.8.200) */
       '<div class="ieadd"><label>＋ ' + bi('아이템 추가', 'Add item') + ' <span class="muted" style="font-weight:400">' + bt('코드 · 이름 일부를 치면 목록이 뜹니다 (예: CV)', 'type part of a code or name (e.g. CV)') + '</span></label><div class="ieaddrow"><input id="ieAdd" placeholder="' + esc(bt('아이템 코드 · 바코드 · 이름', 'Item code · barcode · name')) + '" autocapitalize="characters"><input id="ieAddQ" type="number" inputmode="numeric" min="1" value="1" title="' + esc(bt('수량', 'Qty')) + '"><button type="button" class="b-blue" id="ieAddGo">＋ ' + bi('더하기', 'Add') + '</button></div></div>' +
       '<div class="fg" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><div style="width:120px"><label>🏷 ' + bi('할인', 'Discount') + ' %</label><input id="ieDc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="' + (L.dc || '') + '" placeholder="0"></div><div style="width:140px"><label>🚚 ' + bi('운임', 'Freight') + ' $</label><input id="ieFrt" type="number" inputmode="decimal" min="0" step="0.01" value="' + (L.frt ? L.frt.toFixed(2) : '') + '" placeholder="0.00"></div><div style="flex:1;min-width:180px"><label>' + bi('인보이스 메모', 'Invoice memo') + '</label><input id="ieMemo" value="' + esc(L.memo != null ? L.memo : memo0) + '"></div></div>' +
-      '<div class="kpi" style="margin-top:8px"><div><b>' + money(old) + '</b><span>' + bt('옛 합계', 'Old total') + '</span></div><div><b id="ieNew">' + money(now) + '</b><span>' + bt('새 합계', 'New total') + '</span></div><div><b' + (diff ? ' style="color:' + (diff > 0 ? '#15803d' : '#b91c1c') + '"' : '') + '>' + (diff > 0 ? '+' : '') + money(diff) + '</b><span>' + bt('차이', 'Change') + '</span></div><div><b' + (bal1 < -0.005 ? ' style="color:#b91c1c"' : '') + '>' + money(bal1) + '</b><span>' + bt('새 잔액', 'New balance') + '</span></div></div>' +
-      (bal1 < -0.005 ? '<div class="alert a-amb">⚠️ ' + bt('받은 수금이 새 합계보다 많습니다 — 잔액이 마이너스(가게 크레딧)로 남습니다', 'Payments exceed the new total — the balance becomes a credit') + '</div>' : '') +
+      '<div id="ieSum"></div>' +
       '<div class="btns"><button type="button" class="b-ghost" id="ieX">' + bi('닫기', 'Close') + '</button><button type="button" class="b-green" id="ieOk">💾 ' + bi('저장', 'Save') + '</button></div>';
-    const keepMemo = () => { const m = $('ieMemo'); if (m) L.memo = m.value; const f = $('ieFrt'); if (f) L.frt = R2(Math.max(0, Number(f.value) || 0)); const dc = $('ieDc'); if (dc) L.dc = Math.max(0, Math.min(100, Number(dc.value) || 0)); };
-    $('ieFrt').onchange = () => { keepMemo(); paint(); }; $('ieDc').onchange = () => { keepMemo(); paint(); };
-    document.querySelectorAll('[data-ieq]').forEach(el => el.onchange = () => { keepMemo(); L[Number(el.dataset.ieq)].q = Math.max(0, Math.floor(Number(el.value) || 0)); paint(); });
-    document.querySelectorAll('[data-iep]').forEach(el => el.onchange = () => { keepMemo(); L[Number(el.dataset.iep)].p = R2(Math.max(0, Number(el.value) || 0)); paint(); });
-    document.querySelectorAll('[data-iex]').forEach(el => el.onclick = () => { keepMemo(); L[Number(el.dataset.iex)].q = 0; paint(); });
+    live();
+    $('ieFrt').onchange = () => { keepMemo(); live(); }; $('ieDc').onchange = () => { keepMemo(); live(); };
     const add = () => {
       keepMemo(); const it = exactItem($('ieAdd').value), q = Math.max(1, Math.floor(Number($('ieAddQ').value) || 1));
       if (!it) return toast(bt('맞는 아이템 코드가 없습니다', 'No item with that code'), 'bad');
       const cur = L.find(l => l.c === it.c);
       if (cur) cur.q = (cur.q || 0) + q;
       else { const l = { c: it.c, d: it.d, q, p: it.p, lp: it.p, g: productLine(it) }; if (it.k) l.kit = it.k.map(k => ({ c: k[0], q: k[1] })); L.push(l); }
-      paint(); setTimeout(() => { const f = $('ieAdd'); if (f) f.focus(); }, 0);
+      live(true); $('ieAdd').value = ''; $('ieAddQ').value = '1';   // 같은 칸에 바로 다음 아이템 (키보드 그대로)
     };
     $('ieAddGo').onclick = add; $('ieAdd').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
     itemSuggest($('ieAdd'), () => add());   // 🔎 고르면 바로 더함 (수량은 옆 칸)
