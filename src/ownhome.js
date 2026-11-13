@@ -25,7 +25,7 @@ const MAIN = ['month', 'lastm', 'quarter', 'year', 'week'];
 const shiftYear = d => String(Number(d.substring(0, 4)) - 1) + d.substring(4);
 const delta = (a, b) => b ? '<span class="' + (a >= b ? 'ok' : 'warn') + '">' + (a >= b ? '▲' : '▼') + pct(Math.abs(a - b) / b * 100).replace('%', '') + '%</span>' : '<span class="muted">—</span>';
 const tile = (go, h2, hero, sub, body, cls) => '<section class="card wd-card own-c tap' + (cls ? ' ' + cls : '') + '" data-og="' + esc(go) + '"><h2>' + h2 + '</h2>' + (hero ? '<div class="hero">' + hero + '</div>' : '') + (sub ? '<div class="heroSub">' + sub + '</div>' : '') + (body || '') + '</section>';
-/** 🖥 위 숫자 4칸 (v0.8.205 — 컴퓨터 먼저: 넓은 화면은 한 줄 4칸, 폰은 2칸 × 2) · 누르면 그 화면 */
+/** 🖥 위 숫자 4칸 (v0.8.206 — 컴퓨터 먼저: 넓은 화면은 한 줄 4칸, 폰은 2칸 × 2) · 누르면 그 화면 */
 const kpiDelta = (a, b) => b ? '<span class="kd' + (a >= b ? '' : ' dn') + '">' + (a >= b ? '▲' : '▼') + Math.round(Math.abs(a - b) / b * 100) + '%</span>' : '';
 const kpi = (go, ic, cls, label, val, d) => '<button type="button" class="wd-kpi ' + cls + '" data-ogk="' + esc(go) + '"><span class="ki">' + icon(ic, 22) + '</span><span class="kt"><span>' + label + '</span><b>' + val + '</b></span>' + (d || '') + '</button>';
 const months = (from, to) => { const L = []; let m = from.substring(0, 7); while (m <= to.substring(0, 7)) { L.push(m); const y = Number(m.substring(0, 4)), mm = Number(m.substring(5, 7)); m = mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0'); } return L; };

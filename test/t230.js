@@ -1,4 +1,4 @@
-/* v0.8.205 시험 — 🏭 오너 · 관리자 홈(own) 새 디자인, 컴퓨터 먼저: 머리(기간 칩) · 숫자 4칸(매출 · 들어온 돈 · 미수금 · 공장 미지급, 누르면 그 화면) · 상세 2열(넓은 화면) · 폰은 한 열 · 숫자 칸 이름이 잘리지 않음 */
+/* v0.8.206 시험 — 🏭 오너 · 관리자 홈(own) 새 디자인, 컴퓨터 먼저: 머리(기간 칩) · 숫자 4칸(매출 · 들어온 돈 · 미수금 · 공장 미지급, 누르면 그 화면) · 상세 2열(넓은 화면) · 폰은 한 열 · 숫자 칸 이름이 잘리지 않음 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
