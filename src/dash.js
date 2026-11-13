@@ -37,7 +37,7 @@ export function frame(ctx) {
 /** 빠른 작업 — [키, 아이콘, 이름, 설명]. 권한 있는 것만 · 누르면 원래 있던 화면으로 */
 function quick(ctx) {
   const can = ctx.can, Q = [];
-  if (can('items')) Q.push(['recv', 'packagePlus', bt('입고', 'Receive'), bt('팩킹 리스트 · 박스', 'packing list')]);
+  if (can('items')) Q.push(['recv', 'packagePlus', bt('입고', 'Receive'), bt('상품 받기 · REC', 'received products · REC')]);
   if (can('items')) Q.push(['inb', 'clipCheck', bt('입고 확인', 'Check inbound'), bt('입고 예정 · 대조', 'expected · verify')]);
   if (can('pick')) Q.push([can('assign') ? 'pick' : 'mine', 'cart', bt('픽킹', 'Pick orders'), bt('출고 작업', 'fulfillment')]);
   if (can('ship') || can('invoice')) Q.push(['done', 'package', bt('포장', 'Pack orders'), bt('인보이스 발행 · 포장 대기', 'invoiced · to pack')]);
