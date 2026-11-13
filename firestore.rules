@@ -144,7 +144,14 @@ service cloud.firestore {
     match /prodExtra/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /prodCusto/{id} { allow read, write: if isAdmin(); }
     match /rechecagem/{id} { allow read: if registered(); allow write: if itemJob(); }
-    match /reposicao/{id} { allow read: if registered(); allow write: if itemJob(); }
+    // 🔁 채우기 요청 — 맡기(iniciadaPor)는 비어 있을 때 자기 이메일로만 · 놓기는 '' 로만 · 남이 맡은 문서를 다른 사람으로 덮어쓰지 못함 (옛 rpc_iniciar_reposicao 의 "iniciada_por is null" 잠금)
+    match /reposicao/{id} {
+      allow read: if registered();
+      allow create, delete: if itemJob();
+      allow update: if itemJob() && (request.resource.data.get('iniciadaPor', '') == resource.data.get('iniciadaPor', '')
+        || request.resource.data.get('iniciadaPor', '') == ''
+        || (resource.data.get('iniciadaPor', '') == '' && request.resource.data.get('iniciadaPor', '') == email()));
+    }
     match /etqEventos/{id} { allow read: if registered(); allow create: if itemJob(); }   // 기록은 쌓기만 (고치거나 지우지 않음)
     match /estornos/{id} { allow read: if registered(); allow create: if itemJob(); allow update, delete: if isAdmin(); }   // 요청은 재고 담당이, 승인 · 거절은 관리자 · 오너가
     // 📥 상품 받기 (옛 WMS 의 Produtos recebidos) — REC(cargas) · 받은 줄(recebimentos) · 받은 사진(recebFotos, 작은 JPEG) · REC 인보이스(cargaInvoice, 관리자 · 오너만)

@@ -1,6 +1,7 @@
 /* ============================================================
  *  🗂 묶음 메뉴 (담당자) — 아래 메뉴는 큰 묶음 몇 개만, 누르면 그 안의 세부 화면 타일
  *    hub/money 💵 수금 · 크레딧 · 체크   hub/look 📚 조회 (인보이스 · 거래처 · 배송 · 카탈로그)   hub/wh 📦 재고 · 아이템
+ *    칸의 8번째 값(있으면) = 숫자를 돌려주는 함수 → 칸 위에 빨간 숫자 (🔁 채울 상품 · 🔎 확인할 상품의 열린 요청)
  *  세부 화면에서 ‹ 뒤로 · 폰 뒤로가기 = 이 묶음 (Router.parent)
  * ============================================================ */
 import { $, esc, Router, bi, bt } from './ui.js';
@@ -26,6 +27,8 @@ export const HUBS = {
   ] },
   wh: { icon: '📦', ko: '재고', en: 'Inventory', items: [
     ['estoque', '📦', '재고', 'Inventory', '통로 지도 · 입고 · 출고 · 상자 라벨 (옛 앱 화면)', 'aisle map · stock in · stock out · box labels (classic screen)', () => can('items')],
+    ['repor', '🔁', '보충이 필요한 상품', 'Products to restock', '보충 요청 · 시작(한 사람만) · 지난달 판매로 수량 제안 (옛 앱 화면)', 'restock requests · start (one person) · quantity from last month\'s sales (classic screen)', () => can('items'), () => nOpen('reposicao', ['aberta', 'iniciada'])],
+    ['recheca', '🔎', '재확인할 상품', 'Products to recheck', '수량 · 통로 확인 요청 · 상자마다 세기 (옛 앱 화면)', 'count · aisle recheck requests · count box by box (classic screen)', () => can('items'), () => nOpen('rechecagem', ['aberta'])],
     ['etiquetas', '🏷', '라벨 출력', 'Print labels', '상품의 상자 · 합치기 · 나누기 · 재고 / 피킹 라벨', 'product boxes · merge · divide · stock / picking labels', () => can('items')],
     ['produtos', '🏷', '상품', 'Products', '상품 목록 · 걸러보기 · 등록 · 수정 · 빈 상자 · 확인 요청 (옛 앱 화면)', 'product list · filters · add · edit · empty box · recheck (classic screen)', () => can('items')],
     ['recebimento', '📥', '상품 받기', 'Received products', 'REC 번호 · 들어온 상품 · 상자 수 · 재고 넣기 · 다른 REC 로 (옛 앱 화면)', 'REC numbers · items received · box count · into stock · move between RECs (classic screen)', () => can('items')],
@@ -62,6 +65,8 @@ export const HUBS = {
     ['reports', '📊', '판매 리포트', 'Sales reports', '아이템별 · 손님별 · 세일즈맨별 · CSV', 'by item · customer · salesman · CSV', () => true]
   ] }
 };
+/** 칸의 숫자 (열린 요청 수) — 개수만 읽음 */
+const nOpen = (col, st) => S.DB.count ? S.DB.count(col, { where: [['status', 'in', st]] }) : S.DB.list(col, { where: [['status', 'in', st]] }).then(r => r.length);
 /** 이 묶음에서 지금 사람이 쓸 수 있는 칸 */
 export const hubItems = k => (HUBS[k] ? HUBS[k].items.filter(x => { try { return x[6](); } catch (e) { return false; } }) : []);
 
@@ -71,4 +76,6 @@ function page(arg) {
     '<div class="hgrid hubgrid">' + L.map(x => '<button class="htile" data-hub="' + esc(x[0]) + '"><span class="hi">' + x[1] + '</span><b>' + bi(x[2], x[3]) + '</b><small>' + bt(x[4], x[5]) + '</small></button>').join('') + '</div>' +
     (L.length ? '' : '<div class="card"><div class="none">' + bt('이 일에는 볼 화면이 없습니다', 'Nothing here for this job') + '</div></div>');
   document.querySelectorAll('[data-hub]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hub.split('/'); Router.go(r, a); });   // mg/sales 처럼 칸이 있는 화면도
+  /* 열린 요청 수 — 칸 오른쪽 위 빨간 숫자 (옛 앱 메뉴의 숫자) */
+  L.forEach(x => { if (!x[7]) return; Promise.resolve().then(x[7]).then(n => { const el = document.querySelector('[data-hub="' + x[0] + '"]'); if (!el || !(n > 0)) return; el.style.position = 'relative'; el.insertAdjacentHTML('beforeend', '<i class="hbadge" style="position:absolute;top:8px;right:8px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#d93025;color:#fff;font:700 12px/22px system-ui,sans-serif;font-style:normal">' + n + '</i>'); }).catch(() => {}); });
 }

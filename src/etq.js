@@ -10,6 +10,7 @@
  *    etqEventos/{id}    = { codigo, code, tipo: criada|entrada|baixa|qtd_editada|encerrada|excluida|somada|dividida, detalhe, por, porNome, em }
  *    estornos/{id}      = { movId, code, delta, etq, motivo, motivoTipo, por, porNome, em, status: aberto|aprovado|recusado, resposta, resolvidoPor, resolvidoEm }
  *    stock/{code}.qty 와 stockLog 는 stock.js 의 moveStock 으로 (applyMoves 와 같은 모양 + etq · origem)
+ *    reposicao/{id} (🔁 채울 상품) — 상자에서 꺼내거나(출고 · 상자 수량 줄이기 · 상자 삭제) 들어오면(입고 · + 조정 · + 실사) 그 상품의 열린 요청을 같은 batch 로 닫음 (옛 DB 트리거 trg_resolver_reposicao · rpc_baixar_etiqueta*)
  *  인쇄는 옛 앱의 인쇄 에이전트 대신 브라우저 인쇄 (printOpen) — 라벨 크기마다 @page (estoque-css.js ES_PRT_CSS)
  * ============================================================ */
 import { $, esc, toast, printOpen, closeModal } from './ui.js';
@@ -147,6 +148,11 @@ function etqDoc(codigo, p, q) { return { codigo, code: p.id, nome: p.descricao |
 function evento(codigo, code, tipo, detalhe) { return { op: 'set', col: 'etqEventos', id: newId('EV'), data: { codigo, code, tipo, detalhe: detalhe || {}, por: S.user.email, porNome: quem(), em: now() } }; }
 const fecha = q => q > 0 ? { ativa: true, encerradoEm: '', encerradoPor: '' } : { ativa: false, encerradoEm: now(), encerradoPor: S.user.email };
 function exigir() { if (!podeMexer()) throw new Error(L3('재고 담당만 할 수 있습니다.', 'Only stock staff can do this.', 'Só quem mexe no estoque pode fazer isso.')); }
+/** 🔁 그 상품의 열린 채우기 요청을 닫는 batch 줄 (옛: 라벨 출고 · 입고가 요청을 닫음) — como: 'baixa' | 'entrada' */
+async function repFecha(code, como) {
+  let L = []; try { if (S.DB.fresh) S.DB.fresh('reposicao'); L = await S.DB.list('reposicao', { where: [['code', '==', String(code).toUpperCase()]] }); } catch (e) { return []; }
+  return L.filter(x => x.status === 'aberta' || x.status === 'iniciada').map(x => ({ op: 'update', col: 'reposicao', id: x.id, data: { status: 'resolvida', resolvidaEm: now(), resolvidaPor: S.user.email, resolvidaPorNome: quem(), resolvidaComo: como } }));
+}
 
 /** 옛 aviso entrada_recente — 같은 상품이 24시간 안에 들어온 적이 있으면 묻기 */
 export async function entradaRecente(code) {
@@ -169,7 +175,7 @@ export async function entrada(code, q, o) {
     const e = await S.DB.get('etiquetas', o.existente); if (!e || e.code !== p.id) throw new Error(L3('다른 상품의 라벨입니다.', 'That label belongs to another product.', 'Essa etiqueta pertence a outro produto.'));
     if (!e.ativa) throw new Error(L3('이미 닫힌 라벨입니다.', 'That label is already closed.', 'Essa etiqueta já foi encerrada.'));
     const para = (Number(e.qtdRestante) || 0) + q, ini = (Number(e.qtdInicial) || 0) + q;
-    const r = await moveStock([{ c: p.id, delta: q, etq: e.codigo || o.existente }], 'recv', o.ref || o.existente, motivo, { vazia: true, origem: o.origem || 'estoque', extra: [{ op: 'update', col: 'etiquetas', id: o.existente, data: { qtdInicial: ini, qtdRestante: para } }, evento(o.existente, p.id, 'entrada', { qtd_somada: q, de: para - q, para })].concat(o.marcar ? o.marcar([o.existente]) : []) });
+    const r = await moveStock([{ c: p.id, delta: q, etq: e.codigo || o.existente }], 'recv', o.ref || o.existente, motivo, { vazia: true, origem: o.origem || 'estoque', extra: [{ op: 'update', col: 'etiquetas', id: o.existente, data: { qtdInicial: ini, qtdRestante: para } }, evento(o.existente, p.id, 'entrada', { qtd_somada: q, de: para - q, para })].concat(o.marcar ? o.marcar([o.existente]) : [], await repFecha(p.id, 'entrada')) });
     notarSaldo(p.id, r.saldo[p.id]);
     return { saldo: r.saldo[p.id], codigo: o.existente, codigos: [o.existente], qtd: q, qtd_inicial: ini, qtd_restante: para, sku: p.id, nome: p.descricao, barcode: p.barcode, corredor: p.corredor, existente: true };
   }
@@ -178,6 +184,7 @@ export async function entrada(code, q, o) {
   const extra = [];
   cods.forEach((c, i) => { extra.push({ op: 'set', col: 'etiquetas', id: c, data: etqDoc(c, p, q) }); extra.push(evento(c, p.id, 'criada', Object.assign({ qtd_inicial: q, corredor: p.corredor }, n > 1 ? { lote: (i + 1) + '/' + n } : {}))); });
   if (o.marcar) o.marcar(cods).forEach(x => extra.push(x));   // 📥 상품 받기: 받은 줄 표시를 같은 batch 로
+  (await repFecha(p.id, 'entrada')).forEach(x => extra.push(x));
   const r = await moveStock(cods.map((c, i) => ({ c: p.id, delta: q, etq: c, note: n > 1 ? 'etiqueta ' + (i + 1) + '/' + n : '' })), 'recv', o.ref || cods[0], motivo, { vazia: true, origem: o.origem || 'estoque', extra });
   notarSaldo(p.id, r.saldo[p.id]);
   return { saldo: r.saldo[p.id], codigo: cods[0], codigos: cods, etiquetas: n, qtd: q, total: n * q, sku: p.id, nome: p.descricao, barcode: p.barcode, corredor: p.corredor, criado_em: now() };
@@ -203,6 +210,7 @@ export async function baixarLote(code, itens, semEtq, motivo) {
   }
   if (semEtq > 0) moves.push({ c: p.id, delta: -Math.floor(semEtq), note: L3('라벨 없는 재고', 'unlabeled stock', 'saldo sem etiqueta') });
   if (!moves.length) throw new Error(t('r_qtd_inv'));
+  (await repFecha(p.id, 'baixa')).forEach(x => extra.push(x));
   const r = await moveStock(moves, 'out', moves[0].etq || '', motivo || t('es_saida_motivo'), { partial: true, origem: 'estoque', extra });
   notarSaldo(p.id, r.saldo[p.id]);
   return { baixado: r.pedido, aplicado: r.aplicado, parcial: r.partial, saldo_produto: r.saldo[p.id] };
@@ -216,6 +224,7 @@ export async function editarQtd(codigo, para, motivo, tipo) {
   const extra = [{ op: 'update', col: 'etiquetas', id: codigo, data: Object.assign({ qtdRestante: para }, fecha(para)) }, evento(codigo, e.code, 'qtd_editada', { de, para, motivo: motivo, motivo_tipo: tipo || 'Other' })];
   if (!para && e.ativa) extra.push(evento(codigo, e.code, 'encerrada', { motivo: 'quantidade zerada na edicao' }));
   if (!delta) { await S.DB.batch(extra); return { saldo: (prod(e.code) || {}).qtd }; }
+  if (delta < 0) (await repFecha(e.code, 'baixa')).forEach(x => extra.push(x));   // 손으로 꺼냄 = 출고와 같음 (옛 5FQ) · 늘리는 고침은 닫지 않음
   const r = await moveStock([{ c: e.code, delta, etq: codigo }], 'adj', codigo, L3('상자 수량 수정', 'Box correction', 'Ajuste da caixa/etiqueta') + ' ' + codigo + ' · ' + motivo, { origem: 'estoque', extra, log: { motivoTipo: tipo || 'Other' } });
   notarSaldo(e.code, r.saldo[e.code]);
   return { saldo: r.saldo[e.code] };
@@ -227,6 +236,7 @@ export async function excluirEtiqueta(codigo, motivo, tipo) {
   const e = await S.DB.get('etiquetas', codigo); if (!e) throw new Error(L3('라벨이 없습니다.', 'Label not found.', 'Etiqueta não encontrada.'));
   const q = Number(e.qtdRestante) || 0;
   const extra = [evento(codigo, e.code, 'excluida', { qtd_restante: q, motivo, motivo_tipo: tipo || 'Other', doc: e }), { op: 'del', col: 'etiquetas', id: codigo }];
+  if (q > 0) (await repFecha(e.code, 'baixa')).forEach(x => extra.push(x));
   if (q > 0) { const r = await moveStock([{ c: e.code, delta: -q, etq: codigo }], 'adj', codigo, L3('상자 삭제', 'Box deleted', 'Exclusão da caixa/etiqueta') + ' ' + codigo + ' · ' + motivo, { partial: true, origem: 'estoque', extra }); notarSaldo(e.code, r.saldo[e.code]); return { saldo: r.saldo[e.code] }; }
   await S.DB.batch(extra); return { saldo: (prod(e.code) || {}).qtd };
 }
@@ -269,12 +279,52 @@ export async function dividir(codigo, o) {
 }
 /** 라벨 없는 재고 ± (옛 rpc_ajustar_estoque — 책상에서: 모자라면 거절) */
 export async function ajusteDireto(code, delta, motivo) {
-  exigir(); const r = await moveStock([{ c: code, delta }], delta > 0 ? 'recv' : 'out', '', motivo || t('es_saida_motivo'), { origem: 'estoque', vazia: delta > 0 });
+  exigir(); const extra = delta > 0 ? await repFecha(code, 'entrada') : [];
+  const r = await moveStock([{ c: code, delta }], delta > 0 ? 'recv' : 'out', '', motivo || t('es_saida_motivo'), { origem: 'estoque', vazia: delta > 0, extra });
   notarSaldo(code, r.saldo[code]); return { saldo: r.saldo[code] };
 }
 /** 통로 옮기기 — items.js 의 📍 위치 바꾸기와 같은 길 (editCatalog + setLoc) */
 export async function definirCorredor(codes, corr) {
   exigir(); await editCatalog(S, rows => setLoc(rows, codes, corr)); notarCorredor(codes, corr);
+}
+
+/** 🔎 확인(옛 rpc_rechecagem_resolver) — 센 수량을 재고에 (stockLog kind 'count' · 이유 Physical Count)
+ *  o.caixas [{codigo, qtd}] = 상자마다 센 수 (+ o.nova 상자 밖 낱개 → 새 상자) · 재고 = 합 / 아니면 o.qtd = 라벨 없는 재고의 센 수
+ *  o.fechar(결과) → 같은 batch 에 넣을 요청 닫기 줄 · 상자는 다시 읽어 확인 (다른 상품 · 닫힘 · 세는 동안 들어온 상자는 거절) */
+export async function conferir(code, o) {
+  exigir(); code = String(code).toUpperCase(); const p = prod(code) || { id: code, descricao: code, barcode: '', corredor: '' };
+  if (S.DB.fresh) { S.DB.fresh('stock'); S.DB.fresh('etiquetas'); }
+  const st = await S.DB.get('stock', code), antes = st ? Number(st.qty) || 0 : 0, ops = [];
+  let depois, mudou = 0, nova = Math.floor(Number(o.nova) || 0), novaCod = '';
+  if (nova < 0) throw new Error(t('r_qtd_inv'));
+  if (o.caixas) {
+    const vistos = []; let soma = 0;
+    for (const c of o.caixas) {
+      const cod = String(c.codigo || '').toUpperCase(), q = Math.floor(Number(c.qtd));
+      if (!cod || vistos.indexOf(cod) >= 0) throw new Error(L3('같은 라벨이 두 번 있습니다.', 'The same label appears twice.', 'A caixa ' + cod + ' veio duas vezes.'));
+      if (!(q >= 0)) throw new Error(L3('수량이 맞지 않습니다: ' + cod, 'Invalid quantity: ' + cod, 'Quantidade inválida na caixa ' + cod + '.'));
+      const e = await S.DB.get('etiquetas', cod);
+      if (!e) throw new Error(L3('라벨 ' + cod + ' 이 없습니다.', 'Label ' + cod + ' not found.', 'A caixa ' + cod + ' não existe.'));
+      if (e.code !== code) throw new Error(L3('다른 상품의 라벨입니다: ' + cod, 'Label ' + cod + ' belongs to another product.', 'A caixa ' + cod + ' é de outro produto.'));
+      if (!e.ativa) throw new Error(L3('라벨 ' + cod + ' 은 이미 닫혔습니다. 다시 여세요.', 'Label ' + cod + ' was closed. Open the count again.', 'A caixa ' + cod + ' já foi encerrada. Abra a conferência de novo.'));
+      vistos.push(cod); soma += q; const de = Number(e.qtdRestante) || 0;
+      if (q !== de) { mudou++; ops.push({ op: 'update', col: 'etiquetas', id: cod, data: Object.assign({ qtdRestante: q }, fecha(q)) }, evento(cod, code, 'qtd_editada', { de, para: q, motivo: o.motivo || 'Conferência', motivo_tipo: 'Physical Count' })); if (!q) ops.push(evento(cod, code, 'encerrada', { motivo: 'zerada na conferência' })); }
+    }
+    const faltou = (await S.DB.list('etiquetas', { where: [['code', '==', code]] })).filter(e => e.ativa && vistos.indexOf(e.codigo || e.id) < 0).map(e => e.codigo || e.id);
+    if (faltou.length) throw new Error(L3('세는 동안 상자 ' + faltou.join(', ') + ' 이 들어왔습니다. 닫고 다시 여세요.', 'Box ' + faltou.join(', ') + ' came in while you were counting. Close and open the count again.', 'A caixa ' + faltou.join(', ') + ' entrou enquanto você conferia. Feche e abra a conferência de novo.'));
+    if (nova > 0) { novaCod = await novoCodigo(new Set(vistos)); const d = etqDoc(novaCod, p, nova); ops.push({ op: 'set', col: 'etiquetas', id: novaCod, data: d }, evento(novaCod, code, 'criada', { qtd_inicial: nova, corredor: p.corredor || '', motivo: 'achada fora de caixa na conferência' })); }
+    depois = soma + nova;
+  } else {
+    if (nova) throw new Error(L3('상자 밖 낱개는 상자별 확인에서만.', 'Loose pieces only in a box-by-box count.', 'Peças fora de caixa só entram na conferência por caixa.'));
+    depois = Math.floor(Number(o.qtd)); if (!(depois >= 0)) throw new Error(t('r_qtd_inv'));
+  }
+  const delta = depois - antes, ajustado = !!(delta || mudou || nova || o.mudouOutro);
+  if (delta > 0) (await repFecha(code, 'entrada')).forEach(x => ops.push(x));   // + 실사 = 들어온 것 (옛 트리거: Entrada)
+  const res = { antes, depois, delta, ajustado, caixasAlteradas: mudou, novaEtiqueta: novaCod };
+  if (o.fechar) ops.push(o.fechar({ resultado: ajustado ? 'ajustado' : 'confirmado', qtdAntes: antes, contado: depois, ajuste: delta, caixasAlteradas: mudou, novaEtiqueta: novaCod }));
+  if (delta) { const r = await moveStock([{ c: code, delta }], 'count', o.ref || '', o.motivo || 'Conferência', { origem: 'conferencia', vazia: delta > 0, extra: ops, log: { motivoTipo: 'Physical Count', contado: depois } }); notarSaldo(code, r.saldo[code]); res.depois = r.saldo[code]; }
+  else if (ops.length) await S.DB.batch(ops);
+  return res;
 }
 
 /* ---------- 내 움직임 · 되돌리기(estorno) ---------- */
