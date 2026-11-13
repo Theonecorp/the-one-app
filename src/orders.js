@@ -68,6 +68,21 @@ const isCr = () => !!(O && O.kind === 'credit');
 export function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
 function newNo() { const d = today().replace(/-/g, '').substring(2); return 'O' + d + '-' + Math.floor(Math.random() * 1679616).toString(36).toUpperCase().padStart(4, '0'); }
 /** 📤 보낼 때 붙이는 칸 — 주문 날짜(d · ym)는 보낸 날로, 처음 시작한 날이 다르면 d0 에 남김 (v0.8.174: 임시로 묵힌 주문이 옛 날짜로 접수되던 문제) */
+/* 🔢 세일즈 오더 번호 SA-000001 … SA-999999 → SB-000001 … (회사로 보낼 때 정해짐 · counters/so.n 트랜잭션이라 동시에 보내도 겹치지 않음 · v0.8.227) */
+export const SO_MAX = 999999;
+export function soNo(n) { n = Math.max(1, Math.floor(Number(n) || 1)); const k = Math.floor((n - 1) / SO_MAX), r = ((n - 1) % SO_MAX) + 1; return 'S' + String.fromCharCode(65 + Math.min(k, 25)) + '-' + String(r).padStart(6, '0'); }
+export const isSo = no => /^S[A-Z]-\d{6}$/.test(String(no || ''));
+export async function takeSo() { return soNo(await S.DB.seq('so', 'n', 1)); }
+/** 보낸 주문에 번호 붙이기 — 이미 SA 번호면 그대로 · 서버에 이미 붙어 있으면 그 번호 (다시 보내기 · 재시도에 새 번호를 쓰지 않게) · 크레딧은 CM 번호라 제외 */
+export async function soStamp(o) {
+  if (!o || isSo(o.no) || o.kind === 'credit') return null;
+  let cur = null;
+  try { cur = await S.DB.get('orders', o.id); }
+  catch (e) { if (!/permission/i.test(String(e.code || e.message))) throw e; }   // 세일즈맨: 아직 없는 주문은 규칙상 못 읽음 = 새 주문 · 그 밖의 실패(인터넷)는 번호 없이 다음에 다시
+  if (cur && isSo(cur.no)) return { no: cur.no, tmpNo: cur.tmpNo || o.no };
+  if (cur && cur.st && cur.st !== 'draft') return null;   // 예전에 이미 보낸 주문(옛 O 번호)을 고쳐 저장 — 번호 그대로
+  return { no: await takeSo(), tmpNo: o.no };
+}
 export function sendStamp(o) { const now = new Date().toISOString(), t = today(); const x = { st: 'sent', sentAt: now, updatedAt: now, d: t, ym: ym(t) }; if (o.d && o.d !== t && !o.d0) x.d0 = o.d; return x; }
 /** 같은 주소면 hashchange 가 안 생기므로 직접 엶 */
 export function goOrder(id) { if (location.hash === '#/order/' + encodeURIComponent(id)) pageOrder(id); else Router.go('order', id); }
@@ -91,6 +106,10 @@ export async function syncOutbox(quiet) {
   for (const id of ids) {
     const x = box[id];
     try {
+      if (x.o.st && x.o.st !== 'draft' && !isSo(x.o.no)) {   /* 🔢 보내지는 순간 번호 — 먼저 폰 보관함에 적어 두고 올림 (올리다 끊겨도 다음에 같은 번호) */
+        const sx = await withTimeout(soStamp(x.o), 20000);
+        if (sx) { Object.assign(x.o, sx); const b2 = readOut(); if (b2[id] && b2[id].at === x.at) { b2[id].o = x.o; writeOut(b2); } }
+      }
       await withTimeout(S.DB.batch([{ op: 'set', col: 'orders', id, data: x.o }, { op: 'set', col: 'orderLines', id, data: { sm: x.o.sm, lines: x.lines } }]), 20000);
       const now = readOut(); if (now[id] && now[id].at === x.at) { delete now[id]; writeOut(now); } sent++;
     } catch (e) {
@@ -1430,6 +1449,7 @@ async function saveOrder(st) {
   const id = O.id, acct = base.acct, store = base.store, kd = O.kind; O = null; clearWip(kd);
   busy(true); const r = await syncOutbox(true); busy(false);
   const left = !!readOut()[id];
+  if (kd === 'credit' && isStaff() && st === 'sent' && !left) { toast('↩ ' + bt('크레딧 요청을 고쳤습니다 — 확인 후 CM 발행', 'Credit request updated — review and issue the CM'), 'good'); return goOrder(id); }   // ✏️ 사무실이 확인 대기 크레딧을 고친 뒤 → 다시 확인 화면 (v0.8.227)
   if (kd === 'credit') { toast(left ? '📱 ' + bt('폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다', 'Saved on the phone') : '↩ ' + bt('크레딧 저장 — 보낼 주문에서 주문과 같이 보냅니다', 'Credit saved — send it with your orders'), left ? '' : 'good'); return Router.go(Router.home || 'order'); }
   toast(left ? '📱 폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다' : (st === 'sent' ? '보냈습니다 📤' : '저장했습니다 — 수정 · 추가는 보내기 전까지 자유, 하루 치는 "보낼 주문"에서 한 번에 보냅니다'), left ? '' : 'good');
   /* 💵 그 가게에 받을 돈이 있으면 "수금할 것 있나요?" → 수금 입력으로 바로 (v0.8.185) */

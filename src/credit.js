@@ -353,13 +353,23 @@ export async function reviewRequest(o, lines) {
   $('page').innerHTML = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">↩ ' + bi('크레딧 요청', 'Credit request') + ' ' + esc(o.no) + ' ' + stT + '</h2><div style="font-size:17px;font-weight:800;margin-top:6px">' + esc(o.store) + '</div><div class="muted">' + esc(o.acct || '') + ' · ' + esc(o.sm || '') + ' · ' + esc(o.d || '') + '</div></div><button class="b-ghost b-sm" id="crrBack">‹ ' + bt('목록', 'List') + '</button></div>' +
     '<div class="hero" style="font-size:26px;color:#b45309">−' + money(sub) + '</div><div class="heroSub">' + bt('사유', 'Reason') + ': <b>' + esc(o.why || '—') + '</b>' + (o.memo ? ' — ' + esc(o.memo) : '') + (o.dback != null ? ' · 🏷 ' + bt('할인 백', 'Discount back') + ' <b>' + o.dback + '%</b>' : '') + ' · ' + L.length + bt('줄 · ', ' lines · ') + q + bt('개', ' pcs') + '</div>' +
     (o.st === 'x' ? '<div class="alert a-red">✕ ' + esc(o.cancelWhy || '') + '</div>' : '') +
-    (can2 ? '<div class="btns" style="margin-top:10px;flex-wrap:wrap"><button class="b-ghost" id="crrX">✕ ' + bt('취소', 'Cancel') + '</button><button class="b-blue" id="crrOk" style="background:#b45309;flex:1 1 auto">↩ ' + bi('크레딧 확정 — CM 발행', 'Confirm credit — issue CM') + '</button></div><div class="hint">' + bt('확정하면 CM 번호가 생기고 가게 잔액에서 빠집니다. 세일즈맨에게 알림이 갑니다.', 'Confirming issues the CM number and takes it off the store balance. The salesman is notified.') + '</div>' : '') +
+    (can2 ? '<div class="btns" style="margin-top:10px;flex-wrap:wrap"><button class="b-ghost" id="crrEd">✏️ ' + bt('수정', 'Edit') + '</button><button class="b-ghost" id="crrDel" style="color:#991b1b">🗑 ' + bt('삭제', 'Delete') + '</button><button class="b-ghost" id="crrX">✕ ' + bt('취소', 'Cancel') + '</button><button class="b-blue" id="crrOk" style="background:#b45309;flex:1 1 auto">↩ ' + bi('크레딧 확정 — CM 발행', 'Confirm credit — issue CM') + '</button></div><div class="hint">' + bt('확정하면 CM 번호가 생기고 가게 잔액에서 빠집니다. 세일즈맨에게 알림이 갑니다.', 'Confirming issues the CM number and takes it off the store balance. The salesman is notified.') + ' ' + bt('✏️ 수정: 줄 · 수량 · 할인 백 · 사유 고치기 · 🗑 삭제: 중복 요청 등 기록 없이 지우기 · ✕ 취소: 사유를 남기고 취소', '✏️ Edit lines · qty · discount back · reason · 🗑 Delete a duplicate without a trace · ✕ Cancel with a reason') + '</div>' : '') +
     (o.cmNo ? '<div class="btns" style="justify-content:flex-start"><button class="b-ghost b-sm" id="crrCm">📄 ' + esc(o.cmNo) + '</button></div>' : '') + '</div>' +
     '<div class="card"><h2>' + bt('아이템', 'Items') + ' ' + L.length + '</h2><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('단가', 'Unit') + '</th><th class="r">' + bt('크레딧', 'Credit') + '</th></tr>' +
     L.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d) + (l.dc ? ' · ' + bt('목록가', 'list') + ' ' + money(l.lp) + ' − ' + l.dc + '%' : '') + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">−' + money(R2(l.q * l.p)) + '</td></tr>').join('') +
     '<tr><td colspan="3" class="r"><b>' + bt('합계', 'Total') + '</b></td><td class="r"><b>−' + money(sub) + '</b></td></tr></table></div>';
   $('crrBack').onclick = () => history.length > 1 ? history.back() : Router.go('order');
   if ($('crrCm')) $('crrCm').onclick = () => Router.go('credit', encodeURIComponent(o.cmNo));
+  /* ✏️ 수정 — 주문 편집 화면 그대로 (줄 · 수량 · 🏷 할인 백 · 사유) · 저장하면 다시 이 확인 화면 (v0.8.227 관리자: "디스카운트 백이 안 잡힌 경우 · 중복 크레딧 — 수정 · 삭제") */
+  if ($('crrEd')) $('crrEd').onclick = async () => { const OR = await import('./orders.js'); OR.openEditor(o, null, lines); };
+  /* 🗑 삭제 — 중복 요청처럼 남길 필요 없는 것 (CM 발행 전만 · 세일즈맨에게 알림) */
+  if ($('crrDel')) $('crrDel').onclick = async () => {
+    if (!(await confirmBox('🗑 ' + o.store + ' ↩ −' + money(sub) + ' (' + (o.why || '') + ')\n' + bt('이 크레딧 요청을 지울까요? 되돌릴 수 없습니다.', 'Delete this credit request? This cannot be undone.'), bt('삭제', 'Delete')))) return;
+    busy(true); try { await S.DB.batch([{ op: 'del', col: 'orderLines', id: o.id }, { op: 'del', col: 'orders', id: o.id }]);
+      try { const N = await import('./notify.js'); await N.queue({ kind: 'creditReq', toSm: o.sm, pushOnly: true, subject: '[THE ONE] 🗑 크레딧 요청 삭제 — ' + o.store, text: '🗑 ' + o.store + ' ↩ ' + money(sub) + ' — ' + bt('사무실에서 삭제 (중복 등)', 'deleted by the office (duplicate etc.)') }); } catch (e) {}
+      toast('🗑 ' + bt('삭제했습니다', 'Deleted'), 'good'); Router.go('order'); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false);
+  };
   if ($('crrX')) $('crrX').onclick = async () => {
     const why = prompt(bt('취소 사유', 'Reason to cancel')); if (why == null) return;
     busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { st: 'x', cancelAt: now, cancelBy: S.user.email, cancelWhy: why || bt('사무실 취소', 'Cancelled by office'), updatedAt: now });
