@@ -1,77 +1,44 @@
-/* v0.8.237 시험 — 🔗 연결 지도 tools/impact.mjs: 통째 덮어쓰기 위험 · 폰 저장 자료 · 규칙 · 앱 밖 프로그램 · 부르는 곳 · 같이 돌릴 시험을 뽑는다 (2026-11-13 관리자: "변경할 때마다 기존 연결을 잃지 않게")
- *   ① 오늘 사고 모양: 보관함 보내기가 orders 를 통째로(set) 쓰는데 규칙은 칸 단위(affectedKeys) · 다른 파일은 칸만(update) 붙임 → ⚠️ 위험 · 폰 키 theone.outbox.v1(한 단계 건너 readOut) · 시험 t9xx 가 맨 위
- *   ② 칸만 바꾸는(update) 변경 → 통째 덮어쓰기 위험 없음 · ③ 규칙 · functions 가 바뀌면 옛 앱 호환 · 배포 할 일이 나옴 · ④ 실제 저장소에서 CLI 가 돈다 (읽기만) · ⑤ 앱 밖 프로그램(Apps Script · 출고 PC 에이전트)이 같은 모음을 쓰면 🔌 — 규칙만 바뀌어도 */
-const path = require('path'), { execFileSync } = require('child_process');
+/* v0.8.238 시험 — ✏️ 인보이스 수정에서 아이템 추가해도 창이 위로 튀지 않음 · 🅱 서류의 회사 · 손님 이름 굵게 (2026-11-13 관리자: "하나 넣고 다시 위로 튀어 올라가고 다시 스크롤" · "픽킹 · 인보이스 · 스테이트먼트 · 크레딧 메모 — 회사 이름 · 손님 이름 Bold")
+ *   ① 폰(390×640): 인보이스 수정 창을 아래(아이템 추가 칸)까지 내린 뒤 아이템을 세 번 넣어도 창 스크롤이 그 자리 · 추가 칸이 화면 안 · 줄 목록은 맨 아래(방금 넣은 줄 보임)
+ *      · 아이템 칸이 새로 만들어지지 않음(같은 칸 — 폰 키보드가 닫히지 않음) · 칸은 비워져 다음 아이템 바로
+ *   ② 인보이스 인쇄: 회사 이름(.ivco) · Bill To/Ship To 손님 이름(.ivpn) 굵기 900 · 손님 이름 15px
+ *   ③ 피킹 리스트 · 크레딧 메모의 손님 이름(.docnm) · 크레딧 메모 회사 이름(.doccn) 도 900 · 서류 틀에 그 이름표가 들어 있음 */
+let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
+const path = require('path'), fs = require('fs');
 (async () => {
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8998', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
-  const I = await import(require('url').pathToFileURL(path.resolve(__dirname, '../tools/impact.mjs')).href);
-  const orders = [
-    "const OUT_KEY = 'theone.outbox.v1';",
-    'function readOut() { return JSON.parse(localStorage.getItem(OUT_KEY) || "{}"); }',
-    'export async function syncOutbox(quiet) {',
-    '  const box = readOut();',
-    "  await S.DB.batch([{ op: 'set', col: 'orders', id, data: x.o }]);",
-    '}',
-  ].join('\n');
-  const notify = "export async function dayCard(el) { await S.DB.batch(L.map(o => ({ op: 'update', col: 'orders', id: o.id, data: { cfOk: true, cfHow: 'day' } }))); }";
-  const other = "export function badge() { return localStorage.getItem('theone.outbox.v1'); }";
-  const rules = [
-    'service cloud.firestore { match /databases/{database}/documents {',
-    "  function smOrderUpdate() { let keys = request.resource.data.diff(resource.data).affectedKeys(); return !keys.hasAny(['cfHow']); }",
-    '  match /orders/{id} { allow read: if true; allow update: if ordJob() || smOrderUpdate(); }',
-    '  match /notes/{id} { allow read, write: if true; }',
-    '} }',
-  ].join('\n');
-  const files = { 'src/orders.js': orders, 'src/notify.js': notify, 'src/main.js': other };
-  const tests = { t901: "localStorage.setItem('theone.outbox.v1', '{}'); syncOutbox", t902: "location.hash = '#/home'; col 'orders'", t903: 'nothing related' };
-  const testIndex = { t901: '보관함 보내기', t902: '홈', t903: '다른 것' };
-  const diff1 = ['diff --git a/src/orders.js b/src/orders.js', '--- a/src/orders.js', '+++ b/src/orders.js', '@@ -4,0 +5 @@', "+  await S.DB.batch([{ op: 'set', col: 'orders', id, data: x.o }]);"].join('\n');
-
+  const pg = await (await br.newContext({ viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
+  await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { Object.assign(s.orders[0], { st: 'picked', cfOk: true, picker: 'luke@theonefl.com', pickerName: 'L' }); s.stock = ['AHG100', 'AHG101', 'AHG102', 'AHG103', 'AHG104'].map(c => ({ id: c, code: c, qty: 100 })); }; });
+  await pg.goto('http://127.0.0.1:8998/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
+  await pg.evaluate(() => { location.hash = '#/order/O261014-AAAA'; }); await pg.waitForSelector('#mInv', { timeout: 8000 });
+  await pg.click('#mInv'); await pg.waitForSelector('#ivOk'); await pg.click('#ivOk'); await pg.waitForSelector('#prt.on #prtbody .iv', { timeout: 8000 }).catch(() => {}); await pg.waitForTimeout(500);
+  /* ② */
+  const w = await pg.evaluate(() => { const g = s => { const e = document.querySelector('#prtbody ' + s); if (!e) return null; const c = getComputedStyle(e); return c.fontWeight + '/' + c.fontSize; }; return { co: g('.ivco'), pn: g('.ivpn') }; });
+  log('② invoice print:', JSON.stringify(w)); if (!w.co || !/^900\//.test(w.co) || !w.pn || w.pn !== '900/15px') errs.push('② company + customer names bold (900) on the invoice');
+  if (await pg.$('#prt.on')) await pg.click('#prtClose');
+  /* ③ */
+  const w3 = await pg.evaluate(() => { const b = document.getElementById('prtbody'); b.innerHTML = '<div class="pk"><b class="docnm">STORE</b> <b class="doccn">CO</b></div>'; const c = s => { const x = getComputedStyle(b.querySelector(s)); return x.fontWeight + '/' + x.fontSize; }; const r = { nm: c('.docnm'), cn: c('.doccn') }; b.innerHTML = ''; return r; });
+  const src = ['fulfill.js', 'credit.js'].map(f => fs.readFileSync(path.resolve(__dirname, '../src', f), 'utf8'));
+  log('③ docnm/doccn:', JSON.stringify(w3)); if (w3.nm !== '900/15px' || !/^900/.test(w3.cn)) errs.push('③ picking / credit memo name style');
+  if (!/class="docnm">' \+ esc\(o\.store\)/.test(src[0]) || !/class="docnm">' \+ esc\(x\.store\)/.test(src[1]) || !/class="doccn">' \+ esc\(co\.name\)/.test(src[1])) errs.push('③ picking list and credit memo templates carry the name classes');
   /* ① */
-  const a = I.analyze({ diff: diff1, files, tests, testIndex, rules });
-  const c = a.cols.find(x => x.col === 'orders');
-  log('① fns:', a.changedFns.join(','), '· keys:', a.keys.join(','), '· risk:', !!(c && c.risk), '· fieldLevel:', c && c.rules && c.rules.fieldLevel, '· tests:', a.tests.map(t => t.t).join(','));
-  if (a.changedFns.join() !== 'syncOutbox') errs.push('① 바뀐 함수 = syncOutbox');
-  if (!a.keys.includes('theone.outbox.v1')) errs.push('① 폰 저장 키(readOut → OUT_KEY 한 단계 건너)');
-  if (!(a.keyUsers['theone.outbox.v1'] || []).includes('src/main.js')) errs.push('① 같은 키를 쓰는 다른 파일(main.js)');
-  if (!c || !c.risk || !/칸 단위/.test(c.risk) || !c.partialWriters.some(w => w.startsWith('src/notify.js'))) errs.push('① orders 통째 덮어쓰기 위험 (규칙 칸 단위 · notify.js 가 칸만 붙임)');
-  if (!c || !c.rules || !c.rules.fns.includes('smOrderUpdate') || !c.rules.allow.some(s => /smOrderUpdate/.test(s))) errs.push('① orders 규칙(allow · 규칙 함수)');
-  if (!a.tests.length || a.tests[0].t !== 't901' || a.tests.some(t => t.t === 't903')) errs.push('① 같이 돌릴 시험: t901 이 맨 위 · 상관없는 t903 은 빠짐');
-  const rep = I.report(a);
-  if (!/⚠️ 먼저 볼 것/.test(rep) || !/\*\*orders\*\*: 통째 덮어쓰기/.test(rep) || !/node test\/t901\.js/.test(rep)) errs.push('① 보고서에 위험 · 시험 줄');
-
-  /* ② 칸만 바꾸는 변경 */
-  const diff2 = ['+++ b/src/notify.js', '@@ -1,0 +1 @@', '+' + notify].join('\n');
-  const b = I.analyze({ diff: diff2, files, tests, testIndex, rules });
-  log('② risks:', b.cols.filter(x => x.risk).length);
-  if (b.cols.some(x => x.risk)) errs.push('② update 만 하는 변경은 통째 덮어쓰기 위험이 아님');
-
-  /* ③ 규칙 · functions */
-  const diff3 = ['+++ b/firestore.rules', '@@ -3,0 +3 @@', '+  match /x/{id} { allow read: if true; }', '+++ b/functions/core.js', '@@ -1,0 +1 @@', '+export const A = 1;'].join('\n');
-  const r3 = I.report(I.analyze({ diff: diff3, files, tests, testIndex, rules }));
-  if (!/옛 앱의 쓰기도 받아야/.test(r3) || !/deploy-rules/.test(r3) || !/함수 배포/.test(r3)) errs.push('③ 규칙 · 함수 바뀜 → 옛 앱 호환 · 배포 할 일');
-
-  /* ⑤ 앱 밖 프로그램 (Apps Script · 출고 PC 에이전트) — 같은 모음을 쓰면 🔌 · 규칙 줄만 바뀌어도 그 모음으로 */
-  const external = { 'apps-script/Code.gs': "queryVal_('orders', 'st', { stringValue: 'draft' })", 'agente-impressao/agente.mjs': "await fsBuscar('printJobs', [['st', 'pendente']])" };
-  const rules5 = rules.replace('} }', "  match /printJobs/{id} {\n    allow read, write: if isStaff();\n  }\n} }");
-  const e1 = I.analyze({ diff: diff1, files, tests, testIndex, rules, external });
-  const r5 = I.report(e1), oc = e1.cols.find(x => x.col === 'orders');
-  log('⑤ orders external:', oc && oc.external.join(','));
-  if (!oc || oc.external.join() !== 'apps-script/Code.gs' || !/🔌 \*\*orders\*\*/.test(r5)) errs.push('⑤ orders 를 쓰는 Apps Script 가 🔌 로 나와야 함');
-  const ln = rules5.split('\n').findIndex(l => /allow read, write: if isStaff/.test(l)) + 1;
-  const diff5 = ['+++ b/firestore.rules', '@@ -' + ln + ' +' + ln + ' @@', '+    allow read, write: if isStaff();'].join('\n');
-  const e2 = I.analyze({ diff: diff5, files, tests, testIndex, rules: rules5, external }), pc = e2.cols.find(x => x.col === 'printJobs');
-  log('⑤ rule-only change cols:', e2.cols.map(x => x.col).join(','), '· external:', pc && pc.external.join(','));
-  if (!pc || pc.external.join() !== 'agente-impressao/agente.mjs' || !/🔌 \*\*printJobs\*\*/.test(I.report(e2))) errs.push('⑤ printJobs 규칙만 바뀌어도 출고 PC 에이전트가 🔌 로 나와야 함');
-
-  /* 바탕 함수 */
-  if (I.enclosingFn(orders, 5) !== 'syncOutbox' || I.enclosingFn(orders, 2) !== 'readOut') errs.push('enclosingFn');
-  if (I.parseDiff(diff1).length !== 1 || I.parseDiff(diff1)[0].line !== 5) errs.push('parseDiff 줄 번호');
-  if (I.rulesFor(rules, 'nothere') !== null || I.rulesFor(rules, 'notes').fieldLevel) errs.push('rulesFor: 없는 모음 null · notes 는 칸 단위 아님');
-
-  /* ④ 실제 저장소 (읽기만) */
-  try { const out = execFileSync('node', [path.resolve(__dirname, '../tools/impact.mjs'), 'HEAD..HEAD'], { cwd: path.resolve(__dirname, '..'), encoding: 'utf8', timeout: 60000 }); log('④ CLI:', out.split('\n')[0]); if (!/^# 🔗 연결 지도/.test(out)) errs.push('④ CLI 보고서 첫 줄'); }
-  catch (e) { errs.push('④ CLI 실패: ' + String(e.message).slice(0, 200)); }
-
+  const no = await pg.evaluate(() => { const v = Object.values(window.__MOCK_STORE__.invoices).find(v => v.orderId === 'O261014-AAAA'); return v.no; });
+  await pg.evaluate(() => { location.hash = '#/order/x'; }); await pg.waitForTimeout(200); await pg.evaluate(() => { location.hash = '#/order/O261014-AAAA'; });
+  await pg.waitForSelector('[data-mie]', { timeout: 8000 }); await pg.click('[data-mie="' + no + '"]'); await pg.waitForSelector('#ieOk', { timeout: 6000 });
+  const scroller = () => pg.evaluate(() => { const c = [document.getElementById('modal'), document.querySelector('#modal .bwrap'), document.getElementById('mbox')].find(e => e && e.scrollHeight > e.clientHeight + 4); return c ? (c.id || c.className) : null; });
+  const sel = await scroller(); log('① scrolling element:', sel);
+  const st = () => pg.evaluate(s => { const c = s === 'modal' || s === 'mbox' ? document.getElementById(s) : document.querySelector('#modal .bwrap'); const a = document.getElementById('ieAdd').getBoundingClientRect(), L = document.getElementById('ieList'); return { top: c ? Math.round(c.scrollTop) : 0, max: c ? Math.round(c.scrollHeight - c.clientHeight) : 0, addIn: a.top >= 0 && a.bottom <= innerHeight, listEnd: L ? Math.round(L.scrollHeight - L.clientHeight - L.scrollTop) : 0, rows: document.querySelectorAll('[data-ieq]').length }; }, sel);
+  await pg.evaluate(s => { const c = s === 'modal' || s === 'mbox' ? document.getElementById(s) : document.querySelector('#modal .bwrap'); if (c) c.scrollTop = c.scrollHeight; }, sel); await pg.waitForTimeout(100);
+  const s0 = await st(); log('① before add:', JSON.stringify(s0)); await pg.evaluate(() => { document.getElementById('ieAdd').__keep = 1; });
+  for (const c of ['AHG102', 'AHG103', 'AHG104']) { await pg.fill('#ieAdd', c); const sb = await st(); await pg.press('#ieAdd', 'Enter'); await pg.waitForTimeout(250); const s1 = await st(); log('① after add', c, JSON.stringify(s1));
+    if (sel && sb.top > 0 && s1.top < Math.min(sb.top, s1.max) - 4) errs.push('① window jumped up after adding ' + c + ' (' + sb.top + ' → ' + s1.top + ')');   // 넣기 직전 자리 그대로 (칸을 누르면 키보드 모드로 창이 커져 자리가 한 번 바뀜 — 그 뒤 기준)
+    if (!s1.addIn) errs.push('① add field stays on screen after ' + c);
+    if (s1.listEnd > 4) errs.push('① line list shows the newly added line (' + c + ')'); }
+  const rows = (await st()).rows; if (rows !== 5) errs.push('① three items added (rows ' + rows + ')');
+  const same = await pg.evaluate(() => ({ keep: document.getElementById('ieAdd').__keep === 1, val: document.getElementById('ieAdd').value })); log('① same add field (keyboard stays):', JSON.stringify(same));
+  if (!same.keep) errs.push('① the add field is not re-created (phone keyboard would close)'); if (same.val) errs.push('① add field cleared for the next item');
+  await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();
