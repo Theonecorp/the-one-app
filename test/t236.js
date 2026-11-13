@@ -27,7 +27,7 @@ const path = require('path');
   let pg = await mk('luke@theonefl.com');
   await go(pg, '#/hub/wh'); await pg.waitForSelector('[data-hub]', { timeout: 8000 });
   const hubs = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('① hub:', hubs.join(' '));
-  if (!hubs.includes('estoque') || !hubs.includes('etiquetas') || hubs.includes('stock')) errs.push('① wh hub: estoque + etiquetas, no stock');
+  if (!hubs.includes('estoque') || !hubs.includes('etiquetas')) errs.push('① wh hub: estoque + etiquetas (기존 📦 재고도 남김 — 새 디자인 서랍 시험 t227)');
   /* ② */
   await go(pg, '#/estoque'); await pg.waitForSelector('.sb .corr-mapa', { timeout: 10000 }).catch(() => errs.push('② corridor map'));
   const c07 = await pg.$eval('[data-corr-abrir="07A"]', b => b.textContent).catch(() => ''); log('② 07A:', c07.replace(/\s+/g, ' '));

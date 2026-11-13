@@ -39,7 +39,7 @@ const path = require('path');
   let pg = await mk('luke@theonefl.com');
   await go(pg, '#/hub/wh'); await pg.waitForSelector('[data-hub]', { timeout: 8000 });
   const hubs = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('① hub:', hubs.join(' '));
-  if (!hubs.includes('produtos') || hubs.includes('items')) errs.push('① wh hub: produtos instead of items');
+  if (!hubs.includes('produtos')) errs.push('① wh hub: produtos (기존 🏷 아이템도 남김 — t227)');
   /* ② */
   await go(pg, '#/produtos'); await pg.waitForSelector('.sb .pm-tiles', { timeout: 10000 }).catch(() => errs.push('② tiles'));
   await pg.waitForSelector('#pmRes tr.pm-l', { timeout: 6000 });
