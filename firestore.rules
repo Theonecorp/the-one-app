@@ -69,7 +69,8 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountsVer', 'arAsOf', 'displayItems', 'updatedAt']))   // 담당자는 버전 · AR 기준일 · 🖼 디스플레이 품목 목록만
                     || (role() == 'manager' && userDoc().get('job', '') in ['catalog', 'itemmgr'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoDrive', 'catStart', 'catLoc', 'catPins', 'updatedAt']))   // 🎨 디자인 · 카탈로그 담당 · 🏷 아이템 · 재고 관리: 사진 · 분류 시작 · 위치 · 고정
-                    || (staffJob(['whmgr']) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['printDireta', 'updatedAt']));   // 🖨 창고 매니저: 출고 PC 로 바로 인쇄 켜기 · 끄기 (prtq.js)   // 🧮 오피스 매니저: 발주 계획 공장 설정 (plan.js openParams)
+                    || (staffJob(['whmgr']) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['printDireta', 'updatedAt']))   // 🖨 창고 매니저: 출고 PC 로 바로 인쇄 켜기 · 끄기 (prtq.js)
+                    || (staffJob(['office']) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['planParams', 'updatedAt']));   // 🧮 오피스 매니저: 발주 계획 공장 설정 (plan.js openParams)
     }
 
     // ---------- 현장 수금 ----------
@@ -140,6 +141,7 @@ service cloud.firestore {
     match /stock/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /stockLog/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /receipts/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /purchaseOrders/{id} { allow read, write: if staffJob(['office', 'whmgr']); }   // 🧮 발주 계획 — 발주서 (관리자 · 오너 · 오피스 매니저 · 창고 매니저 = plan.js canPlan)
     // 🧩 인서트 (옛 WMS 의 Criar insert · Inserts prontos) — 틀(insModelos) · 만든 인서트(inserts). 재고 담당이 쓰고, 직원은 보기 (v0.8.195)
     match /insModelos/{id} { allow read: if isStaff(); allow write: if itemJob(); }
     match /inserts/{id} { allow read: if isStaff(); allow write: if itemJob(); }
