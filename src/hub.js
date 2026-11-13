@@ -5,7 +5,7 @@
  *  세부 화면에서 ‹ 뒤로 · 폰 뒤로가기 = 이 묶음 (Router.parent)
  * ============================================================ */
 import { $, esc, Router, bi, bt } from './ui.js';
-import { can } from './main.js';
+import { can, isOwner } from './main.js';
 import { routeIcon } from './icons.js';
 
 let S = null;
@@ -61,8 +61,8 @@ export const HUBS = {
   /* 👔 오너 · 관리자 (v0.8.135) */
   biz: { icon: '💼', ko: '경영', en: 'Business', items: [
     ['mg/sales', '📈', '매출', 'Sales', '월별 · 아이템별 · 세일즈맨별 · 연도 비교', 'monthly · by item · by salesman · YoY', () => true],
-    ['mg', '🏭', '경영 현황', 'Business overview', '공장 · 은행 · 1099 · 보너스', 'factories · bank · 1099 · bonus', () => true],
-    ['pay', '🧾', '세일즈맨 정산', 'Salesman settlement', '커미션 · 정산서 · 엑셀', 'commission · statements · Excel', () => S.role === 'admin'],
+    ['mg', '🏭', '경영 현황', 'Business overview', '공장 · 은행 · 1099 · 보너스', 'factories · bank · 1099 · bonus', () => isOwner()],
+    ['pay', '🧾', '세일즈맨 정산', 'Salesman settlement', '커미션 · 정산서 · 엑셀', 'commission · statements · Excel', () => isOwner()],   /* 🔒 관리자 · 오너만 (v0.8.218) */
     ['bossar', '💰', '미수금 현황', 'Receivables', '세일즈맨별 · 에이징 · 오래된 미수', 'by salesman · aging · overdue', () => true],
     ['now', '💵', '수금 현황', 'Collections status', '오늘 · 이번 주 · 세일즈맨별', 'today · this week · by salesman', () => true],
     ['reports', '📊', '판매 리포트', 'Sales reports', '아이템별 · 손님별 · 세일즈맨별 · CSV', 'by item · customer · salesman · CSV', () => true]

@@ -81,10 +81,10 @@ const NAV = {
   invoice:  [HOME_STAFF, SALE, HUB_LOOK, HUB_WH],   // 인보이스 담당: 수금은 안 봄 (오피스 매니저 · 회계 담당만) — 인보이스 · 조회 · 재고 (v0.8.137)
   whmgr:    [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],   // 창고 매니저: 재고 · 출고 중심
   pick:     [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],
-  catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['labels', '🖨', '라벨', 'Labels'], ['cat', '📒', '카탈로그', 'Catalog']],
+  catalog:  [['catmg', '🏠', '홈', 'Home'], ['items', '🏷', '아이템', 'Items'], ['photos', '📷', '사진', 'Photos'], ['labels', '🖨', '라벨', 'Labels'], ['cat', '📒', '카탈로그', 'Catalog'], STORES],   // v0.8.219: 디자인도 🏬 거래처 (관리자 2026-11-13)
   /* 🏷 아이템 · 재고 관리 (v0.8.169) — 아이템 등록 · 분류 · 사진 · 세트 · 올리기 + 📦 재고 · 위치. 주문 흐름 · 수금 · 정산 · 경영은 안 봄 */
   /* 오너 · 관리자 (v0.8.135) — 🏠 홈(대시보드) · 📚 조회(인보이스 · 거래처 · 배송 · 카탈로그) · 💼 경영(매출 · 경영 · 정산 · 미수금 · 수금 현황 · 리포트) · (관리자) 📦 재고 · ⚙️ 관리 */
-  owner:    [['own', '🏠', '홈', 'Home'], HUB_LOOK, HUB_BIZ],   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
+  owner:    [['own', '🏠', '홈', 'Home'], HUB_LOOK, HUB_BIZ, HUB_WH],   // v0.8.219: 오너도 📦 재고 (관리자 2026-11-13)   // 오너: 경영 숫자만 (세일 · 인보이스 · 거래처는 🚗 세일즈 모드에서) · 홈 = 경영 대시보드
   admin:    [['own', '🏠', '홈', 'Home'], HUB_LOOK, HUB_BIZ, HUB_WH, ['admin', '⚙️', '관리', 'Admin']]   // 관리자: 오너와 같은 대시보드 + 정산 · 관리 · 🔁 모드(오너 · 담당자 · 세일즈) — 미수금 · 수금은 홈 칸에서
 };
 NAV.manager = NAV.office;
@@ -220,6 +220,22 @@ const DOCK_MQ = '(min-width:1200px)';
 /* 🧭 v0.8.214 — 옛 WMS 의 왼쪽 메뉴와 같은 묶음 · 같은 순서 (2026-11-13 창고 매니저 요청: "옛 시스템처럼 카테고리를 나눠서")
  *   메인 · 영업 · 피킹 · 출고 · 인서트 · 조회 · 재고 · 주문 · 재무 · 관리 — 묶음 이름은 옛 앱의 KR / EN / PT 그대로 (PT 는 i18n.json)
  *   묶음 안의 순서도 이 목록 순서 (옛 메뉴 순서 → 새 앱에만 있는 화면). 옛 앱에 없던 화면은 가장 가까운 묶음에 · 그래도 없으면 "기타" (빠지는 화면 없음) */
+/* 👥 역할별 왼쪽 메뉴 묶음 (v0.8.219 · 2026-11-13 관리자)
+ *   관리자: 전부 (관리 포함) · 오너: 메인 · 거래처 · 조회 · 재무 · 재고 · 관리(관리자 화면 빼고)
+ *   오피스 매니저 · 창고 매니저 · 출고 · 인보이스: 메인 · 영업 · 피킹(주문 칸 · 완료 · 조회 포함) · 출고 · 인서트 · 조회 · 인보이스
+ *   회계: 메인 · 재무(인보이스 포함) · 거래처 · 디자인: 메인 · 아이템 · 거래처 · 카탈로그
+ *   ※ 메뉴는 보기 편하게 하는 것 — 중요 자료 잠금은 firestore.rules(isOwner) 와 아래 경영 화면 잠금(lockR)이 함 */
+export const DPLAN = {
+  owner: ['ov', 'sales:stores', 'look', 'ship:track', 'fin', 'inv', 'mgmt'],
+  office: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'], whmgr: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'], pickinv: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'],
+  acct: ['ov', 'fin', 'sales:stores'],
+  catalog: ['ov', 'inv:items,photos,labels', 'sales:stores', 'look:cat']
+};
+function drawerPlan() {
+  if (S.role === 'owner') return DPLAN.owner;
+  if (S.role !== 'manager') return null;   // 관리자 · 세일즈맨: 자기 메뉴 전부
+  return [].concat(...myJobs().map(j => DPLAN[j] || DPLAN.office));
+}
 const DGRP = [
   ['ov', 'dashboard', '메인', 'Main', ['shome', 'own', 'home', 'catmg'], 'Principal'],
   ['sales', 'cart', '영업', 'Sales', ['order', 'stores', 'mysales'], 'Vendas'],
@@ -261,16 +277,22 @@ function drawerRender(dock) {
   const ord = stages.length ? stages.map(([g, cs]) => '<div class="dsec dord"><small><span class="em">' + g[1] + '</span> ' + esc(g[2]) + ' · ' + esc(g[3]) + '</small>' + cs.map(c => srow(c[0], c[1], c[2], c[3])).join('') + '</div>').join('') : '';
   /* 한 화면은 한 번만 (배송 조회가 재고 · 조회 두 묶음에 다 있어도 서랍에는 처음 나온 곳에만) — v0.8.181 */
   const flat = [], seen = new Set();
+  /* 🔒 경영 현황 · 매출 · 세일즈맨 정산 · 수금 현황 · 미수금 현황 · 오너 홈은 관리자 · 오너 메뉴에만 (v0.8.218 · 2026-11-13 관리자: "모든 역할에서 빼고 관리자와 오너만") */
+  const TOP_ONLY = ['own', 'mg', 'mg/sales', 'pay', 'now', 'bossar'];
   items.forEach(x => { if (!/^hub\//.test(x[0])) { flat.push(x); seen.add(x[0]); } });
   items.forEach(x => { if (/^hub\//.test(x[0])) Hub.hubItems(x[0].split('/')[1]).forEach(c => { if (!seen.has(c[0])) { seen.add(c[0]); flat.push([c[0], c[1], c[2], c[3]]); } }); });
+  if (!isOwner()) for (let i = flat.length - 1; i >= 0; i--) if (TOP_ONLY.includes(flat[i][0])) flat.splice(i, 1);
   /* 🧭 v0.8.203 묶음 — 개요 · 운영 · 재고 관리 · 수금 · 재무 · 거래처 · 관리 (+ 기타). 역할이 볼 수 있는 화면만, 묶음에 없는 화면은 기타로 (빠지는 화면 없음)
    *   묶음 머리를 누르면 접고 펼침 (이 기기에 기억) · 지금 화면이 든 묶음은 늘 펼침 */
   let fold = []; try { fold = JSON.parse(localStorage.getItem('theone.dfold') || '[]'); if (!Array.isArray(fold)) fold = []; } catch (e) {}
   const grpOf = r => (DGRP.find(g => g[4].includes(r)) || DGRP.find(g => g[4].includes(r.split('/')[0])) || ['etc'])[0];
   const onR = r => location.hash.indexOf('#/' + r) === 0;
+  /* 👥 역할별 서랍 묶음 (v0.8.219 · 2026-11-13 관리자: "모두 같은 메뉴가 보이면 일에 효율적이지 못함") — DPLAN 에 없는 묶음은 안 보임 · '묶음:화면,화면' 은 그 화면만 */
+  const plan = drawerPlan(), allow = {}; if (plan) plan.forEach(p => { const [g, l] = p.split(':'); allow[g] = l ? (allow[g] === true ? true : (allow[g] || []).concat(l.split(','))) : true; });
+  if (plan) for (let i = flat.length - 1; i >= 0; i--) { const a = allow[grpOf(flat[i][0])]; if (!(a === true || (Array.isArray(a) && a.includes(flat[i][0])))) flat.splice(i, 1); }
   const secs = DGRP.concat([['etc', 'layers', '기타', 'Other', [], 'Outros']]).map(g => {
     const pos = r => { const k = g[4].indexOf(r); return k >= 0 ? k : g[4].indexOf(r.split('/')[0]) >= 0 ? g[4].indexOf(r.split('/')[0]) : 999; };
-    const L = flat.filter(x => grpOf(x[0]) === g[0]).sort((a, b) => pos(a[0]) - pos(b[0])), withOrd = g[0] === 'sep' && ord;   // 옛 메뉴 순서 · 주문 칸(.dord) = 피킹 묶음
+    const L = flat.filter(x => grpOf(x[0]) === g[0]).sort((a, b) => pos(a[0]) - pos(b[0])), withOrd = g[0] === 'sep' && ord && (!plan || allow.sep === true);   // 옛 메뉴 순서 · 주문 칸(.dord) = 피킹 묶음
     if (!L.length && !withOrd) return '';
     const live = L.some(x => onR(x[0])) || (withOrd && sNow && sNow !== 'home'), shut = fold.includes(g[0]) && !live;
     return '<div class="dsec dgrp' + (shut ? ' fold' : '') + '" data-dg="' + g[0] + '"><small class="dgh" data-dgh="' + g[0] + '" role="button" tabindex="0">' + (LANG === 'pt' && g[5] ? esc(g[5]) : bt(g[2], g[3])) + '<span class="dgc">' + icon('chevDown', 14) + '</span></small>' + L.map(row).join('') + (withOrd ? ord : '') + '</div>';
