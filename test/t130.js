@@ -17,8 +17,8 @@ const path = require('path');
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = s => { s.users.forEach(u => { if (u.email === 'acct@theonefl.com') u.job = 'office'; }); s.users.push({ id: 'wh@x.com', email: 'wh@x.com', name: 'Warehouse Mgr', role: 'manager', job: 'whmgr', active: true }); }; });
   await pg.goto('http://127.0.0.1:8884/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(500);
   /* ① */
-  await pg.click('#hMenu'); await pg.waitForSelector('#drawer #mPush'); const lab = (await pg.textContent('#drawer #mPush')).trim(); log('drawer button:', lab); if (!/켜짐|on/i.test(lab)) errs.push('granted device should show 팝업 알림 켜짐');
-  await pg.click('#drawer #mPush'); await pg.waitForTimeout(800);
+  await pg.click('#hMenu'); await pg.click('#drawer [data-dgo="settings"]'); await pg.waitForSelector('.stpage #mPush'); const lab = (await pg.textContent('.stpage #mPush')).trim(); log('drawer button:', lab); if (!/켜짐|on/i.test(lab)) errs.push('granted device should show 팝업 알림 켜짐');
+  await pg.click('.stpage #mPush'); await pg.waitForTimeout(800);
   const toks = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.pushTokens || {}).map(t => t.email + '|' + t.token)); log('pushTokens:', toks);
   if (toks.length !== 1 || !/^acct@theonefl\.com\|mock-token-acct@theonefl\.com$/.test(toks[0])) errs.push('this device should be registered once for the signed-in user');
   /* ② 사람 한 명 */

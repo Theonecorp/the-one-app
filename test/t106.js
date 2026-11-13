@@ -8,7 +8,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 400, height: 800 } });
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8855/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
-  const seed = `const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+  const seed = `const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); };
     s.stock = (s.stock || []).concat([{ id: 'AHG100', code: 'AHG100', qty: 37 }]);
     s.invoices = (s.invoices || []).concat([
       { id: 'A66001', no: 'A66001', t: 'A', d: day(2), ym: day(2).slice(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 100, bal: 100, st: 'open', lines: [] },

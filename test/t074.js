@@ -54,7 +54,7 @@ const path = require('path');
   const q3 = await txt(pg, '.ovr h2'); log('same ask:', q3.slice(0, 80)); if (!/같은 날|Same store/.test(q3)) errs.push('same-day ask text'); await pg.click('#cfNo'); await pg.waitForTimeout(200);
   await pg.close();
   /* ---- ⑤ 루크: 🧮 정산 대조 · 💼 급여제 ---- */
-  const seed = `const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().substring(0, 10); };
+  const seed = `const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); };
     s.entries.forEach(e => { if (e.id === 'E2') { e.env = 'V251001-001'; e.envAt = d(-2); } });
     s.cod.forEach(c => { if (c.id === 'C1') { c.method = 'CREDIT CARD'; c.ref = ''; } });
     s.salesmen.forEach(x => { if (x.code === 'KAEL') x.salaried = true; });

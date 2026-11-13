@@ -7,6 +7,7 @@
 import { $, esc, money, R2, toast, busy, openModal, closeModal, confirmBox, bi, bt } from './ui.js';
 import { splitByType, dcPrice, lineTotal, dropInvCache, monthsOf, bumpSalesM } from './invoicing.js';
 import { loadCatalog, catalog, exactItem, productLine } from './catalog.js';
+import { itemSuggest } from './suggest.js';
 import { applyMoves, movesOfLines } from './stock.js';
 
 let S = null;
@@ -30,7 +31,8 @@ export async function editInvoice(x, done) {
     $('mbox').innerHTML = '<h2>✏️ ' + bi('인보이스 수정', 'Edit invoice') + ' ' + esc(x.no) + '</h2><div class="muted">' + esc(x.store || '') + ' · ' + esc(x.d || '') + ' — ' + bt('합계 · 잔액 · 재고가 같이 맞춰집니다. 받은 수금은 그대로.', 'Total, balance and stock follow. Payments stay.') + '</div>' +
       '<div style="max-height:46vh;overflow:auto;margin-top:8px"><table class="ietbl"><tr><th>' + bt('코드', 'Code') + '</th><th class="r" style="width:70px">' + bt('수량', 'Qty') + '</th><th class="r" style="width:86px">' + bt('가격', 'Price') + '</th><th class="r">' + bt('금액', 'Amount') + '</th><th style="width:34px"></th></tr>' +
       L.map((l, i) => '<tr' + (l.q > 0 ? '' : ' style="opacity:.45"') + '><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r"><input type="number" inputmode="numeric" min="0" step="1" data-ieq="' + i + '" value="' + (l.q || 0) + '" style="width:62px;text-align:right"></td><td class="r"><input type="number" inputmode="decimal" min="0" step="0.01" data-iep="' + i + '" value="' + l.p + '" style="width:78px;text-align:right"></td><td class="r">' + money(lineTotal(l.q, l.p, L.dc)) + '</td><td><button type="button" class="b-ghost b-sm" data-iex="' + i + '" title="' + esc(bt('줄 지우기', 'Remove line')) + '">🗑</button></td></tr>').join('') + '</table></div>' +
-      '<div style="display:flex;gap:6px;margin-top:8px"><input id="ieAdd" placeholder="' + esc(bt('＋ 아이템 코드 · 바코드', '+ Item code · barcode')) + '" autocapitalize="characters" style="flex:1"><input id="ieAddQ" type="number" inputmode="numeric" min="1" value="1" style="width:64px"><button type="button" class="b-ghost" id="ieAddGo">＋ ' + bi('더하기', 'Add') + '</button></div>' +
+      /* ＋ 아이템 추가 — 코드 칸이 단추에 눌려 안 보이던 것(2026-11-12) → 코드 칸이 줄 대부분 · 치면 맞는 아이템 목록(🔎 suggest.js)에서 고름 (v0.8.200) */
+      '<div class="ieadd"><label>＋ ' + bi('아이템 추가', 'Add item') + ' <span class="muted" style="font-weight:400">' + bt('코드 · 이름 일부를 치면 목록이 뜹니다 (예: CV)', 'type part of a code or name (e.g. CV)') + '</span></label><div class="ieaddrow"><input id="ieAdd" placeholder="' + esc(bt('아이템 코드 · 바코드 · 이름', 'Item code · barcode · name')) + '" autocapitalize="characters"><input id="ieAddQ" type="number" inputmode="numeric" min="1" value="1" title="' + esc(bt('수량', 'Qty')) + '"><button type="button" class="b-blue" id="ieAddGo">＋ ' + bi('더하기', 'Add') + '</button></div></div>' +
       '<div class="fg" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><div style="width:120px"><label>🏷 ' + bi('할인', 'Discount') + ' %</label><input id="ieDc" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="' + (L.dc || '') + '" placeholder="0"></div><div style="width:140px"><label>🚚 ' + bi('운임', 'Freight') + ' $</label><input id="ieFrt" type="number" inputmode="decimal" min="0" step="0.01" value="' + (L.frt ? L.frt.toFixed(2) : '') + '" placeholder="0.00"></div><div style="flex:1;min-width:180px"><label>' + bi('인보이스 메모', 'Invoice memo') + '</label><input id="ieMemo" value="' + esc(L.memo != null ? L.memo : memo0) + '"></div></div>' +
       '<div class="kpi" style="margin-top:8px"><div><b>' + money(old) + '</b><span>' + bt('옛 합계', 'Old total') + '</span></div><div><b id="ieNew">' + money(now) + '</b><span>' + bt('새 합계', 'New total') + '</span></div><div><b' + (diff ? ' style="color:' + (diff > 0 ? '#15803d' : '#b91c1c') + '"' : '') + '>' + (diff > 0 ? '+' : '') + money(diff) + '</b><span>' + bt('차이', 'Change') + '</span></div><div><b' + (bal1 < -0.005 ? ' style="color:#b91c1c"' : '') + '>' + money(bal1) + '</b><span>' + bt('새 잔액', 'New balance') + '</span></div></div>' +
       (bal1 < -0.005 ? '<div class="alert a-amb">⚠️ ' + bt('받은 수금이 새 합계보다 많습니다 — 잔액이 마이너스(가게 크레딧)로 남습니다', 'Payments exceed the new total — the balance becomes a credit') + '</div>' : '') +
@@ -49,6 +51,7 @@ export async function editInvoice(x, done) {
       paint(); setTimeout(() => { const f = $('ieAdd'); if (f) f.focus(); }, 0);
     };
     $('ieAddGo').onclick = add; $('ieAdd').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
+    itemSuggest($('ieAdd'), () => add());   // 🔎 고르면 바로 더함 (수량은 옆 칸)
     $('ieX').onclick = () => (done ? done() : closeModal());
     $('ieOk').onclick = async () => { keepMemo(); await save(x, L, done); };
   };

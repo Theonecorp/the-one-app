@@ -13,7 +13,7 @@
  * ============================================================ */
 import { $, esc, money, R2, num, today, ym, md, invNo, toast, busy, openModal, closeModal, confirmBox, Router, sortBy, bi, bt, printOpen, debounce } from './ui.js';
 import { loadCatalog, catalog, exactItem, searchItems, thumb, productLine } from './catalog.js';
-import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache, monthsOf, getInvoice } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, nextInvoiceNo, company, dropInvCache, monthsOf, getInvoice, obFix, obDisc, OB_T } from './invoicing.js';
 import { searchAccounts } from './accounts.js';
 import { mySm } from './access.js';
 import { can } from './main.js';
@@ -345,7 +345,8 @@ function creditHtml(x) {
 /* ---------- 📥 세일즈맨 크레딧 요청 (v0.8.187) — 주문처럼 눌러 담아 보낼 주문과 같이 보낸 것 (orders.kind 'credit', 금액 마이너스)
  *   사무실이 열어 확인 → ↩ 크레딧 확정 = CM 번호 발행(invoices · 이 때 가게 잔액에서 빠짐 · 사무실 확인됨) + 요청은 완료(cmNo) · ✕ 취소는 사유와 함께
  *   가격 = 주문 줄 가격 × (1 − 가게 할인 · 할인 백 %) — 주문 화면 합계와 같음 ---------- */
-const reqLines = (o, lines) => (lines || []).filter(l => l.q > 0).map(l => { const t = l.t || 'A', dc = Number((o.disc || {})[t]) || 0, lp = l.lp != null ? l.lp : l.p; return { c: l.c, d: l.d || '', q: l.q, lp, p: R2(l.p * (1 - dc / 100)), dc, t }; });
+/*   🏷 타사 제품(OB) 줄: 옛 요청에 소매가로 담긴 줄도 판매가로 바꾸고 할인 백(없으면 가게 기본)을 뺌 (v0.8.198) */
+const reqLines = (o, lines) => (lines || []).filter(l => l.q > 0).map(l => { l = obFix(Object.assign({}, l)); const t = l.t || 'A', dc = t === OB_T ? obDisc(o, (invTypes(S)[0] || {}).c) : Number((o.disc || {})[t]) || 0, lp = l.lp != null ? l.lp : l.p; return { c: l.c, d: l.d || '', q: l.q, lp, p: R2(l.p * (1 - dc / 100)), dc, t }; });
 export async function reviewRequest(o, lines) {
   const L = reqLines(o, lines), sub = R2(L.reduce((a, l) => a + l.q * l.p, 0)), q = L.reduce((a, l) => a + l.q, 0), can2 = staffOk() && o.st === 'sent' && !o.cmNo;
   const stT = o.cmNo ? '<span class="tag t-k">✅ ' + esc(o.cmNo) + '</span>' : o.st === 'x' ? '<span class="tag t-x">✕ ' + bt('취소', 'Cancelled') + '</span>' : o.st === 'draft' ? '<span class="tag">' + bt('세일즈맨 작성 중', 'Draft') + '</span>' : '<span class="tag" style="background:#fef3c7;color:#92400e">⏳ ' + bt('확인 대기', 'To review') + '</span>';

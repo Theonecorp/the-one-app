@@ -42,6 +42,15 @@ export function typeOfItem(S, it) {
   }
   return types[0].c;
 }
+/* 🏷 타사 제품 · 가격으로 크레딧 (v0.8.198 — 2026-11-12 관리자: "크레딧이 판매가가 아닌 소매가로 잡힘 · 9.99 는 5.00 으로") 
+ *   가격 단추는 물건에 붙은 소매가 → 크레딧은 우리 판매가 = (소매가 + 0.01) ÷ 2 (9.99 → 5.00 · 7.99 → 4.00 — 상품 목록 전부가 이 규칙)
+ *   할인 백(없으면 가게 기본 할인 A)도 다른 줄처럼 빠짐: $5.00 · 10% 백 → −$4.50 */
+export const OB_T = 'OB';
+export const obWhole = retail => R2((Number(retail) + 0.01) / 2);
+/** 옛 줄(소매가 그대로 담긴 OB-9.99 @ 9.99)을 판매가로 — 이미 바꾼 줄(rp 있음)은 그대로 */
+export function obFix(l) { const m = /^OB-(\d+\.\d\d)$/.exec(String((l && l.c) || '')); if (!m || l.rp != null) return l; const r = Number(m[1]); if (Math.abs(Number(l.p) - r) < 0.001) { l.rp = r; l.p = obWhole(r); l.lp = l.p; } return l; }
+/** 크레딧 OB 줄의 할인 % — 적힌 OB 할인 → 할인 백 → 가게 기본(첫 종류) */
+export function obDisc(o, dt) { const d = (o && o.disc) || {}; if (d[OB_T] != null) return Number(d[OB_T]) || 0; if (o && o.dback != null) return Number(o.dback) || 0; return Number(d[dt || 'A']) || 0; }
 /** 거래처 기본 할인 (종류별 %) */
 export function acctDisc(acc) { const d = (acc && acc.disc) || {}; const o = {}; Object.keys(d).forEach(k => { const v = Number(d[k]); if (v) o[k.toUpperCase()] = v; }); return o; }
 

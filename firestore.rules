@@ -77,7 +77,8 @@ service cloud.firestore {
                                      && request.resource.data.sm == resource.data.sm
                                      && request.resource.data.sb == resource.data.sb && request.resource.data.rc == resource.data.rc
                                      && request.resource.data.v == resource.data.v && request.resource.data.settled == resource.data.settled)
-                    || (registered() && resource.data.sm == mySm() && resource.data.settled == '' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['env', 'envAt', 'updatedAt']));   // 📦 봉투에 묶기 (① 확인된 건도)
+                    || (registered() && resource.data.sm == mySm() && resource.data.settled == '' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['env', 'envAt', 'rep', 'repAt', 'repId', 'updatedAt'])
+                        && (request.resource.data.get('rep', null) == resource.data.get('rep', null) || request.resource.data.get('rep', false) == true));   // 📦 봉투 표시 · 📧 Daily Report 전송 표시(rep → true)만 — 사무실이 먼저 ① 확인한 수금도 (v0.8.204)   // 📦 봉투에 묶기 (① 확인된 건도)
       allow delete: if isAdmin();
     }
     // ---------- 📦 체크 봉투 — 세일즈맨이 보낸 체크 묶음, 회계 담당이 도착 맞춤 ----------
