@@ -200,3 +200,5 @@
 | t237 | v0.8.199 | 📦 상품(#/produtos): 옛 WMS 의 Produtos — 숫자 칸 걸러보기 · 검색 · 서랍(재고 · 상자) · 수정(카탈로그) · 빈 상자 · 확인 요청 · 재고 조정 · 창고는 위치만 · 세일즈맨은 보기만 · 삭제는 관리자 |
 | t238 | v0.8.210 | 📥 상품 받기(#/recebimento): 옛 WMS 의 Produtos recebidos — REC 목록 · 만들기 · 줄 넣기(스캔) · 재고에 넣기(한 번만) · 다른 REC 로 · 닫기/다시 열기 · 확인 요청 · 세일즈맨 보기만 |
 | t239 | v0.8.210 | 🔁 보충이 필요한 상품(#/repor) · 🔎 재확인할 상품(#/recheca): 옛 WMS 의 Produtos para repor · Produtos para conferir — 요청 목록 · 맡기(한 사람만) · 놓기 · 취소 · 출고/입고가 요청을 닫음 · 요청 만들기 · 세어서 맞추기 · 세일즈맨 보기만 |
+| t240 | v0.8.210 | 📷 사진으로 라벨 읽기 (📥 상품 받기 · 옛 WMS 의 "Ler etiqueta por foto") — Cloud Function 은 window.__MOCK_IA__ 로 대신 (네트워크 없음) |
+| t241 | v0.8.210 | 📷 사진으로 라벨 읽기 서버(functions/core.js · Cloud Function lerEtiqueta)의 로직 — 브라우저 · 네트워크 · functions/node_modules 없이 (가짜 db · 가짜 Anthropic · 가짜 시계) |
