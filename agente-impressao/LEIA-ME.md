@@ -45,10 +45,11 @@ isso o agente entra com uma **conta Google só dele**.
 
 1. **Conta Google do agente.** Use um e-mail só para isso, por exemplo
    `impressora@theonefl.com`.
-2. **Cadastro no app.** Em Usuários, cadastre esse e-mail como **gerente
-   (manager)** com o trabalho **`agente`**. Esse trabalho não abre nenhuma tela
-   e não mexe em pedido nem em estoque: só deixa o agente ler e marcar a fila de
-   impressão.
+2. **Cadastro no app.** Em **⚙️ Admin → Usuários → + novo**, ponha o e-mail
+   da conta, escolha **담당자 (manager)** e, em **Job**, o botão
+   **🖨 프린터 에이전트 (Print agent)**. Salve. Esse trabalho não abre nenhuma
+   tela e não mexe em pedido nem em estoque: só deixa o agente ler e marcar a
+   fila de impressão.
 3. **ID de cliente OAuth.** No Google Cloud do projeto `the-one-app-ff40e`, em
    *APIs e serviços → Credenciais → Criar credenciais → ID do cliente OAuth*,
    escolha o tipo **App para computador**. Anote o *ID do cliente* e a

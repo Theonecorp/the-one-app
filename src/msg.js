@@ -22,7 +22,7 @@ export function myTargets() {
   const T = ['g:all', 'u:' + me()], r = S.me && S.me.role;
   if (r === 'salesman') { T.push('g:sales'); if (mySm()) T.push('sm:' + mySm()); }
   else if (r === 'admin' || r === 'owner') T.push('g:office', 'g:wh', 'g:staff');
-  else if (r === 'manager') { const J = [S.me.job || 'office'].concat(Array.isArray(S.me.job2) ? S.me.job2 : []); T.push('g:staff'); if (J.some(j => WH_JOBS.includes(j))) T.push('g:wh'); if (J.some(j => j !== 'whmgr' && j !== 'pick')) T.push('g:office'); }   // 👥 같이 하는 일(job2)도
+  else if (r === 'manager') { const J = [S.me.job || 'office'].concat(Array.isArray(S.me.job2) ? S.me.job2 : []); T.push('g:staff'); if (J.some(j => WH_JOBS.includes(j))) T.push('g:wh'); if (J.some(j => j !== 'whmgr' && j !== 'pick' && j !== 'agente')) T.push('g:office'); }   // 👥 같이 하는 일(job2)도
   return T.slice(0, 10);
 }
 const GROUPS = () => [['g:office', '🏢 ' + bt('사무실', 'Office')], ['g:wh', '📦 ' + bt('창고', 'Warehouse')], ['g:sales', '🚗 ' + bt('세일즈맨 전체', 'All salesmen')], ['g:all', '📣 ' + bt('모두', 'Everyone')]];

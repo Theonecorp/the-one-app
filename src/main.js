@@ -89,10 +89,11 @@ const NAV = {
   admin:    [['own', '🏠', '홈', 'Home'], HUB_LOOK, HUB_BIZ, HUB_WH, ['admin', '⚙️', '관리', 'Admin']]   // 관리자: 오너와 같은 대시보드 + 정산 · 관리 · 🔁 모드(오너 · 담당자 · 세일즈) — 미수금 · 수금은 홈 칸에서
 };
 NAV.manager = NAV.office;
+NAV.agente = [HOME_STAFF];   // 🖨 프린터 에이전트 계정 — 사람이 쓰지 않음
 /* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자는 전부 */
 /* 👥 담당자 일 5가지 (v0.8.217 · 2026-11-13 관리자): 오피스 매니저 · 회계 · 창고 매니저 · 출고 · 인보이스 담당 · 디자인
  *   예전 '인보이스 담당(invoice)' · '창고 직원(pick)' 은 '출고 · 인보이스 담당(pickinv)' 하나로 — 사용자 문서는 그대로 두고 앱 · 규칙이 같은 일로 봄 (JOB_ALIAS) */
-export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct', '회계 담당', 'Accounting'], ['whmgr', '창고 매니저', 'Warehouse Manager'], ['pickinv', '출고 · 인보이스 담당', 'Fulfillment & Invoicing'], ['catalog', '디자인', 'Design']];
+export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct', '회계 담당', 'Accounting'], ['whmgr', '창고 매니저', 'Warehouse Manager'], ['pickinv', '출고 · 인보이스 담당', 'Fulfillment & Invoicing'], ['catalog', '디자인', 'Design'], ['agente', '🖨 프린터 에이전트', 'Print agent']];   // 🖨 출고 PC 프린터 에이전트 전용 계정 (agente-impressao) — 화면 · 버튼 없음, 인쇄 대기열(printJobs)만
 export const JOB_ALIAS = { invoice: 'pickinv', pick: 'pickinv' };
 const jobNorm = j => JOB_ALIAS[j] || j;
 /** 일별 할 수 있는 것 — flow 🧭 전체 주문 흐름 감독 · newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
@@ -104,6 +105,7 @@ export const CAN = {
   invoice: ['newOrder', 'invoice', 'void', 'items', 'bo'],
   whmgr:   ['flow', 'assign', 'pick', 'ship', 'items', 'bo'],
   pick:    ['pick', 'ship', 'items'],
+  agente:  [],   // 🖨 프린터 에이전트: 할 수 있는 일 없음 (규칙상 담당자라 printJobs 만 읽고 상태를 바꿈)
   catalog: ['items', 'catalog']   // 🎨 디자인 · 카탈로그 담당: 아이템 · 분류 · 사진 · 세트 · 바코드 (주문 · 수금은 안 봄)
 };
 export const jobCan = (job, cap) => (CAN[job] || CAN.office).includes(cap);
