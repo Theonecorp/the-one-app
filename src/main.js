@@ -2,7 +2,7 @@
  *  THE ONE 앱 — 진입점: 로그인 → 역할 → 메뉴
  * ============================================================ */
 import { connect, MOCK, newId } from './db.js';
-import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt, bi, numPadOn, setNumPad, goHash, debounce, money } from './ui.js';
+import { $, esc, toast, busy, Router, openModal, closeModal, printClose, today, bt, bi, numPadOn, setNumPad, goHash, debounce, money, HIDE_VAL, setHideVal, initHideVal } from './ui.js';
 import { openScanner } from './scan.js';
 import * as Msg from './msg.js';
 import { searchAccounts } from './accounts.js';
@@ -137,7 +137,7 @@ function navFor(r) {
 function shell() {
   document.head.insertAdjacentHTML('beforeend', '<style>' + CSS + '</style>');
   document.body.innerHTML =
-    '<header><button class="hb" id="hBack" title="뒤로">' + icon('chevLeft', 22) + '</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><button class="hb hsearch" id="hSearch" title="검색 · Search">' + icon('search', 18) + '<span class="hsl">' + bt('가게 · 아이템 · 바코드 · 인보이스 검색', 'Search store, item, barcode or invoice') + '</span><kbd>⌘K</kbd></button><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hScan" title="바코드 스캔 · Scan">' + icon('scan', 19) + '</button><button class="hb" id="hBell" title="알림 · 메시지">' + icon('bell', 19) + '</button><button class="hb hlang" id="hLang" translate="no" title="Language">' + icon('globe', 16) + ' ' + LANG.toUpperCase() + '</button><button class="hb" id="hMenu" title="메뉴">' + icon('menu', 20) + '</button></div></header>' +
+    '<header><button class="hb" id="hBack" title="뒤로">' + icon('chevLeft', 22) + '</button><img src="logo-96.png" alt="" class="hlogo"><h1 id="hTitle">THE ONE</h1><div class="hr"><button class="hb hsearch" id="hSearch" title="검색 · Search">' + icon('search', 18) + '<span class="hsl">' + bt('가게 · 아이템 · 바코드 · 인보이스 검색', 'Search store, item, barcode or invoice') + '</span><kbd>⌘K</kbd></button><span id="hNet" title="인터넷 연결"></span><span id="hWho"></span><button class="hb" id="hScan" title="바코드 스캔 · Scan">' + icon('scan', 19) + '</button><button class="hb heye" id="hEye" type="button"></button><button class="hb" id="hBell" title="알림 · 메시지">' + icon('bell', 19) + '</button><button class="hb hlang" id="hLang" translate="no" title="Language">' + icon('globe', 16) + ' ' + LANG.toUpperCase() + '</button><button class="hb" id="hMenu" title="메뉴">' + icon('menu', 20) + '</button></div></header>' +
     '<div class="wrap" id="page"><div class="load">불러오는 중…</div></div>' +
     '<nav id="nav"></nav>' +
     '<div id="busy"><div class="spin"></div></div><div id="topbar"></div>' +
@@ -153,6 +153,7 @@ function shell() {
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button.b-blue,button.b-red,button.b-green,button.b-amb,#nav button'); if (!b) return; const t = Date.now(); if (b._tap && t - b._tap < 450) { e.stopImmediatePropagation(); e.preventDefault(); return; } b._tap = t; }, true);
   let tbT = 0; window.addEventListener('dbbusy', e => { const n = e.detail, tb = $('topbar'); if (!tb) return; clearTimeout(tbT); if (n > 0) tbT = setTimeout(() => tb.classList.add('on'), 150); else tb.classList.remove('on'); });
   $('prtClose').onclick = printClose; $('prtGo').onclick = () => window.print();
+  paintEye(); $('hEye').onclick = () => { setHideVal(!HIDE_VAL); paintEye(); toast(HIDE_VAL ? bt('금액 숨김', 'Amounts hidden') : bt('금액 표시됨', 'Amounts visible')); }; initHideVal();
   $('hMenu').onclick = userMenu; $('hSearch').onclick = () => globalSearch(); $('hScan').onclick = headerScan; $('hBell').onclick = () => Msg.openPanel();
   /* ⌘K · Ctrl+K — 어디서나 검색 (컴퓨터) */
   document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && !e.altKey && String(e.key).toLowerCase() === 'k' && S.user) { e.preventDefault(); if (!$('gsQ')) globalSearch(); } });
@@ -205,6 +206,8 @@ function waitScreen(email) {
 /* ☰ 서랍 메뉴 — 왼쪽에서 밀려 나오는 메뉴 (회사 · 역할별 묶음 화면 · 설정 · 사용자 · 언어). 아래 메뉴 "모드" · 헤더 ☰ · 이름 누르기 모두 여기로 */
 /* 🧭 ☰ 서랍 — 폰 · 태블릿은 팝업, 데스크탑(1200px 이상)은 왼쪽에 고정(dock · 본문이 그만큼 오른쪽으로). ☰ 는 데스크탑에서 고정 켜기 · 끄기 (이 컴퓨터에 기억)
  *   서랍 내용은 한 곳(drawerRender)에서 만들고, 고정 상태에서는 닫기(close)가 아무것도 안 함 · 주소가 바뀌면 켜진 줄만 다시 칠함 (v0.8.175) */
+/** 👁 머리띠의 금액 숨기기 단추 (옛 WMS btnOcultarValores) */
+function paintEye() { const b = $('hEye'); if (!b) return; b.innerHTML = icon(HIDE_VAL ? 'eyeOff' : 'eye', 19); b.title = HIDE_VAL ? bt('금액 표시', 'Show amounts') : bt('금액 숨기기', 'Hide amounts'); b.setAttribute('aria-pressed', HIDE_VAL ? 'true' : 'false'); b.classList.toggle('on', HIDE_VAL); }
 const DOCK_MQ = '(min-width:1200px)';
 /* 🧭 서랍 묶음 (v0.8.203) — [키, 아이콘, 한글, 영어, 화면 주소들]. 여기에 없는 화면은 "기타" 묶음으로 (지우지 않음) */
 /* 🧭 v0.8.214 — 옛 WMS 의 왼쪽 메뉴와 같은 묶음 · 같은 순서 (2026-11-13 창고 매니저 요청: "옛 시스템처럼 카테고리를 나눠서")
