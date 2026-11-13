@@ -12,7 +12,7 @@ const path = require('path');
   await pg.evaluate(() => { location.hash = '#/send'; }); await pg.waitForSelector('.evck', { timeout: 8000 }).catch(() => errs.push('send tab missing'));
   const n0 = await pg.$$eval('.evck', c => c.length); log('checks to send:', n0, (await pg.textContent('#evSum')).trim());
   await pg.fill('#evTrk', 'USPS 9400'); await pg.click('#evGo'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(1500);
-  const prt = await pg.evaluate(() => document.getElementById('prt').className + '|' + document.getElementById('prtbody').textContent.replace(/\s+/g, ' ').slice(0, 80)); log('print:', prt); if (!/on\|/.test(prt) || !/체크 발송 목록/.test(prt)) errs.push('packing list should print');
+  const prt = await pg.evaluate(() => document.getElementById('prt').className + '|' + document.getElementById('prtbody').textContent.replace(/\s+/g, ' ').slice(0, 80)); log('print:', prt); if (!/\bon\b[^|]*\|/.test(prt) || !/체크 발송 목록/.test(prt)) errs.push('packing list should print');
   const env = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.envelopes || {})[0]); log('envelope:', env && [env.id, env.sm, env.n, env.total, env.st, env.trk]);
   if (!env || env.sm !== 'BRANDON' || env.n !== n0 || env.st !== 'sent') errs.push('envelope wrong');
   const marked = await pg.evaluate(id => Object.values(window.__MOCK_STORE__.entries).filter(e => e.env === id).length, env.id); if (marked !== env.entries.length) errs.push('entries not marked with env');
