@@ -98,7 +98,7 @@ const path = require('path'), fs = require('fs');
   if (!(await pg.$('#mInv'))) errs.push('picked state should offer invoice');
   await pg.click('#mInv'); await pg.waitForSelector('#ivOk'); await pg.click('#ivOk'); await pg.waitForTimeout(1500); if (await pg.$('#prt.on')) await pg.click('#prtClose');
   log('after invoice:', (await txt(pg, '#page h2')).slice(0, 60), 'ship btn:', !!(await pg.$('#mShip')));
-  await pg.click('#mShip'); await pg.waitForSelector('#shOk'); await pg.fill('#shTrack', '1Z999TEST'); await pg.click('#shOk'); await pg.waitForTimeout(900);
+  await pg.click('#mShipOld'); await pg.waitForSelector('#shOk');   /* v0.8.206: 🚚 은 🏪 카운터로 — 트래킹 직접 입력은 ✍️ 단추 */ await pg.fill('#shTrack', '1Z999TEST'); await pg.click('#shOk'); await pg.waitForTimeout(900);
   log('after ship:', (await txt(pg, '#page h2')).slice(0, 60), (await txt(pg, '#page .muted')).slice(0, 160));
   if (!/픽업 대기/.test(await txt(pg, '#page h2'))) errs.push('UPS ship should go to awaiting pickup (packed)');   // v0.8.51: UPS → 📮 픽업 대기
   await home(); await pg.waitForTimeout(800); log('tiles after flow:', await pg.$$eval('.htile', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 44))));

@@ -95,7 +95,7 @@ export function manage(o, lines) {
   if (o.st === 'picked') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('수량 저장', 'Save') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 발행', 'Issue invoice') + '</button>' : '<span class="muted" style="align-self:center">' + bi('인보이스 발행은 사무실에서 합니다', 'Office issues the invoice') + '</span>'));
   if (o.st === 'sent' && !o.cfOk) B.push('<button class="b-ghost" id="mCfOk">👍 ' + bi('확인 완료로 (전화 등)', 'Mark confirmed') + '</button>');
   if (o.pay === 'ACH' && (o.st === 'done' || o.st === 'packed' || o.st === 'dlv' || o.st === 'shipped') && o.invs && o.invs.length && can('invoice')) B.push(o.achId ? '<span class="tag t-b" style="align-self:center">🏦 ACH ' + bt('입력됨', 'entered') + '</span>' : '<button class="b-blue" id="mAch">🏦 ' + bi('ACH 입력', 'Enter ACH') + '</button>');
-  if (o.st === 'done' && can('ship')) B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · UPS 라벨', 'Pack · UPS label') + '</button>');
+  if (o.st === 'done' && can('ship')) B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · UPS 라벨', 'Pack · UPS label') + '</button><button class="b-ghost" id="mShipOld">✍️ ' + bi('트래킹 직접 입력 · 다른 운송', 'Manual tracking · other carrier') + '</button>');   /* 🚚 = 🏪 카운터 · ✍️ = 예전 출고 창 (v0.8.206) */
   /* 🚗 UPS 가 아니라 세일즈맨 · 다른 직원이 가져가거나 손님이 픽업 — 딜리버리 대기로 (UPS 출고 목록에서 빠짐) */
   if (o.st === 'done' && (can('ship') || can('invoice'))) B.push('<button class="b-ghost" id="mDlv">🚗 ' + bi('딜리버리로 (UPS 아님)', 'Delivery (not UPS)') + '</button>');
   if (o.st === 'dlv') B.push('<div class="alert a-amb" style="flex-basis:100%;margin:0">🚗 ' + bi('딜리버리 대기', 'Awaiting delivery') + ' — <b>' + esc(DLVK[o.dlvKind] ? bt(DLVK[o.dlvKind][0], DLVK[o.dlvKind][1]) : '') + (o.dlvBy ? ' · ' + esc(o.dlvBy) : '') + '</b>' + (o.dlvNote ? ' · 📝 ' + esc(o.dlvNote) : '') + ' <span class="muted">' + esc(String(o.dlvAt || '').substring(5, 16).replace('T', ' ')) + '</span></div>' +
@@ -264,7 +264,8 @@ export function manage(o, lines) {
   if ($('mAsk')) $('mAsk').onclick = async () => { const N = await import('./notify.js'); N.askForm(o, 'ask'); };
   if ($('mChat')) $('mChat').onclick = async () => { const N = await import('./notify.js'); window.open(N.chatUrl(), '_blank', 'noopener'); };
   if ($('mIssueOk')) $('mIssueOk').onclick = async () => { busy(true); try { await S.DB.update('orders', o.id, { cfIssueOpen: false, cfIssueDoneAt: new Date().toISOString(), cfIssueDoneBy: S.user.email }); toast('✅ ' + bt('해결로 표시했습니다', 'Marked resolved'), 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-  if ($('mShip')) $('mShip').onclick = () => shipModal(o);
+  if ($('mShip')) $('mShip').onclick = () => toCounter(o, () => shipModal(o));
+  if ($('mShipOld')) $('mShipOld').onclick = () => shipModal(o);
   if ($('mDlv')) $('mDlv').onclick = () => dlvModal(o);
   if ($('mDlvEdit')) $('mDlvEdit').onclick = () => dlvModal(o);
   if ($('mDlvDone')) $('mDlvDone').onclick = () => dlvDone(o);
@@ -404,6 +405,14 @@ export function printLabels(q) {
 }
 /** 🚚 출고 창 — ship.js (UPS 프로그램처럼 자세히) */
 export function shipModal(o, after) { return Ship.shipModal(o, after); }
+/** 🚚 출고 — 인보이스 뒤 UPS 출고는 🏪 Shipping UPS 카운터 하나로 (v0.8.206 · 2026-11-12 관리자: "인보이스 발행 뒤 겹치는 UPS 단계를 조의 화면으로 통합")
+ *   카운터는 거래처 주소로만 라벨을 만들므로, 다른 주소(shipTo)로 가는 주문 · 이미 라벨 요청이 있는 주문은 예전 출고 창 (취소 · 다시 인쇄) */
+async function toCounter(o, old) {
+  if (!o || o.shipTo || !o.acct) return old();
+  let q = null; try { q = await S.DB.get('shipq', o.id); } catch (e) {}
+  if (q && q.st !== 'voided') return old();
+  const M = await import('./balcao.js'); M.abrirPedido(o);
+}
 
 /* ============================================================
  *  🚚 UPS 출고 탭 — 인보이스가 나와 포장을 기다리는 주문을 한 화면에서 바로 UPS 라벨로
@@ -439,7 +448,7 @@ async function upsPage(LF, head) {
   bindListHead(LF, head);
   const all = wait.concat(recent), byId = id => all.find(o => o.id === id);
   document.querySelectorAll('[data-uo]').forEach(el => el.onclick = () => Router.go('order', el.dataset.uo));
-  document.querySelectorAll('[data-us]').forEach(b => b.onclick = () => shipModal(byId(b.dataset.us), () => upsPage(LF, head)));
+  document.querySelectorAll('[data-us]').forEach(b => b.onclick = () => { const o = byId(b.dataset.us); toCounter(o, () => shipModal(o, () => upsPage(LF, head))); });
   document.querySelectorAll('[data-ul]').forEach(b => b.onclick = () => printLabels(qs[b.dataset.ul]));
   if ($('upTrk')) $('upTrk').onclick = () => Router.go('track');
   addrDiffs(logs, () => upsPage(LF, head));
