@@ -3,7 +3,7 @@
  *    lerEtiqueta (콜러블, us-central1): 📥 상품 받기의 "사진으로 라벨 읽기" — 상자 라벨 사진 → 코드 · 수량
  *    키는 Secret Manager 의 ANTHROPIC_API_KEY (관리자가 firebase-tools 로 한 번 넣음 · functions/README.md) — 코드 · 저장소 · 앱에는 없음
  *    모델은 환경 변수 ANTHROPIC_MODELO 로 바꿀 수 있음 (없으면 core.js 의 기본값)
- *    로직은 전부 core.js (시험 test/t221.js) — 여기서는 SDK · Firestore · HttpsError 를 넣어 줄 뿐
+ *    로직은 전부 core.js (시험 test/t242.js) — 여기서는 SDK · Firestore · HttpsError 를 넣어 줄 뿐
  * ============================================================ */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';

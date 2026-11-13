@@ -1,6 +1,6 @@
 /* ============================================================
  *  📷 사진으로 라벨 읽기 — 옛 WMS 의 Supabase Edge Function "ler-etiqueta" 를 Firebase 로 옮긴 순수 로직
- *    이 파일은 아무 패키지도 가져오지 않는다 (SDK · Firebase 는 index.js 가 deps 로 넣어 줌) → test/t221.js 가 functions/node_modules 없이 돈다
+ *    이 파일은 아무 패키지도 가져오지 않는다 (SDK · Firebase 는 index.js 가 deps 로 넣어 줌) → test/t242.js 가 functions/node_modules 없이 돈다
  *    lerEtiquetaCore({ auth, data }, { db, anthropic, now, cfg, HttpsError, erros, formato })
  *      auth  = 콜러블 request.auth ({ uid, token }) · data = { imagem(base64), mime }
  *      db    = firebase-admin Firestore (collection/doc/get/where/count/add 만 씀)
