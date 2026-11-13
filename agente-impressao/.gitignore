@@ -1,0 +1,7 @@
+# guardam o login do agente neste PC - nunca no GitHub
+config.json
+login-google.json
+agente.log
+agente.anterior.mjs
+_raw.ps1
+saida-teste.*
