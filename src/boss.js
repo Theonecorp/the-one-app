@@ -669,7 +669,7 @@ async function pageAR() {
   const top = sortBy(stores.filter(s => s.maxPdd > 60), s => s.net, true).slice(0, 40), stale = sortBy(stores.filter(s => !s.lastPaid || daysBetween(s.lastPaid, t) > 60), s => s.net, true).slice(0, 40), moved = sortBy(stores.filter(s => s.moved), s => s.net, true);
   const LB = ['기한 전', '1-30', '31-60', '61-90', '90+'];
   const stack = (b, tot) => tot ? '<div class="stack">' + b.map((v, i) => '<i class="s' + i + '" style="width:' + (v / tot * 100) + '%"></i>').join('') + '</div>' : '';
-  const views = [['sum', '요약'], ['top', '연체 상위 ' + top.length], ['stale', '60일+ 수금 없음 ' + stale.length], ['moved', '담당 바뀜 ' + moved.length], ['old', '수금 없는 가게']];
+  const views = [['sum', '요약'], ['top', '연체 상위 ' + top.length], ['stale', '60일+ 수금 없음 ' + stale.length], ['moved', '담당 바뀜 ' + moved.length], ['old', '수금 없는 가게'], ['chk', '🧮 인보이스 대조']];
   let h = '<div class="card"><h2>💰 미수금 (AR) · 기준일 ' + esc(asOf) + (daysBetween(asOf, t) > 10 ? ' <span class="warn">(' + daysBetween(asOf, t) + '일 전 — 새로 올려 주세요)</span>' : ' (' + daysBetween(asOf, t) + '일 전)') + '</h2>' +
     '<div class="seg"><button class="' + (AV_SM ? '' : 'on') + '" data-avsm="">전체</button>' + smAll.map(s => '<button class="' + (AV_SM === s ? 'on' : '') + '" data-avsm="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>' +
     '<div class="hero">' + money(total) + '</div><div class="heroSub">' + stores.length + '곳 · 90일+ <b class="' + (pct90 >= 30 ? 'warn' : '') + '">' + pct90 + '%</b>' + (stores.filter(s => s.dormant).length ? ' · 💤 1년+ 거래 없음 ' + stores.filter(s => s.dormant).length + '곳' : '') + (all.noSmAmt && !AV_SM ? ' · 담당 없음 ' + money(all.noSmAmt) : '') + '</div>' +
@@ -680,8 +680,10 @@ async function pageAR() {
   else if (AV === 'top') h += '<div class="card"><h2>연체 큰 순 (61일 이상)</h2>' + (top.map(s => storeRow(s, '<span class="agebadge ' + (s.maxPdd > 90 ? 'a4' : 'a3') + '">' + s.maxPdd + '일</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'stale') h += '<div class="card"><h2>잔액은 있는데 60일 넘게 수금 없음</h2>' + (stale.map(s => storeRow(s, '<span class="agebadge a3">' + (s.lastPaid ? daysBetween(s.lastPaid, t) + '일' : '없음') + '</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'moved') h += '<div class="card"><h2>거래처 담당과 실제 수금 담당이 다른 가게</h2><div class="alert a-blu">앱은 최근 1년 실제 수금한 사람을 담당으로 봅니다. 거래처의 담당을 고치면 사라집니다.</div>' + (moved.map(s => storeRow(s)).join('') || '<div class="none">없음</div>') + '</div>';
+  else if (AV === 'chk') h += '<div class="card" id="ckBox"></div>';   /* 🧮 AR 파일 ↔ 옛 시스템 인보이스 대조 (v0.8.209) */
   else h += '<div class="card" id="oldBox"></div>';
   $('page').innerHTML = h;
+  if (AV === 'chk') { const M = await import('./archeck.js'); M.paintArCheck($('ckBox'), { S, file: all, ents: C.ents, cods: C.cod }); }
   document.querySelectorAll('[data-avsm]').forEach(b => b.onclick = () => { AV_SM = b.dataset.avsm; pageAR(); });
   document.querySelectorAll('[data-av]').forEach(b => b.onclick = () => { AV = b.dataset.av; pageAR(); });
   document.querySelectorAll('[data-fs]').forEach(el => el.onclick = () => Router.go('find', encodeURIComponent(el.dataset.fs)));
