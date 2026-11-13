@@ -160,6 +160,8 @@ service cloud.firestore {
     match /recebimentos/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /recebFotos/{id} { allow read: if registered(); allow create, update: if itemJob(); }
     match /cargaInvoice/{id} { allow read, write: if isAdmin(); }
+    // 📷 사진으로 라벨 읽기 사용 기록 (Cloud Function lerEtiqueta 가 Admin SDK 로 씀 — 규칙을 거치지 않음) · 토큰 · 비용은 관리자 · 오너만 봄
+    match /iaUso/{id} { allow read: if isAdmin(); allow write: if false; }
     match /inbound/{id} { allow read: if isStaff(); allow write: if itemJob(); }   // 🚢 입고 예정 — 공장 인보이스 (단가는 아래 inboundCost 에 따로)
     match /inboundCost/{id} { allow create: if itemJob(); allow read, update, delete: if isRealAdmin(); }   // 💰 공장 단가 · 금액 — 관리자만 읽음 (오피스가 등록할 때는 쓰기만)
     match /itemPhotos/{id} { allow read: if registered(); allow write: if itemJob(); }
