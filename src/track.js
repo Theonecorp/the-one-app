@@ -161,12 +161,12 @@ async function page(arg) {
   try {
     if (T.acct) { list = await shipmentsOf(T.acct); const a = S.accounts.byCode[T.acct]; title = a ? a.store + ' · ' + a.acct : T.acct; }
     else if (/^1Z[0-9A-Z]{16}$/.test(q)) { const x = await S.DB.get('shipments', q).catch(() => null); if (x) list = [x]; else { $('tkOut').innerHTML = '<div class="muted">' + bt('앱 기록에 없는 트래킹입니다 — UPS 에서 바로 조회합니다', 'Not in the app — asking UPS directly') + '</div>'; return trackModal(q, null); } title = q; }
-    else if (/^[A-Z]{1,3}-?\d{3,7}$/.test(q)) {   /* 인보이스 → 그 가게의 박스 중 이 인보이스가 든 것 (세일즈맨 규칙 · 색인 없이) */
+    else if (/^[A-Z]{1,3}-?\d{3,7}$/.test(q) && !/^S[A-Z]-\d{6}$/.test(q)) {   /* 인보이스 → 그 가게의 박스 중 이 인보이스가 든 것 (세일즈맨 규칙 · 색인 없이) */
       const iv = await (await import('./invoicing.js')).getInvoice(S, q).catch(() => null);
       list = iv && iv.acct ? (await shipmentsOf(iv.acct)).filter(x => (x.invs || []).includes(q)) : isStaff() ? await S.DB.list('shipments', { where: [['invs', 'array-contains', q]] }) : [];
       title = bt('인보이스', 'Invoice') + ' ' + q + (iv ? ' · ' + iv.store : '');
     }
-    else if (/^O\d{6}-/.test(q)) { list = await S.DB.list('shipments', { where: scope([['no', '==', q]]) }); title = bt('주문', 'Order') + ' ' + q; }
+    else if (/^O\d{6}-/.test(q) || /^S[A-Z]-\d{6}$/.test(q)) { list = await S.DB.list('shipments', { where: scope([['no', '==', q]]) }); title = bt('주문', 'Order') + ' ' + q; }
     else if (!q) { const from = addDays(today(), isStaff() ? -7 : -30); list = isStaff() ? await S.DB.list('shipments', { where: [['shipDate', '>=', from]] }) : (await S.DB.list('shipments', { where: [['sm', '==', mySm()]] })).filter(x => (x.shipDate || '') >= from); title = bt('최근 출고', 'Recent shipments') + ' (' + (isStaff() ? 7 : 30) + bt('일', ' days') + ')'; }
     else { $('tkOut').innerHTML = '<div class="muted">' + bt('위에서 가게를 고르세요', 'Pick a store above') + '</div>'; return; }
   } catch (e) { $('tkOut').innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; return; }
