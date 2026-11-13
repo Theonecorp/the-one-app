@@ -299,6 +299,7 @@ export function settingsPage() {
       info(icon('pen', 20), bt('숫자 입력', 'Number entry'), bt('수량 · 금액 칸', 'Qty · amount fields')) +
       '<div class="stpad">' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', x => x[1]) + '</div>' +
       srow('mPush', icon('bell', 20), bt('알림', 'Notifications'), nst === 'granted' ? bt('팝업 알림 항상 켜짐', 'Pop-ups always on') : nst === 'denied' ? bt('알림 막힘 — 허용하는 법', 'Blocked — how to allow') : bt('알림 허용', 'Allow notifications'), nst === 'denied' ? 'warn' : '')) +
+    (isAdm ? grp(bt('사용자', 'Users'), srow('stUserNew', icon('userCheck', 20), bt('사용자 만들기', 'Create user'), bt('구글 이메일 · 역할 · 일 · 세일즈맨 코드', 'Google email · role · job · salesman code')) + srow('stUsers', icon('users', 20), bt('사용자 관리', 'Manage users'), bt('목록 · 고치기 · 끄기 · 지우기', 'List · edit · disable · delete'))) : '') +
     grp(bt('연결', 'Connection'),
       srow('mNet', icon('globe', 20), bt('연결 · 보낼 함', 'Connection · outbox'), (isOff ? bt('오프라인', 'Offline') : bt('온라인', 'Online')) + (outN ? ' · 📤 ' + outN : ''), isOff || outN ? 'warn' : '') +
       srow('mDiag', icon('search', 20), bt('연결 점검', 'Check connection'), bt('안 될 때 원인 찾기', 'Find out what is wrong')) + '<div id="diagOut"></div>') +
@@ -307,6 +308,8 @@ export function settingsPage() {
       srow('mReload', icon('refresh', 20), bt('새로고침', 'Reload'), bt('최신 버전 받기', 'Get the latest version'))) +
     '<p class="muted sttail">' + VER + '</p></div>';
   $('mDiag').onclick = diag;
+  if ($('stUserNew')) $('stUserNew').onclick = () => Admin.userForm(null);   // 👤 설정에서 사용자 만들기 (관리자)
+  if ($('stUsers')) $('stUsers').onclick = () => Router.go('admin', 'users');
   $('mNet').onclick = () => netSheet();
   $('mPush').onclick = async () => { const st = Notify.notifyState(); if (st === 'denied') return openModal('<h2>🔕 ' + bi('알림이 막혀 있습니다', 'Notifications are blocked') + '</h2>' + Notify.blockedHtml() + '<div class="btns"><button class="b-ghost" id="nbX">' + bt('닫기', 'Close') + '</button></div>'), $('nbX').onclick = closeModal; if (st !== 'granted') { await Notify.askPermission(); settingsPage(); return; } const ok = await Push.enable(true); toast(ok ? '🔔 ' + bt('이 기기에서 팝업을 받습니다', 'This device gets pop-ups') : bt('이 브라우저는 앱을 닫았을 때 팝업을 받을 수 없습니다 — 앱이 열려 있을 때만', 'This browser only shows pop-ups while the app is open'), ok ? 'good' : 'bad'); if (ok) { try { const r = await navigator.serviceWorker.getRegistration(); if (r) r.showNotification('🔔 THE ONE', { body: bt('팝업 알림이 이렇게 뜹니다', 'Pop-ups look like this'), tag: 'theone-test', icon: 'icon-192.png', data: { url: location.href, at: Date.now() } }); } catch (e) {} } };   // 시험 팝업은 화면이 보일 때도 띄움
   document.querySelectorAll('.stpage [data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); settingsPage(); });

@@ -96,7 +96,8 @@ async function users() {
   $('uNew').onclick = () => userForm(null);
   document.querySelectorAll('[data-u]').forEach(el => el.onclick = () => userForm(list.find(u => u.email === el.dataset.u)));
 }
-function userForm(u) {
+/** 👤 사용자 추가 · 고치기 창 — ⚙️ 설정 화면의 "사용자 만들기" 도 이 창을 씀 (v0.8.214) */
+export function userForm(u) {
   u = u || {};
   const F = { role: u.role || 'salesman', job: u.job || 'office', job2: (Array.isArray(u.job2) ? u.job2 : []).slice(), extra: (u.extra || []).slice(), ach: !!u.achAccess, active: u.active !== false };
   const isMe = u.email && u.email === S.user.email;
@@ -150,10 +151,10 @@ function userForm(u) {
       if (doc.sm && !S.smByCode[doc.sm]) { await S.DB.set('salesmen', doc.sm, { code: doc.sm, name: doc.name || doc.sm, email: r === 'salesman' ? email : '', rates: Object.assign({}, RATE_DEFAULT), active: true, updatedAt: new Date().toISOString() }); await reloadSms(); made = ' · 세일즈맨 ' + doc.sm + ' 새로 만듦 (요율은 세일즈맨 탭에서 확인)'; }
       await S.DB.set('users', email, Object.assign({ createdAt: today() }, u, doc)); closeModal(); toast('저장' + made, 'good');
       if (isMe) { S.me = Object.assign({}, S.me, doc); }
-      users();
+      if ($('adminBody')) users();
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
   };
-  if ($('uDel')) $('uDel').onclick = async () => { if (!(await confirmBox('이 사용자를 지울까요? 로그인이 막힙니다.', '삭제'))) return; busy(true); try { await S.DB.del('users', u.email); closeModal(); users(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  if ($('uDel')) $('uDel').onclick = async () => { if (!(await confirmBox('이 사용자를 지울까요? 로그인이 막힙니다.', '삭제'))) return; busy(true); try { await S.DB.del('users', u.email); closeModal(); if ($('adminBody')) users(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ---- 세일즈맨 · 요율 ---- */
