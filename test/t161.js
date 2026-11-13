@@ -36,7 +36,7 @@ const path = require('path');
   if (!(await pc.$('[data-orf]'))) errs.push('④ refresh button on the backorder list'); else { await pc.click('[data-orf]'); await pc.waitForTimeout(800); m = await menuInfo(pc); if (!m || m.on.join() !== 'bo') errs.push('④ refresh on the backorder list stays on bo'); }
   await pc.context().close();
   /* ① 창고 매니저 · 픽킹 담당 — 그 일의 칸이 전부 */
-  for (const [job, must, mustNot] of [['whmgr', ['ups', 'cfok', 'sent', 'all'], ['draft']], ['pick', ['mine', 'pick', 'bo'], ['sent', 'all', 'inv']]]) {
+  for (const [job, must, mustNot] of [['whmgr', ['ups', 'cfok', 'sent', 'all'], ['draft']], ['pick', ['mine', 'pick', 'bo', 'sent', 'inv'], ['draft']]   /* v0.8.217: 예전 창고 직원(pick) = 출고 · 인보이스 담당 */]) {
     const pg = await open('office@theonefl.com', job, 1100, 800); m = await menuInfo(pg); log('①', job, ':', JSON.stringify({ groups: m && m.groups, chips: m && m.chips, pos: m && m.pos }));
     if (!m || !m.vis || m.pos !== 'fixed') errs.push('① ' + job + ' home shows the fixed menu'); else { must.forEach(k => { if (!m.chips.includes(k)) errs.push('① ' + job + ' menu has ' + k); }); mustNot.forEach(k => { if (m.chips.includes(k)) errs.push('① ' + job + ' menu must not have ' + k); }); if (m.lg) errs.push('① ' + job + ': no stage buttons'); }
     await pg.context().close();

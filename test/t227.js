@@ -3,7 +3,7 @@
  *   ② 묶음 머리를 누르면 접힘 → 새로 그려도 기억 · 지금 화면이 든 묶음은 접히지 않음
  *   ③ 접기 단추(#dRail) → 서랍 72px · 본문이 그만큼 왼쪽으로 · 다시 누르면 260px
  *   ④ 서랍 · 아래 메뉴 · 머리띠 단추가 이모지 대신 선 아이콘(svg) · 머리띠 제목 = 지금 화면
- *   ⑤ 담당자 홈 = 대시보드: 숫자 4칸(실제 주문 수) · 빠른 작업은 권한대로 · 할 일에 밀린 주문 · 최근 주문 표 → 누르면 그 주문 · 빠른 작업 → 원래 화면
+ *   ⑤ 담당자 홈 = 대시보드 (v0.8.217: 오피스 = 접수 · 주문 · 인보이스 · 창고 매니저 · 출고 담당 = 창고 · 출고 · 매출 없음): 숫자 4칸(실제 주문 수) · 빠른 작업은 권한대로 · 할 일에 밀린 주문 · 최근 주문 표 → 누르면 그 주문 · 빠른 작업 → 원래 화면
  *   ⑥ ⌘K / Ctrl+K → 검색 창
  *   ⑦ 폰(390px): 아래 메뉴가 선 아이콘 · 대시보드 숫자 2칸씩 · 가로로 넘치지 않음 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
@@ -28,14 +28,14 @@ const path = require('path');
     const order = keys.filter(k => ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'inv', 'fin', 'mgmt'].includes(k)); if (order.join() !== ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'inv', 'fin', 'mgmt'].filter(k => keys.includes(k)).join()) errs.push('① groups in the old WMS order :: ' + keys.join());
     const dgo = await pg.$$eval('#drawer [data-dgo]', B => B.map(b => b.dataset.dgo)); const dup = dgo.filter((x, i) => dgo.indexOf(x) !== i);
     if (dup.length) errs.push('① a screen appears twice: ' + dup.join());
-    for (const r of ['shome', 'order', 'invs', 'stores', 'stock', 'items', 'cat', 'verify', 'track', 'notesups']) if (!dgo.includes(r)) errs.push('① screen missing from drawer: ' + r);
+    for (const r of ['shome', 'order', 'invs', 'stores', 'estoque', 'produtos', 'cat', 'verify', 'track', 'notesups']   /* v0.8.215: 📦 재고 · 🏷 아이템 → 조의 재고 · 상품 */) if (!dgo.includes(r)) errs.push('① screen missing from drawer: ' + r);
     /* ② 접기 · 기억 */
     await pg.click('#drawer .dgrp[data-dg="inv"] .dgh'); await pg.waitForTimeout(200);
     let shut = await pg.$eval('#drawer .dgrp[data-dg="inv"]', d => d.classList.contains('fold') && getComputedStyle(d.querySelector('[data-dgo]')).display === 'none');
     if (!shut) errs.push('② clicking the group header folds it');
     await pg.click('#drawer [data-dgo="stores"]'); await pg.waitForTimeout(700);
     shut = await pg.$eval('#drawer .dgrp[data-dg="inv"]', d => d.classList.contains('fold')).catch(() => false);
-    await pg.evaluate(() => { location.hash = '#/stock'; }); await pg.waitForTimeout(800);
+    await pg.evaluate(() => { location.hash = '#/estoque'; }); await pg.waitForTimeout(800);
     await pg.reload(); await pg.waitForSelector('#drawer.dock'); await pg.waitForTimeout(900);
     const st2 = await pg.$eval('#drawer .dgrp[data-dg="inv"]', d => d.classList.contains('fold'));
     log('② folded remembered:', shut, '· open on its own screen:', !st2);
@@ -57,19 +57,25 @@ const path = require('path');
     if (!/거래처|Customers/.test(await pg.textContent('#hTitle'))) errs.push('④ header title follows navigation');
     /* ⑤ 대시보드 */
     await pg.click('#drawer [data-dgo="shome"]'); await pg.waitForSelector('#wdash'); await pg.waitForTimeout(1500);
-    const D = await pg.evaluate(() => ({ k: ['in', 'pick', 'pack', 'ship'].map(k => (document.getElementById('wk-' + k) || {}).textContent), qa: Array.from(document.querySelectorAll('#wdash .wd-qa [data-wq]')).map(b => b.dataset.wq), al: Array.from(document.querySelectorAll('#wdAl [data-wa]')).map(b => b.dataset.wa), ord: document.querySelectorAll('#wdOrd [data-wo]').length, act: document.querySelectorAll('#wdAct li').length, sales: !!document.querySelector('#wdSales .wd-amt'), grp: document.querySelectorAll('.hgrp').length, hs: !!document.getElementById('hSales') }));
+    const D = await pg.evaluate(() => ({ k: ['in', 'cf', 'rv', 'iv'].map(k => (document.getElementById('wk-' + k) || {}).textContent), qa: Array.from(document.querySelectorAll('#wdash .wd-qa [data-wq]')).map(b => b.dataset.wq), al: Array.from(document.querySelectorAll('#wdAl [data-wa]')).map(b => b.dataset.wa), ord: document.querySelectorAll('#wdOrd [data-wo]').length, act: document.querySelectorAll('#wdAct li').length, sales: !!document.querySelector('#wdSales .wd-amt'), grp: document.querySelectorAll('.hgrp').length, hs: !!document.getElementById('hSales') }));
     log('⑤ dash:', JSON.stringify(D));
     if (D.k.some(v => !/^\d+$/.test(v || ''))) errs.push('⑤ the 4 KPI numbers are filled');
-    if (D.k[0] !== '0' || D.k[1] !== '0') errs.push('⑤ seed has no orders today and none picking: ' + D.k.join());
-    if (!D.qa.includes('cat') || !D.qa.includes('notesups') || !D.qa.includes('recv')) errs.push('⑤ office quick actions include receive · UPS · find product');
+    /* v0.8.217: 오피스 매니저 대시보드 = 접수 · 주문 · 인보이스 (신규 · 확인 · 배정 대기 · 인보이스 발행 대기 · 인보이스 발행) · 매출은 보임 */
+    if (!D.qa.includes('new') || !D.qa.includes('sent') || !D.qa.includes('inv') || D.qa.includes('notesups') || D.qa.includes('recv')) errs.push('⑤ office quick actions = new order · new orders · invoices (no warehouse actions)');
     if (!D.al.includes('old')) errs.push('⑤ alerts list the order waiting 1+ day');
     if (!D.ord || !D.act || !D.sales) errs.push('⑤ latest orders · activity · sales are shown');
     if (D.grp < 3 || !D.hs) errs.push('⑤ all the old home groups and the sales detail stay under the dashboard');
     await pg.click('#wdOrd [data-wo]'); await pg.waitForTimeout(900);
     if (!/#\/order\/O/.test(await pg.evaluate(() => location.hash))) errs.push('⑤ clicking a latest order opens it');
-    await pg.click('#drawer [data-dgo="shome"]'); await pg.waitForSelector('#wdash .wd-qa'); await pg.waitForTimeout(800);
-    await pg.click('#wdash [data-wq="recv"]'); await pg.waitForTimeout(900);
-    if (await pg.evaluate(() => location.hash) !== '#/stock/recv') errs.push('⑤ quick action 입고 opens stock › receive');
+    /* 창고 매니저 — 창고 · 출고 대시보드 (숫자 4칸 · 입고 · UPS · 아이템 찾기) · 매출 칸 없음 (v0.8.217) */
+    const wh = await open('wh@x.com', 'whmgr', 1500, 950);
+    const W2 = await wh.evaluate(() => ({ k: ['in', 'pick', 'pack', 'ship'].map(k => (document.getElementById('wk-' + k) || {}).textContent), qa: Array.from(document.querySelectorAll('#wdash .wd-qa [data-wq]')).map(b => b.dataset.wq), sales: !!document.getElementById('wdSales'), hs: !!document.getElementById('hSales') }));
+    log('⑤ whmgr dash:', JSON.stringify(W2));
+    if (W2.k.some(v => !/^\d+$/.test(v || '')) || W2.k[0] !== '0' || W2.k[1] !== '0') errs.push('⑤ whmgr KPI numbers (no orders today · none picking): ' + W2.k.join());
+    if (!W2.qa.includes('cat') || !W2.qa.includes('notesups') || !W2.qa.includes('recv')) errs.push('⑤ whmgr quick actions include receive · UPS · find product');
+    if (W2.sales || W2.hs) errs.push('⑤ whmgr sees no sales (v0.8.217)');
+    await wh.click('#wdash [data-wq="recv"]'); await wh.waitForTimeout(900);
+    if (await wh.evaluate(() => location.hash) !== '#/recebimento') errs.push('⑤ quick action 입고 opens 📥 상품 받기 (v0.8.215)');
     await pg.click('#drawer [data-dgo="shome"]'); await pg.waitForSelector('#wdash [data-wa="old"]'); await pg.waitForTimeout(600);
     await pg.click('#wdash [data-wa="old"]'); await pg.waitForTimeout(900);
     if (!(await pg.$('#page h2:has-text("신규 주문")'))) errs.push('⑤ the late-orders alert opens the stage list');
@@ -80,7 +86,7 @@ const path = require('path');
     let pk = await open('pk@x.com', 'pick', 1500, 950);
     const qa2 = await pk.$$eval('#wdash .wd-qa [data-wq]', B => B.map(b => b.dataset.wq)).catch(() => []);
     log('⑤ picker quick:', qa2.join());
-    if (!qa2.includes('mine') || qa2.includes('pick')) errs.push('⑤ picker quick actions open My assignments');
+    if (!qa2.includes('pick') && !qa2.includes('mine')) errs.push('⑤ fulfillment (old picker job → 출고 · 인보이스 담당) quick actions open picking');
     /* ⑦ 폰 */
     let ph = await open('office@x.com', 'office', 390, 844);
     const M = await ph.evaluate(() => ({ nav: Array.from(document.querySelectorAll('#nav button')).every(b => b.querySelector('.i svg')), over: document.documentElement.scrollWidth - window.innerWidth, cols: getComputedStyle(document.querySelector('.wd-kpis')).gridTemplateColumns.split(' ').length }));
