@@ -74,11 +74,23 @@ export function soNo(n) { n = Math.max(1, Math.floor(Number(n) || 1)); const k =
 export const isSo = no => /^S[A-Z]-\d{6}$/.test(String(no || ''));
 export async function takeSo() { return soNo(await S.DB.seq('so', 'n', 1)); }
 /** 보낸 주문에 번호 붙이기 — 이미 SA 번호면 그대로 · 서버에 이미 붙어 있으면 그 번호 (다시 보내기 · 재시도에 새 번호를 쓰지 않게) · 크레딧은 CM 번호라 제외 */
-export async function soStamp(o) {
+/** 서버의 지금 주문 (없으면 null) — 세일즈맨은 아직 없는 주문을 규칙상 못 읽음(permission) = 새 주문 · 그 밖의 실패(인터넷)는 그대로 던짐 */
+async function serverOrder(id) {
+  try { return await S.DB.get('orders', id); }
+  catch (e) { if (!/permission/i.test(String(e.code || e.message))) throw e; return null; }
+}
+/** 폰 보관함의 주문을 서버에 올릴 때 — 서버에만 있는 칸(사무실 확인 cfOk · cfHow · 요청 cfReq … · 만든 시각 등)은 그대로 이어 붙임
+ *  (v0.8.236: 폰 주문에는 이 칸이 없어 통째로 덮으면 "칸을 지움"이 되고, 세일즈맨은 그 칸을 못 바꾸는 규칙(L4)에 막혀 permission-denied —
+ *   임시 저장해 둔 주문을 사무실 · 세일즈맨이 "맞습니다"로 확인한 뒤 보내려 할 때) */
+export function keepServer(o, cur) {
+  if (!cur) return o;
+  const out = Object.assign({}, o);
+  Object.keys(cur).forEach(k => { if (k !== 'id' && out[k] === undefined) out[k] = cur[k]; });
+  return out;
+}
+export async function soStamp(o, cur0) {
   if (!o || isSo(o.no) || o.kind === 'credit') return null;
-  let cur = null;
-  try { cur = await S.DB.get('orders', o.id); }
-  catch (e) { if (!/permission/i.test(String(e.code || e.message))) throw e; }   // 세일즈맨: 아직 없는 주문은 규칙상 못 읽음 = 새 주문 · 그 밖의 실패(인터넷)는 번호 없이 다음에 다시
+  const cur = cur0 !== undefined ? cur0 : await serverOrder(o.id);
   if (cur && isSo(cur.no)) return { no: cur.no, tmpNo: cur.tmpNo || o.no };
   if (cur && cur.st && cur.st !== 'draft') return null;   // 예전에 이미 보낸 주문(옛 O 번호)을 고쳐 저장 — 번호 그대로
   return { no: await takeSo(), tmpNo: o.no };
@@ -108,11 +120,12 @@ export async function syncOutbox(quiet) {
   for (const id of ids) {
     const x = box[id];
     try {
+      const cur = await withTimeout(serverOrder(id), 20000);   // 서버의 지금 주문 — 번호 확인 · 서버에만 있는 칸 이어 붙이기
       if (x.o.st && x.o.st !== 'draft' && !isSo(x.o.no)) {   /* 🔢 보내지는 순간 번호 — 먼저 폰 보관함에 적어 두고 올림 (올리다 끊겨도 다음에 같은 번호) */
-        const sx = await withTimeout(soStamp(x.o), 20000);
+        const sx = await withTimeout(soStamp(x.o, cur), 20000);
         if (sx) { Object.assign(x.o, sx); const b2 = readOut(); if (b2[id] && b2[id].at === x.at) { b2[id].o = x.o; writeOut(b2); } }
       }
-      await withTimeout(S.DB.batch([{ op: 'set', col: 'orders', id, data: x.o }, { op: 'set', col: 'orderLines', id, data: { sm: x.o.sm, lines: x.lines } }]), 20000);
+      await withTimeout(S.DB.batch([{ op: 'set', col: 'orders', id, data: keepServer(x.o, cur) }, { op: 'set', col: 'orderLines', id, data: { sm: x.o.sm, lines: x.lines } }]), 20000);
       const now = readOut(); if (now[id] && now[id].at === x.at) { delete now[id]; writeOut(now); } sent++;
     } catch (e) {
       if (/permission/i.test(String(e.code || e.message))) { const now = readOut(); if (now[id]) { now[id].err = String(e.code || e.message); writeOut(now); } }
