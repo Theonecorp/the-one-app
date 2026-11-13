@@ -20,7 +20,9 @@ import * as Store from './store.js';
 import * as Notes from './notes.js';
 import { stageAge } from './flow.js';
 import * as SH from './sorthead.js';
-import { stockOf } from './stock.js';
+import { stockOf, stockAll, minOf } from './stock.js';
+import * as Dash from './dash.js';
+import { icon, stageIcon, routeIcon } from './icons.js';
 import * as NewAcct from './newacct.js';
 import * as Notify from './notify.js';
 
@@ -311,10 +313,10 @@ async function staffHome() {
   const [from, to] = Fulfill.periodRange(LF.hp, LF.hfrom, LF.hto), days = Math.max(1, daysBetween(from, to) + 1);
   const pf = addDays(from, -days), pt = addDays(from, -1);   // 바로 앞 같은 길이 기간 (비교용)
   const plabel = Fulfill.PERIODS.find(p => p[0] === LF.hp), ptxt = LF.hp === 'custom' || !plabel ? md(from) + ' ~ ' + md(to) : plabel[1] + (days > 1 ? ' (' + md(from) + ' ~ ' + md(to) + ')' : ' ' + md(from));
-  const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + icon + '</span><b>' + label + '</b><small id="ht-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
+  const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + (stageIcon(go, '', 24) || routeIcon(go, icon, 24)) + '</span><b>' + label + '</b><small id="ht-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
   const MAIN = ['today', 'week', 'month', 'quarter', 'year'];
-  const chips = '<div class="chips" style="margin:0 0 8px">' + Fulfill.PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (LF.hp === c[0] ? 'on' : '') + '" data-hp="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (MAIN.includes(LF.hp) ? '' : 'on') + '" id="hCal">📅 ' + bi('날짜 선택', 'Pick dates') + '</button></div>' +
-    '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="hPrev" title="앞 기간">◀</button><button class="b-ghost b-sm" id="hCalT" style="font-weight:800">📅 ' + esc(ptxt) + '</button><button class="b-ghost b-sm" id="hNext" title="다음 기간">▶</button></div>';
+  const chips = '<div class="chips" style="margin:0 0 8px">' + Fulfill.PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (LF.hp === c[0] ? 'on' : '') + '" data-hp="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (MAIN.includes(LF.hp) ? '' : 'on') + '" id="hCal">' + icon('calendar', 16) + ' ' + bi('날짜 선택', 'Pick dates') + '</button></div>' +
+    '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="hPrev" title="앞 기간">' + icon('chevLeft', 18) + '</button><button class="b-ghost b-sm" id="hCalT" style="font-weight:800">' + icon('calendar', 16) + ' ' + esc(ptxt) + '</button><button class="b-ghost b-sm" id="hNext" title="다음 기간">' + icon('chevRight', 18) + '</button></div>';
   /* 일 타일 — 기간에 따라 숫자가 바뀜 (들어온 · 인보이스 완료 · 매출), 지금 상태 (픽킹 중 · 백오더) */
   const T = [];
   const W = can('pick') || can('assign') || can('invoice');   // 출고 흐름을 보는 일
@@ -355,11 +357,14 @@ async function staffHome() {
   const OKEY = 'theone.hgrp.' + j; let openG = null; try { openG = JSON.parse(localStorage.getItem(OKEY) || 'null'); } catch (e) {}
   if (!Array.isArray(openG)) openG = [j === 'whmgr' ? 'ship' : j === 'acct' ? 'money' : 'sale'];   /* 창고 매니저는 🚚 배송, 회계는 💵, 그 밖(픽킹 담당 포함)은 🛒 세일 */
   if (openG.includes('recv')) openG = openG.map(g => g === 'recv' ? 'sale' : g);   /* 옛 이름(📥 주문 접수) 기억 → 세일 */
-  let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + g[1] + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">▾</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
+  let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + (icon({ sale: 'cart', ship: 'truck', money: 'wallet', look: 'book' }[g[0]], 22) || g[1]) + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">' + icon('chevDown', 18) + '</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
     allT.filter(h => !GRP.some(g => g[4].includes(keyOf(h)))).join('');
-  $('page').innerHTML = (matchMedia('(min-width:900px)').matches ? '<div class="ohead ohome">' + menuHtml(document.body.classList.contains('oscr'), true) + '</div>' : '') + '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">' + (j === 'whmgr' ? '🏭 ' + bi('창고', 'Warehouse') : '📦 ' + bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
-    '<div id="naBanH"></div><div id="hOld"></div>' + grids +
-    '<div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div>';
+  /* 🏠 v0.8.203 대시보드 — 머리(제목 · 기간) → 핵심 숫자 · 빠른 작업 · 할 일 · 출고 진행 · 매출 · 최근 주문 · 활동 (dash.js) → 아래에 전부 있던 화면 묶음 그대로 */
+  const dctx = { can, ptxt };
+  $('page').innerHTML = (matchMedia('(min-width:900px)').matches ? '<div class="ohead ohome">' + menuHtml(document.body.classList.contains('oscr'), true) + '</div>' : '') +
+    '<div class="wd-hd" style="margin-bottom:12px"><div><h1>' + bt('대시보드', 'Dashboard') + '</h1><div class="sub">' + (j === 'whmgr' ? bi('창고', 'Warehouse') : bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</div></div></div><div class="card" style="padding:10px 12px 4px">' + chips + '</div>' +
+    '<div id="naBanH"></div><div id="hOld"></div>' + Dash.frame(dctx) + grids +
+    '<details class="wd-det"><summary>' + icon('chart', 18) + bt('매출 상세 — 종류 · 세일즈맨별', 'Sales detail — by type · salesman') + '<span class="hga">' + icon('chevDown', 18) + '</span></summary><div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div></details>';
   document.querySelectorAll('[data-hp]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp; staffHome(); });
   document.querySelectorAll('.ohome [data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') return staffHome(); LF.st = b.dataset.lf; LF.list = true; pageOrder(''); });
   /* ◀ ▶ — 같은 길이만큼 앞뒤로 (달 단위 기간은 달로) */
@@ -378,6 +383,18 @@ async function staffHome() {
     if (k === 'inv') { LF.im = 'acct'; LF.iacct = ''; LF.iq = ''; }
     LF.st = k; LF.list = true; pageOrder('');
   });
+  /* 🏠 대시보드 단추 — 원래 있던 화면 · 목록으로 (새 화면 없음) */
+  const dOpen = k => {
+    if (k === 'recv' || k === 'inb') return Router.go('stock', k);
+    if (k === 'low') return Router.go('stock', 'low');
+    if (k === 'nobar') return Router.go('items', 'nobar');
+    if (k === 'notesups' || k === 'cat' || k === 'displays') return Router.go(k);
+    if (k === 'new') { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
+    if (k === 'shipped' || k === 'all') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
+    LF.st = k; LF.list = true; pageOrder('');
+  };
+  document.querySelectorAll('[data-wq]').forEach(b => b.onclick = () => dOpen(b.dataset.wq));
+  document.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => dOpen({ in: 'all', pick: 'pick', pack: 'done', ship: 'shipped' }[b.dataset.wk]));
   try {
     const [live, bo, ords, inv, pinv] = await Promise.all([
       S.DB.list('orders', { where: [['st', 'in', LIVE_ST]] }), S.DB.list('backorders', { where: [['st', '==', 'open']] }),
@@ -393,11 +410,19 @@ async function staffHome() {
     put('mine', nm(mine)); NewAcct.pendingBanner($('naBanH'));
     /* ⚠️ 하루 넘게 한 단계에 머문 주문 — 누르면 가장 오래된 주문이 있는 칸을 밀린 것만 */
     const olds = sortBy(live.map(o => ({ o, a: stageAge(o) })).filter(x => x.a && x.a.day), x => x.a.since), ob = $('hOld');
-    if (ob && olds.length) {
+    if (ob && olds.length && !$('wdash')) {   // 대시보드가 있으면 띠 대신 할 일 칸의 첫 줄(#hOldB)
       const CH = { new: 'sent', cfw: 'cfw', cfok: 'cfok', pick: 'pick', picked: 'picked', done: 'done', packed: 'packed', dlv: 'dlv' };
       ob.innerHTML = '<button class="alert a-red oldbar" id="hOldB">⚠️ ' + bt('하루 넘게 밀린 주문', 'Orders waiting 1+ day') + ' <b>' + olds.length + '</b>' + bt('건', '') + ' · ' + bt('가장 오래된 것', 'oldest') + ' ' + esc(olds[0].o.store || '') + ' ⏱ ' + esc(olds[0].a.t) + ' — <u>' + bt('보기', 'view') + '</u></button>';
       $('hOldB').onclick = () => { LF.st = CH[olds[0].a.key] || 'sent'; LF.old = true; LF.list = true; pageOrder(''); };
     }
+    /* 🏠 대시보드 숫자 (dash.js) — 같은 자료로 */
+    Object.assign(dctx, { live, ords, bo, from, to, days, pf, pt, olds: olds.map(x => x.o), oldest: olds.length ? { store: olds[0].o.store || '', t: olds[0].a.t } : null, localDay,
+      alert: k => { if (k === 'old') { const CH = { new: 'sent', cfw: 'cfw', cfok: 'cfok', pick: 'pick', picked: 'picked', done: 'done', packed: 'packed', dlv: 'dlv' }; LF.st = CH[olds[0].a.key] || 'sent'; LF.old = true; LF.list = true; return pageOrder(''); } if (k === 'ups' || k === 'bo') { LF.st = k; LF.list = true; return pageOrder(''); } dOpen(k); },
+      openOrder: id => goOrder(id),
+      lowStock: async () => { const m = await stockAll(false); await loadCatalog(S); const C = catalog(); const low = Object.keys(m).filter(c => { const q = Number(m[c]) || 0, it = C && C.byCode[c]; return it && !it.h && (q <= 0 || q < minOf(c)); }).length; const nobar = C ? (C.items || []).filter(x => !x.b && !x.virt && !x.h).length : 0; return { low, nobar }; },
+      displaysLate: (can('ship') || can('invoice') || can('newOrder')) ? async () => (await S.DB.list('displays', { where: [['st', 'in', ['open', 'prep']]] })).filter(d => d.due && d.due < today()).length : null,
+      recvLog: async () => (await S.DB.list('stockLog', { where: [['kind', '==', 'recv']], order: ['at', 'desc'], limit: 5 })) });
+    Dash.fill(dctx);
     put('flow', bt('작업 중', 'working') + ' ' + pk.length + ' · 👷 ' + new Set(pk.map(o => o.picker).filter(Boolean)).size + bt('명', '') + ' · ' + bt('출고 전 전체', 'open') + ' ' + live.length);
     const nw = wait.filter(o => subOf(o) === 'sent'), cw = wait.filter(o => subOf(o) === 'cfw'), ck2 = wait.filter(o => subOf(o) === 'cfok'), pkd2 = live.filter(o => o.st === 'packed');
     put('sent', nm(sentIn) + (nw.length ? '<br><b style="color:#b91c1c">' + bt('확인할 신규', 'To review') + ' ' + nw.length + '</b>' : '<br>' + bt('대기 없음', 'none waiting')));
@@ -434,6 +459,9 @@ async function staffHome() {
       '<div class="kpi" style="grid-template-columns:1fr 1fr;margin-top:8px">' + Object.keys(byT).sort().map(t => '<div class="tap" data-ivt="' + (t.includes('Jewelry') ? 'J' : 'O') + '"><b>' + money(sum(byT[t], x => x.total || 0)) + '</b><span>' + esc(t) + ' · ' + invCount(byT[t]) + '건</span></div>').join('') + '</div>' + bars +
       (bySm.length ? '<table style="margin-top:8px;font-size:13px"><tr><th>세일즈맨</th><th class="r">건</th><th class="r">매출</th></tr>' + bySm.map(x => '<tr class="tap" data-ivsm="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b><div class="paybar" style="margin-top:3px"><i style="width:' + Math.round(x.amt / mx * 100) + '%;background:#3b82f6"></i></div></td><td class="r">' + x.n + '</td><td class="r"><b>' + money(x.amt) + '</b></td></tr>').join('') + '</table>' : '<div class="none">이 기간에 인보이스가 없습니다</div>') +
       (days > 92 ? '<div class="hint">긴 기간은 인보이스를 많이 읽어 느릴 수 있습니다</div>' : '');
+    { const ser = days > 1 ? (() => { const m = groupBy(iv, x => x.d), out = []; for (let d = from; d <= to && out.length < 400; d = addDays(d, 1)) out.push([md(d), sum(m[d] || [], x => x.total || 0)]); return out; })() : null;
+      Dash.sales(dctx, tot, pv, ser, invCount(iv));
+      if (days <= 1) salesRows(S, addDays(to, -13), to).then(R => { const m = groupBy(R.filter(x => x.st !== 'x'), x => x.d), out = []; for (let d = addDays(to, -13); d <= to; d = addDays(d, 1)) out.push([md(d), sum(m[d] || [], x => x.total || 0)]); Dash.sales(dctx, tot, pv, out, invCount(iv)); }).catch(() => {}); }
     document.querySelectorAll('[data-ivt]').forEach(b => b.onclick = () => { LF.im = 'date'; LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; LF.it = b.dataset.ivt === 'J' ? (types.find(z => z.comm === 'A') || types[0]).c : ''; LF.st = 'inv'; LF.list = true; pageOrder(''); });
     document.querySelectorAll('[data-ivsm]').forEach(b => b.onclick = () => { LF.im = 'date'; LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; LF.sm = b.dataset.ivsm; LF.st = 'inv'; LF.list = true; pageOrder(''); });
   } catch (e) { if ($('hSales')) $('hSales').innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; }
