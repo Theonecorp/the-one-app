@@ -1,5 +1,5 @@
 /* v0.8.175 시험 — 🧭 데스크탑(1200px+) 고정 서랍 · 🗂 관리자 분류 순서(▲ ▼) · [DISPLAYS, GIFT & SUPPLY] 타일 색 · 자리
- *   ① 1200px 이상: ☰ 서랍이 왼쪽에 고정(#drawer.dock · 너비 260 · body.dock) · 본문 · 머리띠가 그만큼 오른쪽 · 서랍 줄을 누르면 이동하고 켜진 줄이 바뀜 · ☰ 를 누르면 고정 끔(팝업) → 다시 누르면 고정
+ *   ① 1200px 이상: ☰ 서랍이 왼쪽에 고정(#drawer.dock · 너비 260 · body.dock) · 본문 · 머리띠가 그만큼 오른쪽 · 서랍 줄을 누르면 이동하고 켜진 줄이 바뀜 · ☰ 는 숨김 · 늘 고정 (v0.8.213)
  *      430px: 고정 없음 · ☰ 는 팝업(배경 #dBack)
  *   ② 관리자 🗂 분류 탭(#/catmg/tree): 1단계 줄마다 ▲ ▼ · ▼ 를 누르면 settings.app.catOrder['L1'] 에 순서가 저장되고 주문 화면 분류 타일이 그 순서 · 디자인 담당에게는 🗂 탭 없음
  *   ③ 주문 화면 타일: [DISPLAYS, GIFT & SUPPLY] 는 k-disp 색 · <DISCONTINUE ITEM> 바로 앞(끝에서 두 번째) */
@@ -20,9 +20,9 @@ const path = require('path');
   if (!d.dock || !d.on || d.w !== 260 || !d.bodyDock || d.pageLeft !== 260 || d.hdrLeft !== 260) errs.push('① drawer docked at the left, 260px, page and header shifted (got ' + JSON.stringify(d) + ')');
   await pc.click('#drawer [data-dgo="admin"]'); await pc.waitForTimeout(500); d = await dinfo(pc);
   if (!/#\/admin/.test(await pc.evaluate(() => location.hash)) || d.onItem.join() !== 'admin' || !d.dock) errs.push('① a docked row navigates and gets highlighted, dock stays (got ' + JSON.stringify(d) + ')');
-  await pc.click('#hMenu'); await pc.waitForTimeout(400); d = await dinfo(pc); if (d.dock || !d.on || !d.back || d.pageLeft !== 0) errs.push('① ☰ on desktop undocks and opens the popup once (got ' + JSON.stringify(d) + ')');
-  await pc.click('#dBack'); await pc.waitForTimeout(300); d = await dinfo(pc); if (d.on || d.pageLeft !== 0) errs.push('① popup closes, no dock');
-  await pc.click('#hMenu'); await pc.waitForTimeout(400); d = await dinfo(pc); if (!d.dock || d.pageLeft !== 260) errs.push('① ☰ again re-docks');
+  /* v0.8.213: 컴퓨터에서는 ☰ 를 숨기고 서랍은 늘 고정 (창고 매니저 요청) — 옛 'theone.dock = 0' 이 남아 있어도 고정 */
+  const hm = await pc.$eval('#hMenu', b => getComputedStyle(b).display); if (hm !== 'none') errs.push('① ☰ hidden on desktop (got ' + hm + ')');
+  await pc.evaluate(() => { localStorage.setItem('theone.dock', '0'); }); await pc.reload(); await pc.waitForSelector('#drawer.dock', { timeout: 8000 }).catch(() => {}); await pc.waitForTimeout(500); d = await dinfo(pc); if (!d.dock || d.pageLeft !== 260) errs.push('① drawer stays docked even with an old undock setting (got ' + JSON.stringify(d) + ')');
   /* ② 관리자 분류 순서 */
   await pc.evaluate(() => { location.hash = '#/catmg/tree'; }); await pc.waitForSelector('[data-tmd]', { timeout: 8000 }).catch(() => errs.push('② tree tab has ▲ ▼ buttons'));
   if (await pc.$('[data-tmd]')) {
