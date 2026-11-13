@@ -19,7 +19,8 @@
  *    확인 요청 = produtos.js 의 pedirRechecagem → rechecagem { origem:'recebimento', origemRef: carga id }
  *  권한: 세일즈맨 = 보기만 · 재고 담당(can items) = 넣기 · 고치기 · 옮기기 · 닫기 · 확인 요청 · 관리자 · 오너(옛 GERENTE) = 다시 열기 · 버리기 · 줄 삭제 · 인보이스 · 상자 수 손으로
  *    옛 앱의 비밀번호(관리자 비밀번호 · 트래킹 없는 입고 허가 코드)는 "관리자 · 오너가 확인" 으로 바꿈 (비밀 코드를 앱에 둘 곳이 없음)
- *  옮기지 않음: 사진으로 라벨 읽기(AI) · 다스 단위(새 카탈로그에 단위 칸 없음) · Recebido x Vendido 보고서 · 팔레트
+ *  📷 사진으로 라벨 읽기(AI) = iaetq.js (서버는 functions/ 의 lerEtiqueta) — 넣기 칸의 검색 아래 단추
+ *  옮기지 않음: 다스 단위(새 카탈로그에 단위 칸 없음) · Recebido x Vendido 보고서 · 팔레트
  * ============================================================ */
 import { $, esc, toast, Router, busy, debounce, printOpen, today } from './ui.js';
 import { openScanner } from './scan.js';
@@ -35,6 +36,7 @@ import { PM_DOC_CSS } from './produtos-css.js';
 import { D as DP } from './produtos-txt.js';
 import { RC_CSS, RC_MAIS } from './recebidos-css.js';
 import { D } from './recebidos-txt.js';
+import * as IA from './iaetq.js';
 
 const { svg, numFmt, dataBR, horaCurta, corrFmt, CORREDORES, quem } = E;
 const ICO = Object.assign({}, E.ICO, {
@@ -53,6 +55,8 @@ const te = (k, v) => { const x = D[k] || DP[k]; return x ? sub(x[1], v) : sub(E.
 let S = null;
 export function register(state) {
   S = state; E.init(state); Router.on('recebimento', page);
+  /* 📷 사진으로 라벨 읽기 — 이 화면의 상태 · 쓰기 길을 그대로 빌려 씀 (받은 줄 = gravarLinha · 재고 = entrarLinha · 트래킹 허가 = rastreioLiberado) */
+  IA.init({ t, RC, ICO, recPagina, fechada, cancelada, gravarLinha, entrarLinha, rastreioLiberado, rastNorm, ultRast, ultRastSalvar, ultFotoSalvar, origemDoProduto, render, jaConfMsg: d => jaConfMsg(d) });
   Router.up.recebimento = () => { if (E.modalAberto()) { E.fecharModal(); return true; } if (RC.expand) { RC.expand = ''; render(); return true; } return false; };
   Router.upHas.recebimento = () => !!RC.expand;
 }
@@ -264,7 +268,7 @@ function fotoHTML() {
 }
 function lancarHTML() {
   const a = prodSel();
-  let h = '<div class="card-rec"><div class="card-rec-tit">' + esc(t('rec_lancar')) + '<span>' + esc(t('rec_lancar_sub')) + '</span></div><div class="panel"><div class="form-grid"><div class="field" style="grid-column:1/-1"><label>' + esc(t('r_buscar')) + '</label><div class="campo-scan"><input id="rBusca" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" placeholder="' + esc(t('r_buscar_ph')) + '" value="' + esc(RC.rBusca) + '"' + (a ? ' disabled' : '') + '><button type="button" class="scan-btn" data-scan="receb" title="' + esc(t('sc_abrir')) + '">' + svg(ICO.scan, 18) + '</button></div></div></div>';
+  let h = '<div class="card-rec"><div class="card-rec-tit">' + esc(t('rec_lancar')) + '<span>' + esc(t('rec_lancar_sub')) + '</span></div><div class="panel"><div class="form-grid"><div class="field" style="grid-column:1/-1"><label>' + esc(t('r_buscar')) + '</label><div class="campo-scan"><input id="rBusca" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" placeholder="' + esc(t('r_buscar_ph')) + '" value="' + esc(RC.rBusca) + '"' + (a ? ' disabled' : '') + '><button type="button" class="scan-btn" data-scan="receb" title="' + esc(t('sc_abrir')) + '">' + svg(ICO.scan, 18) + '</button></div></div>' + IA.campoHTML() + '</div>';
   h += '<div id="rBuscaRes">' + achadosHTML(a) + '</div>';
   if (!a) return h + '</div></div>';
   const corrAt = RC.corr != null ? RC.corr : String(a.corredor || '').toUpperCase(), orig = origemDoProduto(a), corrs = CORREDORES.concat(corrAt && CORREDORES.indexOf(corrAt) < 0 ? [corrAt] : []);
@@ -510,6 +514,7 @@ function ligar() {
   document.querySelectorAll('#page .rc-raiz .receb-expand').forEach(x => { const sc = x.closest('.tbl-scroll'); if (sc && sc.clientWidth) x.style.width = (sc.clientWidth - 2) + 'px'; });   // 펼친 카드 = 보이는 칸 너비
   const ra = $('rRastreio'); if (ra) ra.oninput = () => { const l = rastNorm(ra.value); if (ra.value !== l) { const fim = ra.selectionStart === ra.value.length; ra.value = l; if (fim) ra.setSelectionRange(l.length, l.length); } RC.rast = ra.value; };
   const cr = $('rCorredor'); if (cr) cr.onchange = () => { RC.corr = cr.value; };
+  IA.ligar();
   ['rFoto', 'rFotoGaleria'].forEach(id => { const f = $(id); if (f) f.onchange = ev => { const a = ev.target.files && ev.target.files[0]; ev.target.value = ''; if (a) fotoEnviar(a); }; });
   const inv = $('rInvoiceLinha'); if (inv) inv.onchange = ev => { const a = ev.target.files && ev.target.files[0]; ev.target.value = ''; if (a && INV_ALVO) invEnviar(INV_ALVO, a); };
   const u = $('rConsulta'); if (u) u.oninput = debounce(() => { RC.consulta = u.value; RC.pag2 = 1; if (RC.pag !== 'lista') return Router.go('recebimento'); atualizarLista(); }, 300);
@@ -562,6 +567,8 @@ async function clique(e) {
   if ((b = c('[data-rmarcar]'))) { e.stopPropagation(); if (b.checked) RC.sel[b.dataset.rmarcar] = 1; else delete RC.sel[b.dataset.rmarcar]; return render(); }
   if ((b = c('[data-pick]'))) return escolherProduto(b.dataset.pick);
   if ((b = c('[data-cg-ir]'))) { RC.caixasForm = ''; return Router.go('recebimento', b.dataset.cgIr); }
+  if (c('[data-ia-foto]')) { e.stopPropagation(); const f = $('iaFoto'); if (f) f.click(); return; }   // 📷 사진으로 라벨 읽기 (iaetq.js)
+  if (c('[data-ia-galeria]')) { e.stopPropagation(); const f = $('iaGaleria'); if (f) f.click(); return; }
   if ((b = c('[data-scan]'))) { const q = b.dataset.scan; return openScanner(code => aoBipar(q, code), { title: t('sc_abrir') }); }
   if ((b = c('[data-receb-edit]'))) { e.stopPropagation(); return modalEditar(b.dataset.recebEdit); }
   if ((b = c('[data-act]'))) {
@@ -734,6 +741,27 @@ async function fotoEnviar(f) {
 /* ============================================================
  *  상품 넣기 (옛 receberSalvar · rpc_receber · rpc_receb_picking · perguntarEtiquetaExistente · rpc_entrada_com_etiqueta)
  * ============================================================ */
+/** 트래킹 모양이 틀리면 막기 (옛 rastreioBloqueia → pedirLiberacaoRastreio) — 통과면 true. 손으로 넣기 · 📷 사진 읽기 둘 다 */
+async function rastreioLiberado(rast) {
+  if (!rastreioBloqueia(rast) || RC.liberado) return true;
+  /* 옛 앱은 허가 코드(비밀)를 물었음 — 새 앱은 관리자 · 오너가 확인 */
+  if (!ger()) { toast(t('r_rastreio_bloq_txt') + ' ' + t('rc_lib_ger'), 'bad'); return false; }
+  const r = await E.pergunta({ cls: 'rc-m', perigo: true, titulo: t('r_rastreio_invalido_tit'), texto: t('r_rastreio_bloq_txt'), sim: t('r_rastreio_liberar'), nao: t('cancelar') }); if (!r) return false;
+  RC.liberado = true; return true;
+}
+/** 받은 줄 하나 쓰기 (옛 rpc_receber) — 손으로 넣기(receberSalvar)와 📷 사진으로 라벨 읽기(iaetq.js)가 같이 씀
+ *  o = { qtd, pick(피킹 박스로 간 수), orig, corr, rast(정리된 트래킹), foto(recebFotos id) } · 실패하면 throw · 화면 보관값(RB)도 고침 */
+async function gravarLinha(c, a, o) {
+  const id = newId('RB'), ts = now(), rast = o.rast || '', corr = o.corr || '', pick = Number(o.pick) || 0;
+  const doc = { id, cargaId: c.id, cargaNumero: c.numero, code: a.id, nome: a.descricao || a.nome, qtd: o.qtd, barcode: a.barcode || '', origem: o.orig || '', corredor: String(corr).toUpperCase(), transportadora: transpDoRecebimento(rast), rastreio: rast, usuario: S.user.email, usuarioNome: quem(), criadoEm: ts, foto: o.foto || '',
+    estoqueConfirmado: false, estoqueQtd: 0, estoqueConfirmadoEm: '', estoqueConfirmadoPor: '', estoqueConfirmadoPorNome: '', estoqueEtiquetas: [], pickingQtd: pick > 0 ? pick : null };
+  const ops = [{ op: 'set', col: 'recebimentos', id, data: doc }];
+  if (!c.caixasManual) ops.push({ op: 'update', col: 'cargas', id: c.id, data: { atualizadoEm: ts, caixasRecebidas: new Set(itens(c.id).map(x => rastNorm(x.rastreio)).concat([rast]).filter(Boolean)).size } });
+  await S.DB.batch(ops);
+  if (corr && String(corr).toUpperCase() !== String(a.corredor || '').toUpperCase()) { try { await E.definirCorredor([a.id], String(corr).toUpperCase()); } catch (e) {} }   // 옛 rpc_receber 가 produtos.corredor 를 고침
+  RB.unshift(doc); indexar();
+  return doc;
+}
 async function receberSalvar(confirmar) {
   const c = recPagina(), a = prodSel(); if (!c) return;
   if (!a) return toast(t('r_sem_produto'), 'bad');
@@ -747,26 +775,14 @@ async function receberSalvar(confirmar) {
   const est = Math.max(0, Math.min(o, distEstoque(o))), pick = o - est;
   if (est + pick !== o) return toast(t('r_dist_nao_fecha', { n: numFmt(Math.abs(o - est - pick)) }), 'bad');
   const rast = rastNorm($('rRastreio') ? $('rRastreio').value : RC.rast);
-  if (rastreioBloqueia(rast) && !RC.liberado) {
-    /* 옛 앱은 허가 코드(비밀)를 물었음 — 새 앱은 관리자 · 오너가 확인 */
-    if (!ger()) return toast(t('r_rastreio_bloq_txt') + ' ' + t('rc_lib_ger'), 'bad');
-    const r = await E.pergunta({ cls: 'rc-m', perigo: true, titulo: t('r_rastreio_invalido_tit'), texto: t('r_rastreio_bloq_txt'), sim: t('r_rastreio_liberar'), nao: t('cancelar') }); if (!r) return;
-    RC.liberado = true;
-  }
+  if (!(await rastreioLiberado(rast))) return;
   const orig = $('rOrigem') ? $('rOrigem').value : origemDoProduto(a), corr = $('rCorredor') ? $('rCorredor').value : (RC.corr || a.corredor || '');
   if (!confirmar) { const u = itens(c.id).find(x => x.code === a.id); if (u) return modalDup(u, a); }
-  const id = newId('RB'), ts = now();
-  const doc = { id, cargaId: c.id, cargaNumero: c.numero, code: a.id, nome: a.descricao || a.nome, qtd: o, barcode: a.barcode || '', origem: orig || '', corredor: String(corr || '').toUpperCase(), transportadora: transpDoRecebimento(rast), rastreio: rast, usuario: S.user.email, usuarioNome: quem(), criadoEm: ts, foto: RC.foto || '',
-    estoqueConfirmado: false, estoqueQtd: 0, estoqueConfirmadoEm: '', estoqueConfirmadoPor: '', estoqueConfirmadoPorNome: '', estoqueEtiquetas: [], pickingQtd: pick > 0 ? pick : null };
+  let doc;
   busy(true);
-  try {
-    const ops = [{ op: 'set', col: 'recebimentos', id, data: doc }];
-    if (!c.caixasManual) ops.push({ op: 'update', col: 'cargas', id: c.id, data: { atualizadoEm: ts, caixasRecebidas: new Set(itens(c.id).map(x => rastNorm(x.rastreio)).concat([rast]).filter(Boolean)).size } });
-    await S.DB.batch(ops);
-    if (corr && String(corr).toUpperCase() !== String(a.corredor || '').toUpperCase()) { try { await E.definirCorredor([a.id], String(corr).toUpperCase()); } catch (e) {} }   // 옛 rpc_receber 가 produtos.corredor 를 고침
-  } catch (e) { busy(false); return toast(String(e.message || e), 'bad'); }
+  try { doc = await gravarLinha(c, a, { qtd: o, pick, orig, corr, rast, foto: RC.foto }); } catch (e) { busy(false); return toast(String(e.message || e), 'bad'); }
   busy(false);
-  RB.unshift(doc); indexar(); ultRastSalvar(rast); if (RC.foto) ultFotoSalvar(RC.foto);
+  ultRastSalvar(rast); if (RC.foto) ultFotoSalvar(RC.foto);
   Object.assign(RC, { liberado: false, foto: '', prod: '', rBusca: '' }); distZerar();
   toast(t('r_ok_dist', { e: numFmt(est), p: numFmt(pick) }), 'good');
   render();
@@ -803,25 +819,33 @@ const jaConfMsg = d => t('ent_ja_conf', { quem: [d.estoqueConfirmadoPorNome || d
 /** 재고 넣기 — 한 번만 (옛 ja_confirmado): 이 줄을 다시 읽고, 라벨 · stock · stockLog · 이 줄 표시를 한 batch 로 */
 export async function confirmarEntrada(recId, q, existente, confirmar) {
   if (!mexe()) return negado();
-  let x = null; try { if (S.DB.fresh) S.DB.fresh('recebimentos'); x = await S.DB.get('recebimentos', recId); } catch (e) {}   // 기억해 둔 읽기(15초) 말고 지금 문서
-  if (!x) return toast(L3('받은 줄을 찾지 못했습니다.', 'Receipt line not found.', 'Lançamento de recebimento não encontrado.'), 'bad');
-  if (x.estoqueConfirmado) { toast(jaConfMsg(x), 'bad'); Object.assign(recebPorId(recId) || {}, x); return render(); }
-  q = Math.floor(Number(q) || 0); if (q <= 0) return toast(t('r_qtd_inv'), 'bad');
-  await E.produtos();
-  let d;
-  try {
-    d = await E.entrada(x.code, q, { confirmar: !!confirmar, existente: existente || null, motivo: t('mov_entrou') + ' · ' + (x.cargaNumero || ''), origem: 'recebimento', ref: recId,
-      marcar: cods => [{ op: 'update', col: 'recebimentos', id: recId, data: { estoqueConfirmado: true, estoqueQtd: q, estoqueConfirmadoEm: now(), estoqueConfirmadoPor: S.user.email, estoqueConfirmadoPorNome: quem(), estoqueEtiquetas: cods } }] });
-  } catch (e) { return toast(String(e.message || e), 'bad'); }
+  let r;
+  try { r = await entrarLinha(recId, q, existente, confirmar); } catch (e) { return toast(String(e.message || e), 'bad'); }
+  if (r.ja) { toast(jaConfMsg(r.ja), 'bad'); return render(); }
+  const d = r.d;
   if (d.aviso === 'entrada_recente') {
-    const r = await E.pergunta({ cls: 'rc-m', perigo: true, titulo: t('ent_dup_tit'), texto: t('ent_dup_txt'), sim: t('ent_dup_sim'), nao: t('ent_dup_nao') });
-    if (r) return confirmarEntrada(recId, q, existente, true);
+    const p = await E.pergunta({ cls: 'rc-m', perigo: true, titulo: t('ent_dup_tit'), texto: t('ent_dup_txt'), sim: t('ent_dup_sim'), nao: t('ent_dup_nao') });
+    if (p) return confirmarEntrada(recId, q, existente, true);
     return;
   }
+  render();
+  E.escolherTamanho(r.lista, { saldo: d.saldo, qtd: r.q });
+}
+/** 재고 넣기 한 줄 (화면 없이) — confirmarEntrada 와 📷 사진 읽기의 "재고에도 넣기"(iaetq.js) 가 같이 씀
+ *  → { ja: 문서 } (이미 넣은 줄 · 옛 ja_confirmado) | { d: E.entrada 결과, lista: 라벨 목록, q } · 줄 · 수량이 잘못이면 throw */
+async function entrarLinha(recId, q, existente, confirmar) {
+  let x = null; try { if (S.DB.fresh) S.DB.fresh('recebimentos'); x = await S.DB.get('recebimentos', recId); } catch (e) {}   // 기억해 둔 읽기(15초) 말고 지금 문서
+  if (!x) throw new Error(L3('받은 줄을 찾지 못했습니다.', 'Receipt line not found.', 'Lançamento de recebimento não encontrado.'));
+  if (x.estoqueConfirmado) { Object.assign(recebPorId(recId) || {}, x); return { ja: x }; }
+  q = Math.floor(Number(q) || 0); if (q <= 0) throw new Error(t('r_qtd_inv'));
+  await E.produtos();
+  const d = await E.entrada(x.code, q, { confirmar: !!confirmar, existente: existente || null, motivo: t('mov_entrou') + ' · ' + (x.cargaNumero || ''), origem: 'recebimento', ref: recId,
+    marcar: cods => [{ op: 'update', col: 'recebimentos', id: recId, data: { estoqueConfirmado: true, estoqueQtd: q, estoqueConfirmadoEm: now(), estoqueConfirmadoPor: S.user.email, estoqueConfirmadoPorNome: quem(), estoqueEtiquetas: cods } }] });
+  if (d.aviso) return { d, q };
   Object.assign(recebPorId(recId) || {}, { estoqueConfirmado: true, estoqueQtd: q, estoqueConfirmadoEm: now(), estoqueConfirmadoPor: S.user.email, estoqueConfirmadoPorNome: quem(), estoqueEtiquetas: d.codigos });
-  delete MOVS[x.code]; render();
+  delete MOVS[x.code];
   const lista = d.existente ? [{ codigo: d.codigo, sku: d.sku, nome: d.nome, barcode: d.barcode, corredor: d.corredor, qtd_inicial: d.qtd_inicial, qtd_restante: d.qtd_restante }] : d.codigos.map(cd => ({ codigo: cd, sku: d.sku, nome: d.nome, barcode: d.barcode, corredor: d.corredor, qtd_inicial: d.qtd, qtd_restante: d.qtd, criado_em: d.criado_em }));
-  E.escolherTamanho(lista, { saldo: d.saldo, qtd: q });
+  return { d, lista, q };
 }
 /** 아직 재고에 안 들어간 줄 → 재고 (받은 수 − 피킹 박스) */
 function entradaDaLinha(id) {

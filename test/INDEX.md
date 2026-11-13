@@ -201,4 +201,6 @@
 | t238 | v0.8.206 | 🏭 오너 · 관리자 홈(own) 새 디자인, 컴퓨터 먼저: 머리(기간 칩) · 숫자 4칸(매출 · 들어온 돈 · 미수금 · 공장 미지급, 누르면 그 화면) · 상세 2열(넓은 화면) · 폰은 한 열 · 숫자 칸 이름이 잘리지 않음 |
 | t239 | v0.8.200 | 📥 상품 받기(#/recebimento): 옛 WMS 의 Produtos recebidos — REC 목록 · 만들기 · 줄 넣기(스캔) · 재고에 넣기(한 번만) · 다른 REC 로 · 닫기/다시 열기 · 확인 요청 · 세일즈맨 보기만 |
 | t240 | v0.8.201 | 🔁 보충이 필요한 상품(#/repor) · 🔎 재확인할 상품(#/recheca): 옛 WMS 의 Produtos para repor · Produtos para conferir — 요청 목록 · 맡기(한 사람만) · 놓기 · 취소 · 출고/입고가 요청을 닫음 · 요청 만들기 · 세어서 맞추기 · 세일즈맨 보기만 |
+| t241 | v0.8.213 | 📷 사진으로 라벨 읽기 (📥 상품 받기 · 옛 WMS 의 "Ler etiqueta por foto") — Cloud Function 은 window.__MOCK_IA__ 로 대신 (네트워크 없음) |
+| t242 | v0.8.213 | 📷 사진으로 라벨 읽기 서버(functions/core.js · Cloud Function lerEtiqueta)의 로직 — 브라우저 · 네트워크 · functions/node_modules 없이 (가짜 db · 가짜 Anthropic · 가짜 시계) |
 | t243 | v0.8.213 | 👁 금액 숨기기 (옛 WMS 의 Ocultar valores): 머리띠 눈 단추 → 화면의 모든 금액이 ••• · 이 기기에 기억 · 인쇄는 진짜 금액 · 끄면 다시 보임 |

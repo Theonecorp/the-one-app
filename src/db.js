@@ -85,7 +85,7 @@ async function makeFirestoreDB() {
     import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js'),
     import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js')
   ]);
-  const app = initializeApp(firebaseConfig);
+  const app = initializeApp(firebaseConfig); APP = app;
   /* 폰에 사본을 두어 인터넷이 끊겨도 읽기 · 쓰기가 됨 (다시 연결되면 자동 전송) */
   let db;
   /* 📵 인터넷이 없거나 아주 느릴 때 — 쓰기는 폰(Firestore 보관함)에 먼저 저장되고 인터넷이 돌아오면 저절로 올라감.
@@ -188,6 +188,15 @@ async function makeFirestoreDB() {
     async claims() { try { const u = auth.currentUser; if (!u) return 'no-user'; const r = await u.getIdTokenResult(true); return (r.signInProvider || '?') + ' · verified=' + r.claims.email_verified + ' · aud=' + r.claims.aud; } catch (e) { return 'claims-error ' + (e.code || e.message); } }
   };
   return { DB, AUTH };
+}
+
+/* ☁️ Cloud Functions 부르기 (2026-11 📷 사진으로 라벨 읽기 — functions/ 의 lerEtiqueta) — 같은 Firebase 앱 · 같은 로그인으로 · SDK 는 처음 부를 때만 받음
+ *   시험(__MOCK__): window.__MOCK_IA__(data) 가 있으면 그 결과, 없으면 키 없음(sem_chave) 오류 */
+let APP = null, FNS = null;
+export async function callFn(name, data) {
+  if (MOCK) { if (name === 'lerEtiqueta' && typeof window.__MOCK_IA__ === 'function') return window.__MOCK_IA__(data); throw { code: 'functions/failed-precondition', details: { erro: 'sem_chave' } }; }
+  if (!FNS) { const f = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js'); FNS = { f, fns: f.getFunctions(APP, 'us-central1') }; }
+  return (await FNS.f.httpsCallable(FNS.fns, name, { timeout: 70000 })(data)).data;
 }
 
 export async function connect() {
