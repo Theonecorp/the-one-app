@@ -230,8 +230,6 @@ function userMenu() {
 }
 function drawerRender(dock) {
   if (!S.user) return;
-  const isAdm = S.me && S.me.role === 'admin';
-  const vs = viewsOf(S.me), roles = vs.length > 1 ? vs : [];
   const items = navFor(S.role).filter(x => !/^view\//.test(x[0]));
   const row = x => '<button type="button" data-dgo="' + esc(x[0]) + '"' + (location.hash.indexOf('#/' + x[0]) === 0 && !(sNow && sNow !== 'home') ? ' class="on"' : '') + ' title="' + esc(x[2] + (x[3] ? ' · ' + x[3] : '')) + '"><span class="i">' + routeIcon(x[0], x[1]) + '</span><span class="t">' + esc(x[2]) + '<small>' + esc(x[3] || '') + '</small></span></button>';
   /* 🧾 주문 칸 (담당자) — 주문 화면 안에 따로 있던 왼쪽 기둥 메뉴를 이 서랍 하나로 (고정 서랍이면 그 기둥은 숨김) */
@@ -254,11 +252,8 @@ function drawerRender(dock) {
     return '<div class="dsec dgrp' + (shut ? ' fold' : '') + '" data-dg="' + g[0] + '"><small class="dgh" data-dgh="' + g[0] + '" role="button" tabindex="0">' + bt(g[2], g[3]) + '<span class="dgc">' + icon('chevDown', 14) + '</span></small>' + L.map(row).join('') + (withOrd ? ord : '') + '</div>';
   }).join('');
   const main = '';
-  const seg = (arr, attr, cur, lab) => '<div class="seg dseg">' + arr.map(a => '<button type="button" class="' + (cur === a[0] ? 'on' : '') + '" data-' + attr + '="' + esc(a[0]) + '">' + lab(a) + '</button>').join('') + '</div>';
-  const settings = '<div class="dsec dset"><small>⚙️ ' + bt('설정', 'Settings') + '</small>' +
-    (roles.length ? '<label>' + bt('화면 바꾸기', 'Switch view') + '</label>' + seg(roles.map(r => [r]), 'r', S.role, a => roleLabel(a[0]).split(' ')[0]) + (S.role === 'manager' && isAdm ? seg(JOBS, 'j', jobOf(), a => a[1]) : '') : '') +
-    '<label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label>' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', a => a[1]) +
-    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mPush">' + (Notify.notifyState() === 'granted' ? '🔔 ' + bt('팝업 알림 항상 켜짐', 'Pop-ups always on') : Notify.notifyState() === 'denied' ? '🔕 ' + bt('알림 막힘 — 허용하는 법', 'Blocked — how to allow') : '🔔 ' + bt('알림 허용', 'Allow notifications')) + '</button><button type="button" class="b-ghost b-sm" id="mNet">📡 ' + bt('연결 · 보낼 함', 'Connection · outbox') + '</button><button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
+  /* ⚙️ 설정 — 서랍에는 한 줄만, 누르면 설정 화면(#/settings) — 서랍을 가볍게 (v0.8.205) */
+  const settings = '<div class="dsec dset">' + row(['settings', '⚙️', bt('설정', 'Settings'), bt('화면 · 숫자 입력 · 알림 · 연결', 'View · numbers · alerts · connection')]) + '</div>';
   const name = S.user.name || S.user.email, ini = (String(name).replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/).map(w => w[0]).join('').substring(0, 2) || '?').toUpperCase();   // 글자만 (괄호 · 숫자 · @ 는 빼고)
   let d = $('drawer'); if (!d) { d = document.createElement('div'); d.id = 'drawer'; document.body.appendChild(d); }
   d.innerHTML = '<div class="dback" id="dBack"></div><aside class="dpanel"><div class="dhead"><img src="logo-96.png" alt=""><b>THE ONE <em>CORP</em></b><button type="button" class="hb" id="dRail" title="' + esc(bt('메뉴 접기 · 펴기', 'Collapse menu')) + '">' + icon(railOn() ? 'panelOpen' : 'panelClose', 18) + '</button><button type="button" class="hb" id="dX">' + icon('x', 18) + '</button></div>' +
@@ -272,16 +267,38 @@ function drawerRender(dock) {
   d.querySelectorAll('[data-dgh]').forEach(h => h.onclick = h.onkeydown = e => { if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return; if (document.body.classList.contains('rail') && d.classList.contains('dock')) return; const g = h.closest('.dgrp'); g.classList.toggle('fold'); const L = Array.from(d.querySelectorAll('.dgrp.fold')).map(x => x.dataset.dg); try { localStorage.setItem('theone.dfold', JSON.stringify(L)); } catch (e2) {} });
   d.querySelectorAll('[data-dgo]').forEach(b => b.onclick = () => { close(); const g = b.dataset.dgo, [r, a] = g.split('/'); if (a) Router.go(r, a); else Router.go(g); });
   d.querySelectorAll('[data-dlf]').forEach(b => b.onclick = () => { close(); Orders.openStage(b.dataset.dlf); dockMark(); });
-  $('mDiag').onclick = diag;
-  if ($('mNet')) $('mNet').onclick = () => { close(); netSheet(); };
-  /* 🔔 팝업 알림 — 컴퓨터 · 폰 화면에 (앱을 닫아도). 이미 켜져 있으면 이 기기 등록을 새로 하고 시험 팝업 */
-  if ($('mPush')) $('mPush').onclick = async () => { close(); const st = Notify.notifyState(); if (st === 'denied') return openModal('<h2>🔕 ' + bi('알림이 막혀 있습니다', 'Notifications are blocked') + '</h2>' + Notify.blockedHtml() + '<div class="btns"><button class="b-ghost" id="nbX">' + bt('닫기', 'Close') + '</button></div>'), $('nbX').onclick = closeModal; if (st !== 'granted') { await Notify.askPermission(); return; } const ok = await Push.enable(true); toast(ok ? '🔔 ' + bt('이 기기에서 팝업을 받습니다', 'This device gets pop-ups') : bt('이 브라우저는 앱을 닫았을 때 팝업을 받을 수 없습니다 — 앱이 열려 있을 때만', 'This browser only shows pop-ups while the app is open'), ok ? 'good' : 'bad'); if (ok) { try { const r = await navigator.serviceWorker.getRegistration(); if (r) r.showNotification('🔔 THE ONE', { body: bt('팝업 알림이 이렇게 뜹니다', 'Pop-ups look like this'), tag: 'theone-test', icon: 'icon-192.png', data: { url: location.href, at: Date.now() } }); } catch (e) {} } };   // 시험 팝업은 화면이 보일 때도 띄움
-  d.querySelectorAll('[data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); userMenu(); });
-  if ($('mInst')) $('mInst').onclick = () => { close(); doInstall(); };
   d.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
-  d.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { close(); switchRole(b.dataset.r); });
-  d.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { close(); S.me.job = b.dataset.j; switchRole('manager'); });
   $('mOut').onclick = () => { close(); Push.disable().finally(() => S.AUTH.signOut()); };
+}
+/* ⚙️ 설정 화면 (#/settings) — ☰ 서랍의 ⚙️ 설정 줄에서. 묶음: 화면 바꾸기 · 입력 · 알림 · 연결 · 이 기기. 버튼 id 는 예전 서랍 그대로 (v0.8.205) */
+export function settingsPage() {
+  if (!S.user) return;
+  const isAdm = S.me && S.me.role === 'admin', vs = viewsOf(S.me), roles = vs.length > 1 ? vs : [];
+  const nst = Notify.notifyState(), outN = Orders.outboxList().length, isOff = navigator.onLine === false;
+  const seg = (arr, attr, cur, lab) => '<div class="seg stseg">' + arr.map(a => '<button type="button" class="' + (cur === a[0] ? 'on' : '') + '" data-' + attr + '="' + esc(a[0]) + '">' + lab(a) + '</button>').join('') + '</div>';
+  const srow = (id, ic, t, sub, cls) => '<button type="button" class="strow' + (cls ? ' ' + cls : '') + '" id="' + id + '"><span class="i">' + ic + '</span><span class="t"><b>' + esc(t) + '</b><small>' + esc(sub) + '</small></span><span class="chev">' + icon('chevRight', 18) + '</span></button>';
+  const info = (ic, t, sub) => '<div class="strow sthd"><span class="i">' + ic + '</span><span class="t"><b>' + esc(t) + '</b><small>' + esc(sub) + '</small></span></div>';
+  const grp = (h, body) => body ? '<div class="stgrp"><div class="sth">' + esc(h) + '</div><div class="stbox">' + body + '</div></div>' : '';
+  $('page').innerHTML = '<div class="stpage"><h2 class="sttitle">' + icon('settings', 22) + ' ' + bt('설정', 'Settings') + '</h2>' +
+    grp(bt('화면 바꾸기', 'Switch view'), roles.length ? '<div class="stpad">' + seg(roles.map(r => [r]), 'r', S.role, x => roleLabel(x[0]).split(' ')[0]) + (S.role === 'manager' && isAdm ? seg(JOBS, 'j', jobOf(), x => x[1]) : '') + '</div>' : '') +
+    grp(bt('입력 · 알림', 'Input · alerts'),
+      info(icon('pen', 20), bt('숫자 입력', 'Number entry'), bt('수량 · 금액 칸', 'Qty · amount fields')) +
+      '<div class="stpad">' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', x => x[1]) + '</div>' +
+      srow('mPush', icon('bell', 20), bt('알림', 'Notifications'), nst === 'granted' ? bt('팝업 알림 항상 켜짐', 'Pop-ups always on') : nst === 'denied' ? bt('알림 막힘 — 허용하는 법', 'Blocked — how to allow') : bt('알림 허용', 'Allow notifications'), nst === 'denied' ? 'warn' : '')) +
+    grp(bt('연결', 'Connection'),
+      srow('mNet', icon('globe', 20), bt('연결 · 보낼 함', 'Connection · outbox'), (isOff ? bt('오프라인', 'Offline') : bt('온라인', 'Online')) + (outN ? ' · 📤 ' + outN : ''), isOff || outN ? 'warn' : '') +
+      srow('mDiag', icon('search', 20), bt('연결 점검', 'Check connection'), bt('안 될 때 원인 찾기', 'Find out what is wrong')) + '<div id="diagOut"></div>') +
+    grp(bt('이 기기', 'This device'),
+      (isApp() ? '' : srow('mInst', icon('packagePlus', 20), bt('앱으로 설치', 'Install app'), bt('홈 화면에 아이콘', 'Icon on the home screen'))) +
+      srow('mReload', icon('refresh', 20), bt('새로고침', 'Reload'), bt('최신 버전 받기', 'Get the latest version'))) +
+    '<p class="muted sttail">' + VER + '</p></div>';
+  $('mDiag').onclick = diag;
+  $('mNet').onclick = () => netSheet();
+  $('mPush').onclick = async () => { const st = Notify.notifyState(); if (st === 'denied') return openModal('<h2>🔕 ' + bi('알림이 막혀 있습니다', 'Notifications are blocked') + '</h2>' + Notify.blockedHtml() + '<div class="btns"><button class="b-ghost" id="nbX">' + bt('닫기', 'Close') + '</button></div>'), $('nbX').onclick = closeModal; if (st !== 'granted') { await Notify.askPermission(); settingsPage(); return; } const ok = await Push.enable(true); toast(ok ? '🔔 ' + bt('이 기기에서 팝업을 받습니다', 'This device gets pop-ups') : bt('이 브라우저는 앱을 닫았을 때 팝업을 받을 수 없습니다 — 앱이 열려 있을 때만', 'This browser only shows pop-ups while the app is open'), ok ? 'good' : 'bad'); if (ok) { try { const r = await navigator.serviceWorker.getRegistration(); if (r) r.showNotification('🔔 THE ONE', { body: bt('팝업 알림이 이렇게 뜹니다', 'Pop-ups look like this'), tag: 'theone-test', icon: 'icon-192.png', data: { url: location.href, at: Date.now() } }); } catch (e) {} } };   // 시험 팝업은 화면이 보일 때도 띄움
+  document.querySelectorAll('.stpage [data-np]').forEach(b => b.onclick = () => { setNumPad(b.dataset.np === '1'); toast(b.dataset.np === '1' ? '🔢 ' + bt('숫자 칸을 누르면 팝업 패드가 뜹니다', 'Number fields open a pad') : '⌨ ' + bt('폰 키보드를 씁니다', 'Using the phone keyboard'), 'good'); settingsPage(); });
+  if ($('mInst')) $('mInst').onclick = () => doInstall();
+  document.querySelectorAll('.stpage [data-r]').forEach(b => b.onclick = () => switchRole(b.dataset.r));
+  document.querySelectorAll('.stpage [data-j]').forEach(b => b.onclick = () => { S.me.job = b.dataset.j; switchRole('manager'); });
   $('mReload').onclick = () => location.reload();
 }
 /* 🔁 모드만 고르는 작은 창 — 아래 메뉴 "모드" · 헤더의 이름 누르기 (전체 메뉴는 ☰ 서랍) */
@@ -416,6 +433,7 @@ function paintTitle() {
   const t = $('hTitle'); if (!t || !S.user) return;
   const h = location.hash.replace(/^#\/?/, ''), r = h.split('/')[0];
   const L = []; navFor(S.role).forEach(x => { if (/^hub\//.test(x[0])) Hub.hubItems(x[0].split('/')[1]).forEach(c => L.push(c)); else L.push(x); });
+  L.push(['settings', '⚙️', bt('설정', 'Settings'), '']);   // ⚙️ 설정 화면은 메뉴 밖 (서랍 아래 한 줄)
   const x = L.find(c => c[0] === h) || L.find(c => c[0] === r) || L.find(c => c[0].split('/')[0] === r);
   t.innerHTML = x && !/^view\//.test(x[0]) ? (x[0] === navFor(S.role)[0][0] ? bt('대시보드', 'Dashboard') : bi(esc(x[2]), esc(x[3] || ''))) : 'THE ONE';
 }
@@ -542,6 +560,7 @@ async function boot() {
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
   BizDay.register(S); Inbound.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); NotesUps.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page);
+  Router.on('settings', settingsPage);
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
