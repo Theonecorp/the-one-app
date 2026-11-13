@@ -9,7 +9,8 @@
  *     ⑥ 바로 인쇄가 꺼져 있으면 지금처럼 브라우저 인쇄 창 · 대기열에 아무것도 안 감 · 관리자에게 켜기 칸이 보임
  *     ⑦ Notes UPS: 켜면 박스마다 일 하나 (estacao Expedicao · grande · 4×6 페이지 · .etq-pag) · 화면 전체 "나오는 중" → 에이전트가 feito 로 바꾸면 ✓
  *     ⑧ 에이전트가 꺼져 있으면 일은 넣어 두고 "꺼져 있음 — 대기열" · 에이전트가 erro 로 바꾸면 빨간 카드
- *     ⑨ Shipping UPS: GIF 라벨은 흑백 그림 페이지로 · ZPL 라벨은 명령 그대로 (내려받기 대신) · 창고 매니저도 켜고 끌 수 있음(설정 printDireta) */
+ *     ⑨ Shipping UPS: GIF 라벨은 흑백 그림 페이지로 · ZPL 라벨은 명령 그대로 (내려받기 대신) · 창고 매니저도 켜고 끌 수 있음(설정 printDireta)
+ *     ⑩ Notes Display 끝내기 → 그 박스 라벨도 출고 대기열로 · ⑪ Shipping History 다시 인쇄 → 고른 박스 라벨 하나만 대기열로 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { spawn, execFile } = require('child_process');
@@ -162,6 +163,35 @@ async function tela() {
     ok(g && /<img src="data:image\/png;base64,/.test(g.dados.html || '') && /image-rendering:pixelated/.test(g.dados.html) && /@page\{size:4in 6in/.test(g.dados.html) && g.estacao === 'Expedicao', '⑨ GIF → 흑백 그림 4×6 페이지 (Expedicao)');
     ok(z && z.dados.zpl === '^XA^FO50,50^FDUPS ZPL^FS^XZ' && !z.dados.html, '⑨ ZPL → 명령 그대로');
     ok(!(await pg.$('#prt.on')) && !downs.some(f => /\.zpl$/.test(f)), '⑨ 브라우저 창 · ZPL 내려받기 없음 ' + downs.join(','));
+    await pg.close();
+
+    log('▶ ⑩ Notes Display 끝내기 · ⑪ Shipping History 다시 인쇄 — 같은 대기열로');
+    const SEED2 = `const d = new Date(), t = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), n = d.toISOString();
+      s.settings[0].printDireta = true; s.printAgents = [{ id: 'PC', maquina: 'PC Expedicao', estacao: 'Expedicao', imprime: true, em: n }];
+      const c0 = s.catalog.find(x => x.id === 'c0'); const rows = JSON.parse(c0.j); rows.push(['LD(STACKABLE)', 'LD STACKABLE', 10, 0, '', 'Set Orders & Displays', 'EMPTY DISPLAY', '', '', '']); c0.j = JSON.stringify(rows); c0.n = rows.length;
+      s.prodExtra = [{ id: 'LD(STACKABLE)', peso: 16, comp: 26, larg: 16, alt: 16 }];
+      s.notasDisplay = [{ id: 'G1-0', grupo: 'G1-0', acct: '3001', store: 'BEAUTY EXCHANGE ORLANDO', sm: 'ALEX', code: 'LD(STACKABLE)', nome: 'LD STACKABLE', texto: '', qtd: 2, qtdFeita: 0, paraEm: t, status: 'preparando', peso: 16, comp: 26, larg: 16, alt: 16, criadoEm: n, criadoPor: 'luke@theonefl.com', criadoPorNome: 'LUKE', iniciadaPor: 'luke@theonefl.com', iniciadaPorNome: 'LUKE', iniciadaEm: n, notaIds: [], orderId: '', orderNo: '' }];
+      s.shipments = [{ id: '1ZAAA0001', trk: '1ZAAA0001', adhocId: 'XBAL1', no: 'XBAL1', acct: '3001', store: 'BEAUTY EXCHANGE ORLANDO', sm: 'ALEX', box: 1, boxes: 2, w: 12.5, dims: '16×12×10', svc: '03', svcName: 'UPS Ground', shipDate: t, cost: 33.4, status: 'Label created', at: t + 'T15:00:00Z', by: 'luke@theonefl.com' },
+        { id: '1ZAAA0002', trk: '1ZAAA0002', adhocId: 'XBAL1', no: 'XBAL1', acct: '3001', store: 'BEAUTY EXCHANGE ORLANDO', sm: 'ALEX', box: 2, boxes: 2, w: 10, dims: '16×12×10', svc: '03', svcName: 'UPS Ground', shipDate: t, cost: 0, status: 'Label created', at: t + 'T15:00:00Z' }];
+      s.shipq = [{ id: 'XBAL1', st: 'done', shipId: '1ZAAA0001', track: '1ZAAA0001 1ZAAA0002', labels: [{ trk: '1ZAAA0001', img: '${GIF}' }, { trk: '1ZAAA0002', img: '${GIF}' }] }];
+      s.adhoc = [{ id: 'XBAL1', acct: '3001', st: 'shipped', src: 'balcao' }];`;
+    pg = await (await br.newContext({ viewport: { width: 1400, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push('pageerror ' + e.message)); pg.on('dialog', d => d.accept());
+    await pg.addInitScript(o => { localStorage.setItem('theone.lang', 'pt'); window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', o); }, SEED2);
+    await pg.goto('http://127.0.0.1:8993/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
+    await pg.evaluate(() => { location.hash = '#/displays'; }); await pg.waitForSelector('[data-nd-loja="3001"] [data-act="nd-concluir"]', { timeout: 8000 });
+    await pg.click('[data-nd-loja="3001"] [data-act="nd-concluir"]'); await pg.waitForSelector('#esPergSim', { timeout: 5000 }); await pg.click('#esPergSim');
+    await pg.waitForFunction(() => Object.values(window.__MOCK_STORE__.printJobs || {}).length >= 2, null, { timeout: 8000 }).catch(() => {});
+    J = await jobs(pg);
+    ok(J.length === 2 && J.every(j => j.tipo === 'etiqueta_notes_ups' && j.estacao === 'Expedicao' && /LD STACKABLE/.test(j.dados.html) && /16 lb/.test(j.dados.html)), '⑩ Notes Display 끝내기 → 박스 2개 라벨이 출고 대기열로 ' + J.length);
+    ok(!(await pg.$('#prt.on')), '⑩ 브라우저 인쇄 창은 안 열림');
+    await pg.evaluate(() => { window.__MOCK_STORE__.printJobs = {}; document.querySelectorAll('.prq').forEach(x => x.remove()); });
+    await pg.evaluate(() => { location.hash = '#/shiphist'; }); await pg.waitForSelector('.sb .sh-l[data-envio^="XBAL1"]', { timeout: 8000 });
+    await pg.click('.sb .sh-l[data-envio^="XBAL1"]'); await pg.waitForSelector('.sb [data-aba="etiqueta"]', { timeout: 4000 }); await pg.click('.sb [data-aba="etiqueta"]'); await pg.waitForTimeout(300);
+    await pg.click('.sb [data-act="sh-reimp"][data-box="2"]');
+    await pg.waitForFunction(() => Object.values(window.__MOCK_STORE__.printJobs || {}).length >= 1, null, { timeout: 8000 }).catch(() => {});
+    J = await jobs(pg);
+    ok(J.length === 1 && J[0].titulo === 'UPS 1ZAAA0002' && J[0].tipo === 'etiqueta_ups' && J[0].estacao === 'Expedicao' && /data:image\/png/.test(J[0].dados.html), '⑪ Shipping History 다시 인쇄(박스 2) → 그 라벨 하나만 대기열로 ' + J.map(j => j.titulo).join(','));
+    ok(!(await pg.$('#prt.on')), '⑪ 브라우저 인쇄 창은 안 열림');
     await pg.close();
   } finally { await br.close(); srv.kill(); }
 }
