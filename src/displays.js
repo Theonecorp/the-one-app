@@ -1,221 +1,425 @@
 /* ============================================================
- *  🖼 Notes Display — 빈 디스플레이(Empty Display) 출고 · 직원 앱의 "Notes Display" 와 같은 흐름
- *    ① 새 요청: 인보이스 · 사무실 담당이 가게 · 디스플레이 상품(종류 × 개수) · 나갈 날짜 · 메모 (주문 창에서 열면 가게가 채워짐)
- *    ② 준비 대기 → 창고가 [준비 시작] → 상품마다 ☑ → [완료] → 단위(개)마다 UPS 박스 한 개 (상품의 무게 · 크기 그대로) → 🚚 UPS 라벨
- *    화면: 대기 · 준비 중 · 완료(24시간) 숫자 + 새 요청 · 두 칸 (준비 대기 | 완료 — 최근 24시간, 취소됨 포함)
- *  displays/{id} = { id, acct, store, sm, items:[{ n, q, w, l, wd, h, ok }], qty, due, note, orderId, orderNo,
- *                    st: 'open' | 'prep' | 'hold' | 'done' | 'shipped' | 'x', prepAt, prepBy, doneAt, doneBy, shippedAt, track, shipVia, boxes,
- *                    holdAt, holdBy, holdNote(보류 이유 — 물건 없음 · 확인 필요), log:[{ at, by, text }] (⚠️ 문제 · 메모 기록 · 되돌림)
- *    상품(items[].n)은 ⚙️ 설정 상품(무게 · 크기 있음) · 카탈로그의 디스플레이 · 세트(c: 코드) · 직접 입력(특별 제작, note 로 설명) — v0.8.174
- *                    createdBy, createdByName, createdAt, updatedAt, cancelAt, cancelBy }
- *  디스플레이 상품 목록(무게 lb · 상자 크기 in)은 settings/app.displayItems — 관리자가 화면의 ⚙️ 에서 고침 (없으면 아래 기본값)
- *  UPS 라벨은 ship.js 출고 창을 { col: 'displays', boxSpec } 로 열어 박스마다 무게 · 크기가 들어가고 트래킹이 이 문서에 붙음 (주문 문서는 안 건드림)
+ *  🖼 Notes Display (#/displays) — 옛 THE ONE CORP WMS 의 Notes Display 화면을 그대로 (흐름 · 레이아웃 · 글 · 단추)
+ *    옛 앱에서 Notes UPS 와 한 가족 (머리 · 숫자 칸 · 가게 찾기 · 가게 카드 · 라벨 · 박스 합치기는 notesups.js 의 것을 같이 씀)
+ *    화면: 숫자 3개(대기 — 박스 수 · 준비 중 — 박스 수 · 24시간 안에 끝남) + 폰 FAB
+ *          [새 요청] → 가게 → Empty Display 찾기 → 고른 상품의 − N + → "요청에 넣기" → 다음 상품 … · "Outros"(카탈로그에 없는 것 — 글) · 준비 날짜(꼭) → "요청 보내기"
+ *          두 칸: 준비 대기(가게마다 카드 하나 — 여러 요청이 모임 · 준비 날짜 순 · 늦음/오늘 색) | 끝남(지난 24시간 · 요청마다 카드)
+ *          카드 단추: 준비 시작(맡기 — 먼저 누른 사람 · 늦은 사람은 누가 맡았는지 봄) · 끝내기 · 놓기 · 취소 — 그 가게의 열린 줄 전부에
+ *          끝내기 = 단위(개)마다 Notes UPS 박스 하나(상품의 배송 무게 · 크기 — prodExtra) → 새 박스 라벨(6×4, 전체 수 없이) 인쇄 · Outros 는 "무게로 끝내기"(무게 · 크기 직접)
+ *          줄 고르기 → "한 박스로 합치기"(같은 가게 · 무게 · 크기 직접 · 얼마씩 넣을지) · 끝남 카드 고르기 → 그 박스들을 Notes UPS 에서 합치기
+ *  자료 (옛 notas_display 줄을 그대로 — 나중에 옛 자료를 1:1 로 옮길 수 있게)
+ *    notasDisplay/{id} = { id, grupo(한 번 보낸 요청 = 첫 줄 id), acct, store, sm, code(카탈로그 코드 — 옛 produto_id · Outros 는 ''), nome, texto(Outros 글),
+ *                          qtd, qtdFeita, paraEm('YYYY-MM-DD'), status: 'pendente'|'preparando'|'concluido'|'cancelado',
+ *                          peso, comp, larg, alt(보낼 때의 배송 무게 · 크기 — 끝낼 때는 prodExtra 를 다시 읽고, 없으면 이것),
+ *                          criadoEm, criadoPor, criadoPorNome, iniciadaPor, iniciadaPorNome, iniciadaEm, concluidaEm, concluidaPor, concluidaPorNome,
+ *                          canceladaEm, canceladaPor, fimEm(끝나거나 취소된 때 — "지난 24시간" 칸), notaIds:[upsnotes id], orderId, orderNo, legado(옛 displays id) }
+ *    박스 = notesups.js 의 upsnotes (src 'display' · prods · ndIds) — Notes UPS 대기 줄에 들어가고 Shipping UPS(balcao.js)가 그 가게 박스로 집음
+ *    맡기 · 끝내기 · 놓기 · 취소 · 합치기는 쓰기 직전에 S.DB.fresh 로 다시 읽음 · firestore.rules 가 남이 맡은 줄을 다른 사람으로 덮어쓰지 못하게 막음
+ *  예전 displays 문서(이 화면의 이전 판 — v0.8.164~): 열린 것(open · prep · hold · done)은 쓰기 권한이 있는 사람이 화면을 열 때 notasDisplay 줄로 옮김(migrate on read)
+ *    — 상품마다 한 줄 · open/hold → pendente · prep/done → preparando(시작한 사람 그대로) · 무게 · 크기는 그 문서의 것 · 원래 문서는 st 'migr' + migradoEm 만 바뀜 (지우지 않음)
+ *    끝난 것(notes · shipped · x)은 그대로 두고 화면에 보이지 않음 (그 박스는 이미 Notes UPS · UPS 에 있음)
+ *  주문 창의 "🖼 Notes Display" (fulfill.js → form) = 이 화면의 새 요청 칸을 그 가게로 열고, 세일즈맨이 요청한 종류 · 개수 · 설명을 Outros 줄로 미리 넣음 (주문 번호가 줄에 남음)
+ *  권한: notesups.js 의 mexe(옛 podeMexerEstoque) = 보내기 · 시작 · 합치기 / 끝내기 · 놓기 = 시작한 사람 또는 gerente(옛 GERENTE · GERENTE1) / 취소 = 보낸 사람 · 시작한 사람 · gerente
+ *  옮기지 않음: 옛 Painel 의 Notes Display 카드(새 앱 대시보드는 숫자 타일만) · 옛 avisar(push) 대신 앱 안 메시지(창고)
  * ============================================================ */
-import { $, esc, toast, busy, openModal, closeModal, confirmBox, Router, today, md, bi, bt, sortBy } from './ui.js';
-import { bizDaysBetween as daysBetween } from './bizday.js';   /* 📅 영업일 (v0.8.180) */
-import { can } from './main.js';
+import { $, esc, toast, Router, busy, today } from './ui.js';
 import { newId } from './db.js';
-import { searchAccounts } from './accounts.js';
-import { reqText, reqLabel, reqClean, reqNoteClean } from './reqs.js';
-import { loadCatalog, catalog } from './catalog.js';
+import { loadCatalog, catalog, levelsOf } from './catalog.js';
+import { reqLabel, reqClean, reqNoteClean } from './reqs.js';
 import * as Msg from './msg.js';
-import { L3 } from './balcao.js';
+import * as E from './etq.js';
+import * as NU from './notesups.js';
+import { L3 as L } from './balcao.js';
 
+/* notesups.js 의 것을 부를 때마다 (모듈이 서로 가져오므로 처음 읽을 때 꺼내 두지 않음) */
+const N = NU.N, ICO = NU.ICO, t = (k, v) => NU.t(k, v), svg = (p, n) => NU.svg(p, n), numFmt = n => NU.numFmt(n), dataBR = s => NU.dataBR(s), horaCurta = s => NU.horaCurta(s),
+  quem = () => NU.quem(), mexe = () => NU.mexe(), gerente = () => NU.gerente(), eu = () => NU.eu(), agora = () => NU.agora();
 let S = null;
 export function register(state) { S = state; Router.on('displays', page); }
-/** 요청 적기 · 고치기: 인보이스 · 주문 넣는 담당 · 관리자 / 준비 · 완료 · UPS: 출고 담당(ship)도 */
-export const canWrite = () => can('invoice') || can('newOrder');
-export const canShip = () => can('ship') || canWrite();
-const me = () => String((S.user && S.user.email) || '').toLowerCase();
-const myName = () => (S.me && S.me.name) || (S.user && S.user.name) || me();
-/* 직원 앱과 같은 기본 상품 — [이름, 무게 lb, 길이, 폭, 높이 in] */
-export const DEF_ITEMS = [{ n: 'BASE - 2 TIER (LONG)', w: 30, l: 15, wd: 15, h: 26 }, { n: 'BASE - 3 TIER (SHORT)', w: 19, l: 15, wd: 15, h: 13 }, { n: 'LD STACKABLE', w: 15, l: 22, wd: 15, h: 15 }];
-export const catalogItems = () => { const L = S && S.settings && Array.isArray(S.settings.displayItems) && S.settings.displayItems.length ? S.settings.displayItems : DEF_ITEMS; return L.filter(x => x && x.n); };
-const boxesOf = d => (d.items || []).reduce((a, x) => a + (Number(x.q) || 0), 0);
-const specTxt = x => (x.w ? x.w + ' lb' : '') + (x.l && x.wd && x.h ? ' · ' + x.l + '×' + x.wd + '×' + x.h + ' in' : '');
-/** "BASE - 2 TIER (LONG) ×2 · LD STACKABLE ×4" */
-export const dispText = d => (d.items || []).map(x => x.n + ' ×' + x.q).join(' · ');
-const fmtDay = s => { s = String(s || '').substring(0, 10); return s ? s.substring(8, 10) + ' ' + Number(s.substring(5, 7)) + bt('월', '/') + ' ' + s.substring(0, 4) : ''; };
-const dueTag = d => {
-  if (!d.due) return '<span class="dvdate">' + bt('날짜 미정', 'No date') + '</span>';
-  const n = daysBetween(today(), d.due), w = n < 0 ? ' late' : n === 0 ? ' today' : '';
-  return '<span class="dvdate' + w + '">' + bt('날짜', 'Date') + ' ' + esc(fmtDay(d.due)) + (n === 0 ? ' · ' + bt('오늘', 'Today') : n < 0 ? ' · ⚠️ ' + (-n) + bt('일 지남', 'd late') : ' · D-' + n) + '</span>';
-};
-const in24 = iso => iso && Date.now() - new Date(iso).getTime() < 86400000;
+/* 예전 판이 내보내던 것 (다른 화면이 아직 부를 수 있게) */
+export const canWrite = () => !!S && NU.mexe();
+export const canShip = () => !!S && NU.mexe();
 
-async function page(arg) {
-  if (!canShip() && S.role !== 'admin') { $('page').innerHTML = '<div class="card"><div class="none">' + bt('사무실 · 창고 담당만 쓰는 화면입니다', 'For office and warehouse staff') + '</div></div>'; return; }
-  await list(arg === 'new');
+const ND = { lista: null, esc: null, prods: [], busca: '', para: '', sel: {}, cx: {}, orderId: '', orderNo: '', voo: {}, gravando: false, ok: null };
+export const _ND = ND;   // 시험용
+
+/* ---------- 상품 — 옛 categoria "EMPTY DISPLAY" (카탈로그의 분류 · 옛 앱의 그 분류 코드) ---------- */
+const OLD_ED = ['EMWALL1', 'LB2', 'EMP-1046', 'EMLOC4', 'EMFLNO', 'H4INSERT', 'SB5ACZ3', 'EMC15INCH', 'EMC4INT', 'EMC13INT', 'EMC15INT', 'EMBCBCV', 'EMTAINT', 'EMFLINT', 'EMFLBG', 'EMWALL2', 'EMOIL01', 'FLSIDE36', 'FWIDE01', 'EMHOOK', 'EMTAPE', 'EMLOC2', 'EMBCTCV', 'LB1', 'LB3', 'SHORGLASS', 'EMC13INCH', 'EMBCT', 'SBELE3', 'EMC4', 'LD(STACKABLE)'];
+const ehED = x => OLD_ED.indexOf(String(x.c || '').toUpperCase()) >= 0 || [x.g].concat(levelsOf(x, 'l1')).some(v => /EMPTY\s*DISPLAY/i.test(String(v || '')));
+function prodsED() {
+  if (ND.ok) return ND.ok;
+  const C = catalog(); ND.ok = C ? C.items.filter(x => !x.h && !x.virt && ehED(x)).map(x => ({ id: x.c, sku: x.c, nome: x.d || x.c })) : [];
+  return ND.ok;
+}
+const prodPorId = id => prodsED().find(p => p.id === id) || null;
+const medDe = code => { const e = NU.extraDe(code); return e && Number(e.peso) > 0 ? { peso: Number(e.peso), comp: Number(e.comp) || 0, larg: Number(e.larg) || 0, alt: Number(e.alt) || 0 } : null; };
+/** 줄의 배송 무게 · 크기 — 상품의 지금 것(prodExtra) → 보낼 때 적어 둔 것 */
+const medLinha = x => (x.code && medDe(x.code)) || (Number(x.peso) > 0 ? { peso: Number(x.peso), comp: Number(x.comp) || 0, larg: Number(x.larg) || 0, alt: Number(x.alt) || 0 } : null);
+const ehOutro = x => !x.code && !(Number(x.peso) > 0);
+const medTxtM = m => m ? numFmt(m.peso) + ' lb · ' + NU.medidaTxt(m.comp, m.larg, m.alt) : '';
+const nomeDe = x => x.nome || x.texto || x.code || '';
+
+/* ---------- 자료 (옛 v_notas_display — 열린 것 + 24시간 안에 끝난 것) ---------- */
+const desde24 = () => new Date(Date.now() - 864e5).toISOString();
+async function ler() {
+  try {
+    if (S.DB.fresh) S.DB.fresh('notasDisplay');
+    const A = await S.DB.list('notasDisplay', { where: [['status', 'in', ['pendente', 'preparando']]] });
+    const B = await S.DB.list('notasDisplay', { where: [['fimEm', '>=', desde24()]] });
+    const m = {}; A.concat(B).forEach(x => { m[x.id] = x; });
+    ND.lista = Object.values(m).sort((a, b) => String(a.criadoEm || '').localeCompare(String(b.criadoEm || '')) || String(a.id).localeCompare(String(b.id)));
+  } catch (e) { ND.lista = ND.lista || []; }
+}
+const lerUm = async id => { try { if (S.DB.fresh) S.DB.fresh('notasDisplay'); return await S.DB.get('notasDisplay', id); } catch (e) { return null; } };
+/** 예전 displays 문서 → notasDisplay 줄 (열린 것만 · 한 번) */
+async function migrar() {
+  if (!mexe()) return;
+  let L = []; try { L = (await S.DB.list('displays', { where: [['st', 'in', ['open', 'prep', 'hold', 'done']]] })); } catch (e) { return; }
+  for (const d of L) {
+    const ops = [], g = 'NDL-' + d.id, prep = d.st === 'prep' || d.st === 'done', por = d.st === 'done' ? (d.doneBy || d.prepBy) : d.prepBy, porN = d.st === 'done' ? (d.doneByName || d.prepByName) : d.prepByName;
+    if (await lerUm(g + '-0')) { try { await S.DB.update('displays', d.id, { st: 'migr', migradoEm: agora() }); } catch (e) {} continue; }
+    (d.items || []).forEach((x, i) => {
+      const peso = Number(x.w) || 0, code = x.c || '', outro = !code && !(peso > 0);
+      ops.push({ op: 'set', col: 'notasDisplay', id: g + '-' + i, data: { id: g + '-' + i, grupo: g + '-0', acct: d.acct || '', store: d.store || '', sm: d.sm || '', code, nome: outro ? '' : x.n, texto: outro ? [x.n, x.note].filter(Boolean).join(' — ') : (x.note || ''),
+        qtd: Number(x.q) || 1, qtdFeita: 0, paraEm: d.due || '', status: prep ? 'preparando' : 'pendente', peso, comp: Number(x.l) || 0, larg: Number(x.wd) || 0, alt: Number(x.h) || 0,
+        criadoEm: d.createdAt || agora(), criadoPor: d.createdBy || '', criadoPorNome: d.createdByName || '', iniciadaPor: prep ? String(por || '').toLowerCase() : '', iniciadaPorNome: prep ? (porN || por || '') : '', iniciadaEm: prep ? (d.prepAt || d.doneAt || '') : '',
+        notaIds: [], orderId: d.orderId || '', orderNo: d.orderNo || '', legado: d.id } });
+    });
+    ops.push({ op: 'update', col: 'displays', id: d.id, data: { st: 'migr', migradoEm: agora(), migradoGrupo: g + '-0' } });
+    try { await S.DB.batch(ops); } catch (e) {}
+  }
 }
 
-/* ---------- 화면 ---------- */
-let NEWOPEN = false;
-async function list(openNew) {
-  const box = $('page'); if (!box.querySelector('#dvWrap')) box.innerHTML = '<div class="load">' + bt('읽는 중…', 'Loading…') + '</div>';
-  let L = []; try { L = await S.DB.list('displays'); } catch (e) { box.innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; return; }
-  if (openNew) NEWOPEN = true;
-  const wait = sortBy(L.filter(d => d.st === 'open' || d.st === 'prep' || d.st === 'hold'), d => (d.st === 'prep' ? '0' : d.st === 'open' ? '1' : '2') + (d.due || '9999') + (d.createdAt || ''));
-  const done = sortBy(L.filter(d => (d.st === 'done') || (d.st === 'notes') || ((d.st === 'shipped') && in24(d.shippedAt || d.doneAt)) || (d.st === 'x' && in24(d.cancelAt))), d => d.st === 'done' || d.st === 'notes' ? '1' + (d.doneAt || '') : '0' + (d.shippedAt || d.cancelAt || ''), true);
-  const nOpen = L.filter(d => d.st === 'open'), nPrep = L.filter(d => d.st === 'prep'), nHold = L.filter(d => d.st === 'hold'), n24 = L.filter(d => (d.st === 'done' || d.st === 'shipped') && in24(d.doneAt || d.shippedAt));
-  const kpi = (ic, cls, ko, en, n, sub) => '<div class="dvk ' + cls + '"><span class="dvki">' + ic + '</span><div><small>' + bi(ko, en) + '</small><b>' + n + '</b>' + (sub != null ? '<small>' + sub + ' ' + bt('박스', 'boxes') + '</small>' : '') + '</div></div>';
-  const item = (d, x, i, live) => '<div class="dvit' + (x.ok ? ' ok' : '') + '">' + (live ? '<label class="ckw"><input type="checkbox" class="ck-big" data-dvok="' + esc(d.id) + '|' + i + '"' + (x.ok ? ' checked' : '') + (d.st === 'prep' ? '' : ' disabled') + '></label>' : '') + '<div><b>' + (x.c ? '<span class="tag t-k">' + esc(x.c) + '</span> ' : x.custom ? '✏️ ' : '') + esc(x.n) + ' ×' + (Number(x.q) || 0) + '</b><small>' + esc(specTxt(x)) + (x.note ? (specTxt(x) ? ' · ' : '') + '📝 ' + esc(x.note) : '') + '</small></div></div>';
-  const card = d => {
-    const live = d.st === 'open' || d.st === 'prep' || d.st === 'hold', allOk = (d.items || []).length && (d.items || []).every(x => x.ok);
-    const logs = (d.log || []).slice(-3);
-    return '<div class="dvcard' + (d.st === 'prep' ? ' prep' : '') + (d.st === 'hold' ? ' hold' : '') + (d.st === 'x' ? ' dim' : '') + '" data-dv="' + esc(d.id) + '">' +
-      '<div class="dvhd"><b>' + esc(d.store || '') + (d.acct ? ' · ' + esc(d.acct) : '') + '</b>' + (d.st === 'x' ? '<span class="tag t-r">' + bt('취소됨', 'Cancelled') + '</span>' : d.st === 'shipped' ? '<span class="tag t-g">🚚 ' + bt('출고됨', 'Shipped') + '</span>' : d.st === 'done' ? '<span class="tag t-a">📦 ' + bt('UPS 대기', 'Awaiting UPS') + '</span>' : d.st === 'notes' ? '<span class="tag t-a">📦 Notes UPS</span>' : d.st === 'prep' ? '<span class="tag t-b">' + bt('준비 중', 'Preparing') + '</span>' : d.st === 'hold' ? '<span class="tag t-a">⏸ ' + bt('보류', 'On hold') + (d.holdNote ? ' · ' + esc(d.holdNote) : '') + '</span>' : '') + '</div>' +
-      '<div class="muted dvsub">' + bt('상품', 'Items') + ' ' + (d.items || []).length + bt('개', '') + ' · ' + bt('박스', 'Boxes') + ' ' + boxesOf(d) + bt('개', '') + '</div>' +
-      '<div class="dvrow"><div class="dvits">' + (d.items || []).map((x, i) => item(d, x, i, live && canShip())).join('') + '</div>' +
-      '<div class="dvbtn">' + (d.st === 'open' && canShip() ? '<button class="b-blue b-sm" data-dvgo="' + esc(d.id) + '">' + bi('준비 시작', 'Start') + '</button>' : '') +
-      (d.st === 'prep' && canShip() ? '<button class="b-green b-sm" data-dvdone="' + esc(d.id) + '"' + (allOk ? '' : ' disabled title="' + esc(bt('상품을 모두 ☑ 한 뒤', 'Tick every item first')) + '"') + '>' + bi('완료', 'Done') + '</button>' : '') +
-      /* ⏸ 보류(물건 없음 · 확인 필요) · ↩ 되돌리기(잘못 시작 → 대기) · ▶ 다시 진행 · ↩ 다시 준비(완료 취소) · ⚠️ 문제 기록 — 중간에 잘못되거나 막혔을 때 (v0.8.174) */
-      ((d.st === 'open' || d.st === 'prep') && canShip() ? '<button class="b-ghost b-sm" data-dvhold="' + esc(d.id) + '">⏸ ' + bt('보류', 'Hold') + '</button>' : '') +
-      (d.st === 'prep' && canShip() ? '<button class="b-ghost b-sm" data-dvback="' + esc(d.id) + '" title="' + esc(bt('준비를 취소하고 대기로', 'Undo start — back to waiting')) + '">↩ ' + bt('대기로', 'Undo') + '</button>' : '') +
-      (d.st === 'hold' && canShip() ? '<button class="b-blue b-sm" data-dvresume="' + esc(d.id) + '">▶ ' + bt('다시 진행', 'Resume') + '</button>' : '') +
-      (d.st === 'done' && canShip() ? '<button class="b-ghost b-sm" data-dvredo="' + esc(d.id) + '" title="' + esc(bt('완료를 취소하고 다시 준비', 'Undo done — prepare again')) + '">↩ ' + bt('다시 준비', 'Redo') + '</button>' : '') +
-      ((live || d.st === 'done') && canShip() ? '<button class="b-ghost b-sm" data-dvlog="' + esc(d.id) + '">⚠️ ' + bt('문제 기록', 'Log issue') + '</button>' : '') +
-      (d.st === 'done' && can('ship') ? '<button class="b-blue b-sm" data-dvnu="' + esc(d.id) + '" title="' + esc(L3('단위마다 박스 한 개를 Notes UPS 대기 줄에 넣고 라벨 인쇄 — Shipping UPS 에서 그 가게 박스와 함께 보냄', 'One box per unit goes to the Notes UPS queue (labels print) — ship it with the store in Shipping UPS', 'Uma caixa por unidade vai para a fila do Notes UPS (imprime as etiquetas) — despache junto no Shipping UPS')) + '">📦 ' + L3('Notes UPS 로', 'To Notes UPS', 'Enviar ao Notes UPS') + '</button>' : '') +
-      ((d.st === 'done' || d.st === 'shipped') && canShip() ? '<button class="b-green b-sm" data-dvu="' + esc(d.id) + '">🚚 ' + bi(d.st === 'done' ? 'UPS 라벨' : '라벨 · 트래킹', d.st === 'done' ? 'UPS label' : 'Labels · tracking') + '</button>' : '') +
-      (live && canWrite() ? '<button class="b-ghost b-sm" data-dve="' + esc(d.id) + '">✏️</button>' : '') +
-      (live && canWrite() ? '<button class="b-ghost b-sm" data-dvx="' + esc(d.id) + '" style="color:#b91c1c">' + bt('취소', 'Cancel') + '</button>' : '') + '</div></div>' +
-      (live ? dueTag(d) : '') + (d.note ? '<div class="dvnote">📝 ' + esc(d.note) + '</div>' : '') +
-      (logs.length ? '<div class="dvlog">' + logs.map(l => '<div>' + esc(String(l.at || '').substring(5, 16).replace('T', ' ')) + ' ' + esc(String(l.byName || l.by || '').toUpperCase()) + ' — ' + esc(l.text) + '</div>').join('') + '</div>' : '') +
-      '<div class="muted dvby">' + esc(String(d.createdByName || d.createdBy || '').toUpperCase()) + ' · ' + esc(fmtDay(d.createdAt)) + (d.orderNo ? ' · 🔗 <a href="#/order/' + esc(d.orderId) + '">' + esc(d.orderNo) + '</a>' : '') +
-      (d.st === 'prep' && d.prepByName ? ' · ' + bt('준비', 'prep') + ' ' + esc(d.prepByName) : '') + (d.track ? ' · ' + esc(d.track) : '') + '</div></div>';
-  };
-  box.innerHTML = '<div id="dvWrap"><div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap"><div><h2 style="margin:0">Notes Display <span class="tag t-a">UPS</span></h2><div class="muted" style="margin-top:4px">' + bt('Empty Display 를 등록하고 준비한 뒤 완료하세요. 단위(개)마다 UPS 박스 한 개가 됩니다.', 'Register empty displays, prepare them, then complete. Each unit becomes one UPS box.') + '</div></div>' +
-    (S.role === 'admin' ? '<button class="b-ghost b-sm" id="dvCfg">⚙️ ' + bi('상품 · 무게 · 크기', 'Items · weight · size') + '</button>' : '') + '</div>' +
-    '<div class="dvkpi">' + kpi('🕒', 'k1', '대기', 'Waiting', nOpen.length, nOpen.reduce((a, d) => a + boxesOf(d), 0)) + kpi('🗃', 'k2', '준비 중', 'Preparing', nPrep.length, nPrep.reduce((a, d) => a + boxesOf(d), 0)) + kpi('⏸', 'k4', '보류', 'On hold', nHold.length, nHold.reduce((a, d) => a + boxesOf(d), 0)) + kpi('✓', 'k3', '완료 24시간', 'Done 24h', n24.length, null) +
-    (canWrite() ? '<button class="dvnew" id="dvNew"><span>🗃</span><b>' + bi('새 요청', 'New request') + '</b></button>' : '') + '</div></div>' +
-    '<div id="dvForm"></div>' +
-    '<div class="dvcols"><div class="card"><h2 class="dvh"><i class="dot">●</i> ' + bi('준비 대기', 'To prepare') + ' <span class="dvn">' + wait.length + '</span></h2><div class="muted" style="margin:-4px 0 8px">' + bt('시작하고 박스를 준비한 뒤 완료하면 UPS 로 갑니다.', 'Start, prepare the boxes and complete — then it goes to UPS.') + '</div>' + (wait.length ? wait.map(card).join('') : '<div class="none">' + bt('준비할 디스플레이가 없습니다', 'Nothing to prepare') + '</div>') + '</div>' +
-    '<div class="card"><h2 class="dvh done"><i class="dot">●</i> ' + bi('완료 (최근 24시간)', 'Done (last 24h)') + ' <span class="dvn">' + done.length + '</span></h2>' + (done.length ? done.map(card).join('') : '<div class="none">' + bt('없음', 'None') + '</div>') + '</div></div></div>';
-  if (NEWOPEN) form({}, true);
-  if ($('dvNew')) $('dvNew').onclick = () => { NEWOPEN = true; form({}, true); };
-  if ($('dvCfg')) $('dvCfg').onclick = cfg;
-  const upd = async (id, patch, msg) => { try { await S.DB.update('displays', id, Object.assign(patch, { updatedAt: new Date().toISOString() })); if (msg) toast(msg, 'good'); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } list(); };
-  box.querySelectorAll('[data-dvgo]').forEach(b => b.onclick = () => upd(b.dataset.dvgo, { st: 'prep', prepAt: new Date().toISOString(), prepBy: me(), prepByName: myName() }, bt('준비 시작', 'Started')));
-  const logOf = (d, text) => (d.log || []).concat([{ at: new Date().toISOString(), by: me(), byName: myName(), text }]).slice(-20);
-  const tell = (d, text) => { try { Msg.sendMsg({ to: 'u:' + (d.createdBy || ''), toLabel: d.createdByName || d.createdBy || '', text: '🖼 Notes Display ' + d.store + ' — ' + text, ref: { id: 'displays', label: '🖼 Notes Display' }, quiet: true }); } catch (e) {} };   // 요청한 사무실 담당에게 (앱 안 메시지)
-  box.querySelectorAll('[data-dvhold]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvhold); if (!d) return; const why = await askText('⏸ ' + bi('보류', 'Hold'), bt('이유 — 예: 물건 없음 · 사무실 확인 필요 · 상품 잘못됨', 'Reason — e.g. out of stock · need office to confirm · wrong item')); if (why == null) return; tell(d, '⏸ ' + bt('보류', 'on hold') + ': ' + why); upd(d.id, { st: 'hold', holdAt: new Date().toISOString(), holdBy: me(), holdNote: why, log: logOf(d, '⏸ ' + bt('보류', 'Hold') + ': ' + why) }, bt('보류했습니다', 'On hold')); });
-  box.querySelectorAll('[data-dvresume]').forEach(b => b.onclick = () => { const d = L.find(x => x.id === b.dataset.dvresume); if (!d) return; upd(d.id, { st: 'open', holdNote: '', log: logOf(d, '▶ ' + bt('다시 진행', 'Resumed')) }, bt('다시 진행', 'Resumed')); });
-  box.querySelectorAll('[data-dvback]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvback); if (!d) return; if (!(await confirmBox(bt('준비를 취소하고 대기로 되돌릴까요? (☑ 표시는 지워집니다)', 'Undo the start and return to waiting? Ticks are cleared.'), '↩'))) return; upd(d.id, { st: 'open', items: (d.items || []).map(x => Object.assign({}, x, { ok: false })), log: logOf(d, '↩ ' + bt('대기로 되돌림', 'Back to waiting')) }, bt('대기로 되돌렸습니다', 'Back to waiting')); });
-  box.querySelectorAll('[data-dvredo]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvredo); if (!d) return; if (!(await confirmBox(bt('완료를 취소하고 다시 준비할까요?', 'Undo done and prepare again?'), '↩'))) return; upd(d.id, { st: 'prep', items: (d.items || []).map(x => Object.assign({}, x, { ok: false })), log: logOf(d, '↩ ' + bt('완료 취소 · 다시 준비', 'Done undone — preparing again')) }, bt('다시 준비', 'Preparing again')); });
-  box.querySelectorAll('[data-dvlog]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvlog); if (!d) return; const t = await askText('⚠️ ' + bi('문제 기록', 'Log an issue'), bt('무엇이 잘못됐나 — 예: 상품 1개 파손 · 수량 부족 · 주소 확인 필요', 'What went wrong — e.g. 1 damaged · short qty · check address')); if (!t) return; tell(d, '⚠️ ' + t); upd(d.id, { log: logOf(d, '⚠️ ' + t) }, bt('기록했습니다', 'Logged')); });
-  box.querySelectorAll('[data-dvok]').forEach(c => c.onchange = () => { const [id, i] = c.dataset.dvok.split('|'), d = L.find(x => x.id === id); if (!d) return; const items = (d.items || []).map((x, k) => k === Number(i) ? Object.assign({}, x, { ok: c.checked }) : x); upd(id, { items }); });
-  box.querySelectorAll('[data-dvdone]').forEach(b => b.onclick = async () => {
-    const d = L.find(x => x.id === b.dataset.dvdone); if (!d) return;
-    await upd(d.id, { st: 'done', doneAt: new Date().toISOString(), doneBy: me(), doneByName: myName(), boxes: boxesOf(d) }, '✅ ' + bt('완료 — UPS 라벨을 만드세요', 'Done — make the UPS label'));
-    ups(Object.assign({}, d, { st: 'done' }));
-  });
-  box.querySelectorAll('[data-dvnu]').forEach(b => b.onclick = async () => { const d = L.find(x => x.id === b.dataset.dvnu); if (!d) return; busy(true); try { const NU = await import('./notesups.js'); const ids = await NU.deDisplay(d); await S.DB.update('displays', d.id, { st: 'notes', notesAt: new Date().toISOString(), notesBy: me(), noteIds: ids, updatedAt: new Date().toISOString() }); toast('📦 Notes UPS · ' + ids.length, 'good'); } catch (e) { toast(String(e.message || e.code), 'bad'); } busy(false); list(); });
-  box.querySelectorAll('[data-dvu]').forEach(b => b.onclick = () => { const d = L.find(x => x.id === b.dataset.dvu); if (d) ups(d); });
-  box.querySelectorAll('[data-dve]').forEach(b => b.onclick = () => { NEWOPEN = false; form(L.find(d => d.id === b.dataset.dve) || {}, false); });
-  box.querySelectorAll('[data-dvx]').forEach(b => b.onclick = async () => {
-    const d = L.find(x => x.id === b.dataset.dvx); if (!d) return;
-    if (!(await confirmBox(bt('이 요청을 취소할까요?', 'Cancel this request?') + '\n' + d.store + ' · ' + dispText(d), bt('취소하기', 'Cancel it')))) return;
-    upd(d.id, { st: 'x', cancelAt: new Date().toISOString(), cancelBy: me() }, bt('취소했습니다', 'Cancelled'));
-  });
+/* ---------- 묶기 · 순서 (옛 ndGrupos · ndPorLoja · ndAbertos) ---------- */
+const grupoDe = x => String(x && (x.grupo || x.id));
+const aberto = x => x.status === 'pendente' || x.status === 'preparando';
+const lojaDe = x => x && x.acct ? 'c' + x.acct : 'g' + grupoDe(x);
+const agrupa = (L, f) => { const m = {}, o = []; L.forEach(x => { const k = f(x); if (!m[k]) { m[k] = []; o.push(k); } m[k].push(x); }); return o.map(k => m[k]); };
+const abertos = () => (ND.lista || []).filter(aberto).slice().sort((a, b) => { const x = String(a.paraEm || '9999'), y = String(b.paraEm || '9999'); return x < y ? -1 : x > y ? 1 : String(a.criadoEm || '') < String(b.criadoEm || '') ? -1 : 1; });
+const porId = id => (ND.lista || []).find(x => x.id === id);
+const meu = x => !!x.iniciadaPor && x.iniciadaPor === eu();
+const podeDono = x => mexe() && (meu(x) || gerente());
+const resta = x => Math.max(0, (Number(x.qtd) || 0) - (Number(x.qtdFeita) || 0));
+const podeUnir = x => mexe() && (x.status === 'pendente' || (x.status === 'preparando' && podeDono(x)));
+const ndHoje = () => { try { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); } catch (e) { return today(); } };
+const dataTxt = d => d ? dataBR(String(d).slice(0, 10) + 'T12:00:00') : '';
+const paraCls = d => { if (!d) return ''; const h = ndHoje(), x = String(d).slice(0, 10); return x < h ? 'atrasado' : x === h ? 'hoje' : ''; };
+function paraHTML(x) { if (!x.paraEm) return ''; const c = paraCls(x.paraEm); return '<span class="nd-para ' + c + '">' + esc(t('nd_para_curto') + ' ' + dataTxt(x.paraEm)) + (c ? ' · ' + esc(t(c === 'atrasado' ? 'nd_atrasado' : 'nd_hoje')) : '') + '</span>'; }
+
+/* ---------- 새 요청 (옛 ndProdBlocoHTML · nuProdResHTML · ndStepHTML) ---------- */
+const ehOutros = q => /^(outr|other|기타)/i.test(String(q || '').trim());
+function achadosProd() {
+  const q = String(ND.busca || '').trim(), ja = {}; ND.prods.forEach(x => { ja[x.id] = 1; }); if (ND.esc) ja[ND.esc.id] = 1;
+  if (!q) return { rec: true, itens: [] };
+  const tl = q.toLowerCase(), cod = E.normCod(q);
+  return { rec: false, itens: prodsED().filter(p => !ja[p.id] && ((p.nome + ' ' + p.sku).toLowerCase().indexOf(tl) >= 0 || (cod && E.normCod(p.sku).indexOf(cod) >= 0))).slice(0, 8) };
 }
-/** 🚚 UPS — 단위마다 박스 한 개 (상품의 무게 · 크기) */
-async function ups(d) {
-  const Ship = await import('./ship.js');
-  const boxSpec = []; (d.items || []).forEach(x => { for (let i = 0; i < (Number(x.q) || 0); i++) boxSpec.push({ w: Number(x.w) || '', l: Number(x.l) || '', wd: Number(x.wd) || '', h: Number(x.h) || '', ref2: String(x.n).substring(0, 35) }); });
-  Ship.shipModal({ id: d.id, col: 'displays', no: 'NOTES DISPLAY', acct: d.acct || '', store: d.store, sm: d.sm || '', invs: [], st: d.st, boxSpec, desc: 'DISPLAY FIXTURES', shipTo: d.shipTo || null }, () => list());
+const outroBt = () => '<button type="button" class="nu-prod-sug nu-prod-outro" data-act="nu-prod-outro">' + svg(ICO.mais, 12) + ' <b>' + esc(t('nd_outro_bt')) + '</b></button>';
+function prodResHTML() {
+  const a = achadosProd(), o = outroBt();
+  if (ehOutros(ND.busca)) return '<div id="nuProdRes" class="nu-prod-res">' + o + '</div>';
+  if (!a.itens.length) return '<div id="nuProdRes" class="nu-prod-res">' + (a.rec ? '' : '<span class="nu-prod-nada">' + esc(t('nu_prod_nada')) + '</span>') + o + '</div>';
+  return '<div id="nuProdRes" class="nu-prod-res">' + a.itens.map(x => '<button type="button" class="nu-prod-sug" data-act="nu-prod-add" data-id="' + esc(x.id) + '" title="' + esc(x.sku || x.nome) + '">' + svg(ICO.mais, 12) + ' <b>' + esc(x.nome || x.sku) + '</b>' + (x.sku && x.nome && x.nome !== x.sku ? '<small>' + esc(x.sku) + '</small>' : '') + '</button>').join('') + o + '</div>';
+}
+const stepHTML = (k, v) => '<div class="nd-step"><button type="button" data-act="nd-q" data-q="' + esc(k) + '" data-d="-1" aria-label="' + esc(t('nd_menos')) + '">−</button><input class="nd-step-in" type="number" inputmode="numeric" min="1" max="60" step="1" data-q="' + esc(k) + '" aria-label="' + esc(t('nu_prod_qtd')) + '" value="' + esc(String(v || '')) + '"><button type="button" data-act="nd-q" data-q="' + esc(k) + '" data-d="1" aria-label="' + esc(t('nd_mais')) + '">+</button></div>';
+const nomeHTML = x => '<b>' + esc(x.nome || x.sku) + '</b>' + (x.sku && x.nome && x.nome !== x.sku ? '<small>' + esc(x.sku) + '</small>' : '');
+const medSpan = id => { const m = medDe(id); return m ? '<span class="nd-med">' + esc(medTxtM(m)) + '</span>' : '<span class="nd-med falta">' + esc(t('nu_prod_sem_medida')) + '</span>'; };
+function blocoHTML() {
+  const L = ND.prods, e = ND.esc, cx = L.reduce((a, x) => a + (Number(x.qtd) || 0), 0);
+  let h = '<div class="nu-prod nd-prod"><label class="ups-lbl" for="nuProdBusca">' + esc(t('nu_prod_tit')) + '</label><div class="nu-prod-busca">' + svg(ICO.busca, 16) + '<input id="nuProdBusca" type="search" autocomplete="off" placeholder="' + esc(t('nu_prod_ph')) + '" value="' + esc(ND.busca || '') + '"></div>' + prodResHTML();
+  if (e) h += '<div class="nd-esc"><div class="nd-esc-nome">' + nomeHTML(e) + medSpan(e.id) + '</div><div class="nd-esc-q"><span>' + esc(t('nd_quantas')) + '</span>' + stepHTML('esc', e.qtd) + '</div>' +
+    '<div class="nd-esc-bts"><button type="button" class="btn" data-act="nd-esc-x">' + esc(t('cancelar')) + '</button><button type="button" class="btn primary" data-act="nd-esc-ok">' + svg(ICO.mais, 15) + ' ' + esc(t('nd_adicionar')) + '</button></div></div>';
+  if (L.length) {
+    h += '<div class="nd-lista"><div class="nd-lista-h"><b>' + esc(t('nd_nesta')) + '</b><span>' + esc(t('nd_lista_tot', { p: L.length, c: cx })) + '</span></div>' +
+      L.map(x => '<div class="nd-lin' + (x.livre ? ' livre' : '') + '"><div class="nd-lin-nome">' + (x.livre ? '<span class="nd-outro-tag">' + esc(t('nd_outro')) + '</span><textarea class="nu-prod-txt" data-id="' + esc(x.id) + '" rows="2" maxlength="300" placeholder="' + esc(t('nd_outro_ph')) + '" aria-label="' + esc(t('nd_outro_ph')) + '">' + esc(x.texto || '') + '</textarea>' : nomeHTML(x) + medSpan(x.id)) + '</div>' + stepHTML(x.id, x.qtd) +
+        '<button type="button" class="nd-tirar" data-act="nu-prod-tirar" data-id="' + esc(x.id) + '" title="' + esc(t('nu_prod_tirar')) + '" aria-label="' + esc(t('nu_prod_tirar')) + '">' + svg(ICO.x, 16) + '</button></div>').join('') + '</div>' +
+      '<label class="nd-para-l"><span>' + esc(t('nd_para')) + '</span><input type="date" id="ndPara" min="' + ndHoje() + '" value="' + esc(ND.para || ndHoje()) + '"></label>' +
+      '<button type="button" class="btn primary cheio nu-prod-gravar" data-act="nu-prod-gravar">' + svg(ICO.check, 16) + ' ' + esc(t('nd_lancar_n', { c: cx })) + '</button>';
+  } else if (!e) h += '<p class="nd-dica">' + esc(t('nd_dica')) + '</p>';
+  return h + '</div>';
+}
+function prodRepintar() { const r = $('nuProdRes'); if (!r) return; const m = document.createElement('div'); m.innerHTML = prodResHTML(); r.replaceWith(m.firstChild); }
+function escolher(id) {
+  const p = prodPorId(id); if (!p) return;
+  ND.esc = { id: p.id, sku: p.sku, nome: p.nome, qtd: '1' }; ND.busca = ''; render();
+  const q = document.querySelector('.nd-esc .nd-step-in'); if (q) { try { q.focus(); q.select(); } catch (e) {} }
+}
+/** 고른 것을 목록에 — 같은 상품이면 수를 더함 */
+function escOk(quieto) {
+  const e = ND.esc; if (!e) return true;
+  const q = Number(e.qtd);
+  if (!(q >= 1 && q === Math.floor(q))) { if (!quieto) { toast(t('nu_prod_qtd_falta'), 'bad'); const i = document.querySelector('.nd-esc .nd-step-in'); if (i) i.focus(); } return false; }
+  const ja = ND.prods.find(x => x.id === e.id);
+  if (ja) ja.qtd = String((Number(ja.qtd) || 0) + q); else ND.prods.push({ id: e.id, sku: e.sku, nome: e.nome, qtd: String(q) });
+  ND.esc = null; if (quieto) return true;
+  render(); const b = $('nuProdBusca'); if (b) b.focus(); return true;
+}
+function qtdMudar(k, d) { const al = k === 'esc' ? ND.esc : ND.prods.find(x => x.id === k); if (!al) return; al.qtd = String(Math.min(60, Math.max(1, (Math.floor(Number(al.qtd)) || 0) + d))); render(); }
+function prodOutro() { const id = 'txt' + Date.now(); ND.prods.push({ id, livre: true, texto: '', qtd: '1' }); ND.busca = ''; render(); const e = document.querySelector('.nu-prod-txt[data-id="' + id + '"]'); if (e) e.focus(); }
+/** 옛 nuProdGravarCaixas → rpc_notas_display_lancar_data — 요청 하나 = 그룹 하나 */
+async function lancar() {
+  const cli = NU.acctOf(N.cli); if (!cli) return toast(t('nu_escolha_cliente'), 'bad');
+  if (ND.esc && !escOk(true)) return toast(t('nu_prod_qtd_falta'), 'bad');
+  if (ND.gravando || !ND.prods.length) return;
+  const ruim = ND.prods.find(x => { const q = Number(x.qtd); return !(q >= 1 && q === Math.floor(q)); });
+  if (ruim) { toast(t('nu_prod_qtd_falta'), 'bad'); const q = document.querySelector('.nd-step-in[data-q="' + ruim.id + '"]'); if (q) q.focus(); return; }
+  const semTxt = ND.prods.find(x => x.livre && !String(x.texto || '').trim());
+  if (semTxt) { toast(t('nd_outro_falta'), 'bad'); const et = document.querySelector('.nu-prod-txt[data-id="' + semTxt.id + '"]'); if (et) et.focus(); return; }
+  const semMed = ND.prods.find(x => !x.livre && !medDe(x.id)); if (semMed) return toast((semMed.sku || '') + ': ' + t('nu_prod_sem_medida'), 'bad');
+  const para = ($('ndPara') || {}).value || ND.para || '';
+  if (!para) return toast(t('nd_para_falta'), 'bad');
+  if (para < ndHoje()) return toast(L('준비 날짜는 지난 날일 수 없습니다.', 'The preparation date cannot be in the past.', 'A data de preparacao nao pode ser no passado.'), 'bad');
+  const tot = ND.prods.reduce((a, x) => a + Number(x.qtd), 0); if (tot > 60) return toast(L('한 번에 최대 60 박스.', 'At most 60 boxes at once.', 'No máximo 60 caixas de uma vez.'), 'bad');
+  ND.gravando = true;
+  const now = agora(), ids = ND.prods.map(() => newId('ND')), g = ids[0];
+  const ops = ND.prods.map((x, i) => { const m = x.livre ? null : medDe(x.id); return { op: 'set', col: 'notasDisplay', id: ids[i], data: { id: ids[i], grupo: g, acct: cli.acct, store: cli.store || '', sm: cli.sm || '', code: x.livre ? '' : x.id, nome: x.livre ? '' : (x.nome || x.sku), texto: x.livre ? String(x.texto).trim() : '', qtd: Number(x.qtd), qtdFeita: 0, paraEm: para, status: 'pendente',
+    peso: m ? m.peso : 0, comp: m ? m.comp : 0, larg: m ? m.larg : 0, alt: m ? m.alt : 0, criadoEm: now, criadoPor: eu(), criadoPorNome: quem(), iniciadaPor: '', iniciadaPorNome: '', iniciadaEm: '', notaIds: [], orderId: ND.orderId || '', orderNo: ND.orderNo || '' } }; });
+  try { await S.DB.batch(ops); } catch (e) { ND.gravando = false; return toast(String(e.code || e.message || t('nu_prod_erro')), 'bad'); }
+  ND.gravando = false;
+  /* 창고에 알림 (옛 avisar — 앱 안 메시지) */
+  try { Msg.sendMsg({ to: 'g:wh', toLabel: L('창고', 'Warehouse', 'Depósito'), text: 'Notes Display: ' + tot + ' ' + t('nd_caixas') + '\n' + (cli.store || '') + ' · ' + ND.prods.map(x => (x.livre ? x.texto : x.nome || x.sku) + ' ×' + x.qtd).join(', '), ref: { id: 'displays', label: '🖼 Notes Display' }, quiet: true }); } catch (e) {}
+  ND.esc = null; ND.prods = []; ND.busca = ''; ND.para = ''; ND.orderId = ''; ND.orderNo = '';
+  N.cli = ''; N.busca = ''; N.novo = true;   // 보내면 가게가 화면에서 빠지고 가게 찾기로 (옛 02/11/2026)
+  toast(t('nd_lancado'), 'good');
+  await ler(); render();
 }
 
-/* ---------- 새 요청 · 고치기 (화면 위 칸 — 직원 앱처럼) ---------- */
-/** pre: 고칠 문서 또는 { acct, store, sm, orderId, orderNo, req } (주문에서 열 때) · inline: 목록 위 칸으로 (아니면 창) */
-export async function form(pre, inline) {
+/* ---------- 카드 (옛 ndGrupoHTML) ---------- */
+function grupoHTML(itens) {
+  const x0 = itens[0], ab = itens.filter(aberto), prep = ab.find(x => x.status === 'preparando'),
+    st = !ab.length ? (itens.some(x => x.status === 'concluido') ? 'concluido' : 'cancelado') : prep ? 'preparando' : 'pendente',
+    id = esc(x0.id), cx = (ab.length ? ab : itens).reduce((a, x) => a + (ab.length ? resta(x) : Number(x.qtd) || 0), 0), dono = prep ? podeDono(prep) : false;
+  let ac = '';
+  if (st === 'pendente') ac = mexe() ? '<button type="button" class="btn primary rp-ini" data-act="nd-iniciar" data-id="' + id + '">' + esc(t('nd_iniciar')) + '</button><button type="button" class="btn sm rp-canc" data-act="nd-cancelar" data-id="' + id + '">' + esc(t('rp_cancelar')) + '</button>' : '';
+  else if (st === 'preparando') ac = '<span class="rp-iniciado" title="' + esc(t('rp_iniciada_as', { h: horaCurta(prep.iniciadaEm) })) + '">' + esc(t('nd_prep_por') + ' ' + (prep.iniciadaPorNome || '—') + (meu(prep) ? ' (' + t('rp_voce') + ')' : '')) + '</span>' +
+    (dono ? '<button type="button" class="btn primary rp-ini" data-act="nd-concluir" data-id="' + id + '">' + svg(ICO.check, 15) + ' ' + esc(t(ab.length > 1 ? 'nd_concluir_todos' : 'nd_concluir')) + '</button><button type="button" class="btn sm" data-act="nd-liberar" data-id="' + id + '">' + esc(t('rp_liberar')) + '</button><button type="button" class="btn sm rp-canc" data-act="nd-cancelar" data-id="' + id + '">' + esc(t('rp_cancelar')) + '</button>' : '') +
+    (ab.some(x => x.status === 'pendente') && mexe() ? '<button type="button" class="btn sm" data-act="nd-iniciar" data-id="' + id + '">' + esc(t('nd_iniciar')) + '</button>' : '');
+  else ac = '<span class="badge ' + (st === 'concluido' ? 'ok' : 'vazia') + '">' + esc(t(st === 'concluido' ? 'nd_foi' : 'nd_cancelado')) + '</span>';
+  const linhas = itens.map(x => { const ab1 = aberto(x), m = medLinha(x);
+    return '<div class="nd-g-lin' + (ab1 ? '' : ' fora') + '" data-nd="' + esc(x.id) + '">' + (ab1 && podeUnir(x) ? '<input type="checkbox" class="nd-chk" data-act="nd-marcar" data-id="' + esc(x.id) + '" title="' + esc(t('nd_unir_marcar')) + '" aria-label="' + esc(t('nd_unir_marcar')) + '"' + (ND.sel[x.id] ? ' checked' : '') + '>' : '') +
+      '<span class="nd-g-nome">' + (ehOutro(x) ? '<span class="nd-outro-tag">' + esc(t('nd_outro')) + '</span> ' : '') + '<b>' + esc(nomeDe(x) + ' ×' + (ab1 ? resta(x) : x.qtd)) + '</b>' + (m ? '<small>' + esc(medTxtM(m)) + '</small>' : '') +
+      (ab1 && Number(x.qtdFeita) > 0 ? '<small>' + esc(numFmt(x.qtdFeita) + '/' + numFmt(x.qtd) + ' ' + t('nd_foi')) + '</small>' : '') + (!ab1 && ab.length ? '<small>' + esc(t(x.status === 'concluido' ? 'nd_foi' : 'nd_cancelado')) + '</small>' : '') + '</span>' +
+      (ehOutro(x) && x.status === 'preparando' && podeDono(x) ? '<button type="button" class="btn sm" data-act="nd-concluir-outro" data-id="' + esc(x.id) + '">' + esc(t('nd_concluir_outro')) + '</button>' : '') + '</div>'; }).join('');
+  const cxs = st === 'concluido' && mexe() ? caixasDoCartao(itens.filter(x => x.status === 'concluido')) : [], cxMarc = cxs.length && cxs.every(n => ND.cx[n.id]);
+  return '<div class="rp-item nd-item nd-grupo' + (st === 'preparando' ? ' nd-prep' : '') + '" data-nd-grupo="' + esc(grupoDe(x0)) + '" data-nd-loja="' + esc(x0.acct || '') + '"><div class="rp-info nd-g-info"><div class="nd-g-cab">' +
+    (cxs.length ? '<input type="checkbox" class="nd-chk nd-cx-chk" data-act="nd-cx-marcar" data-grupo="' + esc(grupoDe(x0)) + '" title="' + esc(t('nu_unir_marcar')) + '" aria-label="' + esc(t('nu_unir_marcar')) + '"' + (cxMarc ? ' checked' : '') + '>' : '') +
+    '<b>' + esc([x0.store, x0.acct].filter(Boolean).join(' · ')) + '</b><span class="nd-g-n">' + esc(t('nd_g_tot', { p: itens.length, c: cx })) + '</span></div><div class="nd-g-lista">' + linhas + '</div>' +
+    (cxs.length ? '<span class="nd-cx-n">' + esc(t('nu_unir_no_chao', { n: cxs.length })) + '</span>' : '') + (ab.length ? paraHTML(x0) : '') +
+    '<span class="rp-hora">' + esc((x0.criadoPorNome || String(x0.criadoPor || '').split('@')[0] || '—') + ' · ' + dataBR(x0.criadoEm)) + (x0.orderNo ? ' · ' + esc(x0.orderNo) : '') + '</span></div><div class="rp-acao">' + ac + '</div></div>';
+}
+const selecionados = () => abertos().filter(x => ND.sel[x.id] && podeUnir(x));
+function unirBarraHTML() { const s = selecionados(); if (!s.length) return ''; return '<div class="nd-unir-barra"><b>' + numFmt(s.length) + ' ' + esc(t('nd_unir_n')) + '</b><button type="button" class="btn primary" data-act="nd-unir">' + svg(ICO.caixa, 15) + ' ' + esc(t('nd_unir')) + '</button><button type="button" class="btn sm" data-act="nd-unir-limpar">' + esc(t('nd_unir_limpar')) + '</button></div>'; }
+function caixasDoCartao(itens) { const ids = []; itens.forEach(x => (x.notaIds || []).forEach(id => { if (ids.indexOf(id) < 0) ids.push(id); })); return (N.fila || []).filter(n => ids.indexOf(n.id) >= 0); }
+const cxSelecionadas = () => (N.fila || []).filter(n => ND.cx[n.id]);
+function cxBarraHTML() { const s = cxSelecionadas(); if (!s.length) return ''; return '<div class="nd-unir-barra nd-cx-barra"><b>' + esc(t('nu_unir_n', { n: s.length })) + '</b><button type="button" class="btn primary" data-act="nd-cx-unir"' + (s.length < 2 ? ' disabled' : '') + '>' + svg(ICO.caixa, 15) + ' ' + esc(t('nu_unir')) + '</button><button type="button" class="btn sm" data-act="nd-cx-limpar">' + esc(t('nd_unir_limpar')) + '</button></div>'; }
+
+/* ====================  TELA (옛 telaNotesDisplay)  ==================== */
+let PARAR = null;
+async function page() {
+  NU.injetarCss(); N.render = render;
+  if (!mexe() && !(S.role === 'admin' || S.role === 'owner')) { $('page').innerHTML = '<div class="sb nu-raiz nd-raiz"><div id="conteudo" class="nu-tela">' + NU.cabecalhoHTML(true) + '<div class="aviso alerta">' + esc(L('사무실 · 창고 담당만 쓰는 화면입니다', 'For office and warehouse staff', 'Só para escritório e depósito')) + '</div></div></div>'; return; }
+  if (!ND.lista) $('page').innerHTML = '<div class="sb nu-raiz nd-raiz"><div id="conteudo" class="nu-tela">' + NU.cabecalhoHTML(true) + '<div class="placeholder">' + esc(t('carregando')) + '</div></div></div>';
+  try { await loadCatalog(S); } catch (e) {} ND.ok = null;
+  await NU.carregarExtra(true);
+  await migrar();
+  await ler(); await NU.carregarFila(true);
+  if (location.hash.indexOf('#/displays') !== 0) return;
+  render();
+  vigiar();
+}
+/** 실시간 (옛 ndAoVivo) — 이 화면에 있는 동안만 */
+function vigiar() {
+  if (PARAR) { PARAR(); PARAR = null; }
+  if (!S.DB.watch) return;
+  let primeiro = true;
+  try { PARAR = S.DB.watch('notasDisplay', { where: [['status', 'in', ['pendente', 'preparando']]] }, () => { if (location.hash.indexOf('#/displays') !== 0) { if (PARAR) { PARAR(); PARAR = null; } return; } if (primeiro) { primeiro = false; return; } ler().then(() => { if (!NU.ocupado() && location.hash.indexOf('#/displays') === 0) render(); }); }); } catch (e) { PARAR = null; }
+}
+function render() {
+  if (location.hash.indexOf('#/displays') !== 0) return;
+  const cli = N.cli ? NU.acctOf(N.cli) || { acct: N.cli, store: '' } : null, ab = abertos(), daLoja = cli ? ab.filter(x => x.acct === cli.acct) : ab,
+    feitos = (ND.lista || []).filter(x => x.status === 'concluido' || x.status === 'cancelado'), gAb = agrupa(ab, lojaDe), gPrep = gAb.filter(g => g.some(x => x.status === 'preparando')).length,
+    nCx = l => l.reduce((a, x) => a + resta(x), 0);
+  let h = NU.cabecalhoHTML(true) + '<div class="nu-kpis">' +
+    NU.kpiHTML(ICO.relogio, 'a', numFmt(gAb.length - gPrep), t('nd_kpi_ag'), '<i class="nu-delta n">' + esc(numFmt(nCx(ab.filter(x => x.status === 'pendente'))) + ' ' + t('nd_caixas')) + '</i>') +
+    NU.kpiHTML(ICO.caixa, 'x', numFmt(gPrep), t('nd_kpi_prep'), '<i class="nu-delta n">' + esc(numFmt(nCx(ab.filter(x => x.status === 'preparando'))) + ' ' + t('nd_caixas')) + '</i>') +
+    NU.kpiHTML(ICO.check, 'g', numFmt(agrupa(feitos.filter(x => x.status === 'concluido'), grupoDe).length), t('nd_kpi_feitos'), '') +
+    '<button type="button" class="nu-nova fab-cel" data-act="nu-novo">' + svg(ICO.caixa, 24) + '<span>' + esc(t('nd_novo')) + '</span></button></div>';
+  if (N.novo || cli) h += cli ? NU.lancarHTML(cli, blocoHTML(), { n: daLoja.length, rot: t('nd_cx_loja') }) : NU.escolherLojaHTML(true);
+  h += '<div class="rp-grade nd-grade"><div class="panel rp-sec rp-ag"><div class="rp-cab"><span class="rp-dot warn"></span><h2>' + esc(t('nd_ag')) + '</h2><span class="rp-n">' + numFmt(gAb.length) + '</span></div><p class="rp-sub">' + esc(t('nd_ag_sub')) + '</p>' + unirBarraHTML() +
+    (ab.length ? gAb.map(grupoHTML).join('') : '<div class="graf-vazio">' + esc(t('nd_vazio')) + '</div>') +
+    '</div><div class="panel rp-sec rp-em"><div class="rp-cab"><span class="rp-dot ok"></span><h2>' + esc(t('nd_feitos')) + '</h2><span class="rp-n">' + numFmt(agrupa(feitos, grupoDe).length) + '</span></div>' + cxBarraHTML() +
+    (feitos.length ? agrupa(feitos.slice().reverse(), grupoDe).map(grupoHTML).join('') : '<div class="graf-vazio">' + esc(t('nd_feitos_vazio')) + '</div>') + '</div></div>';
+  $('page').innerHTML = '<div class="sb nu-raiz nd-raiz"><div id="conteudo" class="nu-tela">' + h + '</div></div>';
+  ligar();
+  if (cli) NU.verificarAuto(cli);
+}
+function ligar() {
+  const raiz = document.querySelector('#page .sb.nd-raiz'); if (!raiz) return;
+  NU.ligarComum(raiz);
+  const dp = $('ndPara'); if (dp) dp.addEventListener('change', () => { ND.para = dp.value; });
+  document.querySelectorAll('#page .nd-step-in').forEach(q => { const k = q.dataset.q;
+    q.addEventListener('input', () => { if (k === 'esc') { if (ND.esc) ND.esc.qtd = q.value; return; } const x = ND.prods.find(y => y.id === k); if (x) x.qtd = q.value; });
+    q.addEventListener('keydown', ev => { if (ev.key !== 'Enter') return; ev.preventDefault(); if (k === 'esc') return escOk(); const b = $('nuProdBusca'); if (b) b.focus(); }); });
+  document.querySelectorAll('#page .nu-prod-txt').forEach(e => e.addEventListener('input', () => { const x = ND.prods.find(y => y.id === e.dataset.id); if (x) x.texto = e.value; }));
+  const pb = $('nuProdBusca');
+  if (pb) {
+    pb.addEventListener('input', () => { ND.busca = pb.value; prodRepintar(); });
+    pb.addEventListener('keydown', ev => { if (ev.key !== 'Enter') return; ev.preventDefault(); const a = achadosProd(); if (ehOutros(ND.busca)) prodOutro(); else if (ND.busca && a.itens[0]) escolher(a.itens[0].id); else if (ND.busca) toast(t('nu_prod_nada'), 'bad'); });
+  }
+  raiz.addEventListener('click', clique);
+  raiz.addEventListener('change', ev => { const c = ev.target.closest('input[type=checkbox][data-act]'); if (!c) return;
+    if (c.dataset.act === 'nd-marcar') return marcar(c.dataset.id, c.checked);
+    if (c.dataset.act === 'nd-cx-marcar') return cxMarcar(c.dataset.grupo); });
+}
+function marcar(id, on) {
+  const x = porId(id); if (!x) return;
+  if (!on) delete ND.sel[id];
+  else { const outra = selecionados().find(y => y.acct !== x.acct); if (outra) { toast(t('nd_unir_loja'), 'bad'); return render(); } ND.sel[id] = 1; }
+  render();
+}
+function cxMarcar(g) {
+  const cxs = caixasDoCartao((ND.lista || []).filter(x => grupoDe(x) === String(g) && x.status === 'concluido')); if (!cxs.length) return;
+  if (cxs.every(n => ND.cx[n.id])) cxs.forEach(n => { delete ND.cx[n.id]; });
+  else { const outra = cxSelecionadas().find(n => n.acct !== cxs[0].acct); if (outra) { toast(t('nu_unir_loja'), 'bad'); return render(); } cxs.forEach(n => { ND.cx[n.id] = 1; }); }
+  render();
+}
+async function clique(ev) {
+  const el = ev.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
+  const a = el.dataset.act;
+  if (NU.acaoComum(a, el)) return;
+  if (a === 'nu-trocar') { N.cli = ''; ND.esc = null; ND.prods = []; ND.busca = ''; N.busca = ''; N.novo = true; return render(); }
+  if (a === 'nu-prod-add') return escolher(el.dataset.id);
+  if (a === 'nu-prod-gravar') return lancar();
+  if (a === 'nd-q') return qtdMudar(el.dataset.q, Number(el.dataset.d) || 0);
+  if (a === 'nd-esc-ok') return escOk();
+  if (a === 'nd-esc-x') { ND.esc = null; return render(); }
+  if (a === 'nu-prod-outro') return prodOutro();
+  if (a === 'nu-prod-tirar') { ND.prods = ND.prods.filter(x => x.id !== el.dataset.id); return render(); }
+  if (a === 'nd-concluir-outro') { const x = porId(el.dataset.id); if (x) unir(null, [x]); return; }
+  if (a === 'nd-iniciar' || a === 'nd-liberar' || a === 'nd-cancelar' || a === 'nd-concluir') return acao(a.slice(3), el.dataset.id, el);
+  if (a === 'nd-unir') return unir();
+  if (a === 'nd-unir-limpar') { ND.sel = {}; return render(); }
+  if (a === 'nd-cx-unir') { await NU.unirCaixas(cxSelecionadas().map(n => n.id)); ND.cx = {}; await ler(); return render(); }
+  if (a === 'nd-cx-limpar') { ND.cx = {}; return render(); }
+}
+
+/* ---------- 카드 동작 (옛 ndAcao → rpc_notas_display_grupo · 가게의 열린 줄 전부 · 요청(그룹)마다 따로) ---------- */
+async function acao(ac, id, bt) {
+  const x = porId(id) || {}, g = lojaDe(x.id ? x : { id }), abL = (ND.lista || []).filter(y => aberto(y) && lojaDe(y) === g),
+    resumo = abL.map(y => nomeDe(y) + ' ×' + resta(y)).join(', ');
+  if (ND.voo[g]) return;
+  if (ac === 'liberar') { if (!(await E.pergunta({ titulo: t('rp_lib_tit'), texto: resumo + ' — ' + t('nd_lib_txt'), sim: t('rp_liberar'), nao: t('cancelar'), cls: 'nu-m' }))) return; }
+  if (ac === 'cancelar') { if (!(await E.pergunta({ titulo: t('nd_cancel_tit'), texto: resumo + ' — ' + t('nd_cancel_txt'), sim: t('rp_cancelar'), nao: t('cancelar'), perigo: true, cls: 'nu-m' }))) return; }
+  if (ac === 'concluir') {
+    const comProd = abL.filter(y => y.status === 'preparando' && !ehOutro(y));
+    if (!comProd.length) { const ou = abL.filter(y => ehOutro(y) && y.status === 'preparando'); if (ou.length) unir(null, ou.slice(0, 1)); return; }
+    if (!(await E.pergunta({ titulo: t('nd_concluir_tit'), texto: resumo + ' · ' + (x.store || '') + ' — ' + t('nd_concluir_txt'), sim: t('nd_concluir'), nao: t('cancelar'), cls: 'nu-m' }))) return;
+  }
+  ND.voo[g] = 1; if (bt) bt.disabled = true;
+  let r = null;
+  try { r = await fazer(ac, abL); } catch (e) { r = { ok: false, erro: String(e.message || e) }; }
+  delete ND.voo[g];
+  await ler();
+  if (ac === 'iniciar') { if (!r.ok && r.motivo === 'ja_iniciada') await aviso(t('nd_ja') + ' ' + (r.nome || '—')); else if (!r.ok) toast(r.erro || t('nd_erro'), 'bad'); return render(); }
+  if (ac === 'liberar' || ac === 'cancelar') { if (!r.ok) toast(r.erro || t('nd_nao_pode'), 'bad'); return render(); }
+  if (!r.ok) { toast(r.erro || t('nd_erro'), 'bad'); return render(); }
+  await NU.carregarFila(true); render();
+  NU.imprimirNovas(r.docs); toast((r.caixas || 0) + ' ' + t('nd_ok'), 'good');
+  if (r.outros) aviso(t('nd_falta_outro'));
+}
+function aviso(txt) { return new Promise(res => { const w = E.abrirModal('<div class="modal-head"><h2>' + esc(t('nav_notesdisplay')) + '</h2><button class="x" data-act="fechar-modal">' + svg(ICO.x, 17) + '</button></div><div class="modal-body"><p style="margin:0" id="ndAvisoTxt">' + esc(txt) + '</p></div><div class="modal-foot"><button class="btn primary" data-act="fechar-modal" id="ndAvisoOk">OK</button></div>', 'nu-m'); w.addEventListener('click', e => { if (e.target.closest('[data-act="fechar-modal"]')) res(); }); }); }
+/** 한 가게의 열린 줄 — 요청(그룹)마다 따로 · 쓰기 직전 다시 읽음 */
+async function fazer(ac, abL) {
+  const alvo = { iniciar: 'pendente', liberar: 'preparando', concluir: 'preparando' }[ac], gs = [];
+  abL.forEach(y => { const k = grupoDe(y); if ((!alvo || y.status === alvo) && gs.indexOf(k) < 0) gs.push(k); });
+  const tot = { ok: false, docs: [], caixas: 0, outros: 0 }; let motivo = '', nome = '';
+  if (S.DB.fresh) S.DB.fresh('notasDisplay');
+  for (const k of gs) {
+    const rows = []; for (const y of abL.filter(z => grupoDe(z) === k)) { const f = await S.DB.get('notasDisplay', y.id); if (f && aberto(f)) rows.push(f); }
+    const ops = [], now = agora();
+    if (ac === 'iniciar') {
+      const outro = rows.find(f => f.status === 'preparando' && f.iniciadaPor && f.iniciadaPor !== eu());
+      if (outro) { motivo = motivo || 'ja_iniciada'; nome = nome || outro.iniciadaPorNome; continue; }
+      rows.filter(f => f.status === 'pendente').forEach(f => ops.push({ op: 'update', col: 'notasDisplay', id: f.id, data: { status: 'preparando', iniciadaPor: eu(), iniciadaPorNome: quem(), iniciadaEm: now } }));
+    } else if (ac === 'liberar') {
+      const L2 = rows.filter(f => f.status === 'preparando'); if (L2.some(f => f.iniciadaPor !== eu() && !gerente())) { motivo = motivo || 'nao_pode'; continue; }
+      L2.forEach(f => ops.push({ op: 'update', col: 'notasDisplay', id: f.id, data: { status: 'pendente', iniciadaPor: '', iniciadaPorNome: '', iniciadaEm: '' } }));
+    } else if (ac === 'cancelar') {
+      if (rows.some(f => !(f.criadoPor === eu() || f.iniciadaPor === eu() || gerente()))) { motivo = motivo || 'nao_pode'; continue; }
+      rows.forEach(f => ops.push({ op: 'update', col: 'notasDisplay', id: f.id, data: { status: 'cancelado', canceladaEm: now, canceladaPor: eu(), fimEm: now } }));
+    } else {
+      for (const f of rows.filter(r => r.status === 'preparando')) {
+        if (f.iniciadaPor !== eu() && !gerente()) { motivo = motivo || 'nao_pode'; continue; }
+        if (ehOutro(f)) { tot.outros++; continue; }
+        const m = medLinha(f); if (!m) throw new Error((f.code || f.nome) + ': ' + t('nu_prod_sem_medida'));
+        const novos = []; for (let i = 0; i < resta(f); i++) novos.push(NU.novaCaixa({ acct: f.acct, store: f.store || '', sm: f.sm || '', w: m.peso, l: m.comp, wd: m.larg, h: m.alt, prods: [{ c: f.code, n: f.nome || f.code, q: 1 }], texto: '', ndIds: [f.id] }));
+        novos.forEach(d => ops.push({ op: 'set', col: 'upsnotes', id: d.id, data: d }));
+        ops.push({ op: 'update', col: 'notasDisplay', id: f.id, data: { status: 'concluido', qtdFeita: Number(f.qtd) || 0, concluidaEm: now, concluidaPor: eu(), concluidaPorNome: quem(), fimEm: now, notaIds: (f.notaIds || []).concat(novos.map(d => d.id)) } });
+        tot.docs = tot.docs.concat(novos); tot.caixas += novos.length;
+      }
+    }
+    if (!ops.length) continue;
+    try { await S.DB.batch(ops); tot.ok = true; } catch (e) { const y = rows[0] ? await S.DB.get('notasDisplay', rows[0].id) : null; if (ac === 'iniciar' && y && y.iniciadaPor && y.iniciadaPor !== eu()) { motivo = 'ja_iniciada'; nome = y.iniciadaPorNome; } else throw e; }
+  }
+  if (tot.ok) return tot;
+  if (ac === 'concluir' && tot.outros) return Object.assign(tot, { ok: true });
+  return { ok: false, motivo: motivo || 'nada', nome, erro: motivo === 'ja_iniciada' ? '' : motivo === 'nao_pode' ? t('nd_nao_pode') : t('nd_erro') };
+}
+
+/* ---------- 한 박스로 합치기 (옛 ndUnir → rpc_notas_display_unir) · Outros 끝내기 ---------- */
+async function unir(vals, lista) {
+  const sel = lista || selecionados(); if (!sel.length) return;
+  vals = vals || {};
+  const peso = vals.peso != null ? vals.peso : sel.reduce((a, x) => { const m = medLinha(x); return a + (m ? m.peso : 0) * resta(x); }, 0);
+  const cp = (id, v, ph) => '<input id="' + id + '" type="number" inputmode="decimal" min="0" step="any" class="nd-unir-in" placeholder="' + esc(ph) + '" value="' + esc(v == null || v === '' ? '' : String(v)) + '">';
+  const html = '<div class="nd-unir-corpo"><div class="nd-unir-lista">' + sel.map(x => { const q = vals.q && vals.q[x.id] != null ? vals.q[x.id] : resta(x);
+    return '<label class="nd-unir-l"><span><b>' + esc(nomeDe(x)) + '</b><small>' + esc(t('nd_resta') + ' ' + resta(x)) + '</small></span><input type="number" inputmode="numeric" min="1" max="' + resta(x) + '" step="1" class="nd-unir-q" data-id="' + esc(x.id) + '" value="' + esc(String(q)) + '"></label>'; }).join('') + '</div>' +
+    '<div class="nd-unir-campos"><label>' + esc(t('nd_unir_peso')) + cp('ndUP', peso ? Math.round(peso * 100) / 100 : '', 'lb') + '</label><label>' + esc(t('nd_unir_med')) + '<span class="nd-unir-3">' + cp('ndUC', vals.c, 'C') + cp('ndUL', vals.l, 'L') + cp('ndUA', vals.a, 'A') + '</span></label></div></div>';
+  const r = await E.pergunta({ titulo: t(lista ? 'nd_concluir_tit' : 'nd_unir_tit'), texto: (sel[0].store || '') + ' — ' + t('nd_unir_txt'), html, sim: t(lista ? 'nd_concluir' : 'nd_unir'), nao: t('cancelar'), cls: 'nu-m',
+    ler: w => { const o = { q: {}, peso: Number((w.querySelector('#ndUP') || {}).value), c: Number((w.querySelector('#ndUC') || {}).value), l: Number((w.querySelector('#ndUL') || {}).value), a: Number((w.querySelector('#ndUA') || {}).value) }; w.querySelectorAll('.nd-unir-q').forEach(e => { o.q[e.dataset.id] = e.value; }); return o; } });
+  if (!r) return;
+  const lido = r.extra; let ok = true;
+  sel.forEach(x => { const q = Number(lido.q[x.id]); if (!(q >= 1 && q === Math.floor(q) && q <= resta(x))) ok = false; });
+  if (!ok || !(lido.peso > 0 && lido.c > 0 && lido.l > 0 && lido.a > 0)) { toast(t('nd_unir_inv'), 'bad'); return unir(lido, lista); }
+  try {
+    if (S.DB.fresh) S.DB.fresh('notasDisplay');
+    const rows = []; let acct = '';
+    for (const x of sel) {
+      const f = await S.DB.get('notasDisplay', x.id), q = Number(lido.q[x.id]);
+      if (!f) throw new Error(L('작업 하나가 이제 없습니다.', 'One of the tasks no longer exists.', 'Uma das tarefas não existe mais.'));
+      if (!aberto(f)) throw new Error(L('작업 하나가 이미 끝났거나 취소되었습니다.', 'One of the tasks was already finished or cancelled.', 'Uma das tarefas já foi concluída ou cancelada.'));
+      if (f.status === 'preparando' && f.iniciadaPor !== eu() && !gerente()) throw new Error(L('작업 하나를 다른 사람이 준비하고 있습니다.', 'One of the tasks is being prepared by someone else.', 'Uma das tarefas está sendo preparada por outra pessoa.'));
+      if (acct && acct !== f.acct) throw new Error(t('nd_unir_loja')); acct = f.acct;
+      if (q > resta(f)) throw new Error(t('nd_unir_inv'));
+      rows.push({ f, q });
+    }
+    const pm = {}, prods = [], txt = [];
+    rows.slice().sort((a, b) => String(a.f.criadoEm).localeCompare(String(b.f.criadoEm))).forEach(({ f, q }) => { if (ehOutro(f)) { txt.push(f.texto + ' ×' + q); return; } const k = f.code || f.nome; if (pm[k]) pm[k].q += q; else { pm[k] = { c: f.code, n: f.nome || f.code, q }; prods.push(pm[k]); } });
+    const f0 = rows[0].f, now = agora(), doc = NU.novaCaixa({ acct: f0.acct, store: f0.store || '', sm: f0.sm || '', w: lido.peso, l: lido.c, wd: lido.l, h: lido.a, prods, texto: txt.join(', '), ndIds: rows.map(r1 => r1.f.id) });
+    const ops = [{ op: 'set', col: 'upsnotes', id: doc.id, data: doc }].concat(rows.map(({ f, q }) => { const feita = (Number(f.qtdFeita) || 0) + q, fim = feita >= Number(f.qtd); return { op: 'update', col: 'notasDisplay', id: f.id, data: Object.assign({ qtdFeita: feita, notaIds: (f.notaIds || []).concat([doc.id]) }, fim ? { status: 'concluido', concluidaEm: now, concluidaPor: eu(), concluidaPorNome: quem(), fimEm: now } : {}) }; }));
+    await S.DB.batch(ops);
+    ND.sel = {}; await ler(); await NU.carregarFila(true); render();
+    NU.imprimirNovas([doc]); toast(t('nd_unir_ok'), 'good');
+  } catch (e) { toast(String(e.message || e), 'bad'); await ler(); render(); }
+}
+
+/* ====================  다른 화면이 쓰는 것  ==================== */
+/** 주문 창 "🖼 Notes Display" — 이 화면의 새 요청 칸을 그 가게로 (요청한 종류 · 개수 · 설명은 Outros 줄로) */
+export async function form(pre) {
   pre = pre || {};
-  const host = inline && $('dvForm');
-  const F = { id: pre.id || '', acct: pre.acct || '', store: pre.store || '', sm: pre.sm || '', items: (pre.items || []).map(x => Object.assign({}, x)), due: pre.due || '', note: pre.note || '', orderId: pre.orderId || '', orderNo: pre.orderNo || '' };
-  /* 주문에서 열면 세일즈맨이 요청한 종류 · 개수 · 설명("어떤 것")이 상품 줄로 미리 들어옴 — 사무실은 보고 고치기만 */
-  if (!F.items.length && !F.id) { const rq = reqClean(pre.req), rn = reqNoteClean(pre.reqNote) || {}; if (rq) Object.keys(rq).forEach(k => F.items.push({ n: reqLabel(k, true), q: rq[k], note: rn[k] || '', custom: true })); }
-  if (!F.items.length) F.items.push({ n: '', q: 1 });
-  const C = catalogItems();
-  /* 카탈로그의 디스플레이 · 세트 · 인서트 (Set & Display 묶음 · [DISPLAYS …] 분류) — 전체에서 고를 수 있게 */
-  try { await loadCatalog(S); } catch (e) {}
-  const K = catalog() ? catalog().items.filter(it => !it.h && (/SET|DISPLAY/i.test(it.g || '') || /SET ORDER|DISPLAY/i.test(it.l1 || ''))) : [];
-  const CUSTOM = '__custom__';
-  const optFor = x => '<option value="">' + bt('— 상품 —', '— item —') + '</option><optgroup label="' + esc(bt('디스플레이 (무게 · 크기 있음)', 'Displays (weight · size)')) + '">' + C.map(c => '<option value="' + esc(c.n) + '"' + (!x.c && !x.custom && c.n === x.n ? ' selected' : '') + '>' + esc(c.n) + ' · ' + esc(specTxt(c)) + '</option>').join('') + '</optgroup>' +
-    '<optgroup label="' + esc(bt('✏️ 직접 입력 · 특별 제작', '✏️ Custom / special build')) + '"><option value="' + CUSTOM + '"' + (x.custom ? ' selected' : '') + '>✏️ ' + esc(bt('직접 입력 (아래에 이름 · 설명)', 'Type it in (name · note below)')) + '</option></optgroup>' +
-    (K.length ? '<optgroup label="' + esc(bt('카탈로그 디스플레이 · 세트 · 인서트', 'Catalog displays · sets · inserts')) + ' (' + K.length + ')">' + K.map(it => '<option value="c:' + esc(it.c) + '"' + (x.c === it.c ? ' selected' : '') + '>' + esc(it.c) + ' · ' + esc(it.d) + '</option>').join('') + '</optgroup>' : '');
-  const html = () => '<div class="dvform"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">' + (F.id ? bi('요청 고치기', 'Edit request') : bi('새 요청', 'New request')) + '</h2><button type="button" class="b-ghost b-sm" id="dvX">✕ ' + bt('닫기', 'Close') + '</button></div>' +
-    (F.orderNo ? '<div class="alert a-blu" style="margin:8px 0 0">🔗 ' + bt('주문', 'Order') + ' <b>' + esc(F.orderNo) + '</b>' + (pre.req && reqText(pre.req) ? ' · ' + bt('요청', 'requested') + ': ' + esc(reqText(pre.req)) : '') + '</div>' : '') +
-    '<div class="fg" style="margin-top:8px"><label>' + bt('고객', 'Customer') + '</label><div class="dvcust"><input id="dvStore" value="' + esc(F.store ? (F.acct ? F.acct + ' ' : '') + F.store : '') + '" autocomplete="off" placeholder="' + esc(bt('이름, 주소 또는 계정 번호', 'Name, address or account #')) + '"><button type="button" class="b-ghost" id="dvNewAcct">＋ ' + bt('고객 등록', 'New customer') + '</button></div><div id="dvHits" class="hits" style="display:none"></div></div>' +
-    '<div class="fg"><label>' + bt('디스플레이 상품 · 개수', 'Display items · qty') + ' <span class="muted">' + bt('— 설정 상품 · 카탈로그 전체 · 직접 입력(특별 제작)', '— configured · whole catalog · custom') + '</span></label><div id="dvItems">' + F.items.map((x, i) => '<div class="dvirow"><select data-dvi="' + i + '">' + optFor(x) + '</select><input type="number" inputmode="numeric" min="1" data-dvq="' + i + '" value="' + esc(x.q || 1) + '" style="width:76px;text-align:right;font-weight:800"><button type="button" class="b-ghost b-sm" data-dvdel="' + i + '">✕</button></div>' +
-      '<div class="dvirow dvsub2"><input data-dvc="' + i + '" value="' + esc(x.custom ? x.n : '') + '" placeholder="' + esc(bt('✏️ 직접 입력 — 이름 (예: C13 Insert 앵클렛용)', '✏️ Custom — name (e.g. C13 insert for anklets)')) + '"' + (x.custom ? '' : ' style="display:none"') + '><input data-dvn="' + i + '" value="' + esc(x.note || '') + '" placeholder="' + esc(bt('설명 · 어떤 것 (예: 앵클렛 13" · 세트 코드 · 특별 제작 내용)', 'Note · which one (e.g. anklet 13" · set code · special build)')) + '"></div>').join('') + '</div><button type="button" class="b-ghost b-sm" id="dvAdd">＋ ' + bt('상품 추가', 'Add item') + '</button></div>' +
-    '<div class="two"><div class="fg"><label>' + bt('나갈 날짜', 'Ship date') + '</label><input type="date" id="dvDue" value="' + esc(F.due || today()) + '"></div><div class="fg"><label>' + bt('메모', 'Note') + '</label><input id="dvNote" value="' + esc(F.note) + '" placeholder="' + esc(bt('창고에 전할 말', 'Note for the warehouse')) + '"></div></div>' +
-    '<div class="btns"><button type="button" class="b-blue" id="dvSave">💾 ' + bt('저장', 'Save') + '</button></div></div>';
-  const keep = () => { F.items = Array.from(document.querySelectorAll('[data-dvi]')).map(s => { const i = s.dataset.dvi, q = Math.max(1, Math.floor(Number(document.querySelector('[data-dvq="' + i + '"]').value) || 1)), note = (document.querySelector('[data-dvn="' + i + '"]') || {}).value || '', cv = (document.querySelector('[data-dvc="' + i + '"]') || {}).value || '';
-    if (s.value === CUSTOM) return { n: cv.trim(), q, note, custom: true };
-    if (s.value.indexOf('c:') === 0) { const it = catalog() && catalog().byCode[s.value.substring(2)]; return { n: it ? it.d : s.value.substring(2), c: s.value.substring(2), q, note }; }
-    return { n: s.value, q, note }; }); F.due = $('dvDue').value; F.note = $('dvNote').value; };
-  const close = () => { NEWOPEN = false; if (host) host.innerHTML = ''; else closeModal(); };
-  const paint = () => {
-    if (host) { host.innerHTML = '<div class="card">' + html() + '</div>'; } else openModal(html());
-    $('dvX').onclick = close;
-    $('dvAdd').onclick = () => { keep(); F.items.push({ n: '', q: 1 }); paint(); };
-    document.querySelectorAll('[data-dvi]').forEach(s => s.onchange = () => { const c = document.querySelector('[data-dvc="' + s.dataset.dvi + '"]'); if (c) { c.style.display = s.value === CUSTOM ? '' : 'none'; if (s.value === CUSTOM) c.focus(); } });
-    document.querySelectorAll('[data-dvdel]').forEach(b => b.onclick = () => { keep(); F.items.splice(Number(b.dataset.dvdel), 1); if (!F.items.length) F.items.push({ n: '', q: 1 }); paint(); });
-    $('dvNewAcct').onclick = async () => { keep(); const NA = await import('./newacct.js'); NA.newAcctForm($('dvStore').value.trim(), a => { F.acct = a.acct; F.store = a.store; F.sm = a.sm || F.sm; paint(); }); };
-    const hits = $('dvHits');
-    $('dvStore').oninput = () => {
-      F.acct = ''; F.store = $('dvStore').value.trim();
-      const R = S.accounts && S.accounts.byCode ? searchAccounts(S.accounts, $('dvStore').value, 8) : [];
-      hits.style.display = R.length ? '' : 'none';
-      hits.innerHTML = R.map(a => '<div data-dva="' + esc(a.acct) + '"><b>' + esc(a.store) + '</b> <span class="muted">' + esc(a.acct) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.city ? ' · ' + esc(a.city) : '') + '</span></div>').join('');
-      hits.querySelectorAll('[data-dva]').forEach(el => el.onclick = () => { const a = S.accounts.byCode[el.dataset.dva]; F.acct = a.acct; F.store = a.store; F.sm = a.sm || F.sm; $('dvStore').value = a.acct + ' ' + a.store; hits.style.display = 'none'; });
-    };
-    $('dvSave').onclick = async () => {
-      keep();
-      const items = F.items.filter(x => x.n).map(x => { const c = !x.c && !x.custom ? (C.find(y => y.n === x.n) || {}) : {}; const o = { n: x.n, q: x.q, w: c.w || 0, l: c.l || 0, wd: c.wd || 0, h: c.h || 0, ok: false }; if (x.c) o.c = x.c; if (x.custom) o.custom = true; if (x.note && x.note.trim()) o.note = x.note.trim(); return o; });
-      if (F.items.some(x => x.custom && !x.n)) return toast(bt('직접 입력 상품의 이름을 적으세요', 'Type a name for the custom item'), 'bad');
-      if (!F.store) return toast(bt('고객을 고르세요', 'Pick the customer'), 'bad');
-      if (!items.length) return toast(bt('디스플레이 상품을 고르세요', 'Pick the display items'), 'bad');
-      if (!F.due) return toast(bt('나갈 날짜를 넣으세요', 'Enter the ship date'), 'bad');
-      const now = new Date().toISOString(), id = F.id || newId('DS');
-      const doc = { id, acct: F.acct, store: F.store, sm: F.sm, items, due: F.due, note: F.note.trim(), orderId: F.orderId, orderNo: F.orderNo, updatedAt: now };
-      doc.qty = boxesOf(doc);
-      busy(true);
-      try {
-        if (F.id) await S.DB.update('displays', id, doc);
-        else {
-          await S.DB.set('displays', id, Object.assign(doc, { st: 'open', createdBy: me(), createdByName: myName(), createdAt: now }));
-          /* 창고에 🔔 — 앱 안 알림 + 팝업 (메일 · 챗 없음) */
-          try { await Msg.sendMsg({ to: 'g:wh', toLabel: bt('창고', 'Warehouse'), text: '🖼 Notes Display: ' + doc.store + ' — ' + dispText(doc) + ' · ' + bt('박스', 'boxes') + ' ' + doc.qty + ' · 📅 ' + md(doc.due) + (doc.note ? '\n📝 ' + doc.note : ''), ref: { id: 'displays', label: '🖼 Notes Display' }, quiet: true }); } catch (e) {}
-        }
-        close(); toast('💾 ' + bt('저장했습니다', 'Saved'), 'good');
-        if (location.hash.indexOf('#/displays') === 0) list(); else if (pre.after) pre.after();
-      } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
-      busy(false);
-    };
-  };
-  paint();
-}
-/** 글 한 줄 묻기 — 취소하면 null */
-function askText(title, ph) {
-  return new Promise(res => {
-    openModal('<h2>' + title + '</h2><textarea id="atT" rows="3" placeholder="' + esc(ph) + '" style="margin-top:8px"></textarea><div class="btns"><button type="button" class="b-ghost" id="atX">' + bt('취소', 'Cancel') + '</button><button type="button" class="b-blue" id="atOk">' + bt('저장', 'Save') + '</button></div>');
-    let done = false; const fin = v => { if (done) return; done = true; closeModal(); res(v); };
-    $('atX').onclick = () => fin(null); $('atOk').onclick = () => { const v = $('atT').value.trim(); if (!v) return toast(bt('내용을 적으세요', 'Type something'), 'bad'); fin(v); };
-    $('modal')._onClose = () => fin(null); setTimeout(() => $('atT') && $('atT').focus(), 50);
-  });
-}
-/* ---------- ⚙️ 상품 · 무게 · 크기 (관리자) ---------- */
-function cfg() {
-  let L = catalogItems().map(x => Object.assign({}, x));
-  const paint = () => {
-    openModal('<h2>⚙️ ' + bi('디스플레이 상품 · 무게 · 크기', 'Display items · weight · size') + '</h2><div class="muted">' + bt('UPS 박스 한 개 = 상품 한 개. 무게(lb)와 상자 크기(in)가 UPS 라벨에 그대로 들어갑니다.', 'One UPS box per unit — weight (lb) and box size (in) go onto the label.') + '</div>' +
-      '<table style="margin-top:8px"><tr><th>' + bt('이름', 'Name') + '</th><th>lb</th><th>L</th><th>W</th><th>H</th><th></th></tr>' + L.map((x, i) => '<tr><td><input data-cn="' + i + '" value="' + esc(x.n) + '"></td>' + ['w', 'l', 'wd', 'h'].map(k => '<td><input type="number" inputmode="decimal" data-c' + k + '="' + i + '" value="' + esc(x[k] || '') + '" style="width:58px"></td>').join('') + '<td><button class="b-ghost b-sm" data-cdel="' + i + '">✕</button></td></tr>').join('') + '</table>' +
-      '<div class="btns"><button class="b-ghost" id="cAdd">＋ ' + bt('상품', 'Item') + '</button><button class="b-ghost" id="cX">' + bt('닫기', 'Close') + '</button><button class="b-blue" id="cSave">💾 ' + bt('저장', 'Save') + '</button></div>');
-    const keep = () => { L = L.map((x, i) => ({ n: ($('mbox').querySelector('[data-cn="' + i + '"]') || {}).value || '', w: Number(($('mbox').querySelector('[data-cw="' + i + '"]') || {}).value) || 0, l: Number(($('mbox').querySelector('[data-cl="' + i + '"]') || {}).value) || 0, wd: Number(($('mbox').querySelector('[data-cwd="' + i + '"]') || {}).value) || 0, h: Number(($('mbox').querySelector('[data-ch="' + i + '"]') || {}).value) || 0 })); };
-    $('cX').onclick = closeModal; $('cAdd').onclick = () => { keep(); L.push({ n: '', w: 0, l: 0, wd: 0, h: 0 }); paint(); };
-    document.querySelectorAll('[data-cdel]').forEach(b => b.onclick = () => { keep(); L.splice(Number(b.dataset.cdel), 1); paint(); });
-    $('cSave').onclick = async () => { keep(); const items = L.filter(x => x.n.trim()).map(x => Object.assign(x, { n: x.n.trim().toUpperCase() })); busy(true); try { await S.DB.batch([{ op: 'merge', col: 'settings', id: 'app', data: { displayItems: items, updatedAt: new Date().toISOString() } }]); S.settings.displayItems = items; closeModal(); toast('💾 ' + bt('저장했습니다', 'Saved'), 'good'); list(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); } busy(false); };
-  };
-  paint();
+  N.cli = pre.acct || ''; N.busca = N.cli ? '' : (pre.store || ''); N.novo = true; N.qtd = 0; N.feitas = []; N.cx = {};
+  ND.esc = null; ND.busca = ''; ND.para = ''; ND.orderId = pre.orderId || ''; ND.orderNo = pre.orderNo || '';
+  const rq = reqClean(pre.req), rn = reqNoteClean(pre.reqNote) || {};
+  ND.prods = rq ? Object.keys(rq).map((k, i) => ({ id: 'txt' + Date.now() + i, livre: true, texto: [reqLabel(k, true), rn[k]].filter(Boolean).join(' — '), qtd: String(rq[k]) })) : [];
+  if (location.hash.indexOf('#/displays') === 0) return page();
+  Router.go('displays');
 }
 /** 주문에서 — 그 주문의 Notes Display 요청 수 (단추에 숫자) */
-export async function countForOrder(orderId) { try { return (await S.DB.list('displays', { where: [['orderId', '==', orderId]] })).filter(d => d.st !== 'x').length; } catch (e) { return 0; } }
+export async function countForOrder(orderId) {
+  try { const L2 = (await S.DB.list('notasDisplay', { where: [['orderId', '==', orderId]] })).filter(d => d.status !== 'cancelado'); return new Set(L2.map(grupoDe)).size; } catch (e) { return 0; }
+}
+/** 대시보드 · 출고 묶음 타일 — 기다리는 가게 수 · 준비 날짜가 지난 것 */
+export async function resumo() {
+  const L2 = await S.DB.list('notasDisplay', { where: [['status', 'in', ['pendente', 'preparando']]] });
+  return { lojas: new Set(L2.map(lojaDe)).size, atrasadas: new Set(L2.filter(x => x.paraEm && x.paraEm < today()).map(lojaDe)).size };
+}

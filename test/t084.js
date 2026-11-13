@@ -14,7 +14,7 @@ const path = require('path');
   if (!/매출/.test(cards[1] || '') || !/현금/.test(cards[2] || '') || !/미수금/.test(cards[3] || '') || !/공장/.test(cards[4] || '') || !/비용/.test(cards[5] || '') || !/운영/.test(cards[6] || '')) errs.push('dashboard should show 매출 · 현금 · 미수금 · 공장 · 비용 · 운영 in order');
   const dash = (await pg.textContent('#page')).replace(/\s+/g, ' '); if (!/지난 기간/.test(dash) || !/작년 같은 기간/.test(dash) || !/입금 예정 체크/.test(dash) || !/60일 넘음/.test(dash) || !/커미션 예상/.test(dash) || !/하루 넘은 주문/.test(dash)) errs.push('dashboard key numbers missing');
   await pg.click('[data-op="year"]'); await pg.waitForTimeout(1500); if (!/올해/.test((await pg.textContent('#page')).slice(0, 300))) errs.push('period chip should switch to year');
-  await pg.click('#nav button[data-go="hub/biz"]'); await pg.waitForSelector('[data-hub="mg/sales"]', { timeout: 5000 }); if (await pg.$('[data-hub="pay"]')) errs.push('owner must not see 정산 in the business hub'); await pg.click('[data-hub="mg/sales"]'); await pg.waitForTimeout(1200); if (!/매출/.test((await pg.textContent('#page')).slice(0, 400))) errs.push('sales tab should open the sales screen');
+  await pg.click('#nav button[data-go="hub/biz"]'); await pg.waitForSelector('[data-hub="mg/sales"]', { timeout: 5000 }); if (!(await pg.$('[data-hub="pay"]'))) errs.push('owner sees 정산 in the business hub (v0.8.218 관리자: 관리자 · 오너만)'); await pg.click('[data-hub="mg/sales"]'); await pg.waitForTimeout(1200); if (!/매출/.test((await pg.textContent('#page')).slice(0, 400))) errs.push('sales tab should open the sales screen');
   /* 🚗 세일즈 모드 */
   await pg.click('#nav button[data-go="view/salesman"]'); await pg.waitForTimeout(1500);
   const nav2 = await pg.$$eval('#nav button', b => b.map(x => x.dataset.go)); log('sales-mode nav:', nav2);
