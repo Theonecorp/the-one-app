@@ -186,7 +186,7 @@ export async function statementDialog(acct, info, back) {
           if (!from && !to) payRows = payRows.slice(-30);   // 전체 기간이면 최근 30건
         }
         busy(false);
-        printOpen(statementHtml(acct, info, { mode: STO.mode, from, to, pays: STO.pays, invs, payRows }));
+        printOpen(statementHtml(acct, info, { mode: STO.mode, from, to, pays: STO.pays, invs, payRows }), 'Statement-' + acct + '-' + (to || today()));
       } catch (e) { busy(false); toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     };
   };
@@ -289,13 +289,15 @@ export async function invDetail(no, acct, back) {
     (lines.length ? '<div style="max-height:40vh;overflow:auto"><table><tr><th>' + bt('코드', 'Code') + '</th><th class="r">' + bt('수량', 'Qty') + '</th><th class="r">' + bt('가격', 'Price') + '</th><th class="r">' + bt('금액', 'Amount') + '</th></tr>' + lines.map(l => '<tr><td><b>' + esc(l.c) + '</b><div class="muted" style="font-size:11.5px">' + esc(l.d || '') + '</div></td><td class="r">' + l.q + '</td><td class="r">' + money(l.p) + '</td><td class="r">' + money(l.q * l.p) + '</td></tr>').join('') + '</table></div>'
       : '<div class="muted" style="margin-top:6px">' + (legacy ? bt('이전 시스템(SmartBee) 인보이스 — 품목 줄은 SmartBee 에 있습니다', 'SmartBee invoice — line items are in SmartBee') : !x ? bt('AR 에만 있는 인보이스 — 인보이스 목록을 올리면 자세히 보입니다', 'Only in A/R — upload the invoice list for details') : '') + '</div>') +
     (!a && acct ? '<div class="alert a-amb">⚠️ ' + bt('거래처 목록에 없는 계정코드입니다', 'This account code is not in the customer list') + ' (' + esc(acct) + ') — ' + bt('✏️ 수정에서 가게를 다시 연결하세요', 'relink the store with ✏️ Edit') + '</div>' : !acct && x ? '<div class="alert a-amb">⚠️ ' + bt('이 인보이스에 가게(계정코드)가 없습니다 — ✏️ 수정에서 연결하세요', 'This invoice has no store — link one with ✏️ Edit') + '</div>' : '') +
-    '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="idStore2">🏬 ' + bi('가게 창', 'Store') + '</button>' + (x && lines.length ? '<button class="b-blue" id="idPrint">🖨 ' + bi('인쇄', 'Print') + '</button>' : '') +
+    '<div class="btns" style="flex-wrap:wrap"><button class="b-ghost" id="idStore2">🏬 ' + bi('가게 창', 'Store') + '</button>' + (x && lines.length ? '<button class="b-blue" id="idPrint">🖨 ' + bi('인쇄', 'Print') + '</button><button class="b-ghost" id="idPdf">📄 PDF</button>' : '') +
     (x && isStaff() && can('void') ? (legacy || !x.orderId ? '<button class="b-ghost" id="idEdit">✏️ ' + bi('수정', 'Edit') + '</button><button class="b-ghost" id="idDel" style="color:#991b1b">🗑 ' + bi('지우기', 'Delete') + '</button>' : (x.st !== 'x' && x.src !== 'credit' ? '<button class="b-blue" id="idInvEdit">✏️ ' + bi('인보이스 수정', 'Edit invoice') + '</button>' : '') + '<button class="b-ghost" id="idOrder">📦 ' + bi('주문 열기 (VOID · 다시 발행)', 'Open order (void · reissue)') + '</button>') : '') + '</div>';
   $('idX').onclick = () => back ? back() : closeModal();
   box.querySelectorAll('[data-crgo]').forEach(el => el.onclick = () => { closeModal(); goHash('#/credit/' + encodeURIComponent(el.dataset.crgo)); });
   const toStore = () => storeSheet(acct, null, 'invh');
   $('idStore').onclick = toStore; $('idStore2').onclick = toStore;
   if ($('idPrint')) $('idPrint').onclick = async () => { const { printInvoices } = await import('./fulfill.js'); printInvoices([x], a); };
+  /* 📄 인보이스를 PDF 파일로 바로 (세일즈맨 폰에서도 — 인쇄 창을 열고 그 장을 저장 · v0.8.223) */
+  if ($('idPdf')) $('idPdf').onclick = async () => { const { printInvoices } = await import('./fulfill.js'); await printInvoices([x], a); busy(true); try { const U = await import('./ui.js'); toast('📄 ' + await U.printPdf(), 'good'); } catch (e) { toast(bt('PDF 실패', 'PDF failed') + ': ' + (e.message || e), 'bad'); } busy(false); };
   if ($('idOrder')) $('idOrder').onclick = () => { closeModal(); goHash('#/order/' + encodeURIComponent(x.orderId)); };
   if ($('idEdit')) $('idEdit').onclick = () => invEditForm(x, () => invDetail(no, '', back));
   if ($('idInvEdit')) $('idInvEdit').onclick = async () => { const IE = await import('./invedit.js'); IE.setState(S); IE.editInvoice(x, () => invDetail(no, '', back)); };   /* ✏️ 발행된 인보이스 직접 고치기 (v0.8.189) */
