@@ -69,7 +69,7 @@ export const ICO = {
   camadas: '<path d="M12 2l10 5-10 5L2 7z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/>',
   print: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>'
 };
-export const svg = svg0;
+export const svg = (p, n) => svg0(p, n);   // 부를 때 찾음 (balcao.js ↔ notesups.js ↔ etq.js 가 서로 가져와도 처음 읽는 순서와 상관없게)
 export function injetarCss() { sbCss(); if (!document.getElementById('esCss')) { const st = document.createElement('style'); st.id = 'esCss'; st.textContent = ES_CSS + ES_MAIS + ES_PRT_CSS + ES_PRT_MAIS; document.head.appendChild(st); } }
 
 /* ---------- 권한 (옛 앱 podeMexerEstoque · GERENTE) ---------- */
