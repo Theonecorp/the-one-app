@@ -95,6 +95,11 @@ th{color:var(--muted);font-weight:600}
 .wd-g2{display:grid;grid-template-columns:1fr;gap:14px}
 @media (min-width:1000px){.wd-g2{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}.wd-g2.even{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .wd-card{background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);padding:16px;min-width:0}
+/* 🏭 오너 · 관리자 홈(own) — 컴퓨터 먼저 (v0.8.205): 머리 · 숫자 4칸 · 상세 2열, 폰은 한 열 */
+.own{display:flex;flex-direction:column;gap:14px}.own .card{margin:0}.own-hd{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;padding:14px 16px}.own-hd h2{margin:0;display:flex;align-items:center;gap:8px;font-size:20px;letter-spacing:-.2px}.own-p{color:var(--muted);font-weight:600;font-size:14.5px}.own-hd .chips{margin:0!important;padding:0}.own-hd .chips button{display:inline-flex;align-items:center;gap:5px}
+.own-c{cursor:pointer;transition:border-color .15s,box-shadow .15s}.own-c:hover{border-color:#cbd5e1;box-shadow:0 0 0 1px #cbd5e1,var(--sh)}.own-c h2{display:flex;align-items:center;gap:8px;font-size:16px;margin:0 0 6px}.own-c h2 .ic{color:var(--ink2)}.own-c .hero{font-size:28px}.own-c table{width:100%}.own .wd-kpi{cursor:pointer}
+@media (max-width:520px){.own .wd-kpi .kt{flex:1 1 calc(100% - 50px)}.own .wd-kpi .kd{margin-left:42px}}
+@media (max-width:640px){.own-hd h2{font-size:17px}.own-p{display:block;width:100%;font-size:13px}.own-hd h2{flex-wrap:wrap}.own-c .hero{font-size:24px}}
 .wd-card>h3{display:flex;align-items:center;gap:10px;font-size:16px;margin:0 0 12px;font-weight:800;letter-spacing:-.1px}.wd-card>h3 .ic{color:var(--green)}.wd-card>h3 a,.wd-card>h3 .lnk{margin-left:auto;font-size:13px;font-weight:600;color:var(--blue);background:none;border:0;padding:0;cursor:pointer}
 .wd-card>h3 .live{margin-left:auto;font-size:12px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:6px}.wd-card>h3 .live i{width:7px;height:7px;border-radius:50%;background:var(--green)}
 .wd-qa{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}

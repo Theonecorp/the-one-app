@@ -6,6 +6,7 @@
  * ============================================================ */
 import { $, esc, money, k, R2, num, today, ym, md, Router, sortBy, groupBy, sum, daysBetween, addDays, bi, bt, pickDates, pct, snapGet, snapPut } from './ui.js';
 import { kvGet, kvSet } from './catalog.js';
+import { icon } from './icons.js';
 /** ⚡ 느린 보조 숫자는 폰 보관(ttl) 을 먼저 쓰고 뒤에서 새로 읽어 둠 — 다음에 열 때 반영 */
 async function cached(key, ttl, fn) {
   let c = null; try { c = await kvGet('own.' + key); } catch (e) {}
@@ -23,7 +24,10 @@ export function register(state) { S = state; Router.on('own', page); }
 const MAIN = ['month', 'lastm', 'quarter', 'year', 'week'];
 const shiftYear = d => String(Number(d.substring(0, 4)) - 1) + d.substring(4);
 const delta = (a, b) => b ? '<span class="' + (a >= b ? 'ok' : 'warn') + '">' + (a >= b ? '▲' : '▼') + pct(Math.abs(a - b) / b * 100).replace('%', '') + '%</span>' : '<span class="muted">—</span>';
-const tile = (go, h2, hero, sub, body, cls) => '<div class="card tap' + (cls ? ' ' + cls : '') + '" data-og="' + esc(go) + '"><h2>' + h2 + '</h2>' + (hero ? '<div class="hero" style="font-size:26px">' + hero + '</div>' : '') + (sub ? '<div class="heroSub">' + sub + '</div>' : '') + (body || '') + '</div>';
+const tile = (go, h2, hero, sub, body, cls) => '<section class="card wd-card own-c tap' + (cls ? ' ' + cls : '') + '" data-og="' + esc(go) + '"><h2>' + h2 + '</h2>' + (hero ? '<div class="hero">' + hero + '</div>' : '') + (sub ? '<div class="heroSub">' + sub + '</div>' : '') + (body || '') + '</section>';
+/** 🖥 위 숫자 4칸 (v0.8.205 — 컴퓨터 먼저: 넓은 화면은 한 줄 4칸, 폰은 2칸 × 2) · 누르면 그 화면 */
+const kpiDelta = (a, b) => b ? '<span class="kd' + (a >= b ? '' : ' dn') + '">' + (a >= b ? '▲' : '▼') + Math.round(Math.abs(a - b) / b * 100) + '%</span>' : '';
+const kpi = (go, ic, cls, label, val, d) => '<button type="button" class="wd-kpi ' + cls + '" data-ogk="' + esc(go) + '"><span class="ki">' + icon(ic, 22) + '</span><span class="kt"><span>' + label + '</span><b>' + val + '</b></span>' + (d || '') + '</button>';
 const months = (from, to) => { const L = []; let m = from.substring(0, 7); while (m <= to.substring(0, 7)) { L.push(m); const y = Number(m.substring(0, 4)), mm = Number(m.substring(5, 7)); m = mm === 12 ? (y + 1) + '-01' : y + '-' + String(mm + 1).padStart(2, '0'); } return L; };
 
 async function page(arg) {
@@ -85,16 +89,27 @@ async function page(arg) {
   const sig = (n, label, bad) => '<div' + (bad && n ? ' style="background:#fee2e2"' : '') + '><b>' + n + '</b><span>' + label + '</span></div>';
   const opsBody = '<div class="kpi" style="grid-template-columns:repeat(4,1fr)">' + sig(lateN, '⏱ ' + bt('하루 넘은 주문', 'Orders > 1 day'), true) + sig(cfN, '❓ ' + bt('확인 대기', 'Awaiting confirm'), true) + sig(newAcc + (pendAcc ? '<small>+' + pendAcc + '</small>' : ''), '🆕 ' + bt('신규 거래처', 'New accounts')) + sig(quiet.length, '📵 ' + bt('3일+ 입력 없음', 'Quiet 3d+'), true) + '</div>' + (quiet.length ? '<div class="muted" style="font-size:12px;margin-top:6px">' + quiet.slice(0, 6).map(x => esc(x.sm) + ' ' + (x.d ? x.days + bt('일', 'd') : bt('기록 없음', 'none'))).join(' · ') + '</div>' : '');
   /* 그리기 */
-  const chips = '<div class="chips" style="margin:0 0 6px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (OP.p === c[0] ? 'on' : '') + '" data-op="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (MAIN.includes(OP.p) ? '' : 'on') + '" id="opCal">📅 ' + bi('날짜 선택', 'Pick dates') + '</button></div>';
+  const chips = '<div class="chips" style="margin:0 0 6px">' + PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (OP.p === c[0] ? 'on' : '') + '" data-op="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (MAIN.includes(OP.p) ? '' : 'on') + '" id="opCal">' + icon('calendar', 15) + ' ' + bi('날짜 선택', 'Pick dates') + '</button></div>';
   const cmp = (a, b, c) => bt('지난 기간', 'prev') + ' ' + money(b) + ' ' + delta(a, b) + ' · ' + bt('작년 같은 기간', 'last year') + ' ' + money(c) + ' ' + delta(a, c);
   if (gen !== GEN || Router.cur !== 'own') return;   // 그사이 다른 화면으로 갔거나 기간을 바꿈
-  const html = '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">🏭 ' + bi('경영 대시보드', 'Business dashboard') + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
-    tile('mg/sales', '📈 ' + bi('매출', 'Sales') + (sNow.src === 'manual' ? ' <span class="tag t-g">' + bt('월별 입력', 'manual') + '</span>' : ''), money(sNow.v), cmp(sNow.v, sPrev.v, sYear.v), salesBody) +
-    tile('now', '💵 ' + bi('현금 흐름 — 들어온 돈', 'Cash in'), money(cNow.total), cmp(cNow.total, cPrev.total, cYear.total), cashBody) +
-    tile('bossar', '💰 ' + bi('미수금', 'Receivables'), money(arTot), stores.length + bt('곳', ' stores') + ' · ' + bt('60일 넘음', 'over 60d') + ' ' + pct(arTot ? over60 / arTot * 100 : 0), arBody) +
-    tile('mg/fac', '🏭 ' + bi('공장 · 지급', 'Factories'), money(fBal), bt('미지급 잔액', 'unpaid') + ' · ' + t.substring(0, 4) + ' ' + bt('구매', 'buy') + ' ' + k(fBuy) + ' · ' + bt('송금', 'paid') + ' ' + k(fPaid), facBody) +
-    tile('pay', '🧾 ' + bi('비용 · 지급', 'Costs'), '', '', costBody) +
-    tile('flow', '🚦 ' + bi('운영 신호', 'Operations'), '', '', opsBody);
+  const html = '<div class="wd own">' +
+    '<div class="card own-hd"><h2>' + icon('dashboard', 22) + ' ' + bi('경영 대시보드', 'Business dashboard') + ' <span class="own-p">— ' + esc(ptxt) + '</span></h2>' + chips + '</div>' +
+    '<div class="wd-kpis">' +
+      kpi('mg/sales', 'chart', 'k-green', bt('매출', 'Sales'), k(sNow.v), kpiDelta(sNow.v, sPrev.v)) +
+      kpi('now', 'wallet', 'k-blue', bt('들어온 돈', 'Cash in'), k(cNow.total), kpiDelta(cNow.total, cPrev.total)) +
+      kpi('bossar', 'receipt', over60 > arTot * 0.3 ? 'k-amber' : 'k-indigo', bt('미수금', 'Receivables'), k(arTot), arTot ? '<span class="kd' + (over60 > arTot * 0.3 ? ' dn' : '') + '">60' + bt('일+', 'd+') + ' ' + Math.round(over60 / arTot * 100) + '%</span>' : '') +
+      kpi('mg/fac', 'factory', 'k-amber', bt('공장 미지급', 'Owed to factories'), k(fBal), '') +
+    '</div>' +
+    '<div class="wd-g2 even">' +
+      tile('mg/sales', icon('chart', 20) + ' ' + bi('매출', 'Sales') + (sNow.src === 'manual' ? ' <span class="tag t-g">' + bt('월별 입력', 'manual') + '</span>' : ''), money(sNow.v), cmp(sNow.v, sPrev.v, sYear.v), salesBody) +
+      tile('now', icon('wallet', 20) + ' ' + bi('현금 흐름 — 들어온 돈', 'Cash in'), money(cNow.total), cmp(cNow.total, cPrev.total, cYear.total), cashBody) +
+    '</div><div class="wd-g2 even">' +
+      tile('bossar', icon('receipt', 20) + ' ' + bi('미수금', 'Receivables'), money(arTot), stores.length + bt('곳', ' stores') + ' · ' + bt('60일 넘음', 'over 60d') + ' ' + pct(arTot ? over60 / arTot * 100 : 0), arBody) +
+      tile('mg/fac', icon('factory', 20) + ' ' + bi('공장 · 지급', 'Factories'), money(fBal), bt('미지급 잔액', 'unpaid') + ' · ' + t.substring(0, 4) + ' ' + bt('구매', 'buy') + ' ' + k(fBuy) + ' · ' + bt('송금', 'paid') + ' ' + k(fPaid), facBody) +
+    '</div><div class="wd-g2 even">' +
+      tile('pay', icon('dollar', 20) + ' ' + bi('비용 · 지급', 'Costs'), '', '', costBody) +
+      tile('flow', icon('activity', 20) + ' ' + bi('운영 신호', 'Operations'), '', '', opsBody) +
+    '</div></div>';
   $('page').innerHTML = html; snapPut(SK, html); bind();
 }
 let GEN = 0;
@@ -102,5 +117,5 @@ function bind() {
   const [from, to] = periodRange(OP.p, OP.from, OP.to);
   document.querySelectorAll('[data-op]').forEach(b => b.onclick = () => { OP.p = b.dataset.op; page(); });
   $('opCal').onclick = async () => { const r = await pickDates({ from, to }); if (r) { OP.p = 'custom'; OP.from = r[0]; OP.to = r[1]; page(); } };
-  document.querySelectorAll('[data-og]').forEach(el => el.onclick = () => { const [r, a] = el.dataset.og.split('/'); if (a) Router.go(r, a); else Router.go(r); });
+  document.querySelectorAll('[data-og], [data-ogk]').forEach(el => el.onclick = () => { const [r, a] = (el.dataset.og || el.dataset.ogk).split('/'); if (a) Router.go(r, a); else Router.go(r); });
 }
