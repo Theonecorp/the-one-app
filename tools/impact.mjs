@@ -5,7 +5,7 @@
  *            ③ 폰에 저장되는 자료(localStorage 'theone.*') — 옛 버전 앱이 남긴 자료를 새 코드가 그대로 읽는지
  *            ④ 바뀐 함수를 부르는 곳 · ⑤ 같이 돌려야 할 시험 · ⑥ 규칙 · 서버 함수가 바뀌었으면 배포 · 옛 앱 호환 할 일
  *            ⑦ 앱 배포와 따로 도는 바깥 프로그램(Apps Script · 출고 PC 프린터 에이전트 · 서버 함수)이 같은 모음을 쓰는지 — 이들은 옛 모양을 계속 씀
- *   analyze() 는 순수 함수 (시험 t277) — 아래 CLI 가 git · 파일을 모아 넘김 */
+ *   analyze() 는 순수 함수 (시험 t278) — 아래 CLI 가 git · 파일을 모아 넘김 */
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
