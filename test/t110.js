@@ -24,7 +24,7 @@ const path = require('path');
   log('layout:', lay); if (!lay.pane || !lay.scrollable) errs.push('eBody should be a scroll pane'); if (lay.docScroll > 40) errs.push('page itself should not scroll much: ' + lay.docScroll);
   await pg.evaluate(() => { document.getElementById('eBody').scrollTop = 600; }); await pg.waitForTimeout(200);
   const after = await pg.evaluate(() => ({ head: document.getElementById('eHead').getBoundingClientRect().top, bar: document.querySelector('.sticky').getBoundingClientRect().bottom, vh: window.innerHeight, sy: window.scrollY }));
-  log('after scroll:', after); if (after.sy > 2 || after.head > 80 || after.bar > after.vh - 40) errs.push('head/bottom should stay fixed while the middle scrolls');
+  log('after scroll:', after); if (after.sy > 2 || after.head > 80 || after.bar > after.vh + 1) errs.push('head/bottom should stay fixed while the middle scrolls');   // v0.8.231: 폰 주문 화면은 아래 메뉴를 숨겨 고정 바가 화면 맨 아래까지 (전에는 메뉴 위 vh − 40)
   /* 사진 팝업 (목록 줄 사진 · 카드 🔍) */
   const hasImg = await pg.$('#eRes .ith[data-big]');
   if (hasImg) { await hasImg.click(); await pg.waitForTimeout(200); if (!(await pg.$('#ppop.on'))) errs.push('photo should open a popup'); if (await pg.$('#viewer')) errs.push('photo should not open the full-screen viewer'); await pg.click('#ppX'); await pg.waitForTimeout(100); if (await pg.$('#ppop.on')) errs.push('popup should close'); }
