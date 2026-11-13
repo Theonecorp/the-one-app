@@ -1,4 +1,4 @@
-/* v0.8.229 시험 — 🚫 인보이스 뒤 단계 숨김: 포장 대기(done) · UPS 출고(ups) · UPS 픽업(packed) · 딜리버리 대기(dlv) — 인보이스 발행 = ✅ 완료(shipped) · 🚚 배송 조회 화면 없앰 → Shipping History
+/* v0.8.230 시험 — 🚫 인보이스 뒤 단계 숨김: 포장 대기(done) · UPS 출고(ups) · UPS 픽업(packed) · 딜리버리 대기(dlv) — 인보이스 발행 = ✅ 완료(shipped) · 🚚 배송 조회 화면 없앰 → Shipping History
  *   (2026-11-13 창고 매니저 요청, 시험용 사본 — "다른 기능과 이을 때까지 완료로". 주문 흐름이 바뀌므로 실제 반영은 관리자 승인 필요: t244 ④)
  *   ① 검수 끝난(picked) 주문의 🧾 인보이스 발행 → st shipped · shipVia INVOICE · shipAt · doneAt · invs
  *   ② 창고 매니저 홈 · 서랍 주문 칸에 숨긴 네 단계 없음 · ✅ 완료 칸은 있음 · 🧭 주문 흐름 감독에도 없음
