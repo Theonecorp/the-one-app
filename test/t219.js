@@ -29,7 +29,7 @@ const path = require('path');
   /* ② */
   const b = await open(1200, true);
   await b.evaluate(() => { location.hash = '#/pay'; }); await b.waitForSelector('#pOut .card', { timeout: 8000 });
-  const from = new Date(Date.now() - 20 * 86400000).toISOString().substring(0, 10), to = new Date().toISOString().substring(0, 10);
+  const from = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date(Date.now() - 20 * 86400000))), to = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date()));
   await b.fill('#pFrom', from); await b.dispatchEvent('#pFrom', 'change'); await b.waitForTimeout(300); await b.fill('#pTo', to); await b.dispatchEvent('#pTo', 'change'); await b.waitForTimeout(300);
   await b.selectOption('#pSm', 'BRANDON'); await b.waitForSelector('.pr.pl'); await b.waitForTimeout(600);
   await b.click('#pAll'); await b.waitForTimeout(600); await b.click('#pConfirm'); await b.waitForSelector('#cfGo');

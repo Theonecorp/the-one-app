@@ -9,7 +9,7 @@ const path = require('path');
   const pg = await br.newPage({ viewport: { width: 420, height: 900 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'X' }; try { localStorage.removeItem('theone.order.wip.brandon@x.com'); localStorage.setItem('theone.order.view', 'list'); } catch (x) {}
     /* 이 가게에 AHG100 이 지난달에 나간 인보이스 — 🕘 지난 주문이 줄에 보여야 함 */
-    window.__AFTER_SEED__ = s => { const d = new Date(Date.now() - 20 * 86400000).toISOString().substring(0, 10); s.invoices = (s.invoices || []).concat([{ id: 'A-099001', no: 'A-099001', t: 'A', acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', d, ym: d.substring(0, 7), lines: [{ c: 'AHG100', d: 'Aluminum Gold ITEM 0', q: 12, p: 2.5, lp: 2.5 }], sub: 30, disc: 0, total: 30, bal: 0, terms: 'N30', st: 'open', createdAt: d + 'T10:00:00Z' }]); }; });
+    window.__AFTER_SEED__ = s => { const d = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date(Date.now() - 20 * 86400000))); s.invoices = (s.invoices || []).concat([{ id: 'A-099001', no: 'A-099001', t: 'A', acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', d, ym: d.substring(0, 7), lines: [{ c: 'AHG100', d: 'Aluminum Gold ITEM 0', q: 12, p: 2.5, lp: 2.5 }], sub: 30, disc: 0, total: 30, bal: 0, terms: 'N30', st: 'open', createdAt: d + 'T10:00:00Z' }]); }; });
   await pg.goto('http://127.0.0.1:8871/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(600);
   const hash = () => pg.evaluate(() => location.hash);
   /* ---------- 뒤로 = 전 화면 ---------- */

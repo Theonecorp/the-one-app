@@ -9,15 +9,15 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 900 } });
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); try { localStorage.clear(); } catch (e) {} }, { email, seed }); await pg.goto('http://127.0.0.1:8894/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
-  const groups = pg => pg.$$eval('.hgrp', g => g.map(x => ({ k: x.dataset.grp, open: x.classList.contains('open'), head: x.querySelector('.hgh').textContent.replace(/\s+/g, ' ').trim(), tiles: [...x.querySelectorAll('[data-hg]')].map(b => b.dataset.hg) })));
+  const groups = pg => pg.$$eval('.hgrp', g => g.map(x => ({ k: x.dataset.grp, open: x.classList.contains('open'), head: x.querySelector('.hgh').textContent.replace(/\s+/g, ' ').trim(), ic: !!x.querySelector('.hgh .hgi svg'), tiles: [...x.querySelectorAll('[data-hg]')].map(b => b.dataset.hg) })));
   /* ① 오피스 매니저 */
   let pg = await mk('office@x.com', "s.users.push({ id: 'office@x.com', email: 'office@x.com', name: 'O', role: 'manager', job: 'office', active: true });");
   await pg.evaluate(() => { location.hash = '#/shome'; }); await pg.waitForSelector('.hgrp', { timeout: 8000 });
   let G = await groups(pg); log('① office groups:', JSON.stringify(G.map(g => g.k + (g.open ? '*' : '') + ':' + g.tiles.join(','))));
   const by = k => G.find(g => g.k === k);
   if (G.map(g => g.k).join() !== 'sale,ship,money,look') errs.push('① four groups in order: sale · ship · money · look');
-  if (!by('sale') || !/🛒/.test(by('sale').head) || !/세일/.test(by('sale').head)) errs.push('① first group is 🛒 세일');
-  if (!by('ship') || !/🚚/.test(by('ship').head) || !/배송/.test(by('ship').head)) errs.push('① second group is 🚚 배송');
+  if (!by('sale') || !by('sale').ic || !/세일/.test(by('sale').head)) errs.push('① first group is 세일 (cart icon — v0.8.203 선 아이콘)');
+  if (!by('ship') || !by('ship').ic || !/배송/.test(by('ship').head)) errs.push('① second group is 배송 (truck icon)');
   const has = (k, t) => by(k) && by(k).tiles.includes(t);
   ['new', 'sent', 'cfw', 'cfok', 'pick', 'picked', 'flow'].forEach(t => { if (!has('sale', t)) errs.push('① 세일 should hold ' + t); });
   ['done', 'ups', 'packed', 'shipped', 'bo', 'displays', 'adhoc', 'track'].forEach(t => { if (!has('ship', t)) errs.push('① 배송 should hold ' + t); });

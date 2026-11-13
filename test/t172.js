@@ -11,7 +11,7 @@ const path = require('path');
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8836', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
-  const seed = `const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().substring(0, 10); };
+  const seed = `const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d)); };
     s.users = (s.users || []).concat([{ id: 'om@x.com', email: 'om@x.com', name: 'OM', role: 'manager', job: 'office', active: true }, { id: 'ac@x.com', email: 'ac@x.com', name: 'AC', role: 'manager', job: 'acct', active: true }]);
     const inv = (no, d, total) => ({ id: no, no, t: 'A', src: 'app', d, ym: d.substring(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total, bal: total, st: 'open', terms: 'N30', lines: [] });
     s.invoices = (s.invoices || []).concat([{ id: 'CM-000009', no: 'CM-000009', t: 'CM', kind: 'credit', src: 'credit', d: day(2), ym: day(2).substring(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', why: '대미지', lines: [{ c: 'AHG100', d: 'x', q: -40, p: 2.5, lp: 2.5 }], qty: -40, sub: -100, list: -100, disc: 0, total: -100, bal: -100, st: 'open', reviewed: false, createdBy: 'brandon@x.com', createdAt: new Date().toISOString() },
@@ -55,7 +55,7 @@ const path = require('path');
   }
   await om.context().close();
   /* ② 세일즈맨 수금 고르기 · ⑤ 크레딧은 고른 인보이스까지만 — 적용이 들어간 크레딧으로 시작 */
-  const pg = await mk('brandon@x.com', 430, `const t = new Date().toISOString().substring(0, 10), c = s.invoices.find(x => x.no === 'CM-000009'); Object.assign(c, { bal: -50, paid: -50, pays: { 'AP:A10055': -50 }, apply: [{ no: 'A10055', acct: '1111', amt: 50, d: t, by: 'om@x.com', ar: true }] });`);
+  const pg = await mk('brandon@x.com', 430, `const t = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date())), c = s.invoices.find(x => x.no === 'CM-000009'); Object.assign(c, { bal: -50, paid: -50, pays: { 'AP:A10055': -50 }, apply: [{ no: 'A10055', acct: '1111', amt: 50, d: t, by: 'om@x.com', ar: true }] });`);
   await pg.evaluate(() => { location.hash = '#/entry/new'; }); await pg.waitForSelector('#fAcct');
   await pg.fill('#fAcct', '1111'); await pg.waitForTimeout(400); await pg.waitForSelector('.apr', { timeout: 6000 });
   const picks = await pg.$$eval('.apr', e => e.map(x => x.querySelector('b').textContent.replace(/\s+/g, ' ').trim() + ' ' + x.querySelector('.ab').firstChild.textContent.trim())); log('② salesman picks:', picks.join(' | '));

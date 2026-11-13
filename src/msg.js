@@ -5,7 +5,7 @@
  *    받는 쪽: 앱이 열려 있으면 바로 (실시간 · 소리 · 토스트 · 폰 알림 · 🔔 숫자), 닫혀 있으면 notifyq → Apps Script 가 이메일 · 구글 챗
  *    읽음: 🔔 창을 열면 보이는 메시지에 reads[me] 가 찍힘 (보낸 사람은 누가 읽었는지 봄)
  * ============================================================ */
-import { $, esc, toast, busy, openModal, closeModal, Router, bi, bt, md, goHash, debounce } from './ui.js';
+import { $, esc, toast, busy, openModal, closeModal, Router, bi, bt, md, goHash, debounce, localDay, today } from './ui.js';
 import { newId } from './db.js';
 import { jobOf, isTop } from './main.js';
 import * as Notify from './notify.js';
@@ -64,7 +64,7 @@ export function openPanel() {
 function paintPanel() {
   const box = $('msgPanel'); if (!box) return;
   const all = INBOX.concat(SENT.filter(s => !INBOX.some(m => m.id === s.id))).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 40);
-  const when = iso => { const d = new Date(iso); const t = d.toTimeString().substring(0, 5); const dd = String(iso).substring(0, 10); return dd === new Date().toISOString().substring(0, 10) ? t : md(dd) + ' ' + t; };
+  const when = iso => { const d = new Date(iso); const t = d.toTimeString().substring(0, 5); const dd = localDay(iso); return dd === today() ? t : md(dd) + ' ' + t; };
   box.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h2 style="margin:0">🔔 ' + bi('알림 · 메시지', 'Notifications') + '</h2><button type="button" class="b-blue b-sm" id="msgNew">💬 ' + bt('새 메시지', 'New message') + '</button></div>' +
     (all.length ? '<div class="mlist">' + all.map(m => {
       const mine = m.from === me(), un = !mine && !(m.reads && m.reads[rkey(me())]);
