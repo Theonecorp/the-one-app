@@ -9,12 +9,20 @@ import { icon } from './icons.js';
 
 /** 처음 그릴 틀 — 숫자는 '…' 로 두고 fill() 이 채움. ctx.can = 권한 함수 */
 export function frame(ctx) {
-  const can = ctx.can, K = [];
+  const can = ctx.can, K = [], off = ctx.mode === 'office';
   const kpi = (id, ic, cls, label) => '<button class="wd-kpi ' + cls + '" data-wk="' + id + '"><span class="ki">' + icon(ic, 22) + '</span><span class="kt"><span>' + label + '</span><b id="wk-' + id + '">…</b></span><span class="kd" id="wkd-' + id + '" style="display:none"></span></button>';
-  K.push(kpi('in', 'cart', 'k-green', bt('들어온 주문', 'Orders in')));
-  K.push(kpi('pick', 'package', 'k-blue', bt('출고 작업 중', 'Picking')));
-  K.push(kpi('pack', 'packagePlus', 'k-amber', bt('포장 대기', 'Awaiting packing')));
-  K.push(kpi('ship', 'truck', 'k-indigo', bt('출고 완료', 'Shipped')));
+  /* 🏢 오피스 매니저 (v0.8.217): 접수 · 주문 · 인보이스 중심 — 신규 주문 · 확인 대기 · 인보이스 발행 대기(검수) · 인보이스 발행 */
+  if (off) {
+    K.push(kpi('in', 'cart', 'k-green', bt('신규 주문', 'New orders')));
+    K.push(kpi('cf', 'help', 'k-amber', bt('확인 · 배정 대기', 'To confirm · assign')));
+    K.push(kpi('rv', 'clipCheck', 'k-blue', bt('인보이스 발행 대기', 'Ready to invoice')));
+    K.push(kpi('iv', 'receipt', 'k-indigo', bt('인보이스 발행', 'Invoiced')));
+  } else {
+    K.push(kpi('in', 'cart', 'k-green', bt('들어온 주문', 'Orders in')));
+    K.push(kpi('pick', 'package', 'k-blue', bt('출고 작업 중', 'Picking')));
+    K.push(kpi('pack', 'packagePlus', 'k-amber', bt('포장 대기', 'Awaiting packing')));
+    K.push(kpi('ship', 'truck', 'k-indigo', bt('출고 완료', 'Shipped')));
+  }
   const Q = quick(ctx);
   return '<div class="wd" id="wdash">' +
     '<div class="wd-kpis">' + K.join('') + '</div>' +
@@ -23,8 +31,8 @@ export function frame(ctx) {
       '<section class="wd-card"><h3>' + icon('alert', 20).replace('class="ic"', 'class="ic" style="color:var(--red)"') + bt('할 일 · 경고', 'Pending · Alerts') + '</h3><div class="wd-al" id="wdAl"><div class="load" style="padding:8px 0">…</div></div></section>' +
     '</div>' +
     '<div class="wd-g2 even">' +
-      (can('ship') || can('pick') || can('assign') ? '<section class="wd-card"><h3>' + icon('truck', 20) + bt('출고 진행', 'Shipping progress') + ' · <span id="wdShipP" style="font-weight:600;color:var(--muted)">' + esc(ctx.ptxt) + '</span><span class="live"><i></i>' + bt('실시간', 'live') + '</span></h3><div class="wd-ship" id="wdShip"><div class="load" style="padding:8px 0">…</div></div></section>' : '') +
-      '<section class="wd-card wd-sales" id="wdSales"><h3>' + icon('chart', 20) + bt('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h3><div class="load" style="padding:8px 0">…</div></section>' +
+      (!off && (can('ship') || can('pick') || can('assign')) ? '<section class="wd-card"><h3>' + icon('truck', 20) + bt('출고 진행', 'Shipping progress') + ' · <span id="wdShipP" style="font-weight:600;color:var(--muted)">' + esc(ctx.ptxt) + '</span><span class="live"><i></i>' + bt('실시간', 'live') + '</span></h3><div class="wd-ship" id="wdShip"><div class="load" style="padding:8px 0">…</div></div></section>' : '') +
+      (ctx.sales === false ? '' : '<section class="wd-card wd-sales" id="wdSales"><h3>' + icon('chart', 20) + bt('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h3><div class="load" style="padding:8px 0">…</div></section>') +
     '</div>' +
     '<div class="wd-g2">' +
       '<section class="wd-card"><h3>' + icon('cart', 20) + bt('최근 주문', 'Latest orders') + '<button class="lnk" data-wq="all">' + bt('전체 보기', 'View all') + '</button></h3><div id="wdOrd"><div class="load" style="padding:8px 0">…</div></div></section>' +
@@ -37,6 +45,15 @@ export function frame(ctx) {
 /** 빠른 작업 — [키, 아이콘, 이름, 설명]. 권한 있는 것만 · 누르면 원래 있던 화면으로 */
 function quick(ctx) {
   const can = ctx.can, Q = [];
+  if (ctx.mode === 'office') {   /* 🏢 오피스 매니저 — 접수 · 주문 · 인보이스 */
+    if (can('newOrder')) Q.push(['new', 'cart', bt('새 주문', 'New order'), bt('가게 고르고 담기', 'pick a store')]);
+    Q.push(['sent', 'inbox', bt('신규 주문', 'New orders'), bt('접수 · 배정', 'intake · assign')]);
+    if (can('invoice')) Q.push(['picked', 'receipt', bt('인보이스 발행', 'Issue invoices'), bt('검수 대기 → 인보이스', 'reviewed → invoice')]);
+    Q.push(['inv', 'file', bt('인보이스 조회', 'Invoice lookup'), bt('가게 · 날짜 · 번호', 'store · date · number')]);
+    if (can('invoice') || can('verify')) Q.push(['credit', 'undo', bt('크레딧 확인', 'Credits'), bt('세일즈맨 크레딧', 'salesman credits')]);
+    Q.push(['stores', 'store', bt('거래처', 'Customers'), bt('가게 창', 'store window')]);
+    return Q.slice(0, 6);
+  }
   if (can('items')) Q.push(['recv', 'packagePlus', bt('입고', 'Receive'), bt('상품 받기 · REC', 'received products · REC')]);
   if (can('items')) Q.push(['inb', 'clipCheck', bt('입고 확인', 'Check inbound'), bt('입고 예정 · 대조', 'expected · verify')]);
   if (can('pick')) Q.push([can('assign') ? 'pick' : 'mine', 'cart', bt('픽킹', 'Pick orders'), bt('출고 작업', 'fulfillment')]);
@@ -71,9 +88,15 @@ export function fill(ctx) {
   const sIn = sent(from, to), shIn = shipped(from, to);
   const pk = live.filter(o => o.st === 'pick' || o.st === 'ok'), topack = live.filter(o => o.st === 'done'), packed = live.filter(o => o.st === 'packed');
   const put = (id, v, d) => { const b = $('wk-' + id); if (b) b.textContent = v; const e = $('wkd-' + id); if (e && d != null) { e.style.display = ''; e.className = 'kd' + (d < 0 ? ' dn' : ''); e.textContent = (d >= 0 ? '↑ +' : '↓ ') + d + '%'; } };
+  if (ctx.mode === 'office') {   /* 🏢 오피스: 신규(지금) · 확인 · 배정 대기(지금) · 인보이스 발행 대기(검수 대기, 지금) · 이 기간 인보이스 발행 */
+    const inv = (f, t) => ords.filter(o => o.doneAt && inR(o.doneAt, f, t) && o.st !== 'x');
+    put('in', live.filter(o => o.st === 'sent').length); put('cf', live.filter(o => o.st === 'cfw' || o.st === 'cfok').length);
+    put('rv', live.filter(o => o.st === 'picked').length); put('iv', inv(from, to).length, cmp ? pct(inv(from, to).length, inv(pf, pt).length) : null);
+  } else {
   put('in', sIn.length, cmp ? pct(sIn.length, sent(pf, pt).length) : null);
   put('pick', pk.length); put('pack', topack.length);
   put('ship', shIn.length, cmp ? pct(shIn.length, shipped(pf, pt).length) : null);
+  }
 
   /* ④ 출고 진행 — 이 기간에 나간 것 / (나간 것 + 포장 대기 + 픽업 대기) */
   const sb = $('wdShip');

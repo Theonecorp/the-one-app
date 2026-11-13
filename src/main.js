@@ -89,7 +89,11 @@ const NAV = {
 };
 NAV.manager = NAV.office;
 /* 담당자(manager)의 일 — 메뉴 · 버튼이 달라짐. 데이터 권한(Firestore 규칙)은 담당자 모두 같음, 관리자는 전부 */
-export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct', '회계 담당', 'Accounting'], ['pickinv', '출고 · 인보이스', 'Fulfillment & Invoicing'], ['invoice', '인보이스 담당', 'Invoicing'], ['whmgr', '창고 매니저', 'Warehouse Manager'], ['pick', '창고 직원', 'Warehouse Staff'], ['catalog', '디자인 · 카탈로그', 'Design & Catalog']];
+/* 👥 담당자 일 5가지 (v0.8.217 · 2026-11-13 관리자): 오피스 매니저 · 회계 · 창고 매니저 · 출고 · 인보이스 담당 · 디자인
+ *   예전 '인보이스 담당(invoice)' · '창고 직원(pick)' 은 '출고 · 인보이스 담당(pickinv)' 하나로 — 사용자 문서는 그대로 두고 앱 · 규칙이 같은 일로 봄 (JOB_ALIAS) */
+export const JOBS = [['office', '오피스 매니저', 'Office Manager'], ['acct', '회계 담당', 'Accounting'], ['whmgr', '창고 매니저', 'Warehouse Manager'], ['pickinv', '출고 · 인보이스 담당', 'Fulfillment & Invoicing'], ['catalog', '디자인', 'Design']];
+export const JOB_ALIAS = { invoice: 'pickinv', pick: 'pickinv' };
+const jobNorm = j => JOB_ALIAS[j] || j;
 /** 일별 할 수 있는 것 — flow 🧭 전체 주문 흐름 감독 · newOrder 주문 만들기 · invoice 인보이스 발행 · 주문 수정/취소 · 가게 바꾸기 · assign 작업 배정 · pick 피킹 입력 · ship 포장 · 출고(UPS)
  *  · verify 수금 확인 · cod COD·카드 · ach ACH · items 아이템 · 재고 위치 · bo 백오더 */
 export const CAN = {
@@ -105,6 +109,9 @@ export const jobCan = (job, cap) => (CAN[job] || CAN.office).includes(cap);
 /** 지금 사용자가 이걸 할 수 있나 — 관리자는 전부, 세일즈맨은 없음 */
 /** 관리자급 — 관리자 · 오너 (데이터는 둘 다 전부, 화면은 오너가 현황 · 경영 위주) */
 export const isTop = () => S.role === 'admin' || S.role === 'owner';
+/** 🔒 오너급 — 경영 · 현금 흐름 · 페이먼트(정산 · 공장 송금 · 은행 · 1099 · 보너스) 자료 (v0.8.217 · 2026-11-13 관리자: "직원에게 노출되면 안 되는 자료는 오너만 · 나도 관리자이면서 오너")
+ *   지금 보는 화면(모드)과 상관없이 사람 기준: 오너 · 관리자(오너 겸) — 담당자 모드로 바꿔 봐도 관리자 본인은 열림 */
+export const isOwner = () => !!S.me && (S.me.role === 'owner' || S.me.role === 'admin' || S.me.owner === true || ADMIN_EMAILS.includes(String((S.user && S.user.email) || '').toLowerCase()));
 /** 이 사람이 볼 수 있는 화면 — 관리자: 전부 (관리 · 오너 · 담당 · 세일즈) · 오너 / 담당자: 자기 역할 + 사용자 등록에서 준 추가 역할 · 세일즈맨: 세일즈 */
 export function viewsOf(me) {
   me = me || {}; const r = me.role || 'salesman', ex = Array.isArray(me.extra) ? me.extra : [];
@@ -115,10 +122,10 @@ export function viewsOf(me) {
 const VIEW_KEY = () => 'theone.view.' + ((S.user && S.user.email) || '');
 export function can(cap) { if (S.role === 'admin' || S.role === 'owner') return true; if (S.role !== 'manager') return false; return myJobs().some(j => jobCan(j, cap)); }
 /** 지금 화면의 일 — 담당자는 사용자 기록의 job (없으면 office), 그 외는 역할 그대로 */
-export function jobOf() { if (S.role !== 'manager') return S.role; const j = S.me && S.me.job; return JOBS.some(x => x[0] === j) ? j : 'office'; }
-export function jobLabel(j) { const x = JOBS.find(k => k[0] === j); return x ? x[1] + ' ' + x[2] : j; }
+export function jobOf() { if (S.role !== 'manager') return S.role; const j = jobNorm(S.me && S.me.job); return JOBS.some(x => x[0] === j) ? j : 'office'; }
+export function jobLabel(j) { const x = JOBS.find(k => k[0] === jobNorm(j)); return x ? x[1] + ' ' + x[2] : j; }
 /** 👥 한 사람의 일 전부 — 주된 일(users.job) + 같이 하는 일(users.job2 — 2026-11-12 관리자: "한 사람에게 일 두 개", 예: 창고 직원 + 출고 · 인보이스). 권한 · 메뉴 · 칩은 이것을 합쳐서 봄 */
-export function myJobs() { if (S.role !== 'manager') return [S.role]; const p = jobOf(), ex = (S.me && Array.isArray(S.me.job2) ? S.me.job2 : []).filter(j => j !== p && JOBS.some(x => x[0] === j)); return [p].concat(ex.filter((j, i) => ex.indexOf(j) === i)); }
+export function myJobs() { if (S.role !== 'manager') return [S.role]; const p = jobOf(), ex = (S.me && Array.isArray(S.me.job2) ? S.me.job2 : []).map(jobNorm).filter(j => j !== p && JOBS.some(x => x[0] === j)); return [p].concat(ex.filter((j, i) => ex.indexOf(j) === i)); }
 /* 홈 · 세일 · 인보이스 · 거래처는 모든 역할에 늘 고정 (예전 시험용 "주문 탭 보이기" 스위치는 없앰) */
 function navFor(r) {
   const key = r === 'manager' ? jobOf() : r;
@@ -425,7 +432,7 @@ function installBar() {
   $('instGo').onclick = doInstall;
   $('instNo').onclick = () => { d.remove(); try { localStorage.setItem('theone.instHide', String(Date.now())); } catch (e) {} };
 }
-export function roleLabel(r) { return { owner: '오너 Owner', admin: '관리자 Admin', manager: '담당자 Staff', salesman: '세일즈맨 Salesman' }[r] || r; }
+export function roleLabel(r) { return { owner: '오너 Owner', admin: '관리자·오너 Admin·Owner', manager: '담당자 Staff', salesman: '세일즈맨 Salesman' }[r] || r; }
 
 function switchRole(r) {
   if (!viewsOf(S.me).includes(r)) return;
@@ -578,6 +585,10 @@ async function boot() {
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
   BizDay.register(S); Inbound.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); NotesUps.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page); Estoque.register(S); Etiquetas.register(S); Produtos.register(S); Recebidos.register(S); Repor.register(S);
   Router.on('settings', settingsPage);
+  /* 🔒 경영 화면 잠금 (v0.8.217) — 경영 현황 · 매출 · 정산 · 미수금 현황 · 수금 현황 · 오너 홈은 오너 · 관리자만 (주소를 알아도). 판매 리포트는 오피스 매니저도 (매출은 보여도 됨) */
+  const lockR = (name, ok) => { const f = Router.routes[name]; if (!f) return; Router.routes[name] = a => ok() ? f(a) : ($('page').innerHTML = '<div class="card"><div class="none">🔒 ' + bt('오너 · 관리자만 보는 화면입니다', 'Owners and admins only') + '</div></div>'); };
+  ['own', 'mg', 'pay', 'bossar', 'now'].forEach(n => lockR(n, isOwner));
+  lockR('reports', () => isOwner() || (S.role === 'manager' && myJobs().includes('office')));
   Router.on('', () => {});
   AUTH.onChange(u => {
     if (!u) { S.user = null; S.me = null; loginScreen(''); return; }
