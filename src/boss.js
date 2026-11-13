@@ -13,11 +13,11 @@ import { mergeAppInvoices } from './arapp.js';
 import { bizDaysBetween } from './bizday.js';
 import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords, pickDates, bt } from './ui.js';
 import { newId } from './db.js';
-import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
+import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup, byInvoice, setInvoiceInfo, invInfoOf, invInfo, invKey } from './comm.js';
 import { settlementHtml } from './sales.js';
 import { searchAccounts } from './accounts.js';
 import { PERIODS, periodRange, addMonths, monthEnd, quickRanges } from './fulfill.js';
-import { invTypes, salesRows, invCount } from './invoicing.js';
+import { invTypes, salesRows, invCount, getInvoice } from './invoicing.js';
 
 let S = null, C = { ents: null, cod: null, at: 0 };
 export function register(state) {
@@ -223,8 +223,17 @@ function smRows() {
   const why = { early: all.filter(e => e.d < P.from && !e.settled && !carried(e)).length, late: all.filter(e => e.d > P.to && !e.settled).length, closed: all.filter(e => inR(e) && e.settled).length, min: all.length ? all.map(e => e.d).sort()[0] : '', max: all.length ? all.map(e => e.d).sort().pop() : '' };
   return { mine, field, wait, cods, merged, why, codDiag };
 }
+/* 🧾 인보이스 기준 정산 (v0.8.203) — 이 세일즈맨 줄에 적힌 인보이스를 읽어 종류 · 할인 % · 금액을 comm.js 에 등록 → byInvoice 가 배분 · 할인 줄 나눔 */
+const INV_TRIED = new Set();
+async function loadInvInfo(rows) {
+  const nos = new Set(); (rows.mine || []).concat(rows.cods || []).forEach(x => (x.invs || []).forEach(i => { if (i.no && !INV_TRIED.has(invKey(i.no))) nos.add(i.no); }));
+  if (!nos.size) return false;
+  const m = {}; await Promise.all(Array.from(nos).map(async no => { INV_TRIED.add(invKey(no)); let x = null; try { x = await getInvoice(S, no); } catch (e) {} const k = invInfoOf(x); if (k) m[invKey(no)] = k; }));
+  setInvoiceInfo(m); return true;
+}
+const expandInv = Ls => { const cs = commSettings(S.settings); return [].concat(...Ls.map(L => byInvoice(L, cs))); };
 function calc(rows) {
-  const ok = [].concat(...rows.field.filter(e => e.v).map(linesOfEntry)).concat(rows.cods.filter(c => c.v).map(lineOfOther));
+  const ok = expandInv([].concat(...rows.field.filter(e => e.v).map(linesOfEntry)).concat(rows.cods.filter(c => c.v).map(lineOfOther)));
   const c = computeComm(ok, ratesOf(S.smByCode[P.sm]), commSettings(S.settings));
   const sm = S.smByCode[P.sm] || {};
   const dl = (DED && DED.sm === P.sm ? DED.active : []).map(d => { const rem = R2(d.total - (d.used || 0)); const v = DOVER.hasOwnProperty(d.id) ? num(DOVER[d.id]) : Math.min(d.per || rem, rem); return { id: d.id, acct: d.acct, store: d.store, why: d.why, total: d.total, used: d.used || 0, per: d.per, remaining: rem, apply: v, start: d.start, invs: d.invs }; });
@@ -237,11 +246,14 @@ function calc(rows) {
   if (DED && DED.sm === P.sm) c.arWarn = { six: DED.cand.six.map(x => ({ acct: x.acct, store: x.store, amt: x.amt, has: x.has })), four: DED.cand.four.map(x => ({ store: x.store, storeTot: x.storeTot })) };
   return c;
 }
-function rateTag(L, rate) {
+function rateTag(L, rate, all) {
+  if (all && all.length > 1) return all.map(x => rateTag(x, rate)).join('');   // 🧾 한 수금이 A · DISC 로 나뉜 경우 둘 다
   const SC = { REG: 's-a', SPECIAL: 's-ex', DISC: 's-dc', NEWDP: 's-w' }, SK = { REG: 'a', SPECIAL: 'ex', DISC: 'disc', NEWDP: 'w' };
   let out = '<span class="rtag ' + (SC[L.sec] || 's-a') + '">' + (SEC_LABEL[L.sec] || 'A') + ' ' + (Math.round(rate[SK[L.sec] || 'a'] * 1000) / 10) + '%</span>';
   if (L.sec === 'DISC' && L.disc !== '') out += '<span class="rtag s-dc">디스카운트 ' + L.disc + '%</span>';
   if (L.P > 0) out += '<span class="rtag s-p">P ' + (Math.round(rate.p * 1000) / 10) + '%</span>';
+  if (L.W > 0 && L.sec !== 'NEWDP') out += '<span class="rtag s-w">W ' + (Math.round(rate.w * 1000) / 10) + '%</span>';
+  if (L.auto) out += '<span class="rtag" style="background:#e0f2fe;color:#075985" title="받은 돈을 인보이스에 자동으로 나눔 (오래된 인보이스부터)">🧾 자동 배분</span>';
   return out;
 }
 const isSal = sm => !!((S.smByCode[sm] || {}).salaried);
@@ -261,7 +273,11 @@ function blockersOf(rows) {
   C.ents.filter(e => e.sm === P.sm && e.bounced && inR(e)).forEach(e => B.push({ k: 'bounce', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' ') + (e.settled ? ' · 정산됨' : ''), id: e.id, col: 'entries' }));
   /* 👯 같은 수금이 두 기록으로 (예: ACH 시트 가져오기 ACH-… + SALES 파일 COD 입력 D… · 2026-11-12: 22쌍 — 한쪽만 정산돼 나머지가 계속 다시 올라오거나 두 번 정산됨) — 가게 · 날짜 · 금액 · 방법이 같으면 (v0.8.199) */
   const ck = x => [x.acct || '', x.d || '', R2(Number(x.amt) || 0).toFixed(2), String(x.method || '').toUpperCase()].join('|'), cg = groupBy((C.cod || []).filter(x => !x.void), ck);
-  rows.cods.forEach(x => { const tw = (cg[ck(x)] || []).filter(y => y.id !== x.id); if (tw.length) B.push({ k: 'dup', d: x.d, store: x.store, amt: x.amt, ref: x.method + ' · ' + bt('같은 것', 'same as') + ' ' + tw.map(y => y.id + (y.settled ? ' (' + bt('정산됨', 'settled') + ')' : '')).join(', '), id: x.id, col: 'cod' }); });
+  /* 날짜가 며칠 달라도: 다른 기록 길(ACH 시트 ACH-… · SALES 파일 COD 입력 D… · 앱)로 같은 가게 · 같은 금액 · 같은 인보이스가 10일 안이면 같은 수금 (v0.8.203 — SOO MISSHA 10/23 · 10/27 이 한 정산에 두 번) · 같은 길의 할부(같은 금액 매달)는 아님 */
+  const nn = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^([APW]|CM)0+/, '$1'), srcK = x => /^ACH-/.test(x.id) ? 'achsheet' : /^D\d{6}-/.test(x.id) ? 'codtab' : 'app';
+  const ag = groupBy((C.cod || []).filter(x => !x.void), x => (x.acct || '') + '|' + R2(Number(x.amt) || 0).toFixed(2));
+  const near = (x, y) => y.id !== x.id && srcK(y) !== srcK(x) && Math.abs((new Date(x.d) - new Date(y.d)) / 864e5) <= 10 && (y.invs || []).some(i => (x.invs || []).some(j => nn(j.no) && nn(j.no) === nn(i.no)));
+  rows.cods.forEach(x => { const tw = (cg[ck(x)] || []).filter(y => y.id !== x.id).concat((ag[(x.acct || '') + '|' + R2(Number(x.amt) || 0).toFixed(2)] || []).filter(y => near(x, y) && !(cg[ck(x)] || []).includes(y))); if (tw.length) B.push({ k: 'dup', d: x.d, store: x.store, amt: x.amt, ref: x.method + ' · ' + bt('같은 것', 'same as') + ' ' + tw.map(y => y.id + (y.settled ? ' (' + bt('정산됨', 'settled') + ')' : '')).join(', '), id: x.id, col: 'cod' }); });
   const ek = e => [e.sm || '', e.d || '', e.acct || '', R2(Number(e.total) || 0).toFixed(2), (e.pays || []).map(p => p.m + (p.ref || '')).join('+')].join('|'), eg = groupBy((C.ents || []).filter(e => !e.void && !e.repl), ek);
   rows.mine.forEach(e => { const tw = (eg[ek(e)] || []).filter(y => y.id !== e.id); if (tw.length) B.push({ k: 'dup', d: e.d, store: e.store, amt: e.total, ref: bt('같은 것', 'same as') + ' ' + tw.map(y => y.id + (y.settled ? ' (' + bt('정산됨', 'settled') + ')' : '')).join(', '), id: e.id, col: 'entries' }); });
   C.ents.filter(e => e.sm === P.sm && e.repl && !e.settled && inR(e)).forEach(e => B.push({ k: 'repl', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
@@ -297,6 +313,7 @@ function bindRec(rows) {
 }
 async function paintSm(o) {
   const box = $('pOut'), rows = smRows(), rate = ratesOf(S.smByCode[P.sm]), cs = commSettings(S.settings);
+  if (!paintSm.loading) { paintSm.loading = true; loadInvInfo(rows).then(got => { paintSm.loading = false; if (got && $('pOut')) paintSm(o); }).catch(() => { paintSm.loading = false; }); }
   if (!DED || DED.sm !== P.sm) { DED = null; loadDed(); }
   const c = calc(rows); LAST_C = c;
   const L = rows.merged;
@@ -304,7 +321,7 @@ async function paintSm(o) {
   const states = L.map(r => lineState(r.x)), done = states.filter(s => s === 'ok').length, bad = states.filter(s => s === 'bad').length, pend = L.length - done - bad, tot = sum(L, r => r.k === 'f' ? r.x.total : r.x.amt);
   const byKey = {}; c.bad.forEach(b => { byKey[b.key] = b; });
   /* 줄별 구역 미리 계산 (✓ 안 된 줄도 태그를 보여 주기 위해) */
-  const secOfRow = r => { const Lx = r.k === 'f' ? lineOfEntry(r.x) : lineOfOther(r.x); const cc = computeComm([Lx], rate, cs); const d = cc.lines[0] || Lx; return { L: d, bad: cc.bad[0] }; };
+  const secOfRow = r => { const Lx = r.k === 'f' ? lineOfEntry(r.x) : lineOfOther(r.x); const cc = computeComm(byInvoice(Lx, cs), rate, cs); const d = cc.lines[0] || Lx; return { L: d, all: cc.lines, bad: cc.bad[0] }; };
   /* 🎨 들어온 길을 색으로 — 체크 · CASH · ZELLE(현장) / COD · 카드 · ACH: 줄 왼쪽 띠 + 범례 (정산 확인 때 한눈에 가르기) */
   const srcCls = r => r.k === 'o' ? 'src-' + srcOf(r.x).toLowerCase() : (m => m === 'CASH' ? 'src-cash' : m === 'ZELLE' ? 'src-zelle' : 'src-check')((((r.x.pays || [])[0]) || {}).m);
   /* 🖥 넓은 화면(데스크탑): 엑셀처럼 — 위에 제목 줄 고정 · 칸 맞춤 (# · ✓ · 계정 · 가게 · 방법 · 체크 # · 받은 날 · 입금일 · 구역 · 금액 · 상태) · 입금일은 색으로 (미래 = 선일자 주황 · 지남 = 초록) (v0.8.201 — 2026-11-12 관리자) */
@@ -316,7 +333,7 @@ async function paintSm(o) {
     const depH = deps.length ? deps.map(dd => '<span class="deppill ' + (dd > td0 ? 'fut' : 'ok') + '" title="' + esc(dd > td0 ? bt('선일자 — 아직 입금 전', 'Post-dated') : bt('입금일', 'Deposit date')) + '">' + esc(dd.substring(5)) + '</span>').join(' ') : '<span class="muted">—</span>';
     const stH = st === 'ok' ? '<b class="ok">✓ ' + bt('확인됨', 'OK') + '</b>' : st === 'bad' ? '<b class="warn">! ' + bt('문제', 'Issue') + '</b>' : isO ? '<small class="muted">' + bt('탭해서 ✓', 'Tap ✓') + '</small>' : (x.sb ? '<small>' + bt('접수 확인', 'Reviewed') + ' ✓</small>' : '<small style="color:#b45309">' + bt('접수 확인 전', 'Not reviewed') + '</small>');
     const extra = badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (!isO && x.mismatch && !info.bad ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + (!isO && x.rep === false ? '<div class="pw warn">' + bt('리포트 미전송', 'Report not sent') + '</div>' : '');
-    return '<div class="pr tap pl plr ' + st + ' ' + srcCls(r) + '" data-pl="' + (isO ? 'o' : 'f') + '|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><span class="c-acct">' + esc(x.acct || '') + '</span><span class="ct c-store"><b>' + esc(x.store) + '</b>' + carryTag(x) + '</span><span class="c-how">' + how + '</span><span class="c-d">' + esc(md(x.d)) + '</span><span class="c-dep">' + depH + '</span><span class="c-rt">' + rateTag(info.L, rate) + '</span><b class="c-amt">' + money(amt) + '</b><span class="c-st">' + stH + '</span>' + (extra ? '<div class="c-x">' + extra + '</div>' : '') + '</div>';
+    return '<div class="pr tap pl plr ' + st + ' ' + srcCls(r) + '" data-pl="' + (isO ? 'o' : 'f') + '|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><span class="c-acct">' + esc(x.acct || '') + '</span><span class="ct c-store"><b>' + esc(x.store) + '</b>' + carryTag(x) + '</span><span class="c-how">' + how + '</span><span class="c-d">' + esc(md(x.d)) + '</span><span class="c-dep">' + depH + '</span><span class="c-rt">' + rateTag(info.L, rate, info.all) + '</span><b class="c-amt">' + money(amt) + '</b><span class="c-st">' + stH + '</span>' + (extra ? '<div class="c-x">' + extra + '</div>' : '') + '</div>';
   };
   let html = L.length ? '<div class="srcleg">' + [['src-check', '체크 · Check'], ['src-cash', 'CASH'], ['src-zelle', 'ZELLE'], ['src-cod', 'COD'], ['src-card', '카드 · Card'], ['src-ach', 'ACH']].map(x => '<span class="' + x[0] + '"><i></i>' + x[1] + '</span>').join('') + '</div>' : '', seq = 0;
   if (WIDE && L.length) html += '<div class="plhd"><span>#</span><span></span><span>' + bt('계정', 'Acct') + '</span><span>' + bt('가게', 'Store') + '</span><span>' + bt('방법 · 체크 #', 'Method · Check #') + '</span><span>' + bt('받은 날', 'Rcvd') + '</span><span>' + bt('입금일', 'Deposit') + '</span><span>' + bt('구역', 'Section') + '</span><span class="r">' + bt('금액', 'Amount') + '</span><span>' + bt('상태', 'Status') + '</span></div>';
@@ -326,9 +343,9 @@ async function paintSm(o) {
     G.forEach(r => { seq++; const x = r.x, st = lineState(x), info = secOfRow(r), b = info.bad;
       const badLine = b ? (b.blocked ? '<div class="pw">🔴 인보이스 배분 ' + money(b.alloc) + ' ≠ 받은 돈 ' + money(b.got) + ' — ' + esc(b.why) + ' · <u>이번 정산 제외</u></div>' : b.tol ? '<div class="pw" style="color:#b45309">⚠️ 받은 돈 ' + money(b.got) + ' · 인보이스 ' + money(b.alloc) + ' (차이 ' + (b.diff > 0 ? '+' : '') + money(b.diff) + ') — 허용 범위, 그대로 계산</div>' : '<div class="pw" style="color:#b45309">⚠️ W 금액 오타 (' + money(b.W) + ') → ' + money(b.fixed) + ' 로 계산 — 원본도 고쳐 주세요</div>') : '';
       if (WIDE) { html += wideRow(r, seq, st, info, badLine); return; }
-      if (r.k === 'o') html += '<div class="pr tap pl ' + st + ' ' + srcCls(r) + '" data-pl="o|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · <span class="tag ' + SRC_TAG[srcOf(x)][1] + '">' + esc(x.method) + '</span>' + (x.ref ? ' ' + esc(x.ref) : '') + (x.achId ? ' · 🏦 ACH 인출' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.amt) + '</b><small>' + (st === 'ok' ? '확인됨' : '탭해서 ✓') + '</small></div></div>';
+      if (r.k === 'o') html += '<div class="pr tap pl ' + st + ' ' + srcCls(r) + '" data-pl="o|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · <span class="tag ' + SRC_TAG[srcOf(x)][1] + '">' + esc(x.method) + '</span>' + (x.ref ? ' ' + esc(x.ref) : '') + (x.achId ? ' · 🏦 ACH 인출' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate, info.all) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.amt) + '</b><small>' + (st === 'ok' ? '확인됨' : '탭해서 ✓') + '</small></div></div>';
       else { const pay = (x.pays || []).map(p => p.m === 'CHECK' ? 'CHECK #' + esc(p.ref || '') : p.m).join(' · '), dep = (x.pays || []).find(p => p.dep && p.dep !== x.d);
-        html += '<div class="pr tap pl ' + st + ' ' + srcCls(r) + '" data-pl="f|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + ((x.pays || []).some(p => p.mob) ? ' <span class="mobtag">📱 ' + bt('모바일 디파짓', 'Mobile deposit') + '</span>' : '') + '</b><small>' + esc(x.acct || '') + ' · ' + pay + (dep ? ' · 입금 ' + esc(dep.dep.substring(5)) : '') + (x.rep ? '' : x.rep === false ? ' · <span class="warn">리포트 미전송</span>' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (x.mismatch && !b ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.total) + '</b>' + (x.sb ? '<small>접수 확인 ✓</small>' : '<small style="color:#b45309">접수 확인 전</small>') + '</div></div>'; }
+        html += '<div class="pr tap pl ' + st + ' ' + srcCls(r) + '" data-pl="f|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + ((x.pays || []).some(p => p.mob) ? ' <span class="mobtag">📱 ' + bt('모바일 디파짓', 'Mobile deposit') + '</span>' : '') + '</b><small>' + esc(x.acct || '') + ' · ' + pay + (dep ? ' · 입금 ' + esc(dep.dep.substring(5)) : '') + (x.rep ? '' : x.rep === false ? ' · <span class="warn">리포트 미전송</span>' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate, info.all) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (x.mismatch && !b ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.total) + '</b>' + (x.sb ? '<small>접수 확인 ✓</small>' : '<small style="color:#b45309">접수 확인 전</small>') + '</div></div>'; }
     });
     html += '</div>';
   });
