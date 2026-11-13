@@ -305,16 +305,41 @@ function newItemsRun_(nowMs) {
 const INBOUND_TO_DEFAULT = 'inbound@theonefl.com', INBOUND_LABEL = 'THE ONE/입고 처리';
 function inboundMailRun_() {
   const P = PropertiesService.getScriptProperties(), to = P.getProperty('INBOUND_TO') || INBOUND_TO_DEFAULT;
+  let n = 0, byCode = null; const cat = () => byCode || (byCode = inboundCatalog_());
+  try { n += inboundRelayRun_(cat); } catch (e) { Logger.log('📥 받은편지 폴더 실패: ' + e.message); }   // 📥 inbound@ 계정이 넣어 둔 메일 (InboundRelay.gs · v0.8.227)
   const threads = GmailApp.search('to:' + to + ' -label:"' + INBOUND_LABEL + '" newer_than:30d', 0, 10);
-  if (!threads.length) return 0;
+  if (!threads.length) return n;
   const label = GmailApp.getUserLabelByName(INBOUND_LABEL) || GmailApp.createUserLabel(INBOUND_LABEL);
-  const byCode = inboundCatalog_(); let n = 0;
+  cat();
   threads.forEach(th => {
     th.getMessages().forEach(m => {
       try { n += inboundMessage_(m, byCode); } catch (e) { Logger.log('🚢 ' + m.getSubject() + ': ' + e.message); inboundNotify_('inboundErr', '⚠️ 공장 인보이스 메일을 읽지 못했습니다 — ' + m.getSubject(), m.getFrom() + '\n' + e.message, true); }
     });
     th.addLabel(label);
   });
+  return n;
+}
+/* 📥 inbound@ 받은편지 폴더 (v0.8.227) — inbound@ 계정의 InboundRelay.gs 가 새 메일을 "THE ONE 공장 메일 받은편지 (inbound)" 폴더에 한 통씩(JSON) 넣음
+ *   → 여기서 읽어 메일과 똑같이 inboundMessage_ 로 · 읽은 파일은 설명(description)에 done (다시 안 읽음) · 관리자 메일함으로 전달할 필요 없음 */
+const INBOUND_RELAY_FOLDER = 'THE ONE 공장 메일 받은편지 (inbound)';
+/** 폴더의 JSON 한 통 → 메일처럼 쓰는 모양 (inboundMessage_ 가 부르는 것만) */
+function inboundRelayMsg_(doc) {
+  const atts = (doc.atts || []).map(a => Utilities.newBlob(Utilities.base64Decode(a.b64), a.type || 'application/octet-stream', a.name));
+  return { getAttachments: () => atts, getSubject: () => doc.subject || '', getFrom: () => doc.from || '', getPlainBody: () => doc.body || '', getDate: () => new Date(doc.date || Date.now()) };
+}
+function inboundRelayRun_(cat) {
+  const folders = DriveApp.searchFolders('title = "' + INBOUND_RELAY_FOLDER + '" and trashed = false');
+  let n = 0;
+  while (folders.hasNext()) {
+    const files = folders.next().searchFiles('title contains "msg-" and trashed = false');
+    while (files.hasNext()) {
+      const f = files.next(); if (f.getDescription() === 'done') continue;
+      let doc = null; try { doc = JSON.parse(f.getBlob().getDataAsString()); } catch (e) { f.setDescription('done'); continue; }
+      const m = inboundRelayMsg_(doc);
+      try { n += inboundMessage_(m, cat()); } catch (e) { Logger.log('📥 ' + doc.subject + ': ' + e.message); inboundNotify_('inboundErr', '⚠️ 공장 인보이스 메일을 읽지 못했습니다 — ' + doc.subject, doc.from + '\n' + e.message, true); }
+      f.setDescription('done');
+    }
+  }
   return n;
 }
 /** 카탈로그 → { 코드: { c, d, p } } (앱 parseFactoryInvoice 가 쓰는 모양) */
