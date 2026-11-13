@@ -18,7 +18,7 @@ const path = require('path'), fs = require('fs');
   await pg.evaluate(() => { location.hash = '#/pay'; }); await pg.waitForSelector('#pOut .card'); await shot('b1_pay_all');
   log('overview:', (await txt('#pOut')).slice(0, 160));
   /* 기간을 넓게 (seed 는 최근 10일) */
-  const d0 = new Date(), from = new Date(d0 - 20 * 86400000).toISOString().substring(0, 10), to = d0.toISOString().substring(0, 10);
+  const d0 = new Date(), from = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date(d0 - 20 * 86400000))), to = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d0));
   await pg.fill('#pFrom', from); await pg.dispatchEvent('#pFrom', 'change'); await pg.waitForTimeout(300); await pg.fill('#pTo', to); await pg.dispatchEvent('#pTo', 'change'); await pg.waitForTimeout(300);
   await pg.selectOption('#pSm', 'BRANDON'); await pg.waitForSelector('.pr.pl'); await pg.waitForTimeout(600); await shot('b2_pay_brandon');
   const lines = await pg.$$eval('.pr.pl', e => e.map(x => x.className.replace('pr tap pl ', '') + ':' + x.querySelector('.ct b').textContent.trim())); log('lines:', lines.join(' | '));

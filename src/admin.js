@@ -404,7 +404,7 @@ const KINDS = [
 const kindName = k => (KINDS.find(x => x[0] === k) || ['', '❓ 모르는 파일 — 종류를 골라 주세요'])[1];
 /* 🐝 SmartBee 를 아직 쓰는 세일즈맨 — AR 과 새 인보이스만 (거래처 · 아이템 · 수금 등 다른 자료는 그대로) · v0.8.182 */
 function sbSyncCard() {
-  const d30 = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().substring(0, 10); })();
+  const d30 = addDaysA(today(), -30);   // 이 기기 날짜 기준 (UTC 로 자르면 저녁 7시 넘어 하루 밀림)
   return '<div class="card" style="border:2px solid #f59e0b"><h2>🐝 ' + bi('SmartBee 업데이트 — AR · 새 인보이스만', 'SmartBee update — A/R and new invoices only') + '</h2>' +
     '<div class="muted">' + bt('SmartBee 를 아직 쓰는 세일즈맨의 미수금과 새로 만든 인보이스만 앱에 맞춥니다. 거래처 · 아이템 · 수금 · 커미션은 건드리지 않습니다.', 'Brings in only A/R and newly created invoices from SmartBee. Customers, items, payments and commissions are untouched.') + '</div>' +
     '<div class="sumbox" style="margin-top:8px"><b>① ' + bt('AR 에이징', 'A/R aging') + '</b> <span class="muted" style="font-size:12px">' + bt('SmartBee → AR Aging 내보내기 (엑셀 · CSV, 전체 세일즈맨) — 미리보기 뒤 기준일의 미수금으로 바뀝니다', 'SmartBee A/R Aging export (Excel · CSV, all salesmen) — preview, then replaces A/R as of the date') + '</span>' +

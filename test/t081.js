@@ -15,7 +15,7 @@ const path = require('path');
   if (await pg.$('#rqHold')) errs.push('salesman must not hold checks');
   await pg.click('#rqNew'); await pg.waitForSelector('#rqQ'); await pg.fill('#rqQ', '2201'); await pg.waitForSelector('[data-rh="0"]', { timeout: 5000 }).catch(() => errs.push('check 2201 should be found'));
   await pg.click('[data-rh="0"]'); await pg.waitForSelector('#rqGo');
-  const nd = new Date(); nd.setDate(nd.getDate() + 10); const newD = nd.toISOString().substring(0, 10);
+  const nd = new Date(); nd.setDate(nd.getDate() + 10); const newD = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(nd));
   await pg.fill('#rqD', newD); await pg.fill('#rqN', '손님이 다음 주 입금 원함'); await pg.click('#rqGo'); await pg.waitForTimeout(1500);
   const rq = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.checkReq || {})[0]); log('req:', rq && [rq.kind, rq.store, rq.ref, rq.newDep, rq.st, rq.pi]);
   if (!rq || rq.kind !== 'date' || rq.ref !== '2201' || rq.newDep !== newD || rq.st !== 'open') errs.push('date request doc');

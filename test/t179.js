@@ -7,7 +7,7 @@ let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('ch
 const path = require('path'), fs = require('fs');
 (async () => {
   const dir = path.resolve(__dirname, 'out'); fs.mkdirSync(dir, { recursive: true });
-  const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().substring(0, 10); };
+  const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d)); };
   const inv1 = path.join(dir, 't179-inv.csv'), inv2 = path.join(dir, 't179-inv-old.csv'), ar = path.join(dir, 't179-ar.csv');
   const H = 'Invoice #,Trans Date,Customer #,Customer Name,Sales Rep,Total,Balance\n';
   fs.writeFileSync(inv1, H + ['A9901,' + day(3) + ',1111,ALI B/S # 1,BRANDON,120,120', 'A9902,' + day(2) + ',1271,BEAUTY 4U,BRANDON,80,80', 'A9903,' + day(1) + ',2478,JIM DANDY MART,SOO,55.5,55.5', 'A9800,' + day(5) + ',1111,ALI B/S # 1,BRANDON,999,0'].join('\n') + '\n');

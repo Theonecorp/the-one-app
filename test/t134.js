@@ -9,7 +9,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 900 } });
-  const seed = `const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length); const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+  const seed = `const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length); const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); };
     s.entries = s.entries.filter(e => e.sm !== 'BRANDON');
     for (let i = 0; i < 12; i++) { const e = JSON.parse(JSON.stringify(base)); e.id = 'OL' + i; e.d = day([7, 0, 3, 7, 1, 0, 5, 3, 2, 9, 0, 4][i]); e.ym = e.d.slice(0, 7); e.createdAt = e.d + 'T10:' + String(10 + i).padStart(2, '0') + ':00Z'; e.v = false; e.settled = i >= 10 ? 'SET1' : ''; e.sb = i >= 10 || !(i === 1 || i === 4); e.rc = e.sb;   /* 1 · 4 는 접수 확인 대기, 나머지는 수령 완료(정산 화면에 보임) */ e.env = ''; e.mismatch = ''; e.store = 'OSTORE ' + i; e.pays = [{ m: 'CHECK', ref: String(8100 + i), amt: 50 + i }]; e.refs = [String(8100 + i)]; e.invs = []; e.total = 50 + i; s.entries.push(e); }`;
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
