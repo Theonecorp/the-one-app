@@ -21,7 +21,7 @@ const path = require('path');
   if (!/📱 모바일 디파짓/.test(r1)) errs.push('① verify row shows 📱 mobile deposit');
   /* ② */
   await a.evaluate(() => { location.hash = '#/pay'; }); await a.waitForSelector('#pOut .card', { timeout: 8000 });
-  const from = new Date(Date.now() - 20 * 86400000).toISOString().substring(0, 10), to = new Date().toISOString().substring(0, 10);
+  const from = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date(Date.now() - 20 * 86400000))), to = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date()));
   await a.fill('#pFrom', from); await a.dispatchEvent('#pFrom', 'change'); await a.waitForTimeout(300); await a.fill('#pTo', to); await a.dispatchEvent('#pTo', 'change'); await a.waitForTimeout(300);
   await a.selectOption('#pSm', 'BRANDON'); await a.waitForSelector('.pr.pl'); await a.waitForTimeout(600);
   const r2 = await a.evaluate(() => { const r = document.querySelector('[data-pl="f|E-MOB2"]'); return r ? r.textContent.replace(/\s+/g, ' ') : ''; }); log('② settlement line:', r2.slice(0, 100), await a.evaluate(() => [...document.querySelectorAll('[data-pl]')].map(x => x.dataset.pl).join(' ')));

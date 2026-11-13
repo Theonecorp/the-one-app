@@ -187,19 +187,44 @@ async function pagePay() {
   const pr = presets(); if (!P.from) { const c = pr.list.find(x => x.k === pr.cur); P.from = c.from; P.to = c.to; }
   const o = overview(rangeFrom(), rangeTo());
   let h = '<div class="card"><h2>🧾 정산 — 확인 후 커미션 확정</h2><div class="chips"><button class="' + (P.all ? 'on' : '') + '" data-pall>📋 미정산 전체</button>' + pr.list.map(x => '<button class="' + (!P.all && P.from === x.from && P.to === x.to ? 'on' : '') + '" data-pp="' + x.from + '|' + x.to + '">' + x.label + '</button>').join('') + '</div>' +
-    '<div class="payhd">' + sel('pSm', [['', '— 세일즈맨 전체 —']].concat(S.sms.filter(s => s.active !== false).map(s => [s.code, s.code])), P.sm) + inputDate('pFrom', P.from) + '<span class="muted">~</span>' + inputDate('pTo', P.to) + '</div>' +
-    '<div class="payopt"><label><input type="checkbox" id="pSb" ' + (P.sbOnly ? 'checked' : '') + '> 담당자 접수 확인(①)된 것만 — 커미션 대상</label><button class="b-ghost b-sm" id="pHist">📁 보관함 (정산 완료)</button><button class="b-ghost b-sm" id="pRates">% 요율표</button></div>' +
+    /* 한 줄: 세일즈맨 · 기간 · 🔍 검색 — 날짜를 바꿔도 바로 안 바뀌고 🔍 검색을 눌러야 그 기간 (v0.8.204 · 2026-11-13 관리자) · 세일즈맨을 고르면 그 사람의 미정산 전체 */
+    '<div class="payhd">' + sel('pSm', [['', '— 세일즈맨 전체 —']].concat(S.sms.filter(s => s.active !== false).map(s => [s.code, s.code])), P.sm) + inputDate('pFrom', P.from) + '<span class="muted">~</span>' + inputDate('pTo', P.to) + '<button type="button" class="b-blue b-sm" id="pGo">🔍 ' + bt('검색', 'Search') + '</button></div>' +
+    '<div class="payopt"><label><input type="checkbox" id="pSb" ' + (P.sbOnly ? 'checked' : '') + '> 담당자 접수 확인(①)된 것만 — 커미션 대상</label>' + (P.sm ? '<button class="b-ghost b-sm" id="pOld" title="옛 시스템(구글 시트)에서 이미 정산한 줄이 계속 다시 올라올 때">📁 ' + bt('옛 정산 정리', 'Close old settlements') + '</button>' : '') + '<button class="b-ghost b-sm" id="pHist">📁 보관함 (정산 완료)</button><button class="b-ghost b-sm" id="pRates">% 요율표</button></div>' +
     (P.all ? '<div class="hint" style="text-align:left">📋 담당자 확인을 거쳐 넘어온 <b>미정산 기록 전부</b>입니다 (기간 상관없음). 확정하면 이 목록에서 빠져 📁 보관함으로 갑니다 — 기간을 좁히려면 위 칩이나 날짜를 고르세요.</div>' : '') + '</div><div id="pOut"></div>';
   $('page').innerHTML = h;
   document.querySelector('[data-pall]').onclick = () => { P.all = true; P.hist = false; pagePay(); };
   document.querySelectorAll('[data-pp]').forEach(b => b.onclick = () => { const [f, t] = b.dataset.pp.split('|'); P.from = f; P.to = t; P.all = false; P.hist = false; pagePay(); });
-  $('pSm').onchange = () => { P.sm = $('pSm').value; P.hist = false; DED = null; DOVER = {}; pagePay(); };
-  $('pFrom').onchange = () => { P.from = $('pFrom').value; P.all = false; pagePay(); }; $('pTo').onchange = () => { P.to = $('pTo').value; P.all = false; pagePay(); };
+  $('pSm').onchange = () => { P.sm = $('pSm').value; P.hist = false; P.all = true; DED = null; DOVER = {}; pagePay(); };
+  $('pGo').onclick = () => { const f = $('pFrom').value, t = $('pTo').value; if (!f || !t || f > t) return toast(bt('기간을 확인하세요', 'Check the dates'), 'bad'); P.from = f; P.to = t; P.all = false; P.hist = false; pagePay(); };
+  if ($('pOld')) $('pOld').onclick = () => closeOld();
   $('pSb').onchange = () => { P.sbOnly = $('pSb').checked; pagePay(); };
   $('pHist').onclick = () => { P.hist = true; P.sm = ''; pagePay(); }; $('pRates').onclick = ratesOpen;
   if (P.hist) return paintHistory();
   if (!P.sm) return paintCards(o);
   paintSm(o);
+}
+/* 📁 옛 정산 정리 (v0.8.204 — 2026-11-13 관리자: "전에 정산했던 것이 계속 반복돼서 나옴 · 금액도 계속 고쳐야 함")
+ *   옛 시스템(구글 시트 커미션)에서 이미 정산했는데 앱에는 미정산으로 남은 줄 — 이 세일즈맨의 "이 날까지" 미정산 수금 · COD · ACH · 카드를 한 번에 정산 끝남으로
+ *   보관함에 한 줄(src: old)로 남고, 줄마다 settled = 그 기록 번호 · 되돌릴 때는 보관함에서 그 기록을 보고 관리자에게 */
+function closeOld() {
+  const sm = P.sm; if (!sm) return;
+  const pick = to => { const e = C.ents.filter(x => smOf(x) === sm && !x.settled && !x.void && !x.repl && x.d <= to), c = C.cod.filter(x => smOf(x) === sm && !x.settled && !x.void && x.d <= to); return { e, c, n: e.length + c.length, amt: R2(sum(e, x => x.total || 0) + sum(c, x => x.amt || 0)) }; };
+  const d0 = P.all ? '' : P.to;
+  openModal('<h2>📁 ' + esc(sm) + ' — ' + bt('옛 정산 정리', 'Close old settlements') + '</h2><div class="muted">' + bt('옛 시스템(구글 시트)에서 이미 커미션을 정산한 마지막 날을 고르세요. 그날까지의 미정산 줄이 모두 "정산 끝남"이 되어 이 목록에 다시 나오지 않습니다.', 'Pick the last day already settled in the old sheet system. Every unsettled line up to that day is closed and stops coming back.') + '</div>' +
+    '<div class="fg" style="margin-top:10px"><label>' + bt('옛 시스템 정산 마지막 날', 'Last day settled in the old system') + '</label>' + inputDate('olTo', d0 || addDays(today(), -14)) + '</div><div id="olSum" class="sumbox" style="margin-top:8px"></div>' +
+    '<div class="btns"><button class="b-ghost" id="olX">' + bt('닫기', 'Close') + '</button><button class="b-blue" id="olGo" style="background:#7c3aed">📁 ' + bt('정산 끝남으로', 'Close them') + '</button></div>');
+  const paint = () => { const r = pick($('olTo').value); $('olSum').innerHTML = '<b>' + r.n + bt('건', ' lines') + ' · ' + money(r.amt) + '</b><div class="muted" style="font-size:12px">' + bt('현장', 'Field') + ' ' + r.e.length + ' · COD · ACH · ' + bt('카드', 'Card') + ' ' + r.c.length + (r.n ? ' · ' + esc(r.e.concat(r.c).map(x => x.d).sort()[0]) + ' ~ ' + esc(r.e.concat(r.c).map(x => x.d).sort().pop()) : '') + '</div>'; $('olGo').disabled = !r.n; };
+  $('olTo').onchange = paint; paint(); $('olX').onclick = closeModal;
+  $('olGo').onclick = async () => { const to = $('olTo').value, r = pick(to); if (!r.n) return;
+    if (!(await confirmBox(sm + ' — ' + to + bt(' 까지 ', ' up to ') + r.n + bt('건 · ', ' lines · ') + money(r.amt) + '\n' + bt('옛 시스템에서 정산한 것으로 표시할까요? 커미션은 다시 계산되지 않습니다.', 'Mark as settled in the old system? No commission is calculated.'), '📁 ' + bt('정산 끝남으로', 'Close them')))) return;
+    busy(true);
+    try { const id = 'OLD-' + sm + '-' + to + '-' + Date.now().toString(36), day = today(), now = new Date().toISOString();
+      const ops = [{ op: 'set', col: 'settlements', id, data: { id, sm, day, from: r.e.concat(r.c).map(x => x.d).sort()[0], to, n: r.n, total: r.amt, pay: 0, finalPay: 0, src: 'old', kind: 'old', note: bt('옛 시스템(구글 시트)에서 정산 — 앱에서 정리', 'Settled in the old sheet system'), createdBy: S.user.email, createdAt: now } }];
+      r.e.forEach(x => ops.push({ op: 'update', col: 'entries', id: x.id, data: { settled: id, settledAt: day } })); r.c.forEach(x => ops.push({ op: 'update', col: 'cod', id: x.id, data: { settled: id, settledAt: day } }));
+      for (let i = 0; i < ops.length; i += 400) await S.DB.batch(ops.slice(i, i + 400));
+      closeModal(); toast('📁 ' + r.n + bt('건 정리', ' closed'), 'good'); dropBossCache(); pagePay();
+    } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false); };
 }
 function paintCards(o) {
   const box = $('pOut');
@@ -490,9 +515,9 @@ async function paintHistory() {
   const list = await loadHist();
   if (!list.length) { box.innerHTML = '<div class="card"><h2>📁 정산 완료</h2><div class="none">아직 확정한 정산이 없습니다.<br><span style="font-size:12px">확정하면 여기에 날짜 · 세일즈맨별로 쌓입니다.</span></div></div>'; return; }
   let cur = '', html = '';
-  list.forEach(s => { if (s.day !== cur) { cur = s.day; html += '<div class="dayhd" style="margin-top:12px"><span>' + esc(cur) + '</span></div>'; } html += '<div class="pr tap" data-sh="' + s.id + '"><div class="mk" style="background:#7c3aed;color:#fff;font-size:13px">🔒</div><div class="ct"><b>' + esc(s.sm) + '</b><small>' + esc(s.from || '') + ' ~ ' + esc(s.to || '') + ' · ' + s.n + '건' + (s.deferred ? ' · ↩ ' + s.deferred : '') + '</small></div><div class="pa"><b>' + money(s.finalPay != null ? s.finalPay : s.pay) + '</b><small>송금액 · 수금 ' + money(s.total) + '</small></div>' + (s.src === 'sheet' ? '<span class="tag t-x" style="margin-left:6px">시트</span>' : '<button class="b-ghost b-sm" data-sx="' + s.id + '">📊</button>') + '</div>'; });
+  list.forEach(s => { if (s.day !== cur) { cur = s.day; html += '<div class="dayhd" style="margin-top:12px"><span>' + esc(cur) + '</span></div>'; } html += '<div class="pr tap" data-sh="' + s.id + '"><div class="mk" style="background:#7c3aed;color:#fff;font-size:13px">🔒</div><div class="ct"><b>' + esc(s.sm) + '</b><small>' + esc(s.from || '') + ' ~ ' + esc(s.to || '') + ' · ' + s.n + '건' + (s.deferred ? ' · ↩ ' + s.deferred : '') + '</small></div><div class="pa"><b>' + money(s.finalPay != null ? s.finalPay : s.pay) + '</b><small>송금액 · 수금 ' + money(s.total) + '</small></div>' + (/^(sheet|old)$/.test(s.src) ? '<span class="tag t-x" style="margin-left:6px">시트</span>' : '<button class="b-ghost b-sm" data-sx="' + s.id + '">📊</button>') + '</div>'; });
   box.innerHTML = '<div class="card"><h2>📁 정산 완료 — 확정된 커미션 지급 목록</h2>' + html + '<div class="hint" style="text-align:center">줄을 누르면 정산서 · 📊 는 엑셀</div></div>';
-  box.querySelectorAll('[data-sh]').forEach(el => el.onclick = e => { if (e.target.dataset.sx) return; const s = list.find(x => x.id === el.dataset.sh); if (s.src === 'sheet') { openModal('<h2>🔒 ' + esc(s.sm) + ' · ' + esc(s.day) + '</h2><div class="muted">이전 수금 시트 · 대시보드에서 확정한 정산입니다. 줄별 정산서는 커미션 파일의 보관 탭 <b>' + esc(s.tab || '') + '</b> 에 있습니다.</div><table style="margin-top:8px"><tr><td>기간</td><td class="r">' + esc((s.from || '?') + ' ~ ' + (s.to || '?')) + '</td></tr><tr><td>정산한 줄</td><td class="r">' + s.n + '건</td></tr><tr><td>수금 합계</td><td class="r">' + money(s.total) + '</td></tr><tr><td>송금액</td><td class="r"><b>' + money(s.finalPay != null ? s.finalPay : s.pay) + '</b></td></tr></table><div class="btns"><button class="b-ghost" id="shX2">닫기</button></div>'); $('shX2').onclick = closeModal; return; } printOpen(settlementHtml(Object.assign({}, s, { conf: { day: s.day, id: s.id } }))); });
+  box.querySelectorAll('[data-sh]').forEach(el => el.onclick = e => { if (e.target.dataset.sx) return; const s = list.find(x => x.id === el.dataset.sh); if (/^(sheet|old)$/.test(s.src)) { openModal('<h2>🔒 ' + esc(s.sm) + ' · ' + esc(s.day) + '</h2><div class="muted">이전 수금 시트 · 대시보드에서 확정한 정산입니다. 줄별 정산서는 커미션 파일의 보관 탭 <b>' + esc(s.tab || '') + '</b> 에 있습니다.</div><table style="margin-top:8px"><tr><td>기간</td><td class="r">' + esc((s.from || '?') + ' ~ ' + (s.to || '?')) + '</td></tr><tr><td>정산한 줄</td><td class="r">' + s.n + '건</td></tr><tr><td>수금 합계</td><td class="r">' + money(s.total) + '</td></tr><tr><td>송금액</td><td class="r"><b>' + money(s.finalPay != null ? s.finalPay : s.pay) + '</b></td></tr></table><div class="btns"><button class="b-ghost" id="shX2">닫기</button></div>'); $('shX2').onclick = closeModal; return; } printOpen(settlementHtml(Object.assign({}, s, { conf: { day: s.day, id: s.id } }))); });
   box.querySelectorAll('[data-sx]').forEach(b => b.onclick = () => { const s = list.find(x => x.id === b.dataset.sx); xlsxSave(Object.assign({ sm: s.sm, day: s.day, from: s.from, to: s.to }, s.comm)); });
 }
 function ratesOpen() {
@@ -644,7 +669,7 @@ async function pageAR() {
   const top = sortBy(stores.filter(s => s.maxPdd > 60), s => s.net, true).slice(0, 40), stale = sortBy(stores.filter(s => !s.lastPaid || daysBetween(s.lastPaid, t) > 60), s => s.net, true).slice(0, 40), moved = sortBy(stores.filter(s => s.moved), s => s.net, true);
   const LB = ['기한 전', '1-30', '31-60', '61-90', '90+'];
   const stack = (b, tot) => tot ? '<div class="stack">' + b.map((v, i) => '<i class="s' + i + '" style="width:' + (v / tot * 100) + '%"></i>').join('') + '</div>' : '';
-  const views = [['sum', '요약'], ['top', '연체 상위 ' + top.length], ['stale', '60일+ 수금 없음 ' + stale.length], ['moved', '담당 바뀜 ' + moved.length], ['old', '수금 없는 가게']];
+  const views = [['sum', '요약'], ['top', '연체 상위 ' + top.length], ['stale', '60일+ 수금 없음 ' + stale.length], ['moved', '담당 바뀜 ' + moved.length], ['old', '수금 없는 가게'], ['chk', '🧮 인보이스 대조']];
   let h = '<div class="card"><h2>💰 미수금 (AR) · 기준일 ' + esc(asOf) + (daysBetween(asOf, t) > 10 ? ' <span class="warn">(' + daysBetween(asOf, t) + '일 전 — 새로 올려 주세요)</span>' : ' (' + daysBetween(asOf, t) + '일 전)') + '</h2>' +
     '<div class="seg"><button class="' + (AV_SM ? '' : 'on') + '" data-avsm="">전체</button>' + smAll.map(s => '<button class="' + (AV_SM === s ? 'on' : '') + '" data-avsm="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>' +
     '<div class="hero">' + money(total) + '</div><div class="heroSub">' + stores.length + '곳 · 90일+ <b class="' + (pct90 >= 30 ? 'warn' : '') + '">' + pct90 + '%</b>' + (stores.filter(s => s.dormant).length ? ' · 💤 1년+ 거래 없음 ' + stores.filter(s => s.dormant).length + '곳' : '') + (all.noSmAmt && !AV_SM ? ' · 담당 없음 ' + money(all.noSmAmt) : '') + '</div>' +
@@ -655,8 +680,10 @@ async function pageAR() {
   else if (AV === 'top') h += '<div class="card"><h2>연체 큰 순 (61일 이상)</h2>' + (top.map(s => storeRow(s, '<span class="agebadge ' + (s.maxPdd > 90 ? 'a4' : 'a3') + '">' + s.maxPdd + '일</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'stale') h += '<div class="card"><h2>잔액은 있는데 60일 넘게 수금 없음</h2>' + (stale.map(s => storeRow(s, '<span class="agebadge a3">' + (s.lastPaid ? daysBetween(s.lastPaid, t) + '일' : '없음') + '</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'moved') h += '<div class="card"><h2>거래처 담당과 실제 수금 담당이 다른 가게</h2><div class="alert a-blu">앱은 최근 1년 실제 수금한 사람을 담당으로 봅니다. 거래처의 담당을 고치면 사라집니다.</div>' + (moved.map(s => storeRow(s)).join('') || '<div class="none">없음</div>') + '</div>';
+  else if (AV === 'chk') h += '<div class="card" id="ckBox"></div>';   /* 🧮 AR 파일 ↔ 옛 시스템 인보이스 대조 (v0.8.209) */
   else h += '<div class="card" id="oldBox"></div>';
   $('page').innerHTML = h;
+  if (AV === 'chk') { const M = await import('./archeck.js'); M.paintArCheck($('ckBox'), { S, file: all, ents: C.ents, cods: C.cod }); }
   document.querySelectorAll('[data-avsm]').forEach(b => b.onclick = () => { AV_SM = b.dataset.avsm; pageAR(); });
   document.querySelectorAll('[data-av]').forEach(b => b.onclick = () => { AV = b.dataset.av; pageAR(); });
   document.querySelectorAll('[data-fs]').forEach(el => el.onclick = () => Router.go('find', encodeURIComponent(el.dataset.fs)));

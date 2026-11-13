@@ -8,7 +8,7 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 430, height: 900 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
-  const seed = `const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length); const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+  const seed = `const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length); const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); };
     s.entries = s.entries.filter(e => e.sm !== 'BRANDON'); s.cod = (s.cod || []).filter(c => c.sm !== 'BRANDON');
     [['OLD1', 70], ['OLD2', 62], ['NEW1', 1], ['NEW2', 0]].forEach(([id, n], i) => { const e = JSON.parse(JSON.stringify(base)); e.id = id; e.d = day(n); e.ym = e.d.slice(0, 7); e.v = false; e.settled = ''; e.deferred = ''; e.sb = true; e.rc = true; e.env = ''; e.mismatch = ''; e.store = 'ST ' + id; e.pays = [{ m: 'CHECK', ref: '8' + i, amt: 100 }]; e.refs = ['8' + i]; e.invs = [{ no: 'A-0200' + i, t: 'A', amt: 100 }]; e.total = 100; s.entries.push(e); });
     window.__DAYS = { old: day(70), recent: day(0) };`;

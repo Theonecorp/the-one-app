@@ -77,7 +77,8 @@ service cloud.firestore {
                                      && request.resource.data.sm == resource.data.sm
                                      && request.resource.data.sb == resource.data.sb && request.resource.data.rc == resource.data.rc
                                      && request.resource.data.v == resource.data.v && request.resource.data.settled == resource.data.settled)
-                    || (registered() && resource.data.sm == mySm() && resource.data.settled == '' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['env', 'envAt', 'updatedAt']));   // 📦 봉투에 묶기 (① 확인된 건도)
+                    || (registered() && resource.data.sm == mySm() && resource.data.settled == '' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['env', 'envAt', 'rep', 'repAt', 'repId', 'updatedAt'])
+                        && (request.resource.data.get('rep', null) == resource.data.get('rep', null) || request.resource.data.get('rep', false) == true));   // 📦 봉투 표시 · 📧 Daily Report 전송 표시(rep → true)만 — 사무실이 먼저 ① 확인한 수금도 (v0.8.204)   // 📦 봉투에 묶기 (① 확인된 건도)
       allow delete: if isAdmin();
     }
     // ---------- 📦 체크 봉투 — 세일즈맨이 보낸 체크 묶음, 회계 담당이 도착 맞춤 ----------
@@ -138,6 +139,15 @@ service cloud.firestore {
     // 🧩 인서트 (옛 WMS 의 Criar insert · Inserts prontos) — 틀(insModelos) · 만든 인서트(inserts). 재고 담당이 쓰고, 직원은 보기 (v0.8.195)
     match /insModelos/{id} { allow read: if isStaff(); allow write: if itemJob(); }
     match /inserts/{id} { allow read: if isStaff(); allow write: if itemJob(); }
+    // 📦 상자 라벨 (옛 WMS 의 Estoque · Etiquetas) — 상자 하나 = 라벨 하나(etiquetas) · 라벨 기록(etqEventos) · 되돌리기 요청(estornos). stock 과 같이: 보기는 등록된 사람, 쓰기는 재고 담당
+    match /etiquetas/{id} { allow read: if registered(); allow write: if itemJob(); }
+    // 📦 상품 (옛 WMS 의 Produtos) — 카탈로그에 없는 칸: 배송 박스 무게 · 크기 · 많음 기준(prodExtra) · 원가(prodCusto, 관리자 · 오너만) · 확인 요청(rechecagem) · 채우기 요청(reposicao)
+    match /prodExtra/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /prodCusto/{id} { allow read, write: if isAdmin(); }
+    match /rechecagem/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /reposicao/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /etqEventos/{id} { allow read: if registered(); allow create: if itemJob(); }   // 기록은 쌓기만 (고치거나 지우지 않음)
+    match /estornos/{id} { allow read: if registered(); allow create: if itemJob(); allow update, delete: if isAdmin(); }   // 요청은 재고 담당이, 승인 · 거절은 관리자 · 오너가
     match /inbound/{id} { allow read: if isStaff(); allow write: if itemJob(); }   // 🚢 입고 예정 — 공장 인보이스 (단가는 아래 inboundCost 에 따로)
     match /inboundCost/{id} { allow create: if itemJob(); allow read, update, delete: if isRealAdmin(); }   // 💰 공장 단가 · 금액 — 관리자만 읽음 (오피스가 등록할 때는 쓰기만)
     match /itemPhotos/{id} { allow read: if registered(); allow write: if itemJob(); }

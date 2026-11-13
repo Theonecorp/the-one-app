@@ -1,29 +1,31 @@
-/* v0.8.206 시험 — 🏭 오너 · 관리자 홈(own) 새 디자인, 컴퓨터 먼저: 머리(기간 칩) · 숫자 4칸(매출 · 들어온 돈 · 미수금 · 공장 미지급, 누르면 그 화면) · 상세 2열(넓은 화면) · 폰은 한 열 · 숫자 칸 이름이 잘리지 않음 */
+/* v0.8.204 시험 — 📧 앱을 안 닫고 다음 날 넣은 수금도 Daily Report 에 (2026-11-13 관리자: "세일즈맨이 주문 확인 뒤 수금 입력에서 넣은 수금이 Daily Report 에 안 나옴")
+ *   원인: 오늘 내역의 날짜(TODAY_D)가 앱을 처음 연 날로 멈춰 있어서, 폰에서 앱을 켜 둔 채 다음 날 넣은 수금이 "오늘"도 "지난 건"도 아니어서 빠졌음
+ *   ① 어제 앱을 엶 → 오늘이 됨 → 오늘 넣은 수금(아직 안 보냄)이 📋 오늘 내역 · 📧 전송 대상에 나옴
+ *   ② 다른 날짜를 보고 있어도 안 보낸 수금은 날짜 상관없이 전송 대상 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
-  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8987', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8916', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
-  const open = async (w, h) => { const pg = await br.newPage({ viewport: { width: w, height: h } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
-    await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'X' }; });
-    await pg.goto('http://127.0.0.1:8987/test/demo.html#/own');
-    await pg.waitForSelector('.own [data-og="mg/sales"]', { timeout: 15000 }).catch(() => errs.push(w + 'px: owner dashboard did not render')); await pg.waitForTimeout(400); return pg; };
-  /* ① 컴퓨터 1440px */
-  const pg = await open(1440, 1000);
-  const ks = await pg.$$eval('.own .wd-kpi', L => L.map(b => b.dataset.ogk)); log('kpis:', ks);
-  if (ks.join(',') !== 'mg/sales,now,bossar,mg/fac') errs.push('4 KPIs should be sales · cash · A/R · factories, got ' + ks);
-  const tops = await pg.$$eval('.own .wd-kpi', L => L.map(b => Math.round(b.getBoundingClientRect().top))); if (new Set(tops).size !== 1) errs.push('desktop: 4 KPIs should sit on one row ' + tops);
-  const r1 = await pg.$eval('.own [data-og="mg/sales"]', e => e.getBoundingClientRect()), r2 = await pg.$eval('.own [data-og="now"]', e => e.getBoundingClientRect());
-  log('sales/cash cards:', Math.round(r1.left), Math.round(r1.top), '·', Math.round(r2.left), Math.round(r2.top)); if (!(Math.abs(r1.top - r2.top) < 2 && r2.left > r1.right - 1)) errs.push('desktop: sales and cash detail cards should be side by side');
-  if (!(await pg.$('.own-hd [data-op="month"]')) || !(await pg.$('.own-hd #opCal'))) errs.push('period chips should be in the header card');
-  await pg.click('.own .wd-kpi[data-ogk="bossar"]'); await pg.waitForTimeout(600); const h = await pg.evaluate(() => location.hash); log('kpi click →', h); if (!/bossar/.test(h)) errs.push('A/R KPI should open #/bossar');
-  /* ② 폰 390px — 한 열 · 숫자 칸 이름 안 잘림 */
-  const pm = await open(390, 844);
-  const m1 = await pm.$eval('.own [data-og="mg/sales"]', e => e.getBoundingClientRect()), m2 = await pm.$eval('.own [data-og="now"]', e => e.getBoundingClientRect()); if (!(m2.top > m1.bottom - 1)) errs.push('phone: detail cards should stack');
-  const cut = await pm.$$eval('.own .wd-kpi .kt > span', L => L.filter(s => s.scrollWidth > s.clientWidth + 1).map(s => s.textContent)); log('cut labels:', cut); if (cut.length) errs.push('phone: KPI labels should not be cut: ' + cut);
-  const sw = await pm.evaluate(() => document.documentElement.scrollWidth); if (sw > 392) errs.push('phone: no sideways scroll (' + sw + ')');
+  const ds = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const now = new Date(), td = ds(now), yd = ds(new Date(now - 864e5));
+  const pg = await (await br.newContext({ viewport: { width: 420, height: 900 } })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
+  await pg.clock.install({ time: new Date(yd + 'T10:00:00') });
+  await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'brandon@x.com', name: 'Brandon' };
+    window.__AFTER_SEED__ = s => { s.entries.push({ id: 'NEXTDAY', d: o.td, ym: o.td.substring(0, 7), sm: 'BRANDON', acct: '1111', store: 'NEXT DAY STORE', addr: '', pays: [{ m: 'CHECK', ref: '7001', amt: 250, dep: o.td, mob: false }], invs: [{ no: 'A10055', t: 'A', amt: 250 }], total: 250, invTotal: 250, sb: false, rc: false, v: false, vn: '', settled: '', void: false, rep: false, createdBy: 'brandon@x.com', createdAt: o.td + 'T20:00:00Z' }); }; }, { td });
+  await pg.goto('http://127.0.0.1:8916/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
+  await pg.evaluate(() => { location.hash = '#/mine'; }); await pg.waitForSelector('#btnSend', { timeout: 8000 }); await pg.waitForTimeout(500);
+  /* ① 하루가 지남 (앱은 그대로) */
+  await pg.clock.setSystemTime(new Date(td + 'T10:00:00'));
+  await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(600); await pg.evaluate(() => { location.hash = '#/mine'; }); await pg.waitForSelector('#btnSend', { timeout: 8000 }); await pg.waitForTimeout(600);
+  let page = (await pg.textContent('#hubBody')).replace(/\s+/g, ' '), prev = (await pg.textContent('#rPreview')).replace(/\s+/g, ' ');
+  log('① next day:', /NEXT DAY STORE/.test(page), prev.slice(0, 60));
+  if (!/NEXT DAY STORE/.test(page) || !/1건/.test(prev)) errs.push('① today\'s unsent entry shows after the day changes');
+  /* ② 어제 날짜를 골라도 안 보낸 것은 전송 대상 */
+  await pg.fill('#rDate', yd); await pg.dispatchEvent('#rDate', 'change'); await pg.waitForTimeout(600);
+  prev = (await pg.textContent('#rPreview')).replace(/\s+/g, ' '); log('② other day:', prev.slice(0, 60));
+  if (!/1건/.test(prev)) errs.push('② unsent entries are always in the report');
   await br.close(); srv.kill();
-  if (errs.length) { console.log('FAIL'); errs.forEach(e => console.log(' -', e)); process.exit(1); }
-  console.log('PASS');
-})().catch(e => { console.log('FAIL', e.message); process.exit(1); });
+  console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
+})();

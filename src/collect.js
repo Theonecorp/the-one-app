@@ -9,7 +9,7 @@
  *    미수금: 내 담당 AR (오래된 순 · 구간 · 💤 · ✅) → 가게 → 바로 수금 입력
  *  자료는 Firestore entries (기존 모양 그대로) + reports (Daily Report · 체크 사진)
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, debounce, invNo, itabs } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, debounce, invNo, itabs, addDays } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts } from './accounts.js';
 import { invType } from './comm.js';
@@ -20,7 +20,7 @@ import { mergeAppInvoices } from './arapp.js';
 let S = null;
 export function register(state) {
   S = state;
-  Router.on('entry', a => hub('new', a)); Router.on('mine', () => hub('today')); Router.on('ar', () => hub('ar')); Router.on('hist', a => hub('hist', a)); Router.on('send', () => hub('send'));   // 📦 체크 보내기
+  Router.on('entry', a => hub('new', a)); Router.on('mine', () => { TODAY_D = today(); hub('today'); });   /* 📧 들어올 때마다 오늘로 — 폰에서 앱을 안 닫고 다음 날 쓰면 첫날 날짜에 멈춰 오늘 수금이 리포트에서 빠졌음 (2026-11-13) */ Router.on('ar', () => hub('ar')); Router.on('hist', a => hub('hist', a)); Router.on('send', () => hub('send'));   // 📦 체크 보내기
 }
 const isSales = () => !!S && S.role === 'salesman';
 let ME = '';
@@ -374,11 +374,12 @@ async function saveEntry() {
 let PHOTOS = [];
 async function paintToday() {
   /* rep 가 없는 옛 기록(이 버전 이전 입력) 은 이미 처리된 것으로 봄 — 전송 대기는 rep === false 만 */
-  const rows = (await myEntries(true)).filter(r => r.d === TODAY_D || (r.rep === false && !r.sb && r.d < today()));
+  /* 사무실이 먼저 ① 접수 확인(sb)한 수금도 리포트에 — 전에는 빠져서 "수금 넣을까요?" 로 넣은 수금이 Daily Report 에 안 뜸 (2026-11-12 · v0.8.204) */
+  const rows = (await myEntries(true)).filter(r => r.d === TODAY_D || r.rep === false);   /* 안 보낸 것은 날짜 상관없이 모두 (v0.8.204) */
   const live = rows.filter(r => !r.void);
   const tot = sum(live, r => r.total), by = { CHECK: 0, ZELLE: 0, CASH: 0 };
   live.forEach(r => (r.pays || []).forEach(p => { by[p.m === 'CASH' ? 'CASH' : p.m === 'ZELLE' ? 'ZELLE' : 'CHECK'] += num(p.amt); }));
-  const pend = live.filter(r => r.rep === false && !r.sb), late = pend.filter(r => r.d < TODAY_D);
+  const pend = live.filter(r => r.rep === false), late = pend.filter(r => r.d !== TODAY_D);
   let h = '<div class="sumcard"><div class="lbl">' + (TODAY_D === today() ? '오늘 수금 합계 · Today total' : '수금 합계 · Total') + ' (' + esc(TODAY_D) + ')</div><div class="big">' + money(tot) + '</div><div class="split"><div>CHECK <b>' + money(by.CHECK) + '</b></div><div>ZELLE <b>' + money(by.ZELLE) + '</b></div><div>CASH <b>' + money(by.CASH) + '</b></div><div><b>' + live.length + '</b> 건</div></div></div>';
   if (pend.length) h += '<div class="pendbar">⏰ 아직 전송하지 않은 수금 <b>' + pend.length + '건</b> · ' + money(sum(pend, r => r.total)) + (late.length ? '<br><span style="font-weight:700">그중 <b>' + late.length + '건</b>은 지난 날짜에 입력한 것입니다 — 지워지지 않았고, 전송하면 같이 나갑니다.</span>' : '') + '<br><span style="font-weight:400">일과를 마치면 아래 <b>📧 Daily Report 전송</b> 을 눌러 주세요 · Send today’s report before you finish.</span></div>';
   h += rows.length ? rows.map(r => entCard(r)).join('') : '<div class="none">오늘 입력한 내역이 없습니다.<br><span class="en">No entries today.</span></div>';
@@ -503,7 +504,7 @@ async function sendPhotosOnly() {
  *  ③ 기록 · 기간 리포트
  * ============================================================ */
 async function paintHist() {
-  const from = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();
+  const from = (() => { const d = new Date(today() + 'T12:00:00'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();   // 정오 기준 — 날짜가 UTC 로 밀리지 않게
   if ($('hubBody')) $('hubBody').innerHTML = '<div class="card"><label>기록 조회 <span class="en">Collection history</span></label><div class="pdrow"><input id="hQ" autocomplete="off" placeholder="계정코드 / 가게 이름 / 체크번호" value="' + esc(HQ) + '"><button type="button" class="pdclr" id="hGo" style="background:var(--blue);color:#fff;border-color:var(--blue)">검색 Search</button></div>' +
     '<div class="hint">예) <b>4001</b> (계정코드) · <b>ali fl</b> (가게 이름) · <b>10432</b> (체크번호). 가게 이름은 <b>일부만 쳐도</b> 됩니다. 그 가게의 수금 · COD · ACH · 카드 기록이 모두 나오고, 합계 · 마지막 수금일이 위에 표시됩니다.<br><span class="en">e.g. account #, store name words, or check #</span></div>' +
     '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600"><input type="checkbox" id="hOther" style="width:20px;height:20px" checked> COD · ACH · 카드도 같이 <span class="en">incl. COD / ACH / card</span></label></div>' +
@@ -557,7 +558,7 @@ async function periodSearch() {
 /** 📧 내가 보낸 Daily Report — 메일 상태 (⏳ 보내는 중 · ✅ 보냄 · ⚠️ 실패) 와 다시 보내기 · 이메일 앱으로 */
 async function sentReports() {
   const box = $('rpList'); if (!box) return; box.innerHTML = '<div class="load">읽는 중…</div>';
-  const days = []; for (let i = 0; i < 10; i++) { const d = new Date(); d.setDate(d.getDate() - i); days.push(d.toISOString().slice(0, 10)); }
+  const days = []; for (let i = 0; i < 10; i++) days.push(addDays(today(), -i));   // 이 기기 날짜 기준
   let list = [];
   try { list = sortBy(await S.DB.list('reports', { where: [['sm', '==', me()], ['d', 'in', days]] }), r => r.sentAt || '', true); }
   catch (e) { box.innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; return; }
