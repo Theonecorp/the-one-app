@@ -8,7 +8,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 400, height: 800 } });
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8854/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
-  const seed = `const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+  const seed = `const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); };
     s.accounts = s.accounts.concat([{ id: '7001', acct: '7001', store: 'ORLANDO BEAUTY', city: 'MIAMI', state: 'FL', sm: 'BRANDON' }, { id: '7002', acct: '7002', store: 'AAA SUPPLY', city: 'ORLANDO', state: 'FL', sm: 'BRANDON' }, { id: '7003', acct: '7003', store: 'BEAUTY ORLANDO INC', city: 'TAMPA', state: 'FL', sm: 'BRANDON' }]);
     if (!s.accounts.some(a => a.acct === '3001')) s.accounts.push({ id: '3001', acct: '3001', store: 'BEAUTY EXCHANGE ORLANDO', city: 'ORLANDO', state: 'FL', sm: 'ALEX' });
     const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length);

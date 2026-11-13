@@ -22,7 +22,7 @@ const path = require('path');
   const saved = await pg.evaluate(() => localStorage.getItem('theone.hgrp.office')); log('saved open:', saved); if (!/ship/.test(saved || '')) errs.push('open groups should be remembered');
   /* 묶음 → 세부 → 뒤로 */
   await pg.click('#nav button[data-go="hub/money"]'); await pg.waitForSelector('[data-hub]', { timeout: 5000 });
-  const hub = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('money hub:', hub.join(' ')); if (hub.join() !== 'verify,cod,ach,bounce,credit') errs.push('money hub tiles wrong');
+  const hub = await pg.$$eval('[data-hub]', b => b.map(x => x.dataset.hub)); log('money hub:', hub.join(' ')); if (hub.join() !== 'entry,verify,cod,ach,bounce,credit') errs.push('money hub tiles wrong (v0.8.202: ✍️ 수금 입력이 맨 앞)');
   await pg.click('[data-hub="verify"]'); await pg.waitForTimeout(900);
   const onTab = await pg.$$eval('#nav button.on', b => b.map(x => x.dataset.go)); log('on tab at verify:', onTab); if (!onTab.includes('hub/money')) errs.push('money tab should stay highlighted inside its screens');
   await pg.goBack(); await pg.waitForTimeout(700); let h = await pg.evaluate(() => location.hash); log('back 1:', h); if (h !== '#/hub/money') errs.push('back from a hub screen should return to the hub');

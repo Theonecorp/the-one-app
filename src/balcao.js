@@ -54,11 +54,13 @@ export const SB_OK_MS = 2000;
 
 let S = null;
 /* 카운터 상태 — 화면을 다시 그려도 남음 */
-const B = { cli: '', busca: '', cx: {}, caixas: [], svc: '03', cod: null, codValor: '', codCli: '', cot: null, cotBusy: false, cotSeq: 0, cotTimer: null, av: {}, emit: false, hist: {}, notas: {}, sel: {} };
+const B = { cli: '', busca: '', cx: {}, caixas: [], svc: '03', cod: null, codValor: '', codCli: '', cot: null, cotBusy: false, cotSeq: 0, cotTimer: null, av: {}, emit: false, hist: {}, notas: {}, sel: {}, ords: {}, oSel: {} };
 export function register(state) { S = state; Router.on('balcao', page); }
 /** ✏️ Shipping History 의 "출고 고치기" — 옛 라벨은 취소한 뒤 같은 가게 · 박스 · 서비스 · COD 로 카운터를 엶 */
 export function abrirEdicao(acct, caixas, svc, cod, de) { zerar(); B.cli = acct; B.busca = ''; B.caixas = caixas.map(c => ({ peso: c.peso, c: c.c, l: c.l, a: c.a })); B.svc = svc || '03'; B.codCli = acct; B.cod = cod ? true : null; B.codValor = cod ? String(cod) : ''; B.editando = de || ''; Router.go('balcao'); }
 export const _B = B;   // 시험용
+/** 🧾 인보이스가 나온 주문을 이 카운터로 — 주문 화면의 🚚 출고 · UPS 출고 목록에서 (v0.8.209: 인보이스 뒤 UPS 출고를 이 화면 하나로) */
+export function abrirPedido(o) { zerar(); B.cli = o.acct; B.busca = ''; B.editando = ''; B.sel = {}; delete B.ords[o.acct]; B.oSel = { [o.id]: true }; B.oPre = o.id; B.foco = 'sbP'; Router.go('balcao'); }
 
 const acctOf = c => (S.accounts && S.accounts.byCode ? S.accounts.byCode[c] : null);
 const cliAtual = () => B.cli ? acctOf(B.cli) : null;
@@ -77,6 +79,22 @@ function notasHTML(a) {
   const tudo = L.every(n => B.sel[n.id]);
   return '<h4 class="ups-h4">Notes UPS · ' + L.length + ' <button type="button" class="btn sm" data-act="sb-notas-tudo" style="margin-left:8px">' + (tudo ? L3('모두 빼기', 'Unmark all', 'Desmarcar todas') : L3('모두 넣기 (A)', 'Mark all (A)', 'Marcar todas (A)')) + '</button></h4><div class="su-notas">' +
     L.map((n, i) => '<label class="su-nota"><input type="checkbox" data-sb-nota="' + esc(n.id) + '"' + (B.sel[n.id] ? ' checked' : '') + '><span><b>' + (i + 1) + '/' + L.length + '</b> · ' + num1(n.w) + ' lb · ' + num1(n.l) + ' × ' + num1(n.wd) + ' × ' + num1(n.h) + ' in' + (n.prod ? '<span class="su-nota-prods">' + esc(n.prod) + '</span>' : '') + '</span></label>').join('') + '</div>';
+}
+/* ---------- 🧾 이 가게의 출고할 주문 (인보이스 발행 · 포장 대기 = st 'done') — 고른 주문은 라벨이 나오면 📦 포장 완료(packed) · 트래킹이 붙음 → 🚛 UPS 인계 (v0.8.209)
+ *   다른 주소(shipTo)로 가는 주문은 거래처 주소로 라벨이 나가면 안 되므로 여기서 고를 수 없음 → 주문 화면의 예전 출고 창 */
+const ordsSel = () => ((B.ords[B.cli] || []).filter(o => B.oSel[o.id] && !o.shipTo));
+function ordsHTML(a) {
+  const L = B.ords[a.acct]; if (!L || !L.length) return '';
+  return '<h4 class="ups-h4">🧾 ' + L3('이 가게의 출고할 인보이스', 'Invoices to ship for this store', 'Faturas a enviar desta loja') + ' · ' + L.length + '</h4><div class="su-ords">' +
+    L.map(o => '<label class="su-nota"' + (o.shipTo ? ' style="opacity:.55"' : '') + '><input type="checkbox" data-sb-ord="' + esc(o.id) + '"' + (B.oSel[o.id] && !o.shipTo ? ' checked' : '') + (o.shipTo ? ' disabled' : '') + '><span><b>' + esc((o.invs || []).join(', ') || o.no || o.id) + '</b> · ' + money(o.amt || 0) + (o.pay ? ' · ' + esc(o.pay) : '') + (o.shipTo ? ' · <i>' + L3('다른 주소 — 주문 화면에서 출고', 'Other address — ship from the order', 'Outro endereço — enviar pelo pedido') + '</i>' : '') + '</span></label>').join('') +
+    '<div class="nu-enter">' + L3('고른 인보이스는 라벨이 나오면 📦 포장 완료 · 트래킹이 붙고 🚛 UPS 인계로 넘어갑니다', 'Checked invoices become packed with the tracking # and move to UPS pickup', 'As faturas marcadas ficam embaladas com o rastreio e vão para a coleta UPS') + '</div></div>';
+}
+async function carregarOrds(a) {
+  let L = []; try { L = (await S.DB.list('orders', { where: [['acct', '==', a.acct], ['st', '==', 'done']] })).filter(o => !o.void); } catch (e) { L = []; }
+  L.sort((x, y) => String(x.doneAt || '').localeCompare(String(y.doneAt || '')));
+  /* 처음 열 때: 주문에서 넘어왔으면 그 주문만 · 아니면 다른 주소가 아닌 것 모두 */
+  if (!B.oPre) L.forEach(o => { if (!(o.id in B.oSel) && !o.shipTo) B.oSel[o.id] = true; }); B.oPre = '';
+  B.ords[a.acct] = L; if (cliAtual() === a && L.length) page();
 }
 async function carregarNotas(a) { try { B.notas[a.acct] = await abertasDe(a.acct); } catch (e) { B.notas[a.acct] = []; } if (cliAtual() === a && (B.notas[a.acct] || []).length) page(); }
 function notasTudo() { const L = B.notas[B.cli] || []; const tudo = L.every(n => B.sel[n.id]); L.forEach(n => { B.sel[n.id] = !tudo; }); page(); }
@@ -247,7 +265,7 @@ export async function page() {
     '<div class="su-dims-grupo"><div class="su-grupo-rot">' + bt('크기 (인치)', 'Size (in)') + '</div><div class="su-dims-3">' + campo('sbC', bt('길이', 'Length'), B.cx.c, ICO.setaH, 'Ex: 10') + campo('sbL', bt('너비', 'Width'), B.cx.l, ICO.setaH, 'Ex: 8') + campo('sbA', bt('높이', 'Height'), B.cx.a, ICO.setaV, 'Ex: 6') + '</div></div></div>' +
     '<div class="su-cx-bts"><div class="nu-enter">' + L3('Enter 로 다음 칸 · 높이에서 Enter = 박스 저장 · Esc 뒤 Enter = 라벨 인쇄', 'Enter = next field · Enter on height saves the box · Esc then Enter prints', 'Enter = próximo campo · Enter na altura salva a caixa · Esc e depois Enter imprime') + '</div><button type="button" class="btn" data-act="sb-cx-ok">' + svg(ICO.mais, 15) + ' ' + bt('박스 저장', 'Save box') + '</button></div>';
   if (B.caixas.length) h += '<h4 class="ups-h4">' + bt('저장한 박스', 'Saved boxes') + ' · ' + B.caixas.length + '</h4><div class="su-caixas">' + B.caixas.map((c, i) => '<div class="su-feita"><span class="su-n">' + (i + 1) + '</span><span><b>' + num1(c.peso) + ' lb</b> · ' + esc(medTxt(c)) + '</span><button type="button" class="btn-etq" data-act="sb-mexer" data-i="' + i + '" title="' + esc(bt('고치기', 'Edit')) + '">' + svg(ICO.lapis, 15) + '</button><button type="button" class="btn-etq" data-act="sb-tirar" data-i="' + i + '" title="' + esc(bt('빼기', 'Remove')) + '">' + svg(ICO.x, 15) + '</button></div>').join('') + '</div>';
-  h += notasHTML(a);
+  h += notasHTML(a) + ordsHTML(a);
   h += '</div><div class="su-col3">' + cartaz(a, L.length) +
     '<div class="su-frete" id="sbFrete"><div class="su-frete-head"><div class="su-frete-tit">' + svg(ICO.caixa, 20) + '<b>' + bt('출고 요약', 'Shipment summary') + '</b><small>' + bt('우리 UPS 계정으로 청구', 'Billed to our UPS account') + '</small></div><div class="su-preco" id="sbPreco"></div></div>' +
     '<div class="su-frete-corpo"><div class="su-res-bl"><i>' + bt('박스', 'Boxes') + '</i><div id="sbResumo" class="su-res-caixas"></div></div>' +
@@ -264,6 +282,7 @@ export async function page() {
   verificar(a);
   if (!B.hist[a.acct]) carregarHist(a);
   if (!B.notas[a.acct]) carregarNotas(a);
+  if (!B.ords[a.acct]) carregarOrds(a);
 }
 function ligarAchados() { document.querySelectorAll('.sb [data-sb-cli]').forEach(b => b.onclick = () => { B.cli = b.dataset.sbCli; B.busca = ''; B.cot = null; B.foco = 'sbP'; page(); }); }
 
@@ -286,12 +305,13 @@ function ligar(a, foco) {
   on('sb-ultima', () => { const u = B.caixas[B.caixas.length - 1]; if (!u) return; B.cx = { peso: '', c: u.c, l: u.l, a: u.a }; B.foco = 'sbP'; page(); });
   on('sb-tirar', b => { B.caixas.splice(+b.dataset.i, 1); page(); });
   on('sb-mexer', b => { if (cxAndando()) return toast(bt('지금 입력 중인 박스를 먼저 저장하거나 지우세요', 'Save or clear the box being typed first'), 'bad'); B.cx = Object.assign({}, B.caixas[+b.dataset.i]); B.caixas.splice(+b.dataset.i, 1); B.foco = 'sbP'; page(); });
-  on('sb-trocar', () => { B.cli = ''; B.busca = ''; B.editando = ''; zerar(); B.sel = {}; page(); });
+  on('sb-trocar', () => { B.cli = ''; B.busca = ''; B.editando = ''; zerar(); B.sel = {}; B.oSel = {}; page(); });
   on('sb-limpar', async () => { if ((B.caixas.length || cxAndando()) && !(await confirmBox(bt('박스를 모두 지울까요?', 'Clear all boxes?'), bt('지우기', 'Clear')))) return; zerar(); page(); });
   on('sb-cotar', () => { const L = caixasVivas(); if (!L.length) return toast(bt('박스가 없습니다', 'No boxes'), 'bad'); B.cot = null; cotar(a, L, assin(a, L)); });
   on('sb-finalizar', () => finalizar());
   on('sb-notas-tudo', notasTudo);
   document.querySelectorAll('.sb [data-sb-nota]').forEach(c => c.onchange = () => { B.sel[c.dataset.sbNota] = c.checked; page(); });
+  document.querySelectorAll('.sb [data-sb-ord]').forEach(c => c.onchange = () => { B.oSel[c.dataset.sbOrd] = c.checked; });
   ligarVer();
   const sv = $('sbServico'); sv.onchange = () => { B.svc = sv.value; pintarPreco(); };
   const cb = $('sbCod'), cv = $('sbCodValor');
@@ -339,13 +359,18 @@ async function finalizar() {
   const id = newId('X'), now = new Date().toISOString(), no = 'ADHOC-' + today().replace(/-/g, '').substring(2) + '-' + id.slice(-4).toUpperCase();
   let x = null;
   try {
-    await S.DB.set('adhoc', id, { id, no, col: 'adhoc', st: 'open', store: a.store || '', acct: a.acct, sm: a.sm || '', invs: [], desc: 'Shipping UPS', src: 'balcao', noteIds: notasSel().map(n => n.id), createdBy: S.user.email, createdAt: now, updatedAt: now, to: para(a) });
+    const OS = ordsSel();
+    await S.DB.set('adhoc', id, { id, no, col: 'adhoc', st: 'open', store: a.store || '', acct: a.acct, sm: a.sm || '', invs: [].concat(...OS.map(o => o.invs || [])), orderIds: OS.map(o => o.id), desc: 'Shipping UPS', src: 'balcao', noteIds: notasSel().map(n => n.id), createdBy: S.user.email, createdAt: now, updatedAt: now, to: para(a) });
     await S.DB.set('shipq', id, Object.assign(payload(a, L, { adhocId: id, no, cod: cod || null }), { id, st: 'wait', createdAt: now }));
     x = await esperar(id, ['done'], ['error'], 60);
   } catch (e) { x = { st: 'error', err: String(e.code || e.message) }; }
   fecha(); B.emit = false;
   if (!x || x.st !== 'done') { pintarResumo(caixasVivas()); return overlay('erro', bt('라벨을 만들지 못했습니다', 'Label not created'), x ? 'UPS: ' + (x.err || '') : bt('응답이 없습니다 — 배송 조회에서 확인하세요 (다시 누르면 라벨이 두 번 생길 수 있음)', 'No answer — check Tracking before trying again'), true); }
   try { await S.DB.update('adhoc', id, { track: x.track, shipVia: 'UPS', boxes: (x.labels || []).length, shipCost: x.charge || 0, st: 'shipped', shippedAt: new Date().toISOString(), shippedBy: S.user.email, updatedAt: new Date().toISOString() }); } catch (e) {}
+  /* 🧾 고른 주문 → 📦 포장 완료 + 트래킹 (예전 출고 창과 같은 칸 — 🚛 UPS 인계 · 배송 조회 · 출고 취소가 그대로 됨) */
+  const OS2 = ordsSel(), at2 = new Date().toISOString();
+  for (let i = 0; i < OS2.length; i++) { try { await S.DB.update('orders', OS2[i].id, { st: 'packed', packAt: at2, packBy: S.user.email, shipVia: 'UPS', boxes: (x.labels || []).length, track: x.track || '', shipCost: i ? 0 : (x.charge || 0), shipId: id, updatedAt: at2 }); } catch (e) {} }
+  if (OS2.length) { OS2.forEach(o => delete B.oSel[o.id]); delete B.ords[a.acct]; }
   const nIds = notasSel().map(n => n.id); if (nIds.length) { try { await marcarEnviadas(nIds, id, x.track); } catch (e) {} delete B.notas[a.acct]; B.sel = {}; }
   imprimir(x);
   B.cli = ''; B.busca = ''; B.cod = null; B.codValor = ''; B.codCli = ''; B.editando = ''; zerar(); delete B.hist[a.acct];

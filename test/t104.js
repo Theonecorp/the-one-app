@@ -8,7 +8,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 412, height: 915 }, hasTouch: true, isMobile: true });
   const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
-  const seed = `const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+  const seed = `const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); };
     const A = { acct: '1271', store: 'BEAUTY 4U', sm: 'BRANDON' };
     s.invoices = (s.invoices || []).concat([
       { id: 'A77001', no: 'A77001', t: 'A', d: day(44), ym: day(44).slice(0, 7), acct: '1271', store: 'BEAUTY 4U', sm: 'BRANDON', orderId: 'OX1', order: 'OX1', total: 7.5, bal: 0, st: 'paid', lines: [{ c: 'AHG100', d: 'x', q: 3, p: 2.5 }] },

@@ -6,6 +6,7 @@
  * ============================================================ */
 import { $, esc, Router, bi, bt } from './ui.js';
 import { can } from './main.js';
+import { routeIcon } from './icons.js';
 
 let S = null;
 export function register(state) { S = state; Router.on('hub', page); }
@@ -13,6 +14,7 @@ export function register(state) { S = state; Router.on('hub', page); }
 /** 묶음 → [route, 아이콘, 한글, 영어, 설명(한), 설명(영), 보이는 조건] */
 export const HUBS = {
   money: { icon: '💵', ko: '수금', en: 'Payments', items: [
+    ['entry', '✍️', '수금 입력', 'Record a payment', '체크 · 캐쉬 · Zelle 받은 것 입력 (세일즈맨 고름)', 'checks · cash · Zelle received (pick the salesman)', () => can('verify') || can('cod')],   // 회계 담당 · 오피스 매니저도 직접 입력 (v0.8.202)
     ['verify', '💵', '수금 확인', 'Payments', '세일즈맨 수금 · 체크 수령 · 접수 확인', 'field payments · checks received', () => can('verify')],
     ['cod', '💳', 'COD · 카드', 'COD · Card', 'COD · 카드 입력 · 승인번호', 'COD · card entry', () => can('cod')],
     ['ach', '🏦', 'ACH', 'ACH', 'ACH 셋업 · 인출 · NSF', 'ACH setup · draws', () => can('ach')],
@@ -26,7 +28,9 @@ export const HUBS = {
     ['cat', '📒', '아이템 · 카탈로그', 'Items · Catalog', '검색 · 사진 · 재고 · 위치 · 라벨', 'search · photos · stock · location · labels', () => true]
   ] },
   wh: { icon: '📦', ko: '재고', en: 'Inventory', items: [
-    ['estoque', '📦', '재고', 'Inventory', '통로 지도 · 입고 · 출고 · 상자 라벨 (옛 앱 화면)', 'aisle map · stock in · stock out · box labels (classic screen)', () => can('items')],
+    ['stock', '📦', '재고', 'Inventory', '조회 · 입고(팩킹 리스트) · 실사', 'find · receive · count', () => can('items')],
+    ['items', '🏷', '아이템 · 위치', 'Items · Locations', '찾기 · 📍 통로 · 등록 · 📋 일괄 등록 · 삭제', 'find · aisle · add · bulk paste · delete', () => can('items')],
+    ['estoque', '📦', '재고 (옛 앱 화면)', 'Inventory (classic)', '통로 지도 · 입고 · 출고 · 상자 라벨 (옛 앱 화면)', 'aisle map · stock in · stock out · box labels (classic screen)', () => can('items')],
     ['repor', '🔁', '보충이 필요한 상품', 'Products to restock', '보충 요청 · 시작(한 사람만) · 지난달 판매로 수량 제안 (옛 앱 화면)', 'restock requests · start (one person) · quantity from last month\'s sales (classic screen)', () => can('items'), () => nOpen('reposicao', ['aberta', 'iniciada'])],
     ['recheca', '🔎', '재확인할 상품', 'Products to recheck', '수량 · 통로 확인 요청 · 상자마다 세기 (옛 앱 화면)', 'count · aisle recheck requests · count box by box (classic screen)', () => can('items'), () => nOpen('rechecagem', ['aberta'])],
     ['etiquetas', '🏷', '라벨 출력', 'Print labels', '상품의 상자 · 합치기 · 나누기 · 재고 / 피킹 라벨', 'product boxes · merge · divide · stock / picking labels', () => can('items')],
@@ -72,8 +76,8 @@ export const hubItems = k => (HUBS[k] ? HUBS[k].items.filter(x => { try { return
 
 function page(arg) {
   const k = HUBS[arg] ? arg : 'look', H = HUBS[k], L = hubItems(k);
-  $('page').innerHTML = '<div class="card" style="padding:12px 14px 8px"><h2 style="margin:0">' + H.icon + ' ' + bi(H.ko, H.en) + '</h2></div>' +
-    '<div class="hgrid hubgrid">' + L.map(x => '<button class="htile" data-hub="' + esc(x[0]) + '"><span class="hi">' + x[1] + '</span><b>' + bi(x[2], x[3]) + '</b><small>' + bt(x[4], x[5]) + '</small></button>').join('') + '</div>' +
+  $('page').innerHTML = '<div class="wd-hd" style="margin-bottom:12px"><div><h1>' + bi(H.ko, H.en) + '</h1></div></div>' +
+    '<div class="hgrid hubgrid">' + L.map(x => '<button class="htile" data-hub="' + esc(x[0]) + '"><span class="hi">' + routeIcon(x[0], x[1], 26) + '</span><b>' + bi(x[2], x[3]) + '</b><small>' + bt(x[4], x[5]) + '</small></button>').join('') + '</div>' +
     (L.length ? '' : '<div class="card"><div class="none">' + bt('이 일에는 볼 화면이 없습니다', 'Nothing here for this job') + '</div></div>');
   document.querySelectorAll('[data-hub]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hub.split('/'); Router.go(r, a); });   // mg/sales 처럼 칸이 있는 화면도
   /* 열린 요청 수 — 칸 오른쪽 위 빨간 숫자 (옛 앱 메뉴의 숫자) */

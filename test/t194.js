@@ -1,8 +1,8 @@
 /* v0.8.187 시험 — 🏷 타사 제품 리턴은 가격으로 · ✍️ 직접 크레딧 (2026-11-11 관리자: "타 회사 제품은 가격으로 정리 — 1.99 · 2.49 · 2.99 ~ 9.49 · 9.99 … 39.99 · 특이사항은 크레딧을 수동으로")
  *   ① 크레딧 모드의 🏷 타사 제품 · 가격으로: $1.99 · $2.49 … $9.49 · $9.99 (0.50씩) 다음 $10.99 … $39.99 (1달러씩) · 누를 때마다 그 가격 줄 +1 (×N)
  *   ② ✍️ 직접: 설명 · 단가 · 수량 → 줄 하나 · 설명 없으면 막힘
- *   ③ 이 줄들은 가게 할인 · 🏷 할인 백을 빼지 않음 (우리 아이템 줄만 10% 백)
- *   ④ 사무실 확정 → CM 에 OB-1.99 · 직접 줄이 그 가격 그대로 */
+ *   ③ (v0.8.198 바뀜) 가격 단추는 소매가 → 줄은 우리 판매가 (1.99 → 1.00 · 9.99 → 5.00) · 🏷 할인 백 10% 는 이 줄들 · 직접 줄 · 우리 아이템 모두에서 빠짐
+ *   ④ 사무실 확정 → CM 에 OB-1.99 @ 0.90 · OB-9.99 @ 4.50 · 직접 줄 @ 11.25 · AHG100 @ 2.25 (−$31.05) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -32,11 +32,11 @@ const path = require('path');
   /* 우리 아이템 하나 + 10% 할인 백 */
   await sm.fill('#eQ1', 'AHG100'); await sm.waitForTimeout(500); await sm.click('#eRes [data-gc="AHG100"], #eRes tr[data-frow="AHG100"] td.ct'); await sm.waitForTimeout(250);
   await sm.click('[data-ev="memo"]'); await sm.waitForSelector('[data-ecw]'); await sm.click('[data-ecw="기타"]'); await sm.click('[data-ecd="10"]'); await sm.waitForTimeout(200);
-  /* ③ 1.99×2 + 9.99 + 12.50×2 = 38.97 (할인 없음) + AHG100 2.50 × 0.9 = 2.25 → 41.22 */
-  const amt = (await sm.textContent('#eA')).trim(); log('③ total:', amt); if (!/−\$41\.22/.test(amt)) errs.push('③ other-brand and manual lines keep their price; only our item gets 10% back → −$41.22');
+  /* ③ 판매가 1.00×2 + 5.00 + 직접 12.50×2 + AHG100 2.50 — 모두 10% 백 → 1.80 + 4.50 + 22.50 + 2.25 = 31.05 */
+  const amt = (await sm.textContent('#eA')).trim(); log('③ total:', amt); if (!/−\$31\.05/.test(amt)) errs.push('③ retail 1.99 → 1.00 · 9.99 → 5.00 and 10% back on every line → −$31.05');
   await sm.click('#eDraft'); await sm.waitForSelector('#cfOk', { timeout: 5000 }); await sm.click('#cfOk'); await sm.waitForTimeout(1500);
   const o = await sm.evaluate(() => { const M = window.__MOCK_STORE__, x = Object.values(M.orders).find(o => o.kind === 'credit'); return x && { id: x.id, amt: x.amt, lines: (M.orderLines[x.id] || {}).lines.map(l => l.c + ':' + l.q + '@' + l.p + ':' + l.t).join(' ') }; });
-  log('③ saved:', JSON.stringify(o)); if (!o || o.amt !== -41.22 || !/OB-1\.99:2@1\.99:OB/.test(o.lines) || !/MAN-\w+:2@12\.5:OB/.test(o.lines)) errs.push('③ saved −$41.22 with OB-1.99 ×2 and the manual line');
+  log('③ saved:', JSON.stringify(o)); if (!o || o.amt !== -31.05 || !/OB-1\.99:2@1:OB/.test(o.lines) || !/OB-9\.99:1@5:OB/.test(o.lines) || !/MAN-\w+:2@12\.5:OB/.test(o.lines)) errs.push('③ saved −$31.05 with OB-1.99 ×2 @ 1.00 · OB-9.99 @ 5.00 and the manual line');
   /* ④ 보내기 → 사무실 확정 */
   await sm.evaluate(() => { location.hash = '#/order'; }); await sm.waitForSelector('#oSendAll', { timeout: 8000 }); await sm.click('#oSendAll'); await sm.waitForTimeout(400); if (await sm.$('#cfOk')) await sm.click('#cfOk'); await sm.waitForTimeout(1500);
   const store = await sm.evaluate(() => { const M = window.__MOCK_STORE__; const o = {}; ['orders', 'orderLines', 'invoices', 'counters'].forEach(k => { o[k] = {}; Object.entries(M[k] || {}).forEach(([id, d]) => { o[k][id] = Object.assign({ id }, d); }); }); return JSON.stringify(o); });
@@ -45,7 +45,7 @@ const path = require('path');
   await of.click('#crrOk'); await of.waitForSelector('#cfOk'); await of.click('#cfOk'); await of.waitForTimeout(1500);
   const cm = await of.evaluate(id => { const x = Object.values(window.__MOCK_STORE__.invoices || {}).find(v => v.fromOrder === id); return x && { total: x.total, lines: x.lines.map(l => l.c + ':' + l.q + '@' + l.p).join(' ') }; }, o.id);
   log('④ CM:', JSON.stringify(cm));
-  if (!cm || cm.total !== -41.22 || !/OB-1\.99:-2@1\.99/.test(cm.lines) || !/OB-9\.99:-1@9\.99/.test(cm.lines) || !/MAN-\w+:-2@12\.5/.test(cm.lines) || !/AHG100:-1@2\.25/.test(cm.lines)) errs.push('④ CM keeps the price lines as they are (−$41.22)');
+  if (!cm || cm.total !== -31.05 || !/OB-1\.99:-2@0\.9\b/.test(cm.lines) || !/OB-9\.99:-1@4\.5\b/.test(cm.lines) || !/MAN-\w+:-2@11\.25/.test(cm.lines) || !/AHG100:-1@2\.25/.test(cm.lines)) errs.push('④ CM: our price minus 10% back on every line (−$31.05)');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();

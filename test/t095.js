@@ -6,7 +6,7 @@ const path = require('path'), fs = require('fs'), { execSync } = require('child_
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 430, height: 900 }, acceptDownloads: true }); const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
-  const seed = `const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); }; const ym = s => s.slice(0, 7);
+  const seed = `const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); }; const ym = s => s.slice(0, 7);
     const E = (id, extra) => Object.assign({ id, d: day(1), ym: ym(day(1)), sm: 'BRANDON', acct: '1271', store: 'BEAUTY 4U', addr: '', mismatch: '', memo: '', repl: false, orig: '', disc: '', sb: true, rc: true, v: false, vn: '', settled: '', void: false, createdBy: 'x', createdAt: day(1) + 'T12:00:00Z' }, extra);
     s.entries.push(E('TOL1', { pays: [{ m: 'CASH', amt: 101.5 }], invs: [{ no: 'A50001', t: 'A', amt: 100 }], total: 101.5, invTotal: 100 }));
     s.entries.push(E('BIG1', { d: day(2), ym: ym(day(2)), pays: [{ m: 'CASH', amt: 120 }], invs: [{ no: 'A50002', t: 'A', amt: 100 }], total: 120, invTotal: 100 }));

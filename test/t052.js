@@ -18,11 +18,12 @@ const path = require('path'), fs = require('fs');
   await pg.evaluate(() => { location.hash = '#/pay'; }); await pg.waitForSelector('#pOut .card'); await shot('b1_pay_all');
   log('overview:', (await txt('#pOut')).slice(0, 160));
   /* 기간을 넓게 (seed 는 최근 10일) */
-  const d0 = new Date(), from = new Date(d0 - 20 * 86400000).toISOString().substring(0, 10), to = d0.toISOString().substring(0, 10);
+  const d0 = new Date(), from = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date(d0 - 20 * 86400000))), to = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d0));
   await pg.fill('#pFrom', from); await pg.dispatchEvent('#pFrom', 'change'); await pg.waitForTimeout(300); await pg.fill('#pTo', to); await pg.dispatchEvent('#pTo', 'change'); await pg.waitForTimeout(300);
   await pg.selectOption('#pSm', 'BRANDON'); await pg.waitForSelector('.pr.pl'); await pg.waitForTimeout(600); await shot('b2_pay_brandon');
   const lines = await pg.$$eval('.pr.pl', e => e.map(x => x.className.replace('pr tap pl ', '') + ':' + x.querySelector('.ct b').textContent.trim())); log('lines:', lines.join(' | '));
-  log('fixbox present (E3 mismatch):', !!(await pg.$('.fixbox'))); if (!(await pg.$('.fixbox'))) errs.push('fixbox should show for E3 before ✓');
+  /* v0.8.203: E3 는 A 인보이스 하나뿐이라 받은 돈 $980 을 그대로 A 로 계산 (🧾 자동 배분) — 금액 고치기 칸이 필요 없음. 종류가 섞인 경우의 고치기는 t225 · 아래 계속 */
+  log('fixbox present (E3 single-type, auto):', !!(await pg.$('.fixbox'))); if (await pg.$('.fixbox')) errs.push('single-type E3 is auto-allocated (no fixbox)');
   /* ✓ 하나 → 문제(!) → 해제 */
   const first = await pg.$('.pr.pl.pend'); await first.click(); await pg.waitForTimeout(500); log('after tap1:', await pg.$$eval('.pr.pl.ok', e => e.length), 'ok');
   /* 금액 고치기 — E3: A10011 1000 → 980 */
