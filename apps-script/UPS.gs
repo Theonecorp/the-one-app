@@ -67,28 +67,31 @@ function run() {
   try {
     /* 1분에 Firestore 읽기 1번만 — 라벨(wait) · 취소(void) · 주소 확인(av) 을 한 번에 찾음. 설정은 라벨이 있을 때만 */
     let jobs = [];
-    try { jobs = fsQueryIn_('shipq', 'st', ['wait', 'void', 'av', 'rate', 'trk'], 20); }
+    try { jobs = fsQueryIn_('shipq', 'st', ['wait', 'void', 'av', 'rate', 'trk'].concat(SU_EXTRA_ST_), 20); }   // 🏪 SU_EXTRA_ST_ = 카운터가 더한 일 (아래 블록)
     catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면(밤 12시 태평양 시간) 저절로 이어집니다'); return; } throw e; }
     if (!jobs.length) return;
     const from = jobs.some(q => q.st === 'wait' || q.st === 'rate') ? settingsFrom_() : null;
     jobs.forEach(q => {
       if (q.st === 'wait') {
+        let r = null;   // 🏪 라벨이 나온 뒤 적기가 실패하면 그 라벨(트래킹)을 error 에 같이 남김 — suOrphan_
         try {
           fsPatch_('shipq', q._id, { st: 'working', at: iso_() });
-          const r = ship_(q, from);
-          fsPatch_('shipq', q._id, { st: 'done', at: iso_(), env: env_(), shipId: r.shipId, charge: r.charge, track: r.labels.map(x => x.trk).join(' '), labels: r.labels, err: '' });
+          r = ship_(q, from);
+          fsPatch_('shipq', q._id, Object.assign({ st: 'done', at: iso_(), env: env_(), shipId: r.shipId, charge: r.charge, track: r.labels.map(x => x.trk).join(' '), labels: r.labels, err: '' }, suDoneExtra_(r)));
           saveShipments_(q, r);
-        } catch (e) { fsPatch_('shipq', q._id, { st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+        } catch (e) { fsPatch_('shipq', q._id, Object.assign({ st: 'error', at: iso_(), err: String(e && e.message || e).substring(0, 500) }, suOrphan_(r))); }
       } else if (q.st === 'void') {
-        try { voidShip_(q.shipId); fsPatch_('shipq', q._id, { st: 'voided', at: iso_(), err: '' }); String(q.track || '').split(/\s+/).filter(Boolean).forEach(t => { try { fsPatch_('shipments', t, { voided: true, voidAt: iso_(), status: 'Voided', trkSt: 'done' }); } catch (e) {} }); }
+        try { suVoidOk_(q.shipId); fsPatch_('shipq', q._id, { st: 'voided', at: iso_(), err: '' }); String(q.track || '').split(/\s+/).filter(Boolean).forEach(t => { try { fsPatch_('shipments', t, { voided: true, voidAt: iso_(), status: 'Voided', trkSt: 'done' }); } catch (e) {} }); }
         catch (e) { fsPatch_('shipq', q._id, { st: 'voiderr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
       } else if (q.st === 'rate') {
-        try { fsPatch_('shipq', q._id, { st: 'ratedone', at: iso_(), err: '', rates: rates_(q, from) }); }
+        try { fsPatch_('shipq', q._id, { st: 'ratedone', at: iso_(), err: '', env: env_(), rates: suRates_(q, from) }); }   // 🏪 suRates_ = 도착일 · 협상 요금 (아래)
         catch (e) { fsPatch_('shipq', q._id, { st: 'rateerr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
       } else if (q.st === 'trk') {
         const res = {};
         [].concat(q.trks || []).slice(0, 25).forEach(t => { try { res[t] = track_(t); updShipment_(t, res[t]); } catch (e) { res[t] = { err: String(e && e.message || e).substring(0, 200) }; } });
         fsPatch_('shipq', q._id, { st: 'trkdone', at: iso_(), res });
+      } else if (q.st === 'env') {   // 🏪 지금 어느 UPS 서버인지 · 키가 있는지 (UPS 에 묻지 않음)
+        try { fsPatch_('shipq', q._id, suEnvJob_()); } catch (e) {}
       } else if (q.st === 'av') {
         try { fsPatch_('shipq', q._id, Object.assign({ st: 'avdone', at: iso_(), err: '' }, xav_(q.to || {}))); }
         catch (e) { fsPatch_('shipq', q._id, { st: 'averr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
@@ -171,13 +174,13 @@ function shipment_(q, from, rate) {
 }
 function ship_(q, from) {
   const ref = clip_(q.ref, 35);
-  const body = { ShipmentRequest: { Request: { RequestOption: 'nonvalidate', TransactionReference: { CustomerContext: ref } }, Shipment: shipment_(q, from, false),
-    LabelSpecification: { LabelImageFormat: { Code: 'GIF' }, HTTPUserAgent: 'Mozilla/4.5' } } };
+  const body = { ShipmentRequest: { Request: { RequestOption: 'nonvalidate', TransactionReference: { CustomerContext: ref } }, Shipment: suShipExtra_(shipment_(q, from, false)),
+    LabelSpecification: suLabelSpec_(q) } };   // 🏪 라벨 형식 (GIF · ZPL · PDF) · 협상 요금 · 주소 한 줄 — 아래 블록
   const j = upsFetch_('/api/shipments/v2403/ship', 'post', body);
   const R = j.ShipmentResponse.ShipmentResults, pk = [].concat(R.PackageResults || []);
   const neg = Number((((R.NegotiatedRateCharges || {}).TotalCharge) || {}).MonetaryValue || 0);
   const charge = neg || Number(((R.ShipmentCharges || {}).TotalCharges || {}).MonetaryValue || 0);
-  return { shipId: R.ShipmentIdentificationNumber, charge, labels: pk.map(p => ({ trk: p.TrackingNumber, img: (p.ShippingLabel || {}).GraphicImage || '' })) };
+  return Object.assign({ shipId: R.ShipmentIdentificationNumber, charge, labels: pk.map(p => ({ trk: p.TrackingNumber, img: (p.ShippingLabel || {}).GraphicImage || '', fmt: suFmt_(q) })) }, suShipMeta_(R));
 }
 /** 💲 서비스별 요금 (Shop) — [{ svc, name, total, list, days }] 싼 순 */
 function rates_(q, from) {
@@ -449,3 +452,80 @@ function toVal_(x) {
   return { stringValue: String(x) };
 }
 function iso_() { return new Date().toISOString(); }
+
+/* ============================================================
+ *  🏪 Shipping UPS 카운터 — 옛 WMS 의 서버 함수(ups-etiqueta · ups-cotar · ups-ambiente · ups-cancelar)와 맞춘 것
+ *    (이 블록만 더함 · 위의 run · ship_ 에는 이 함수들을 부르는 한 줄씩만)
+ *    · env 일 (shipq st:'env' → 'envdone' { env, cred, defined }) — 옛 ups-ambiente: UPS 에 묻지 않고 test/live 와 키가 있는지만
+ *    · 라벨 형식 q.fmt (없으면 settings/app.ups.labelFmt, 없으면 GIF) — 옛 ups-etiqueta 처럼 ZPL(4×6) · PDF 도. 앱은 GIF 는 인쇄, ZPL · PDF 는 내려받기
+ *    · 라벨에 협상 요금 요청 (NegotiatedRatesIndicator) · 공시 요금 · 청구 무게(BillingWeight) 도 적음 — 화면 · 기록의 운임이 청구서와 같게
+ *    · 받는 주소: 주소 2(STE 105)를 35자 안이면 거리 줄 뒤에 한 줄로 (옛 v17 — UPS 라벨은 2번째 줄을 위에 찍어 아무도 못 봄)
+ *    · 요금: Shoptimeintransit(도착일 · 영업일) 먼저, 안 되면 원래 Shop(rates_) · 토요일 배달 줄은 뺌 (라벨이 토요일을 안 고르면 화면 값 ≠ 청구 값)
+ *    · void: UPS 가 "이미 취소됨(190117)" 이면 성공으로 (옛 ups-cancelar v5)
+ *    · 라벨은 나왔는데 shipq 에 적지 못하면 error 에 트래킹 · 라벨을 같이 (orphan) — 앱이 "다시 누르지 말고 트래킹을 적어 두세요" 창
+ * ============================================================ */
+const SU_EXTRA_ST_ = ['env'];
+const SU_FMTS_ = ['GIF', 'ZPL', 'PDF'];
+/** 라벨 형식 — 요청의 fmt → 설정 settings/app.ups.labelFmt → GIF (한 번 정하면 q.fmt 에 둠) */
+function suFmt_(q) {
+  q = q || {};
+  let f = String(q.fmt || '').toUpperCase();
+  if (SU_FMTS_.indexOf(f) < 0) { try { const s = fsGet_('settings', 'app') || {}; f = String((s.ups && s.ups.labelFmt) || '').toUpperCase(); } catch (e) { f = ''; } }
+  q.fmt = SU_FMTS_.indexOf(f) < 0 ? 'GIF' : f;
+  return q.fmt;
+}
+/** LabelSpecification — GIF 는 원래와 똑같이 · ZPL 은 4×6 감열지 · PDF 는 그대로 (옛 ups-etiqueta 와 같음) */
+function suLabelSpec_(q) {
+  const f = suFmt_(q);
+  if (f === 'ZPL') return { LabelImageFormat: { Code: 'ZPL' }, LabelStockSize: { Height: '6', Width: '4' } };
+  if (f === 'PDF') return { LabelImageFormat: { Code: 'PDF' } };
+  return { LabelImageFormat: { Code: 'GIF' }, HTTPUserAgent: 'Mozilla/4.5' };
+}
+/** 라벨 요청에 더하는 것 — 협상 요금 · 받는 주소 2 를 한 줄로 */
+function suShipExtra_(sh) {
+  sh.ShipmentRatingOptions = { NegotiatedRatesIndicator: '' };
+  const A = sh.ShipTo && sh.ShipTo.Address, L = A && A.AddressLine;
+  if (L && L.length === 2) {
+    const rua = String(L[0] || ''), comp = String(L[1] || '');
+    if (rua && comp && rua.indexOf(comp) >= 0) A.AddressLine = [rua];
+    else if (rua && comp && (rua + ' ' + comp).length <= 35) A.AddressLine = [rua + ' ' + comp];
+  }
+  return sh;
+}
+/** 라벨 응답에서 공시 요금 · 청구 무게 · 협상 여부 */
+function suShipMeta_(R) {
+  const neg = Number((((R.NegotiatedRateCharges || {}).TotalCharge) || {}).MonetaryValue || 0), list = Number(((R.ShipmentCharges || {}).TotalCharges || {}).MonetaryValue || 0);
+  return { list: list || 0, neg: !!neg, billW: Number((R.BillingWeight || {}).Weight || 0) || 0 };
+}
+function suDoneExtra_(r) { return { list: r.list || 0, neg: !!r.neg, billW: r.billW || 0, fmt: ((r.labels || [])[0] || {}).fmt || 'GIF' }; }
+/** 라벨은 UPS 에 생겼는데 그 뒤가 실패 — 트래킹 · 라벨을 error 에 남김 (r 이 없으면 빈 것) */
+function suOrphan_(r) { return r && r.labels && r.labels.length ? { orphan: true, env: env_(), shipId: r.shipId || '', charge: r.charge || 0, track: r.labels.map(x => x.trk).join(' '), labels: r.labels } : {}; }
+function suVoidOk_(shipId) { try { voidShip_(shipId); } catch (e) { if (/190117|already\s+voided/i.test(String(e && e.message || e))) return; throw e; } }
+/** env 일 — 옛 ups-ambiente (UPS 에 묻지 않음 · 비밀값은 돌려주지 않음) */
+function suEnvJob_() {
+  const P = PropertiesService.getScriptProperties().getProperties();
+  return { st: 'envdone', at: iso_(), err: '', env: env_(), defined: P.UPS_ENV != null && String(P.UPS_ENV).trim() !== '', cred: !!(P.UPS_CLIENT_ID && P.UPS_CLIENT_SECRET && P.UPS_ACCOUNT) };
+}
+/** 오늘 (플로리다) YYYYMMDD — 도착일은 이날 픽업 기준 */
+function suPickupDay_() { return Utilities.formatDate(new Date(), 'America/New_York', 'yyyyMMdd'); }
+/** 요금 + 도착일 — Shoptimeintransit 가 안 되면(앱에 Time in Transit 권한 없음 등) 원래 rates_ */
+function suRates_(q, from) {
+  try {
+    const sh = shipment_(q, from, true);
+    sh.DeliveryTimeInformation = { PackageBillType: '03', Pickup: { Date: suPickupDay_() } };
+    const L = suRatesParse_(upsFetch_('/api/rating/v2403/Shoptimeintransit', 'post', { RateRequest: { Request: { RequestOption: 'Shoptimeintransit' }, Shipment: sh } }));
+    if (L.length) return L;
+  } catch (e) { Logger.log('Shoptimeintransit 안 됨 → Shop: ' + String(e && e.message || e).substring(0, 200)); }
+  return rates_(q, from);
+}
+const suYmd_ = s => /^\d{8}$/.test(String(s || '')) ? String(s).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3') : '';
+/** RateResponse → [{ svc, name, total, list, days, arrive, neg, billW }] 싼 순 · 토요일 도착 줄은 뺌 (순수 함수 — 시험 t260u) */
+function suRatesParse_(j) {
+  const sat = d => { if (!d) return false; const p = d.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() === 6; };
+  return [].concat(((j && j.RateResponse) || {}).RatedShipment || []).map(r => {
+    const code = String((r.Service || {}).Code || ''), list = Number(((r.TotalCharges || {}).MonetaryValue) || 0), neg = Number((((r.NegotiatedRateCharges || {}).TotalCharge) || {}).MonetaryValue || 0);
+    const t = (r.TimeInTransit || {}).ServiceSummary || {}, ea = t.EstimatedArrival || {}, arrive = suYmd_((ea.Arrival || {}).Date);
+    const days = String(ea.BusinessDaysInTransit || ((r.GuaranteedDelivery || {}).BusinessDaysInTransit) || '');
+    return { svc: code, name: SVC_[code] || ('UPS ' + code), total: neg || list, list, days, arrive, neg: !!neg, billW: Number((r.BillingWeight || {}).Weight || 0) || 0, sat: String(t.SaturdayDelivery || '') === '1' || sat(arrive) };
+  }).filter(x => !x.sat).map(x => { delete x.sat; return x; }).sort((a, b) => a.total - b.total);
+}
