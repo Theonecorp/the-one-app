@@ -22,7 +22,7 @@ header .hsearch kbd{font:600 11px/1 ui-monospace,Menlo,monospace;background:#fff
 .netpill{background:var(--green2);color:#166534}.netpill i{background:var(--green)}.netpill.wait:not(.off){background:var(--amber2);color:#92400e}.netpill.wait:not(.off) i{background:var(--amber)}
 #hWho{color:var(--muted);font-weight:600;font-size:12.5px}
 header nav button{color:var(--muted)}header nav button.on{background:#eef2ff;color:var(--navy)}header nav button .i .ic{width:18px;height:18px}
-body.dock .hlogo{display:none}body.dock #hMenu{opacity:1}
+body.dock .hlogo{display:none}body.dock #hMenu{display:none!important}
 /* ---------- 아래 메뉴 (폰) — 아이폰 앱처럼 ---------- */
 nav{background:rgba(255,255,255,.96);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-top:1px solid var(--line)}
 nav button{color:#94a3b8;padding:7px 1px 5px}nav button .i{height:24px;display:flex;align-items:center;justify-content:center;margin-bottom:1px}nav button.on{color:var(--green)}
