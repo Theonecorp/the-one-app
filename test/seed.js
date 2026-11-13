@@ -1,7 +1,8 @@
 /* 모의 데이터 — 화면 확인용 */
-const T = (() => { const d = new Date(); return d.toISOString().substring(0, 10); })();
+const loc = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');   // 앱(today())과 같은 이 기기 날짜 — UTC 로 자르면 저녁 7시(EST) 넘어 시험이 깨짐
+const T = loc(new Date());
 const ymOf = d => d.substring(0, 7);
-const day = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().substring(0, 10); };
+const day = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return loc(d); };
 const rates = { a: 0.15, disc: 0.10, w: 0.10, p: 0.05, ex: 0.05, dp: 0.04, office: 0.035 };
 const ent = (id, sm, acct, store, d, pays, invs, extra) => Object.assign({ id, d, ym: ymOf(d), sm, acct, store, addr: '', pays, invs, total: pays.reduce((a, p) => a + p.amt, 0), invTotal: invs.reduce((a, v) => a + v.amt, 0), mismatch: '', memo: '', repl: false, orig: '', disc: '', sb: false, rc: false, v: false, vn: '', settled: '', void: false, createdBy: 'x', createdAt: d + 'T12:00:00Z' }, extra || {});
 window.__MOCK__ = true;

@@ -13,11 +13,11 @@ import { mergeAppInvoices } from './arapp.js';
 import { bizDaysBetween } from './bizday.js';
 import { $, esc, money, k, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, inputDate, sel, sum, sortBy, groupBy, printOpen, daysBetween, pct, addDays, nz, hasWords, pickDates, bt } from './ui.js';
 import { newId } from './db.js';
-import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup } from './comm.js';
+import { lineOfEntry, linesOfEntry, lineOfOther, computeComm, applyDed, ratesOf, commSettings, SEC_LABEL, RATE_LABELS, setStoreLookup, byInvoice, setInvoiceInfo, invInfoOf, invInfo, invKey } from './comm.js';
 import { settlementHtml } from './sales.js';
 import { searchAccounts } from './accounts.js';
 import { PERIODS, periodRange, addMonths, monthEnd, quickRanges } from './fulfill.js';
-import { invTypes, salesRows, invCount } from './invoicing.js';
+import { invTypes, salesRows, invCount, getInvoice } from './invoicing.js';
 
 let S = null, C = { ents: null, cod: null, at: 0 };
 export function register(state) {
@@ -187,19 +187,44 @@ async function pagePay() {
   const pr = presets(); if (!P.from) { const c = pr.list.find(x => x.k === pr.cur); P.from = c.from; P.to = c.to; }
   const o = overview(rangeFrom(), rangeTo());
   let h = '<div class="card"><h2>🧾 정산 — 확인 후 커미션 확정</h2><div class="chips"><button class="' + (P.all ? 'on' : '') + '" data-pall>📋 미정산 전체</button>' + pr.list.map(x => '<button class="' + (!P.all && P.from === x.from && P.to === x.to ? 'on' : '') + '" data-pp="' + x.from + '|' + x.to + '">' + x.label + '</button>').join('') + '</div>' +
-    '<div class="payhd">' + sel('pSm', [['', '— 세일즈맨 전체 —']].concat(S.sms.filter(s => s.active !== false).map(s => [s.code, s.code])), P.sm) + inputDate('pFrom', P.from) + '<span class="muted">~</span>' + inputDate('pTo', P.to) + '</div>' +
-    '<div class="payopt"><label><input type="checkbox" id="pSb" ' + (P.sbOnly ? 'checked' : '') + '> 담당자 접수 확인(①)된 것만 — 커미션 대상</label><button class="b-ghost b-sm" id="pHist">📁 보관함 (정산 완료)</button><button class="b-ghost b-sm" id="pRates">% 요율표</button></div>' +
+    /* 한 줄: 세일즈맨 · 기간 · 🔍 검색 — 날짜를 바꿔도 바로 안 바뀌고 🔍 검색을 눌러야 그 기간 (v0.8.204 · 2026-11-13 관리자) · 세일즈맨을 고르면 그 사람의 미정산 전체 */
+    '<div class="payhd">' + sel('pSm', [['', '— 세일즈맨 전체 —']].concat(S.sms.filter(s => s.active !== false).map(s => [s.code, s.code])), P.sm) + inputDate('pFrom', P.from) + '<span class="muted">~</span>' + inputDate('pTo', P.to) + '<button type="button" class="b-blue b-sm" id="pGo">🔍 ' + bt('검색', 'Search') + '</button></div>' +
+    '<div class="payopt"><label><input type="checkbox" id="pSb" ' + (P.sbOnly ? 'checked' : '') + '> 담당자 접수 확인(①)된 것만 — 커미션 대상</label>' + (P.sm ? '<button class="b-ghost b-sm" id="pOld" title="옛 시스템(구글 시트)에서 이미 정산한 줄이 계속 다시 올라올 때">📁 ' + bt('옛 정산 정리', 'Close old settlements') + '</button>' : '') + '<button class="b-ghost b-sm" id="pHist">📁 보관함 (정산 완료)</button><button class="b-ghost b-sm" id="pRates">% 요율표</button></div>' +
     (P.all ? '<div class="hint" style="text-align:left">📋 담당자 확인을 거쳐 넘어온 <b>미정산 기록 전부</b>입니다 (기간 상관없음). 확정하면 이 목록에서 빠져 📁 보관함으로 갑니다 — 기간을 좁히려면 위 칩이나 날짜를 고르세요.</div>' : '') + '</div><div id="pOut"></div>';
   $('page').innerHTML = h;
   document.querySelector('[data-pall]').onclick = () => { P.all = true; P.hist = false; pagePay(); };
   document.querySelectorAll('[data-pp]').forEach(b => b.onclick = () => { const [f, t] = b.dataset.pp.split('|'); P.from = f; P.to = t; P.all = false; P.hist = false; pagePay(); });
-  $('pSm').onchange = () => { P.sm = $('pSm').value; P.hist = false; DED = null; DOVER = {}; pagePay(); };
-  $('pFrom').onchange = () => { P.from = $('pFrom').value; P.all = false; pagePay(); }; $('pTo').onchange = () => { P.to = $('pTo').value; P.all = false; pagePay(); };
+  $('pSm').onchange = () => { P.sm = $('pSm').value; P.hist = false; P.all = true; DED = null; DOVER = {}; pagePay(); };
+  $('pGo').onclick = () => { const f = $('pFrom').value, t = $('pTo').value; if (!f || !t || f > t) return toast(bt('기간을 확인하세요', 'Check the dates'), 'bad'); P.from = f; P.to = t; P.all = false; P.hist = false; pagePay(); };
+  if ($('pOld')) $('pOld').onclick = () => closeOld();
   $('pSb').onchange = () => { P.sbOnly = $('pSb').checked; pagePay(); };
   $('pHist').onclick = () => { P.hist = true; P.sm = ''; pagePay(); }; $('pRates').onclick = ratesOpen;
   if (P.hist) return paintHistory();
   if (!P.sm) return paintCards(o);
   paintSm(o);
+}
+/* 📁 옛 정산 정리 (v0.8.204 — 2026-11-13 관리자: "전에 정산했던 것이 계속 반복돼서 나옴 · 금액도 계속 고쳐야 함")
+ *   옛 시스템(구글 시트 커미션)에서 이미 정산했는데 앱에는 미정산으로 남은 줄 — 이 세일즈맨의 "이 날까지" 미정산 수금 · COD · ACH · 카드를 한 번에 정산 끝남으로
+ *   보관함에 한 줄(src: old)로 남고, 줄마다 settled = 그 기록 번호 · 되돌릴 때는 보관함에서 그 기록을 보고 관리자에게 */
+function closeOld() {
+  const sm = P.sm; if (!sm) return;
+  const pick = to => { const e = C.ents.filter(x => smOf(x) === sm && !x.settled && !x.void && !x.repl && x.d <= to), c = C.cod.filter(x => smOf(x) === sm && !x.settled && !x.void && x.d <= to); return { e, c, n: e.length + c.length, amt: R2(sum(e, x => x.total || 0) + sum(c, x => x.amt || 0)) }; };
+  const d0 = P.all ? '' : P.to;
+  openModal('<h2>📁 ' + esc(sm) + ' — ' + bt('옛 정산 정리', 'Close old settlements') + '</h2><div class="muted">' + bt('옛 시스템(구글 시트)에서 이미 커미션을 정산한 마지막 날을 고르세요. 그날까지의 미정산 줄이 모두 "정산 끝남"이 되어 이 목록에 다시 나오지 않습니다.', 'Pick the last day already settled in the old sheet system. Every unsettled line up to that day is closed and stops coming back.') + '</div>' +
+    '<div class="fg" style="margin-top:10px"><label>' + bt('옛 시스템 정산 마지막 날', 'Last day settled in the old system') + '</label>' + inputDate('olTo', d0 || addDays(today(), -14)) + '</div><div id="olSum" class="sumbox" style="margin-top:8px"></div>' +
+    '<div class="btns"><button class="b-ghost" id="olX">' + bt('닫기', 'Close') + '</button><button class="b-blue" id="olGo" style="background:#7c3aed">📁 ' + bt('정산 끝남으로', 'Close them') + '</button></div>');
+  const paint = () => { const r = pick($('olTo').value); $('olSum').innerHTML = '<b>' + r.n + bt('건', ' lines') + ' · ' + money(r.amt) + '</b><div class="muted" style="font-size:12px">' + bt('현장', 'Field') + ' ' + r.e.length + ' · COD · ACH · ' + bt('카드', 'Card') + ' ' + r.c.length + (r.n ? ' · ' + esc(r.e.concat(r.c).map(x => x.d).sort()[0]) + ' ~ ' + esc(r.e.concat(r.c).map(x => x.d).sort().pop()) : '') + '</div>'; $('olGo').disabled = !r.n; };
+  $('olTo').onchange = paint; paint(); $('olX').onclick = closeModal;
+  $('olGo').onclick = async () => { const to = $('olTo').value, r = pick(to); if (!r.n) return;
+    if (!(await confirmBox(sm + ' — ' + to + bt(' 까지 ', ' up to ') + r.n + bt('건 · ', ' lines · ') + money(r.amt) + '\n' + bt('옛 시스템에서 정산한 것으로 표시할까요? 커미션은 다시 계산되지 않습니다.', 'Mark as settled in the old system? No commission is calculated.'), '📁 ' + bt('정산 끝남으로', 'Close them')))) return;
+    busy(true);
+    try { const id = 'OLD-' + sm + '-' + to + '-' + Date.now().toString(36), day = today(), now = new Date().toISOString();
+      const ops = [{ op: 'set', col: 'settlements', id, data: { id, sm, day, from: r.e.concat(r.c).map(x => x.d).sort()[0], to, n: r.n, total: r.amt, pay: 0, finalPay: 0, src: 'old', kind: 'old', note: bt('옛 시스템(구글 시트)에서 정산 — 앱에서 정리', 'Settled in the old sheet system'), createdBy: S.user.email, createdAt: now } }];
+      r.e.forEach(x => ops.push({ op: 'update', col: 'entries', id: x.id, data: { settled: id, settledAt: day } })); r.c.forEach(x => ops.push({ op: 'update', col: 'cod', id: x.id, data: { settled: id, settledAt: day } }));
+      for (let i = 0; i < ops.length; i += 400) await S.DB.batch(ops.slice(i, i + 400));
+      closeModal(); toast('📁 ' + r.n + bt('건 정리', ' closed'), 'good'); dropBossCache(); pagePay();
+    } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
+    busy(false); };
 }
 function paintCards(o) {
   const box = $('pOut');
@@ -223,8 +248,17 @@ function smRows() {
   const why = { early: all.filter(e => e.d < P.from && !e.settled && !carried(e)).length, late: all.filter(e => e.d > P.to && !e.settled).length, closed: all.filter(e => inR(e) && e.settled).length, min: all.length ? all.map(e => e.d).sort()[0] : '', max: all.length ? all.map(e => e.d).sort().pop() : '' };
   return { mine, field, wait, cods, merged, why, codDiag };
 }
+/* 🧾 인보이스 기준 정산 (v0.8.203) — 이 세일즈맨 줄에 적힌 인보이스를 읽어 종류 · 할인 % · 금액을 comm.js 에 등록 → byInvoice 가 배분 · 할인 줄 나눔 */
+const INV_TRIED = new Set();
+async function loadInvInfo(rows) {
+  const nos = new Set(); (rows.mine || []).concat(rows.cods || []).forEach(x => (x.invs || []).forEach(i => { if (i.no && !INV_TRIED.has(invKey(i.no))) nos.add(i.no); }));
+  if (!nos.size) return false;
+  const m = {}; await Promise.all(Array.from(nos).map(async no => { INV_TRIED.add(invKey(no)); let x = null; try { x = await getInvoice(S, no); } catch (e) {} const k = invInfoOf(x); if (k) m[invKey(no)] = k; }));
+  setInvoiceInfo(m); return true;
+}
+const expandInv = Ls => { const cs = commSettings(S.settings); return [].concat(...Ls.map(L => byInvoice(L, cs))); };
 function calc(rows) {
-  const ok = [].concat(...rows.field.filter(e => e.v).map(linesOfEntry)).concat(rows.cods.filter(c => c.v).map(lineOfOther));
+  const ok = expandInv([].concat(...rows.field.filter(e => e.v).map(linesOfEntry)).concat(rows.cods.filter(c => c.v).map(lineOfOther)));
   const c = computeComm(ok, ratesOf(S.smByCode[P.sm]), commSettings(S.settings));
   const sm = S.smByCode[P.sm] || {};
   const dl = (DED && DED.sm === P.sm ? DED.active : []).map(d => { const rem = R2(d.total - (d.used || 0)); const v = DOVER.hasOwnProperty(d.id) ? num(DOVER[d.id]) : Math.min(d.per || rem, rem); return { id: d.id, acct: d.acct, store: d.store, why: d.why, total: d.total, used: d.used || 0, per: d.per, remaining: rem, apply: v, start: d.start, invs: d.invs }; });
@@ -237,26 +271,40 @@ function calc(rows) {
   if (DED && DED.sm === P.sm) c.arWarn = { six: DED.cand.six.map(x => ({ acct: x.acct, store: x.store, amt: x.amt, has: x.has })), four: DED.cand.four.map(x => ({ store: x.store, storeTot: x.storeTot })) };
   return c;
 }
-function rateTag(L, rate) {
+function rateTag(L, rate, all) {
+  if (all && all.length > 1) return all.map(x => rateTag(x, rate)).join('');   // 🧾 한 수금이 A · DISC 로 나뉜 경우 둘 다
   const SC = { REG: 's-a', SPECIAL: 's-ex', DISC: 's-dc', NEWDP: 's-w' }, SK = { REG: 'a', SPECIAL: 'ex', DISC: 'disc', NEWDP: 'w' };
   let out = '<span class="rtag ' + (SC[L.sec] || 's-a') + '">' + (SEC_LABEL[L.sec] || 'A') + ' ' + (Math.round(rate[SK[L.sec] || 'a'] * 1000) / 10) + '%</span>';
   if (L.sec === 'DISC' && L.disc !== '') out += '<span class="rtag s-dc">디스카운트 ' + L.disc + '%</span>';
   if (L.P > 0) out += '<span class="rtag s-p">P ' + (Math.round(rate.p * 1000) / 10) + '%</span>';
+  if (L.W > 0 && L.sec !== 'NEWDP') out += '<span class="rtag s-w">W ' + (Math.round(rate.w * 1000) / 10) + '%</span>';
+  if (L.auto) out += '<span class="rtag" style="background:#e0f2fe;color:#075985" title="받은 돈을 인보이스에 자동으로 나눔 (오래된 인보이스부터)">🧾 자동 배분</span>';
   return out;
 }
 const isSal = sm => !!((S.smByCode[sm] || {}).salaried);
 /* ---- 🧮 정산 대조 (수금 흐름 ⑤) — 담당자가 건넨 기록 vs 시스템 "수금 완료" · 걸리는 것(미도착 · 미발송 · 미확인) 목록 ---- */
-const BLK_LABEL = { miss: ['📭 미도착 신고 체크', '#b91c1c'], transit: ['📦 봉투로 보냈지만 아직 도착 전', '#1e40af'], notsent: ['✉️ 아직 회사로 안 보낸 체크', '#b45309'], codpend: ['💳 확인 안 된 COD · ACH · 카드', '#b45309'], noauth: ['💳 카드 승인번호 없음', '#b91c1c'], repl: ['🔁 대체 체크 수금 (원래 수금이 셈)', '#6d28d9'], bounce: ['↩️ 바운스 — 미해결 (잔액 · 커미션에서 빠짐)', '#b91c1c'] };
+const BLK_LABEL = { miss: ['📭 미도착 신고 체크', '#b91c1c'], transit: ['📦 봉투로 보냈지만 아직 도착 전', '#1e40af'], notsent: ['✉️ 아직 회사로 안 보낸 체크', '#b45309'], codpend: ['💳 확인 안 된 COD · ACH · 카드', '#b45309'], noauth: ['💳 카드 승인번호 없음', '#b91c1c'], repl: ['🔁 대체 체크 수금 (원래 수금이 셈)', '#6d28d9'], bounce: ['↩️ 바운스 — 미해결 (잔액 · 커미션에서 빠짐)', '#b91c1c'], dup: ['👯 같은 수금이 두 번 들어 있음 — 하나를 취소(VOID)하세요', '#b91c1c'], mobdep: ['📱 모바일 디파짓 — 은행 입금 확인 전 (수금 확인에서 ② 수령 · 입금 확인)', '#1e40af'] };
 function blockersOf(rows) {
   const B = [], inR = r => P.all || (r.d >= P.from && r.d <= P.to);
   rows.mine.filter(e => e.envMiss && !e.rc).forEach(e => B.push({ k: 'miss', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
   /* 도착 전 체크는 ① 접수 확인 여부와 상관없이 모두 — 세일즈맨이 적었는데 회사에 아직 없는 돈 */
   const notIn = rows.mine.filter(e => !e.rc && !e.envMiss);
   notIn.filter(e => e.env).forEach(e => B.push({ k: 'transit', d: e.d, store: e.store, amt: e.total, ref: e.env, id: e.id, col: 'entries' }));
-  notIn.filter(e => !e.env).forEach(e => B.push({ k: 'notsent', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(' '), id: e.id, col: 'entries' }));
+  const mobOf = e => (e.pays || []).some(p => p.mob);   /* 📱 모바일 디파짓 — 우편으로 오는 체크가 아니라 은행 입금 확인이 필요 (v0.8.199) */
+  notIn.filter(e => !e.env && mobOf(e)).forEach(e => B.push({ k: 'mobdep', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.mob).map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
+  notIn.filter(e => !e.env && !mobOf(e)).forEach(e => B.push({ k: 'notsent', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).map(p => p.m === 'CHECK' ? '#' + p.ref : p.m).join(' '), id: e.id, col: 'entries' }));
   rows.cods.filter(x => !x.v && !x.vbad).forEach(x => B.push({ k: 'codpend', d: x.d, store: x.store, amt: x.amt, ref: x.method + (x.ref ? ' ' + x.ref : ''), id: x.id, col: 'cod' }));
   rows.cods.filter(x => x.method === 'CREDIT CARD' && !x.ref).forEach(x => B.push({ k: 'noauth', d: x.d, store: x.store, amt: x.amt, ref: '', id: x.id, col: 'cod' }));
   C.ents.filter(e => e.sm === P.sm && e.bounced && inR(e)).forEach(e => B.push({ k: 'bounce', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' ') + (e.settled ? ' · 정산됨' : ''), id: e.id, col: 'entries' }));
+  /* 👯 같은 수금이 두 기록으로 (예: ACH 시트 가져오기 ACH-… + SALES 파일 COD 입력 D… · 2026-11-12: 22쌍 — 한쪽만 정산돼 나머지가 계속 다시 올라오거나 두 번 정산됨) — 가게 · 날짜 · 금액 · 방법이 같으면 (v0.8.199) */
+  const ck = x => [x.acct || '', x.d || '', R2(Number(x.amt) || 0).toFixed(2), String(x.method || '').toUpperCase()].join('|'), cg = groupBy((C.cod || []).filter(x => !x.void), ck);
+  /* 날짜가 며칠 달라도: 다른 기록 길(ACH 시트 ACH-… · SALES 파일 COD 입력 D… · 앱)로 같은 가게 · 같은 금액 · 같은 인보이스가 10일 안이면 같은 수금 (v0.8.203 — SOO MISSHA 10/23 · 10/27 이 한 정산에 두 번) · 같은 길의 할부(같은 금액 매달)는 아님 */
+  const nn = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^([APW]|CM)0+/, '$1'), srcK = x => /^ACH-/.test(x.id) ? 'achsheet' : /^D\d{6}-/.test(x.id) ? 'codtab' : 'app';
+  const ag = groupBy((C.cod || []).filter(x => !x.void), x => (x.acct || '') + '|' + R2(Number(x.amt) || 0).toFixed(2));
+  const near = (x, y) => y.id !== x.id && srcK(y) !== srcK(x) && Math.abs((new Date(x.d) - new Date(y.d)) / 864e5) <= 10 && (y.invs || []).some(i => (x.invs || []).some(j => nn(j.no) && nn(j.no) === nn(i.no)));
+  rows.cods.forEach(x => { const tw = (cg[ck(x)] || []).filter(y => y.id !== x.id).concat((ag[(x.acct || '') + '|' + R2(Number(x.amt) || 0).toFixed(2)] || []).filter(y => near(x, y) && !(cg[ck(x)] || []).includes(y))); if (tw.length) B.push({ k: 'dup', d: x.d, store: x.store, amt: x.amt, ref: x.method + ' · ' + bt('같은 것', 'same as') + ' ' + tw.map(y => y.id + (y.settled ? ' (' + bt('정산됨', 'settled') + ')' : '')).join(', '), id: x.id, col: 'cod' }); });
+  const ek = e => [e.sm || '', e.d || '', e.acct || '', R2(Number(e.total) || 0).toFixed(2), (e.pays || []).map(p => p.m + (p.ref || '')).join('+')].join('|'), eg = groupBy((C.ents || []).filter(e => !e.void && !e.repl), ek);
+  rows.mine.forEach(e => { const tw = (eg[ek(e)] || []).filter(y => y.id !== e.id); if (tw.length) B.push({ k: 'dup', d: e.d, store: e.store, amt: e.total, ref: bt('같은 것', 'same as') + ' ' + tw.map(y => y.id + (y.settled ? ' (' + bt('정산됨', 'settled') + ')' : '')).join(', '), id: e.id, col: 'entries' }); });
   C.ents.filter(e => e.sm === P.sm && e.repl && !e.settled && inR(e)).forEach(e => B.push({ k: 'repl', d: e.d, store: e.store, amt: e.total, ref: (e.pays || []).filter(p => p.m === 'CHECK').map(p => '#' + p.ref).join(' '), id: e.id, col: 'entries' }));
   return B;
 }
@@ -290,6 +338,7 @@ function bindRec(rows) {
 }
 async function paintSm(o) {
   const box = $('pOut'), rows = smRows(), rate = ratesOf(S.smByCode[P.sm]), cs = commSettings(S.settings);
+  if (!paintSm.loading) { paintSm.loading = true; loadInvInfo(rows).then(got => { paintSm.loading = false; if (got && $('pOut')) paintSm(o); }).catch(() => { paintSm.loading = false; }); }
   if (!DED || DED.sm !== P.sm) { DED = null; loadDed(); }
   const c = calc(rows); LAST_C = c;
   const L = rows.merged;
@@ -297,18 +346,31 @@ async function paintSm(o) {
   const states = L.map(r => lineState(r.x)), done = states.filter(s => s === 'ok').length, bad = states.filter(s => s === 'bad').length, pend = L.length - done - bad, tot = sum(L, r => r.k === 'f' ? r.x.total : r.x.amt);
   const byKey = {}; c.bad.forEach(b => { byKey[b.key] = b; });
   /* 줄별 구역 미리 계산 (✓ 안 된 줄도 태그를 보여 주기 위해) */
-  const secOfRow = r => { const Lx = r.k === 'f' ? lineOfEntry(r.x) : lineOfOther(r.x); const cc = computeComm([Lx], rate, cs); const d = cc.lines[0] || Lx; return { L: d, bad: cc.bad[0] }; };
+  const secOfRow = r => { const Lx = r.k === 'f' ? lineOfEntry(r.x) : lineOfOther(r.x); const cc = computeComm(byInvoice(Lx, cs), rate, cs); const d = cc.lines[0] || Lx; return { L: d, all: cc.lines, bad: cc.bad[0] }; };
   /* 🎨 들어온 길을 색으로 — 체크 · CASH · ZELLE(현장) / COD · 카드 · ACH: 줄 왼쪽 띠 + 범례 (정산 확인 때 한눈에 가르기) */
   const srcCls = r => r.k === 'o' ? 'src-' + srcOf(r.x).toLowerCase() : (m => m === 'CASH' ? 'src-cash' : m === 'ZELLE' ? 'src-zelle' : 'src-check')((((r.x.pays || [])[0]) || {}).m);
+  /* 🖥 넓은 화면(데스크탑): 엑셀처럼 — 위에 제목 줄 고정 · 칸 맞춤 (# · ✓ · 계정 · 가게 · 방법 · 체크 # · 받은 날 · 입금일 · 구역 · 금액 · 상태) · 입금일은 색으로 (미래 = 선일자 주황 · 지남 = 초록) (v0.8.201 — 2026-11-12 관리자) */
+  const WIDE = matchMedia('(min-width:900px)').matches, td0 = today();
+  const wideRow = (r, seq, st, info, badLine) => {
+    const x = r.k === 'o' ? r.x : r.x, isO = r.k === 'o', amt = isO ? x.amt : x.total;
+    const how = isO ? '<span class="tag ' + SRC_TAG[srcOf(x)][1] + '">' + esc(x.method) + '</span>' + (x.ref ? ' ' + esc(x.ref) : '') + (x.achId ? ' 🏦' : '') : (x.pays || []).map(p => p.m === 'CHECK' ? 'CHECK #' + esc(p.ref || '') + (p.mob ? ' <span class="mobtag">📱</span>' : '') : esc(p.m)).join(' · ');
+    const deps = isO ? [] : Array.from(new Set((x.pays || []).map(p => p.dep).filter(Boolean)));
+    const depH = deps.length ? deps.map(dd => '<span class="deppill ' + (dd > td0 ? 'fut' : 'ok') + '" title="' + esc(dd > td0 ? bt('선일자 — 아직 입금 전', 'Post-dated') : bt('입금일', 'Deposit date')) + '">' + esc(dd.substring(5)) + '</span>').join(' ') : '<span class="muted">—</span>';
+    const stH = st === 'ok' ? '<b class="ok">✓ ' + bt('확인됨', 'OK') + '</b>' : st === 'bad' ? '<b class="warn">! ' + bt('문제', 'Issue') + '</b>' : isO ? '<small class="muted">' + bt('탭해서 ✓', 'Tap ✓') + '</small>' : (x.sb ? '<small>' + bt('접수 확인', 'Reviewed') + ' ✓</small>' : '<small style="color:#b45309">' + bt('접수 확인 전', 'Not reviewed') + '</small>');
+    const extra = badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (!isO && x.mismatch && !info.bad ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + (!isO && x.rep === false ? '<div class="pw warn">' + bt('리포트 미전송', 'Report not sent') + '</div>' : '');
+    return '<div class="pr tap pl plr ' + st + ' ' + srcCls(r) + '" data-pl="' + (isO ? 'o' : 'f') + '|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><span class="c-acct">' + esc(x.acct || '') + '</span><span class="ct c-store"><b>' + esc(x.store) + '</b>' + carryTag(x) + '</span><span class="c-how">' + how + '</span><span class="c-d">' + esc(md(x.d)) + '</span><span class="c-dep">' + depH + '</span><span class="c-rt">' + rateTag(info.L, rate, info.all) + '</span><b class="c-amt">' + money(amt) + '</b><span class="c-st">' + stH + '</span>' + (extra ? '<div class="c-x">' + extra + '</div>' : '') + '</div>';
+  };
   let html = L.length ? '<div class="srcleg">' + [['src-check', '체크 · Check'], ['src-cash', 'CASH'], ['src-zelle', 'ZELLE'], ['src-cod', 'COD'], ['src-card', '카드 · Card'], ['src-ach', 'ACH']].map(x => '<span class="' + x[0] + '"><i></i>' + x[1] + '</span>').join('') + '</div>' : '', seq = 0;
+  if (WIDE && L.length) html += '<div class="plhd"><span>#</span><span></span><span>' + bt('계정', 'Acct') + '</span><span>' + bt('가게', 'Store') + '</span><span>' + bt('방법 · 체크 #', 'Method · Check #') + '</span><span>' + bt('받은 날', 'Rcvd') + '</span><span>' + bt('입금일', 'Deposit') + '</span><span>' + bt('구역', 'Section') + '</span><span class="r">' + bt('금액', 'Amount') + '</span><span>' + bt('상태', 'Status') + '</span></div>';
   Object.entries(groupBy(L, r => r.x.d)).sort().forEach(([d, G]) => {
     const dayPend = G.filter(r => lineState(r.x) === 'pend').length;
-    html += '<div class="daygrp"><div class="dayhd"><span>' + dlabel(d) + '</span><span>' + G.length + '건 · ' + money(sum(G, r => r.k === 'f' ? r.x.total : r.x.amt)) + (dayPend ? ' <button type="button" class="b-blue b-sm dayall" data-dayall="' + esc(d) + '">✓ ' + bt('이 날 전부', 'All this day') + ' ' + dayPend + '</button>' : ' <span class="ok">✓</span>') + '</span></div>';
+    html += '<div class="daygrp"><div class="dayhd"><span>' + dlabel(d) + '</span><span>' + G.length + '건 · ' + money(sum(G, r => r.k === 'f' ? r.x.total : r.x.amt)) + (dayPend ? ' <button type="button" class="b-blue b-sm dayall" data-dayall="' + esc(d) + '">✓ ' + bt('이 날 전부', 'All this day') + ' ' + dayPend + '</button>' : G.some(r => lineState(r.x) === 'ok') ? ' <span class="ok">✓</span> <button type="button" class="b-ghost b-sm dayall" data-dayoff="' + esc(d) + '" title="' + esc(bt('이 날 ✓ 를 모두 풀기', 'Untick this day')) + '">↺ ' + bt('이 날 해제', 'Untick day') + '</button>' : ' <span class="ok">✓</span>') + '</span></div>';
     G.forEach(r => { seq++; const x = r.x, st = lineState(x), info = secOfRow(r), b = info.bad;
       const badLine = b ? (b.blocked ? '<div class="pw">🔴 인보이스 배분 ' + money(b.alloc) + ' ≠ 받은 돈 ' + money(b.got) + ' — ' + esc(b.why) + ' · <u>이번 정산 제외</u></div>' : b.tol ? '<div class="pw" style="color:#b45309">⚠️ 받은 돈 ' + money(b.got) + ' · 인보이스 ' + money(b.alloc) + ' (차이 ' + (b.diff > 0 ? '+' : '') + money(b.diff) + ') — 허용 범위, 그대로 계산</div>' : '<div class="pw" style="color:#b45309">⚠️ W 금액 오타 (' + money(b.W) + ') → ' + money(b.fixed) + ' 로 계산 — 원본도 고쳐 주세요</div>') : '';
-      if (r.k === 'o') html += '<div class="pr tap pl ' + st + ' ' + srcCls(r) + '" data-pl="o|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · <span class="tag ' + SRC_TAG[srcOf(x)][1] + '">' + esc(x.method) + '</span>' + (x.ref ? ' ' + esc(x.ref) : '') + (x.achId ? ' · 🏦 ACH 인출' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.amt) + '</b><small>' + (st === 'ok' ? '확인됨' : '탭해서 ✓') + '</small></div></div>';
+      if (WIDE) { html += wideRow(r, seq, st, info, badLine); return; }
+      if (r.k === 'o') html += '<div class="pr tap pl ' + st + ' ' + srcCls(r) + '" data-pl="o|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · <span class="tag ' + SRC_TAG[srcOf(x)][1] + '">' + esc(x.method) + '</span>' + (x.ref ? ' ' + esc(x.ref) : '') + (x.achId ? ' · 🏦 ACH 인출' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate, info.all) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.amt) + '</b><small>' + (st === 'ok' ? '확인됨' : '탭해서 ✓') + '</small></div></div>';
       else { const pay = (x.pays || []).map(p => p.m === 'CHECK' ? 'CHECK #' + esc(p.ref || '') : p.m).join(' · '), dep = (x.pays || []).find(p => p.dep && p.dep !== x.d);
-        html += '<div class="pr tap pl ' + st + ' ' + srcCls(r) + '" data-pl="f|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + '</b><small>' + esc(x.acct || '') + ' · ' + pay + (dep ? ' · 입금 ' + esc(dep.dep.substring(5)) : '') + (x.rep ? '' : x.rep === false ? ' · <span class="warn">리포트 미전송</span>' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (x.mismatch && !b ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.total) + '</b>' + (x.sb ? '<small>접수 확인 ✓</small>' : '<small style="color:#b45309">접수 확인 전</small>') + '</div></div>'; }
+        html += '<div class="pr tap pl ' + st + ' ' + srcCls(r) + '" data-pl="f|' + x.id + '"><span class="seq">' + seq + '</span><div class="mk">' + (st === 'ok' ? '✓' : st === 'bad' ? '!' : '') + '</div><div class="ct"><b>' + esc(x.store) + ((x.pays || []).some(p => p.mob) ? ' <span class="mobtag">📱 ' + bt('모바일 디파짓', 'Mobile deposit') + '</span>' : '') + '</b><small>' + esc(x.acct || '') + ' · ' + pay + (dep ? ' · 입금 ' + esc(dep.dep.substring(5)) : '') + (x.rep ? '' : x.rep === false ? ' · <span class="warn">리포트 미전송</span>' : '') + carryTag(x) + '</small><div class="rt">' + rateTag(info.L, rate, info.all) + '</div>' + badLine + (st === 'bad' && x.vn ? '<div class="pw">⚠️ ' + esc(x.vn) + '</div>' : '') + (x.mismatch && !b ? '<div class="pw">' + esc(x.mismatch) + '</div>' : '') + '</div><div class="pa"><b>' + money(x.total) + '</b>' + (x.sb ? '<small>접수 확인 ✓</small>' : '<small style="color:#b45309">접수 확인 전</small>') + '</div></div>'; }
     });
     html += '</div>';
   });
@@ -330,6 +392,7 @@ async function paintSm(o) {
   bindWait(); bindRec(rows); dedPaint();
   box.querySelectorAll('[data-pl]').forEach(el => el.onclick = () => { const [kind, id] = el.dataset.pl.split('|'); tapLine(kind, id); });
   box.querySelectorAll('[data-dayall]').forEach(b => b.onclick = e => { e.stopPropagation(); setAll({ field: rows.field.filter(x => x.d === b.dataset.dayall), cods: rows.cods.filter(x => x.d === b.dataset.dayall) }, true); });
+  box.querySelectorAll('[data-dayoff]').forEach(b => b.onclick = e => { e.stopPropagation(); setAll({ field: rows.field.filter(x => x.d === b.dataset.dayoff), cods: rows.cods.filter(x => x.d === b.dataset.dayoff) }, false); });   /* ↺ 이 날 전부를 한 번 더 → 해제 (v0.8.201) */
   box.querySelectorAll('[data-sid]').forEach(el => el.onclick = async () => { const s = await S.DB.get('settlements', el.dataset.sid); if (s) printOpen(settlementHtml(s)); });
   $('pAll').onclick = () => setAll(rows, true); $('pNone').onclick = () => setAll(rows, false);
   $('pPrint').onclick = () => printOpen(settlementHtml({ sm: P.sm, day: today(), from: stmtRange(c)[0], to: stmtRange(c)[1], comm: stmtComm(c) }));
@@ -452,9 +515,9 @@ async function paintHistory() {
   const list = await loadHist();
   if (!list.length) { box.innerHTML = '<div class="card"><h2>📁 정산 완료</h2><div class="none">아직 확정한 정산이 없습니다.<br><span style="font-size:12px">확정하면 여기에 날짜 · 세일즈맨별로 쌓입니다.</span></div></div>'; return; }
   let cur = '', html = '';
-  list.forEach(s => { if (s.day !== cur) { cur = s.day; html += '<div class="dayhd" style="margin-top:12px"><span>' + esc(cur) + '</span></div>'; } html += '<div class="pr tap" data-sh="' + s.id + '"><div class="mk" style="background:#7c3aed;color:#fff;font-size:13px">🔒</div><div class="ct"><b>' + esc(s.sm) + '</b><small>' + esc(s.from || '') + ' ~ ' + esc(s.to || '') + ' · ' + s.n + '건' + (s.deferred ? ' · ↩ ' + s.deferred : '') + '</small></div><div class="pa"><b>' + money(s.finalPay != null ? s.finalPay : s.pay) + '</b><small>송금액 · 수금 ' + money(s.total) + '</small></div>' + (s.src === 'sheet' ? '<span class="tag t-x" style="margin-left:6px">시트</span>' : '<button class="b-ghost b-sm" data-sx="' + s.id + '">📊</button>') + '</div>'; });
+  list.forEach(s => { if (s.day !== cur) { cur = s.day; html += '<div class="dayhd" style="margin-top:12px"><span>' + esc(cur) + '</span></div>'; } html += '<div class="pr tap" data-sh="' + s.id + '"><div class="mk" style="background:#7c3aed;color:#fff;font-size:13px">🔒</div><div class="ct"><b>' + esc(s.sm) + '</b><small>' + esc(s.from || '') + ' ~ ' + esc(s.to || '') + ' · ' + s.n + '건' + (s.deferred ? ' · ↩ ' + s.deferred : '') + '</small></div><div class="pa"><b>' + money(s.finalPay != null ? s.finalPay : s.pay) + '</b><small>송금액 · 수금 ' + money(s.total) + '</small></div>' + (/^(sheet|old)$/.test(s.src) ? '<span class="tag t-x" style="margin-left:6px">시트</span>' : '<button class="b-ghost b-sm" data-sx="' + s.id + '">📊</button>') + '</div>'; });
   box.innerHTML = '<div class="card"><h2>📁 정산 완료 — 확정된 커미션 지급 목록</h2>' + html + '<div class="hint" style="text-align:center">줄을 누르면 정산서 · 📊 는 엑셀</div></div>';
-  box.querySelectorAll('[data-sh]').forEach(el => el.onclick = e => { if (e.target.dataset.sx) return; const s = list.find(x => x.id === el.dataset.sh); if (s.src === 'sheet') { openModal('<h2>🔒 ' + esc(s.sm) + ' · ' + esc(s.day) + '</h2><div class="muted">이전 수금 시트 · 대시보드에서 확정한 정산입니다. 줄별 정산서는 커미션 파일의 보관 탭 <b>' + esc(s.tab || '') + '</b> 에 있습니다.</div><table style="margin-top:8px"><tr><td>기간</td><td class="r">' + esc((s.from || '?') + ' ~ ' + (s.to || '?')) + '</td></tr><tr><td>정산한 줄</td><td class="r">' + s.n + '건</td></tr><tr><td>수금 합계</td><td class="r">' + money(s.total) + '</td></tr><tr><td>송금액</td><td class="r"><b>' + money(s.finalPay != null ? s.finalPay : s.pay) + '</b></td></tr></table><div class="btns"><button class="b-ghost" id="shX2">닫기</button></div>'); $('shX2').onclick = closeModal; return; } printOpen(settlementHtml(Object.assign({}, s, { conf: { day: s.day, id: s.id } }))); });
+  box.querySelectorAll('[data-sh]').forEach(el => el.onclick = e => { if (e.target.dataset.sx) return; const s = list.find(x => x.id === el.dataset.sh); if (/^(sheet|old)$/.test(s.src)) { openModal('<h2>🔒 ' + esc(s.sm) + ' · ' + esc(s.day) + '</h2><div class="muted">이전 수금 시트 · 대시보드에서 확정한 정산입니다. 줄별 정산서는 커미션 파일의 보관 탭 <b>' + esc(s.tab || '') + '</b> 에 있습니다.</div><table style="margin-top:8px"><tr><td>기간</td><td class="r">' + esc((s.from || '?') + ' ~ ' + (s.to || '?')) + '</td></tr><tr><td>정산한 줄</td><td class="r">' + s.n + '건</td></tr><tr><td>수금 합계</td><td class="r">' + money(s.total) + '</td></tr><tr><td>송금액</td><td class="r"><b>' + money(s.finalPay != null ? s.finalPay : s.pay) + '</b></td></tr></table><div class="btns"><button class="b-ghost" id="shX2">닫기</button></div>'); $('shX2').onclick = closeModal; return; } printOpen(settlementHtml(Object.assign({}, s, { conf: { day: s.day, id: s.id } }))); });
   box.querySelectorAll('[data-sx]').forEach(b => b.onclick = () => { const s = list.find(x => x.id === b.dataset.sx); xlsxSave(Object.assign({ sm: s.sm, day: s.day, from: s.from, to: s.to }, s.comm)); });
 }
 function ratesOpen() {
@@ -606,7 +669,7 @@ async function pageAR() {
   const top = sortBy(stores.filter(s => s.maxPdd > 60), s => s.net, true).slice(0, 40), stale = sortBy(stores.filter(s => !s.lastPaid || daysBetween(s.lastPaid, t) > 60), s => s.net, true).slice(0, 40), moved = sortBy(stores.filter(s => s.moved), s => s.net, true);
   const LB = ['기한 전', '1-30', '31-60', '61-90', '90+'];
   const stack = (b, tot) => tot ? '<div class="stack">' + b.map((v, i) => '<i class="s' + i + '" style="width:' + (v / tot * 100) + '%"></i>').join('') + '</div>' : '';
-  const views = [['sum', '요약'], ['top', '연체 상위 ' + top.length], ['stale', '60일+ 수금 없음 ' + stale.length], ['moved', '담당 바뀜 ' + moved.length], ['old', '수금 없는 가게']];
+  const views = [['sum', '요약'], ['top', '연체 상위 ' + top.length], ['stale', '60일+ 수금 없음 ' + stale.length], ['moved', '담당 바뀜 ' + moved.length], ['old', '수금 없는 가게'], ['chk', '🧮 인보이스 대조']];
   let h = '<div class="card"><h2>💰 미수금 (AR) · 기준일 ' + esc(asOf) + (daysBetween(asOf, t) > 10 ? ' <span class="warn">(' + daysBetween(asOf, t) + '일 전 — 새로 올려 주세요)</span>' : ' (' + daysBetween(asOf, t) + '일 전)') + '</h2>' +
     '<div class="seg"><button class="' + (AV_SM ? '' : 'on') + '" data-avsm="">전체</button>' + smAll.map(s => '<button class="' + (AV_SM === s ? 'on' : '') + '" data-avsm="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>' +
     '<div class="hero">' + money(total) + '</div><div class="heroSub">' + stores.length + '곳 · 90일+ <b class="' + (pct90 >= 30 ? 'warn' : '') + '">' + pct90 + '%</b>' + (stores.filter(s => s.dormant).length ? ' · 💤 1년+ 거래 없음 ' + stores.filter(s => s.dormant).length + '곳' : '') + (all.noSmAmt && !AV_SM ? ' · 담당 없음 ' + money(all.noSmAmt) : '') + '</div>' +
@@ -617,8 +680,10 @@ async function pageAR() {
   else if (AV === 'top') h += '<div class="card"><h2>연체 큰 순 (61일 이상)</h2>' + (top.map(s => storeRow(s, '<span class="agebadge ' + (s.maxPdd > 90 ? 'a4' : 'a3') + '">' + s.maxPdd + '일</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'stale') h += '<div class="card"><h2>잔액은 있는데 60일 넘게 수금 없음</h2>' + (stale.map(s => storeRow(s, '<span class="agebadge a3">' + (s.lastPaid ? daysBetween(s.lastPaid, t) + '일' : '없음') + '</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'moved') h += '<div class="card"><h2>거래처 담당과 실제 수금 담당이 다른 가게</h2><div class="alert a-blu">앱은 최근 1년 실제 수금한 사람을 담당으로 봅니다. 거래처의 담당을 고치면 사라집니다.</div>' + (moved.map(s => storeRow(s)).join('') || '<div class="none">없음</div>') + '</div>';
+  else if (AV === 'chk') h += '<div class="card" id="ckBox"></div>';   /* 🧮 AR 파일 ↔ 옛 시스템 인보이스 대조 (v0.8.209) */
   else h += '<div class="card" id="oldBox"></div>';
   $('page').innerHTML = h;
+  if (AV === 'chk') { const M = await import('./archeck.js'); M.paintArCheck($('ckBox'), { S, file: all, ents: C.ents, cods: C.cod }); }
   document.querySelectorAll('[data-avsm]').forEach(b => b.onclick = () => { AV_SM = b.dataset.avsm; pageAR(); });
   document.querySelectorAll('[data-av]').forEach(b => b.onclick = () => { AV = b.dataset.av; pageAR(); });
   document.querySelectorAll('[data-fs]').forEach(el => el.onclick = () => Router.go('find', encodeURIComponent(el.dataset.fs)));

@@ -14,12 +14,15 @@ import { REQ_KINDS, reqClean, reqText, reqCount, reqLabel, reqNoteClean, reqNeed
 import { searchAccounts, accountLabel, patchAccountCache } from './accounts.js';
 import { loadCatalog, catalog, searchItems, newItems, exactItem, thumb, catStart, treeFor, cleanName, prefixRank } from './catalog.js';
 import { jobOf, can, dockMark, myJobs } from './main.js';
-import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount } from './invoicing.js';
+import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, salesRows, invCount, obWhole, obFix, obDisc } from './invoicing.js';
 import * as Fulfill from './fulfill.js';
 import * as Store from './store.js';
 import * as Notes from './notes.js';
 import { stageAge } from './flow.js';
-import { stockOf } from './stock.js';
+import * as SH from './sorthead.js';
+import { stockOf, stockAll, minOf } from './stock.js';
+import * as Dash from './dash.js';
+import { icon, stageIcon, routeIcon } from './icons.js';
 import * as NewAcct from './newacct.js';
 import * as Notify from './notify.js';
 
@@ -150,7 +153,7 @@ async function pageHome() {
 /* ============================================================
  *  목록
  * ============================================================ */
-let LF = { st: 'sent', sm: '', grp: 'day' };   /* 담당자 목록 기본 = 📅 날짜별 (v0.8.174) */
+let LF = { st: 'sent', sm: '', grp: 'day', osrt: { k: '', desc: false } };   /* osrt: ↕ 머리글 정렬 (v0.8.198) */   /* 담당자 목록 기본 = 📅 날짜별 (v0.8.174) */
 /* 접수(sent) 를 세 칸으로 — 📥 신규(확인 요청 전) · ❓ 확인 대기(세일즈맨 답 기다림) · 👍 확인 완료(배정 대기) */
 const NEWK = { sent: 1, cfw: 1, cfok: 1 };
 const subOf = o => o.cfOk ? 'cfok' : o.cfReq ? 'cfw' : 'sent';
@@ -243,6 +246,7 @@ async function pageOrder(arg) {
   h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' + (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문이 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead(); fillStrip();
+  SH.bindSort($('page'), LF.osrt, () => pageOrder(''));   // ↕ 머리글 정렬 (v0.8.198)
   if ($('dayCfL')) Notify.dayCard($('dayCfL'));
   if ($('oOld')) $('oOld').onclick = () => { LF.old = !LF.old; pageOrder(''); };
   NewAcct.pendingBanner($('naBanL'));
@@ -309,10 +313,10 @@ async function staffHome() {
   const [from, to] = Fulfill.periodRange(LF.hp, LF.hfrom, LF.hto), days = Math.max(1, daysBetween(from, to) + 1);
   const pf = addDays(from, -days), pt = addDays(from, -1);   // 바로 앞 같은 길이 기간 (비교용)
   const plabel = Fulfill.PERIODS.find(p => p[0] === LF.hp), ptxt = LF.hp === 'custom' || !plabel ? md(from) + ' ~ ' + md(to) : plabel[1] + (days > 1 ? ' (' + md(from) + ' ~ ' + md(to) + ')' : ' ' + md(from));
-  const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + icon + '</span><b>' + label + '</b><small id="ht-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
+  const tile = (go, icon, label, sub, cls) => '<button class="htile ' + (cls || '') + '" data-hg="' + go + '"><span class="hi">' + (stageIcon(go, '', 24) || routeIcon(go, icon, 24)) + '</span><b>' + label + '</b><small id="ht-' + go.replace(/[^a-z]/g, '') + '">' + (sub || '') + '</small></button>';
   const MAIN = ['today', 'week', 'month', 'quarter', 'year'];
-  const chips = '<div class="chips" style="margin:0 0 8px">' + Fulfill.PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (LF.hp === c[0] ? 'on' : '') + '" data-hp="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (MAIN.includes(LF.hp) ? '' : 'on') + '" id="hCal">📅 ' + bi('날짜 선택', 'Pick dates') + '</button></div>' +
-    '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="hPrev" title="앞 기간">◀</button><button class="b-ghost b-sm" id="hCalT" style="font-weight:800">📅 ' + esc(ptxt) + '</button><button class="b-ghost b-sm" id="hNext" title="다음 기간">▶</button></div>';
+  const chips = '<div class="chips" style="margin:0 0 8px">' + Fulfill.PERIODS.filter(c => MAIN.includes(c[0])).map(c => '<button class="' + (LF.hp === c[0] ? 'on' : '') + '" data-hp="' + c[0] + '">' + c[1] + ' <span class="en">' + c[2] + '</span></button>').join('') + '<button class="' + (MAIN.includes(LF.hp) ? '' : 'on') + '" id="hCal">' + icon('calendar', 16) + ' ' + bi('날짜 선택', 'Pick dates') + '</button></div>' +
+    '<div class="two" style="margin:0 0 8px;grid-template-columns:auto 1fr auto;align-items:center;gap:6px"><button class="b-ghost b-sm" id="hPrev" title="앞 기간">' + icon('chevLeft', 18) + '</button><button class="b-ghost b-sm" id="hCalT" style="font-weight:800">' + icon('calendar', 16) + ' ' + esc(ptxt) + '</button><button class="b-ghost b-sm" id="hNext" title="다음 기간">' + icon('chevRight', 18) + '</button></div>';
   /* 일 타일 — 기간에 따라 숫자가 바뀜 (들어온 · 인보이스 완료 · 매출), 지금 상태 (픽킹 중 · 백오더) */
   const T = [];
   const W = can('pick') || can('assign') || can('invoice');   // 출고 흐름을 보는 일
@@ -353,11 +357,14 @@ async function staffHome() {
   const OKEY = 'theone.hgrp.' + j; let openG = null; try { openG = JSON.parse(localStorage.getItem(OKEY) || 'null'); } catch (e) {}
   if (!Array.isArray(openG)) openG = [j === 'whmgr' ? 'ship' : j === 'acct' ? 'money' : 'sale'];   /* 창고 매니저는 🚚 배송, 회계는 💵, 그 밖(픽킹 담당 포함)은 🛒 세일 */
   if (openG.includes('recv')) openG = openG.map(g => g === 'recv' ? 'sale' : g);   /* 옛 이름(📥 주문 접수) 기억 → 세일 */
-  let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + g[1] + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">▾</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
+  let grids = GRP.map(g => { const tiles = allT.filter(h => g[4].includes(keyOf(h))); if (!tiles.length) return ''; return '<div class="hgrp' + (openG.includes(g[0]) ? ' open' : '') + '" data-grp="' + g[0] + '"><button class="hgh" data-ghd="' + g[0] + '"><span class="hgi">' + (icon({ sale: 'cart', ship: 'truck', money: 'wallet', look: 'book' }[g[0]], 22) || g[1]) + '</span><span class="hgt"><b>' + bi(g[2], g[3]) + '</b><small id="hg-' + g[0] + '">' + tiles.length + bt('개 화면', ' screens') + '</small></span><span class="hga">' + icon('chevDown', 18) + '</span></button><div class="hgrid">' + tiles.join('') + '</div></div>'; }).join('') +
     allT.filter(h => !GRP.some(g => g[4].includes(keyOf(h)))).join('');
-  $('page').innerHTML = (matchMedia('(min-width:900px)').matches ? '<div class="ohead ohome">' + menuHtml(document.body.classList.contains('oscr'), true) + '</div>' : '') + '<div class="card" style="padding:12px 14px 6px"><h2 style="margin:0 0 8px">' + (j === 'whmgr' ? '🏭 ' + bi('창고', 'Warehouse') : '📦 ' + bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</h2>' + chips + '</div>' +
-    '<div id="naBanH"></div><div id="hOld"></div>' + grids +
-    '<div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div>';
+  /* 🏠 v0.8.203 대시보드 — 머리(제목 · 기간) → 핵심 숫자 · 빠른 작업 · 할 일 · 출고 진행 · 매출 · 최근 주문 · 활동 (dash.js) → 아래에 전부 있던 화면 묶음 그대로 */
+  const dctx = { can, ptxt };
+  $('page').innerHTML = (matchMedia('(min-width:900px)').matches ? '<div class="ohead ohome">' + menuHtml(document.body.classList.contains('oscr'), true) + '</div>' : '') +
+    '<div class="wd-hd" style="margin-bottom:12px"><div><h1>' + bt('대시보드', 'Dashboard') + '</h1><div class="sub">' + (j === 'whmgr' ? bi('창고', 'Warehouse') : bi('주문 처리', 'Order processing')) + ' — ' + esc(ptxt) + '</div></div></div><div class="card" style="padding:10px 12px 4px">' + chips + '</div>' +
+    '<div id="naBanH"></div><div id="hOld"></div>' + Dash.frame(dctx) + grids +
+    '<details class="wd-det"><summary>' + icon('chart', 18) + bt('매출 상세 — 종류 · 세일즈맨별', 'Sales detail — by type · salesman') + '<span class="hga">' + icon('chevDown', 18) + '</span></summary><div class="card" id="hSales"><h2>📈 ' + bi('매출 (인보이스 기준)', 'Sales (invoiced)') + '</h2><div class="load">읽는 중…</div></div></details>';
   document.querySelectorAll('[data-hp]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp; staffHome(); });
   document.querySelectorAll('.ohome [data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') return staffHome(); LF.st = b.dataset.lf; LF.list = true; pageOrder(''); });
   /* ◀ ▶ — 같은 길이만큼 앞뒤로 (달 단위 기간은 달로) */
@@ -376,6 +383,18 @@ async function staffHome() {
     if (k === 'inv') { LF.im = 'acct'; LF.iacct = ''; LF.iq = ''; }
     LF.st = k; LF.list = true; pageOrder('');
   });
+  /* 🏠 대시보드 단추 — 원래 있던 화면 · 목록으로 (새 화면 없음) */
+  const dOpen = k => {
+    if (k === 'recv' || k === 'inb') return Router.go('stock', k);
+    if (k === 'low') return Router.go('stock', 'low');
+    if (k === 'nobar') return Router.go('items', 'nobar');
+    if (k === 'notesups' || k === 'cat' || k === 'displays') return Router.go(k);
+    if (k === 'new') { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); return Router.go('order', 'new'); }
+    if (k === 'shipped' || k === 'all') { LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; }
+    LF.st = k; LF.list = true; pageOrder('');
+  };
+  document.querySelectorAll('[data-wq]').forEach(b => b.onclick = () => dOpen(b.dataset.wq));
+  document.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => dOpen({ in: 'all', pick: 'pick', pack: 'done', ship: 'shipped' }[b.dataset.wk]));
   try {
     const [live, bo, ords, inv, pinv] = await Promise.all([
       S.DB.list('orders', { where: [['st', 'in', LIVE_ST]] }), S.DB.list('backorders', { where: [['st', '==', 'open']] }),
@@ -391,11 +410,19 @@ async function staffHome() {
     put('mine', nm(mine)); NewAcct.pendingBanner($('naBanH'));
     /* ⚠️ 하루 넘게 한 단계에 머문 주문 — 누르면 가장 오래된 주문이 있는 칸을 밀린 것만 */
     const olds = sortBy(live.map(o => ({ o, a: stageAge(o) })).filter(x => x.a && x.a.day), x => x.a.since), ob = $('hOld');
-    if (ob && olds.length) {
+    if (ob && olds.length && !$('wdash')) {   // 대시보드가 있으면 띠 대신 할 일 칸의 첫 줄(#hOldB)
       const CH = { new: 'sent', cfw: 'cfw', cfok: 'cfok', pick: 'pick', picked: 'picked', done: 'done', packed: 'packed', dlv: 'dlv' };
       ob.innerHTML = '<button class="alert a-red oldbar" id="hOldB">⚠️ ' + bt('하루 넘게 밀린 주문', 'Orders waiting 1+ day') + ' <b>' + olds.length + '</b>' + bt('건', '') + ' · ' + bt('가장 오래된 것', 'oldest') + ' ' + esc(olds[0].o.store || '') + ' ⏱ ' + esc(olds[0].a.t) + ' — <u>' + bt('보기', 'view') + '</u></button>';
       $('hOldB').onclick = () => { LF.st = CH[olds[0].a.key] || 'sent'; LF.old = true; LF.list = true; pageOrder(''); };
     }
+    /* 🏠 대시보드 숫자 (dash.js) — 같은 자료로 */
+    Object.assign(dctx, { live, ords, bo, from, to, days, pf, pt, olds: olds.map(x => x.o), oldest: olds.length ? { store: olds[0].o.store || '', t: olds[0].a.t } : null, localDay,
+      alert: k => { if (k === 'old') { const CH = { new: 'sent', cfw: 'cfw', cfok: 'cfok', pick: 'pick', picked: 'picked', done: 'done', packed: 'packed', dlv: 'dlv' }; LF.st = CH[olds[0].a.key] || 'sent'; LF.old = true; LF.list = true; return pageOrder(''); } if (k === 'ups' || k === 'bo') { LF.st = k; LF.list = true; return pageOrder(''); } dOpen(k); },
+      openOrder: id => goOrder(id),
+      lowStock: async () => { const m = await stockAll(false); await loadCatalog(S); const C = catalog(); const low = Object.keys(m).filter(c => { const q = Number(m[c]) || 0, it = C && C.byCode[c]; return it && !it.h && (q <= 0 || q < minOf(c)); }).length; const nobar = C ? (C.items || []).filter(x => !x.b && !x.virt && !x.h).length : 0; return { low, nobar }; },
+      displaysLate: (can('ship') || can('invoice') || can('newOrder')) ? async () => (await S.DB.list('displays', { where: [['st', 'in', ['open', 'prep']]] })).filter(d => d.due && d.due < today()).length : null,
+      recvLog: async () => (await S.DB.list('stockLog', { where: [['kind', '==', 'recv']], order: ['at', 'desc'], limit: 5 })) });
+    Dash.fill(dctx);
     put('flow', bt('작업 중', 'working') + ' ' + pk.length + ' · 👷 ' + new Set(pk.map(o => o.picker).filter(Boolean)).size + bt('명', '') + ' · ' + bt('출고 전 전체', 'open') + ' ' + live.length);
     const nw = wait.filter(o => subOf(o) === 'sent'), cw = wait.filter(o => subOf(o) === 'cfw'), ck2 = wait.filter(o => subOf(o) === 'cfok'), pkd2 = live.filter(o => o.st === 'packed');
     put('sent', nm(sentIn) + (nw.length ? '<br><b style="color:#b91c1c">' + bt('확인할 신규', 'To review') + ' ' + nw.length + '</b>' : '<br>' + bt('대기 없음', 'none waiting')));
@@ -432,6 +459,9 @@ async function staffHome() {
       '<div class="kpi" style="grid-template-columns:1fr 1fr;margin-top:8px">' + Object.keys(byT).sort().map(t => '<div class="tap" data-ivt="' + (t.includes('Jewelry') ? 'J' : 'O') + '"><b>' + money(sum(byT[t], x => x.total || 0)) + '</b><span>' + esc(t) + ' · ' + invCount(byT[t]) + '건</span></div>').join('') + '</div>' + bars +
       (bySm.length ? '<table style="margin-top:8px;font-size:13px"><tr><th>세일즈맨</th><th class="r">건</th><th class="r">매출</th></tr>' + bySm.map(x => '<tr class="tap" data-ivsm="' + esc(x.sm) + '"><td><b>' + esc(x.sm) + '</b><div class="paybar" style="margin-top:3px"><i style="width:' + Math.round(x.amt / mx * 100) + '%;background:#3b82f6"></i></div></td><td class="r">' + x.n + '</td><td class="r"><b>' + money(x.amt) + '</b></td></tr>').join('') + '</table>' : '<div class="none">이 기간에 인보이스가 없습니다</div>') +
       (days > 92 ? '<div class="hint">긴 기간은 인보이스를 많이 읽어 느릴 수 있습니다</div>' : '');
+    { const ser = days > 1 ? (() => { const m = groupBy(iv, x => x.d), out = []; for (let d = from; d <= to && out.length < 400; d = addDays(d, 1)) out.push([md(d), sum(m[d] || [], x => x.total || 0)]); return out; })() : null;
+      Dash.sales(dctx, tot, pv, ser, invCount(iv));
+      if (days <= 1) salesRows(S, addDays(to, -13), to).then(R => { const m = groupBy(R.filter(x => x.st !== 'x'), x => x.d), out = []; for (let d = addDays(to, -13); d <= to; d = addDays(d, 1)) out.push([md(d), sum(m[d] || [], x => x.total || 0)]); Dash.sales(dctx, tot, pv, out, invCount(iv)); }).catch(() => {}); }
     document.querySelectorAll('[data-ivt]').forEach(b => b.onclick = () => { LF.im = 'date'; LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; LF.it = b.dataset.ivt === 'J' ? (types.find(z => z.comm === 'A') || types[0]).c : ''; LF.st = 'inv'; LF.list = true; pageOrder(''); });
     document.querySelectorAll('[data-ivsm]').forEach(b => b.onclick = () => { LF.im = 'date'; LF.ip = LF.hp; LF.ifrom = from; LF.ito = to; LF.sm = b.dataset.ivsm; LF.st = 'inv'; LF.list = true; pageOrder(''); });
   } catch (e) { if ($('hSales')) $('hSales').innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; }
@@ -481,8 +511,10 @@ function bindHead() {
 }
 /** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */
 function dayGroups(rows) {
-  if (!isStaff()) return oTbl(rows.map(o => orderRow(o)).join(''));
-  const ck = (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine');
+  const ck = isStaff() && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine');
+  /* ↕ 머리글(폰은 정렬 칩)을 누르면 묶음 없이 그 칸 순서로 · 세 번째 누르면 원래 묶음 (v0.8.198) */
+  if (LF.osrt.k) { rows.forEach(o => { const a = isStaff() ? stageAge(o) : null; o._since = a ? a.since : (o.sentAt || o.createdAt || ''); }); return oTbl(SH.sortRows(rows, LF.osrt).map(o => orderRow(o, false, '', ck)).join(''), ck, LF.osrt); }
+  if (!isStaff()) return oTbl(rows.map(o => orderRow(o)).join(''), false, LF.osrt);
   if (LF.grp !== 'day' && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'picked' || LF.st === 'mine')) {
     const by = {}; rows.forEach(o => { const k = o.sm || '—'; (by[k] = by[k] || []).push(o); });
     const nc = oCols(ck);
@@ -491,7 +523,7 @@ function dayGroups(rows) {
   const days = {}; rows.forEach(o => { const k = localDay(o.st === 'sent' && o.sentAt ? o.sentAt : o.updatedAt || o.createdAt || o.d); (days[k] = days[k] || []).push(o); });
   const asc = !!NEWK[LF.st] || OPEN_CH.includes(LF.st);   // 안 끝난 칸은 오래된 날짜가 위
   const nc = oCols(ck);
-  return oTbl((asc ? Object.keys(days).sort() : Object.keys(days).sort().reverse()).map(d => { const L = days[d]; return grpRow(nc, '<div class="gline"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>') + L.map(o => orderRow(o, false, '', ck)).join(''); }).join(''), ck);
+  return oTbl((asc ? Object.keys(days).sort() : Object.keys(days).sort().reverse()).map(d => { const L = days[d]; return grpRow(nc, '<div class="gline"><b>' + esc(dayLbl(d)) + '</b><span>' + L.length + '건 · ' + money(L.reduce((a, o) => a + (o.amt || 0), 0)) + '</span></div>') + L.map(o => orderRow(o, false, '', ck)).join(''); }).join(''), ck, LF.osrt);
 }
 const WDK = ['일', '월', '화', '수', '목', '금', '토'];
 function dayLbl(d) { const t = today(); const x = new Date(d + 'T12:00:00'); return (d === t ? '오늘 Today · ' : '') + Number(d.substring(5, 7)) + '/' + Number(d.substring(8, 10)) + ' (' + WDK[x.getDay()] + ')'; }
@@ -500,9 +532,11 @@ export const cfTag = o => (o.cfIssueOpen ? ' <span class="tag t-r" title="' + es
 const oCols = ck => (ck ? 1 : 0) + 7 + (ck && assignMode() ? 1 : 0);
 /** 묶음 머리 — 표에서는 tr.grp, 폰 카드에서는 .cgrp */
 const grpRow = (nc, inner, attr, cls) => narrow() ? cgrp(inner, attr, cls) : '<tr class="grp ' + (cls || '') + '"' + (attr || '') + '><td colspan="' + nc + '">' + inner + '</td></tr>';
-function oTbl(rowsHtml, ck) {
-  if (narrow()) return '<div class="crows otbl">' + rowsHtml + '</div>';
-  return '<div class="dtw"><table class="dt otbl"><thead><tr>' + (ck ? '<th style="width:30px"></th>' : '') + '<th>' + bt('가게', 'Store') + '</th><th style="width:62px">' + bt('날짜', 'Date') + '</th><th style="width:118px">' + bt('번호', 'No.') + '</th><th class="hs" style="width:78px">' + bt('세일즈맨', 'Rep') + '</th><th class="r" style="width:88px">' + bt('금액', 'Amount') + '</th><th class="r hs" style="width:58px">' + bt('줄 · 개', 'Lines · pcs') + '</th><th>' + bt('메모', 'Notes') + '</th>' + (ck && assignMode() ? '<th style="width:40px"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
+/* srt 가 있으면(주문 목록) 머리글을 눌러 정렬 — 가게 · 날짜 · 번호 · 세일즈맨 · 금액 · 줄 · 개 · 메모(⏱ 기다린 시간) · 폰은 정렬 칩 줄 (v0.8.198) */
+function oTbl(rowsHtml, ck, srt) {
+  const T = (k, label, cls, style) => srt ? SH.th(k, label, srt, cls, style) : '<th' + (cls ? ' class="' + cls + '"' : '') + (style ? ' style="' + style + '"' : '') + '>' + label + '</th>';
+  if (narrow()) return (srt ? SH.chipsBar(srt, ['store', 'd', 'ono', 'sm', 'amt', 'wait']) : '') + '<div class="crows otbl">' + rowsHtml + '</div>';
+  return '<div class="dtw"><table class="dt otbl"><thead><tr>' + (ck ? '<th style="width:30px"></th>' : '') + T('store', bt('가게', 'Store')) + T('d', bt('날짜', 'Date'), '', 'width:62px') + T('ono', bt('번호', 'No.'), '', 'width:118px') + T('sm', bt('세일즈맨', 'Rep'), 'hs', 'width:78px') + T('amt', bt('금액', 'Amount'), 'r', 'width:88px') + T('lines', bt('줄 · 개', 'Lines · pcs'), 'r hs', 'width:58px') + T('wait', bt('메모 · ⏱ 대기', 'Notes · ⏱ waiting')) + (ck && assignMode() ? '<th style="width:40px"></th>' : '') + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
 }
 function orderRow(o, local, err, ck, sg) {
   const flags = payTag(o) + (o.kind === 'credit' ? ' <span class="tag crtag">↩ ' + bt('크레딧', 'Credit') + (o.cmNo ? ' ' + esc(o.cmNo) : '') + (o.why ? ' · ' + esc(o.why) : '') + '</span>' : '') + (NewAcct.isTemp(o.acct) ? ' <span class="tag t-b">🆕 ' + bt('신규 거래처', 'New account') + '</span>' : '') + (o.pdn ? ' <span class="tag t-c">가격 ' + o.pdn + '줄</span>' : '') + (o.discChg ? ' <span class="tag t-a">할인 변경</span>' : '') + (isStaff() ? cfTag(o) : (o.cfReq && !o.cfOk ? ' <span class="tag t-c">❓ 확인 요청</span>' : o.cfOk ? ' <span class="tag t-k">✅ 확인함</span>' : ''));
@@ -731,7 +765,7 @@ function askSmFor(a) {
   });
 }
 let WANT_NEW = false;
-function totals() { const by = splitByType(O.lines, O.disc, 'q'); let qty = 0, amt = 0; Object.values(by).forEach(g => { qty += g.qty; amt += g.total; }); return { n: O.lines.filter(l => l.q > 0).length, qty, amt: R2(amt), by }; }
+function totals() { crDisc(); const by = splitByType(O.lines, O.disc, 'q'); let qty = 0, amt = 0; Object.values(by).forEach(g => { qty += g.qty; amt += g.total; }); return { n: O.lines.filter(l => l.q > 0).length, qty, amt: R2(amt), by }; }
 
 function paintEditor() {
   const t = totals();
@@ -924,22 +958,35 @@ export function flexTypes(lines) {
   return lines;
 }
 /* 🏷 타사 제품 리턴 — 우리 코드가 없는 물건은 가격대로 (v0.8.187 관리자: "타 회사 제품은 가격으로 정리 — 1.99 · 2.49 · 2.99 … 9.49 · 9.99 · … 39.99" · "특이사항은 크레딧을 수동으로")
- *   가격 단추를 누를 때마다 그 가격 줄 +1 (코드 OB-1.99 · 종류 OB) · ✍️ 직접 = 설명 · 단가 · 수량. 이 줄들은 가게 할인 · 할인 백을 빼지 않음 (그 가격 그대로) */
+ *   가격 단추를 누를 때마다 그 가격 줄 +1 (코드 OB-1.99 · 종류 OB) · ✍️ 직접 = 설명 · 단가 · 수량
+ *   v0.8.198: 가격 단추 = 물건에 붙은 소매가 → 크레딧은 우리 판매가 (9.99 → 5.00) · 이 줄들도 할인 백(없으면 가게 기본 할인)을 뺌 ($5 · 10% → $4.50) */
 const OB = 'OB';
 export const OB_PRICES = (() => { const a = []; for (let v = 1.99; v < 10; v += 0.5) a.push(Math.round(v * 100) / 100); for (let v = 10.99; v < 40; v += 1) a.push(Math.round(v * 100) / 100); return a; })();
-function obAdd(c, d, p, q) { let l = IDX[c]; if (l) l.q += q; else { l = { c, d, q, p, lp: p, t: OB }; O.lines.push(l); IDX[c] = l; } saveWip(); refreshTotals(); }
+function obAdd(c, d, p, q, rp) { let l = IDX[c]; if (l) l.q += q; else { l = { c, d, q, p, lp: p, t: OB }; if (rp != null) l.rp = rp; O.lines.push(l); IDX[c] = l; } saveWip(); refreshTotals(); }
+/* 💎 바디 주얼리는 소매가 ÷ 2 공식을 안 따름 (2026-11-12 관리자: "실제로는 $2 인데 판매가는 4.99 인 제품이 대부분") → 우리 판매가를 바로 누름
+ *   단추 = 상품 목록의 BODY JEWELRY 판매가들 ($2.00 · $3.00 · $3.50 · $4.00 · $5.00 …) · 소매가가 적힌 상품이 있으면 옆에 (소매 $4.99) */
+function bodyPrices() {
+  const C = catalog(), m = {}; if (C) Object.values(C.byCode).forEach(it => { if (cleanName(it.l1 || '').toUpperCase() !== 'BODY JEWELRY') return; const p = Number(it.p) || 0; if (!(p > 0 && p < 20)) return; const k = p.toFixed(2), r = Number(it.s) || 0; m[k] = m[k] || {}; if (r > 0) m[k][r.toFixed(2)] = (m[k][r.toFixed(2)] || 0) + 1; });
+  const ks = Object.keys(m).length ? Object.keys(m) : ['2.00', '3.00', '3.50', '4.00', '5.00'];
+  return ks.map(Number).sort((a, b) => a - b).map(p => { const r = Object.entries(m[p.toFixed(2)] || {}).sort((a, b) => b[1] - a[1])[0]; return { p, r: r ? Number(r[0]) : (p === 2 ? 4.99 : null) }; });
+}
 function otherSheet() {
+  const BODY = bodyPrices();
   const paint = () => {
+    const bb = $('obBody');
+    if (bb) { bb.innerHTML = BODY.map(x => { const c = 'OBB-' + x.p.toFixed(2), n = IDX[c] ? IDX[c].q : 0; return '<button type="button" class="' + (n ? 'on' : '') + '" data-obb="' + x.p.toFixed(2) + '">$' + x.p.toFixed(2) + (n ? ' <b>×' + n + '</b>' : '') + (x.r ? '<small class="obr">' + bt('소매', 'retail') + ' $' + x.r.toFixed(2) + '</small>' : '') + '</button>'; }).join('');
+      bb.querySelectorAll('[data-obb]').forEach(b => b.onclick = () => { const v = Number(b.dataset.obb); obAdd('OBB-' + v.toFixed(2), 'BODY JEWELRY (OTHER BRAND)', v, 1); paint(); }); }
     const box = $('obGrid'); if (!box) return;
-    box.innerHTML = OB_PRICES.map(v => { const c = 'OB-' + v.toFixed(2), n = IDX[c] ? IDX[c].q : 0; return '<button type="button" class="' + (n ? 'on' : '') + '" data-obp="' + v.toFixed(2) + '">$' + v.toFixed(2) + (n ? ' <b>×' + n + '</b>' : '') + '</button>'; }).join('');
-    box.querySelectorAll('[data-obp]').forEach(b => b.onclick = () => { const v = Number(b.dataset.obp); obAdd('OB-' + v.toFixed(2), bt('타사 제품', 'Other brand') + ' $' + v.toFixed(2), v, 1); paint(); });
+    box.innerHTML = OB_PRICES.map(v => { const c = 'OB-' + v.toFixed(2), n = IDX[c] ? IDX[c].q : 0; return '<button type="button" class="' + (n ? 'on' : '') + '" data-obp="' + v.toFixed(2) + '">$' + v.toFixed(2) + (n ? ' <b>×' + n + '</b>' : '') + '<small>→ ' + money(obWhole(v)) + '</small></button>'; }).join('');
+    box.querySelectorAll('[data-obp]').forEach(b => b.onclick = () => { const v = Number(b.dataset.obp); obAdd('OB-' + v.toFixed(2), 'OTHER BRAND (RETAIL $' + v.toFixed(2) + ')', obWhole(v), 1, v); paint(); });
     const man = O.lines.filter(l => l.t === OB && /^MAN-/.test(l.c));
     $('obMan').innerHTML = man.length ? man.map(l => '<div>✍️ ' + esc(l.d) + ' · ' + l.q + ' × ' + money(l.p) + ' = <b>' + money(R2(l.q * l.p)) + '</b></div>').join('') : '';
     const ob = O.lines.filter(l => l.t === OB && l.q > 0); $('obTot').textContent = ob.length ? ob.reduce((a, l) => a + l.q, 0) + bt('개 · ', ' pcs · ') + '−' + money(R2(ob.reduce((a, l) => a + l.q * l.p, 0))) : '';
   };
-  openModal('<h2>🏷 ' + bi('타사 제품 · 가격으로', 'Other brands · by price') + '</h2><div class="muted">' + bt('우리 코드가 없는 물건은 가격대를 누르세요 — 누를 때마다 1개. 이 줄은 할인 없이 그 가격 그대로 크레딧됩니다. 수량은 ✅ 크레딧 확인에서 고칠 수 있습니다.', 'For goods without our code, tap the price — one per tap. These lines are credited at that price with no discount. Fix quantities in Review.') + '</div>' +
+  openModal('<h2>🏷 ' + bi('타사 제품 · 가격으로', 'Other brands · by price') + '</h2><div class="muted">' + bt('우리 코드가 없는 물건은 붙어 있는 소매가를 누르세요 — 누를 때마다 1개. 크레딧은 우리 판매가(→ 옆 금액, 예: $9.99 → $5.00)에서 할인 백(없으면 가게 기본 할인)을 뺀 금액입니다. 수량은 ✅ 크레딧 확인에서 고칠 수 있습니다.', 'Tap the retail price on the item — one per tap. The credit is our selling price (→, e.g. $9.99 → $5.00) minus the discount back (or the store discount). Fix quantities in Review.') + '</div>' +
     '<div class="obgrid" id="obGrid"></div>' +
-    '<div class="card" style="margin:10px 0 0;padding:10px"><b>✍️ ' + bt('직접 입력 — 특이사항', 'Manual — special cases') + '</b><div class="two" style="margin-top:6px"><input id="obD" placeholder="' + esc(bt('설명 (예: 가발 리턴 · 가격 조정)', 'Description')) + '"><div style="display:flex;gap:6px"><input id="obP" type="number" step="0.01" inputmode="decimal" placeholder="' + esc(bt('단가 $', 'Unit $')) + '" style="flex:1 1 0;min-width:0"><input id="obQ" type="number" inputmode="numeric" value="1" style="flex:0 0 64px;min-width:0"><button type="button" class="b-blue b-sm" id="obAdd" style="flex:0 0 auto;width:auto">＋</button></div></div><div id="obMan" class="muted" style="font-size:12.5px;margin-top:6px"></div></div>' +
+    '<div class="card" style="margin:10px 0 0;padding:10px"><b>💎 ' + bt('바디 주얼리 — 우리 판매가를 바로 누르세요', 'Body jewelry — tap our selling price') + '</b><div class="muted" style="font-size:12px">' + bt('바디 주얼리는 소매가 ÷ 2 가 아닙니다 (예: 소매 $4.99 → 판매가 $2.00)', 'Body jewelry is not retail ÷ 2 (e.g. retail $4.99 → our price $2.00)') + '</div><div class="obgrid" id="obBody" style="max-height:none"></div></div>' +
+    '<div class="card" style="margin:10px 0 0;padding:10px"><b>✍️ ' + bt('직접 입력 — 특이사항', 'Manual — special cases') + '</b><div class="two" style="margin-top:6px"><input id="obD" placeholder="' + esc(bt('설명 (예: 가발 리턴 · 가격 조정)', 'Description')) + '"><div style="display:flex;gap:6px"><input id="obP" type="number" step="0.01" inputmode="decimal" placeholder="' + esc(bt('판매가 $', 'Our price $')) + '" style="flex:1 1 0;min-width:0"><input id="obQ" type="number" inputmode="numeric" value="1" style="flex:0 0 64px;min-width:0"><button type="button" class="b-blue b-sm" id="obAdd" style="flex:0 0 auto;width:auto">＋</button></div></div><div id="obMan" class="muted" style="font-size:12.5px;margin-top:6px"></div></div>' +
     '<div class="btns"><span class="muted" id="obTot" style="align-self:center;flex:1"></span><button class="b-blue" id="obDone">' + bt('닫기', 'Done') + '</button></div>');
   $('obAdd').onclick = () => { const d = $('obD').value.trim(), p = R2($('obP').value), q = Math.max(1, Math.floor(Number($('obQ').value) || 1)); if (!d) return toast(bt('설명을 적으세요', 'Enter a description'), 'bad'); if (!(p > 0)) return toast(bt('단가를 적으세요', 'Enter the unit price'), 'bad'); obAdd('MAN-' + Date.now().toString(36).toUpperCase(), d, p, q); $('obD').value = ''; $('obP').value = ''; $('obQ').value = '1'; paint(); };
   $('obDone').onclick = () => { closeModal(); paintEditor(); };
@@ -949,7 +996,12 @@ function otherSheet() {
 const CR_WHY = [['대미지', 'Damaged'], ['오래된 물건 교환', 'Old stock exchange'], ['잘못 보낸 물건', 'Wrong item shipped'], ['가격 조정', 'Price adjustment'], ['기타', 'Other']];
 const CR_DB = [0, 5, 10, 15, 20, 25, 30];
 /** 🏷 할인 백 — 고르면 모든 종류에 그 % (기본 = 가게 기본 할인). 줄을 새로 담아도 저장 · 확인 때 다시 맞춤 */
-function crDisc() { if (!isCr() || O.dback == null) return; const ty = {}; O.lines.forEach(l => { ty[l.t || DT()] = 1; }); ty[DT()] = 1; Object.keys(O.disc || {}).forEach(k => { ty[k] = 1; }); O.disc = {}; Object.keys(ty).forEach(k => { if (k !== OB) O.disc[k] = O.dback; }); }
+function crDisc() {
+  if (!isCr()) return;
+  O.lines.forEach(obFix);   // 🏷 옛 OB 줄(소매가로 담김) → 판매가 (v0.8.198)
+  if (O.dback == null) { O.disc = Object.assign({}, O.disc || {}); delete O.disc[OB]; const a = obDisc(O, DT()); if (a) O.disc[OB] = a; return; }   // 🏷 OB 줄은 가게 기본 할인(첫 종류)
+  const ty = {}; O.lines.forEach(l => { ty[l.t || DT()] = 1; }); ty[DT()] = 1; Object.keys(O.disc || {}).forEach(k => { ty[k] = 1; }); O.disc = {}; Object.keys(ty).forEach(k => { O.disc[k] = O.dback; });   // 할인 백은 OB 줄까지 모든 줄 (v0.8.198)
+}
 function paintCrMemo() {
   crDisc();
   const t = totals(), acc = O.acct && S.accounts.byCode ? S.accounts.byCode[O.acct] : null, def = accDiscOf(), defT = Object.keys(def).length ? Object.keys(def).map(k => k + ' ' + def[k] + '%').join(' · ') : '0%';

@@ -7,7 +7,7 @@ const path = require('path');
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8875', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
-  const seed = s => { const L = []; const d0 = new Date(); for (let i = 0; i < 30; i++) { const d = new Date(d0.getFullYear(), d0.getMonth() - i, 10); const ds = d.toISOString().substring(0, 10); L.push({ id: 'A-09' + String(1000 + i), no: 'A-09' + String(1000 + i), t: 'A', d: ds, ym: ds.substring(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 100, bal: 0, st: 'paid', src: 'legacy', lines: [] }); } s.invoices = (s.invoices || []).concat(L); };
+  const seed = s => { const L = []; const d0 = new Date(); for (let i = 0; i < 30; i++) { const d = new Date(d0.getFullYear(), d0.getMonth() - i, 10); const ds = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d)); L.push({ id: 'A-09' + String(1000 + i), no: 'A-09' + String(1000 + i), t: 'A', d: ds, ym: ds.substring(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 100, bal: 0, st: 'paid', src: 'legacy', lines: [] }); } s.invoices = (s.invoices || []).concat(L); };
   const pg = await br.newPage({ viewport: { width: 420, height: 900 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   /* 바코드 스크립트는 영영 안 옴 (느린 LTE 흉내) */
   await pg.route('**/jsbarcode/**', () => new Promise(() => {}));

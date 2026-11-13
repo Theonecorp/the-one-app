@@ -24,7 +24,7 @@ const path = require('path'), fs = require('fs'), vm = require('vm');
   log('① first tap:', JSON.stringify(r1)); if (r1.asked !== 1 || r1.toks.join() !== 'brandon@x.com') errs.push('① first tap asks once and registers this device');
   await pg.click('#page', { position: { x: 5, y: 5 } }).catch(() => {}); await pg.waitForTimeout(300);
   if ((await pg.evaluate(() => window.__ASKED__)) !== 1) errs.push('① asks only once');
-  await pg.click('#hMenu'); await pg.waitForSelector('#drawer #mPush'); const lab = (await pg.textContent('#drawer #mPush')).trim(); log('① drawer:', lab); if (!/항상 켜짐/.test(lab)) errs.push('① drawer shows pop-ups always on');
+  await pg.click('#hMenu'); await pg.click('#drawer [data-dgo="settings"]'); await pg.waitForSelector('.stpage #mPush'); const lab = (await pg.textContent('.stpage #mPush')).trim(); log('① drawer:', lab); if (!/항상 켜짐/.test(lab)) errs.push('① drawer shows pop-ups always on');
   await pg.context().close();
   /* ② 막힌 기기 */
   pg = await mk('brandon@x.com', 'denied');
