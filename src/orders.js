@@ -76,7 +76,9 @@ export async function takeSo() { return soNo(await S.DB.seq('so', 'n', 1)); }
 /** 보낸 주문에 번호 붙이기 — 이미 SA 번호면 그대로 · 서버에 이미 붙어 있으면 그 번호 (다시 보내기 · 재시도에 새 번호를 쓰지 않게) · 크레딧은 CM 번호라 제외 */
 export async function soStamp(o) {
   if (!o || isSo(o.no) || o.kind === 'credit') return null;
-  const cur = await S.DB.get('orders', o.id);   // 못 읽으면 번호를 받지 않고 다음에 다시 (실패로 넘김)
+  let cur = null;
+  try { cur = await S.DB.get('orders', o.id); }
+  catch (e) { if (!/permission/i.test(String(e.code || e.message))) throw e; }   // 세일즈맨: 아직 없는 주문은 규칙상 못 읽음 = 새 주문 · 그 밖의 실패(인터넷)는 번호 없이 다음에 다시
   if (cur && isSo(cur.no)) return { no: cur.no, tmpNo: cur.tmpNo || o.no };
   if (cur && cur.st && cur.st !== 'draft') return null;   // 예전에 이미 보낸 주문(옛 O 번호)을 고쳐 저장 — 번호 그대로
   return { no: await takeSo(), tmpNo: o.no };
