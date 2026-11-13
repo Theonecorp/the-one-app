@@ -626,7 +626,7 @@ function ajustar(p) {
   const w = E.abrirModal('<div class="modal-head"><h2>' + esc(t('ajustar')) + '</h2><button class="x" data-act="fechar-modal">' + svg(ICO.x, 17) + '</button></div><div class="modal-body"><div class="sel-prod" style="margin:0 0 14px">' + svg(ICO.prod, 18) + '<div><b>' + esc(p.nome) + '</b><span>' + esc(t('ajuste_saldo_atual')) + ': ' + p.qtd + '</span></div></div><div class="aviso" style="margin:0 0 14px">' + svg(ICO.ajuda, 16) + '<div>' + esc(t('ajuste_perg')) + '</div></div>' +
     '<div class="grid2"><div class="field full"><label>' + esc(t('ajuste_qtd_label')) + '</label><input id="ajQtd" type="number" inputmode="numeric" placeholder="10, -3…"></div><div class="field full"><label>' + esc(t('aj_tipo_label')) + '</label><select id="ajTipo">' + AJ_TIPOS.map(x => '<option value="' + x + '">' + esc(t('aj_tipo_' + x.toLowerCase().replace(/ /g, '_'))) + '</option>').join('') + '</select></div><div class="field full"><label>' + esc(t('ajuste_motivo')) + ' *</label><input id="ajMotivo" autocomplete="off" placeholder="' + esc(t('aj_motivo_ph')) + '"></div></div></div>' +
     '<div class="modal-foot"><button class="btn" data-act="fechar-modal">' + esc(t('cancelar')) + '</button><button class="btn primary" id="ajOk">' + esc(t('ajustar')) + '</button></div>');
-  setTimeout(() => { const x = w.querySelector('#ajQtd'); if (x) x.focus(); }, 40);
+  { const x = w.querySelector('#ajQtd'); if (x) x.focus(); }   // 바로 — 미루면 빨리 치는 글자가 다른 칸으로 감
   w.querySelector('#ajOk').onclick = async () => {
     const d = parseInt(String(w.querySelector('#ajQtd').value).trim(), 10), mot = w.querySelector('#ajMotivo').value.trim(), tipo = w.querySelector('#ajTipo').value || 'Other';
     if (!d) return toast(t('ajuste_inv'), 'bad');
@@ -687,7 +687,7 @@ function modalProduto(e, comQtd) {
     (comQtd ? '<div class="field full"><div class="aviso" style="margin:0">' + svg(ICO.ajuda, 16) + '<div>' + esc(t('pm_receb_aviso')) + '</div></div></div>' : '<div class="field full"><label>' + esc(t('f_envio_tit')) + '</label><div class="hint">' + esc(t('f_envio_hint')) + '</div><div class="p-envio">' + [['pEnvP', 'f_envio_peso', ex.peso], ['pEnvC', 'f_envio_c', ex.comp], ['pEnvL', 'f_envio_l', ex.larg], ['pEnvA', 'f_envio_a', ex.alt]].map(f => '<label class="p-envio-c"><span>' + esc(t(f[1])) + '</span><input id="' + f[0] + '" type="number" inputmode="decimal" step="0.01" min="0" value="' + (f[2] == null ? '' : esc(f[2])) + '"' + dis + '></label>').join('') + '</div></div>') +
     '</div></div><div class="modal-foot"><button class="btn" data-act="fechar-modal">' + esc(t('cancelar')) + '</button><button class="btn primary" id="pSalvar">' + esc(t(e ? 'salvar_alt' : 'criar_produto')) + '</button></div>');
   supBind('pForn'); if (so) { const f = w.querySelector('#pForn'); if (f) { f.disabled = true; f.style.background = '#f4f6f8'; } }
-  setTimeout(() => { const x = w.querySelector(e ? (so ? '#pCorredor' : '#pDesc') : '#pSku'); if (x) x.focus(); }, 40);
+  { const x = w.querySelector(e ? (so ? '#pCorredor' : '#pDesc') : '#pSku'); if (x) x.focus(); }   // 바로 — 40ms 뒤에 옮기면 다른 칸에 치던 글자가 설명 칸으로 감 (CI 실패)
   w.addEventListener('click', ev => {
     if (ev.target.closest('[data-pscan]')) openScanner(code => { const i = $('pBarcode'); if (i) i.value = code; }, { title: t('sc_abrir') });
     if (ev.target.closest('[data-pbar]')) { const i = $('pBarcode'); if (String(i.value || '').trim()) return toast(t('bar_ja_tem'), 'bad'); const C = catalog(); i.value = proxBarcode(C ? C.rows : [], []); toast(t('bar_no_campo', { cod: i.value }), 'good'); }
