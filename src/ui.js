@@ -300,7 +300,33 @@ export function sel(id, opts, v, extra) {
   return '<select id="' + id + '" ' + (extra || '') + '>' + opts.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return '<option value="' + esc(val) + '" ' + (val === v ? 'selected' : '') + '>' + esc(lab) + '</option>'; }).join('') + '</select>';
 }
 /* 👁 인쇄는 늘 진짜 금액 (금액 숨기기 표시를 지움) */
-export function printOpen(html) { $('prtbody').innerHTML = unmark(html); $('prt').classList.add('on'); window.scrollTo(0, 0); guardSync(); }
+/* 🖨 인쇄 창 — 폰(좁은 화면)에서는 종이(Letter 7.7in) 크기 그대로 그린 뒤 화면 폭에 맞게 줄여 보여 줌 (글씨가 겹치거나 칸이 밀리지 않게 · v0.8.223)
+ *   인쇄 · PDF 는 종이 크기 그대로 (줄임 없음). name = 📄 PDF 저장 파일 이름 */
+let PRT_NAME = '';
+export function printFit() {
+  const P = $('prt'); if (!P) return;
+  const W = window.innerWidth, PAGE = 7.7 * 96 + 16, narrowS = W < PAGE + 40;
+  P.classList.toggle('pz', narrowS); P.style.setProperty('--pz', narrowS ? String(Math.max(0.3, Math.round((W - 12) / PAGE * 1000) / 1000)) : '1');
+}
+export function printOpen(html, name) { PRT_NAME = name || ''; $('prtbody').innerHTML = unmark(html); $('prt').classList.add('on'); printFit(); window.scrollTo(0, 0); guardSync(); }
+/** 📄 PDF 저장 — 인쇄 창에 보이는 장(.iv · 인보이스 · 스테이트먼트 등)을 종이 크기 그대로 PDF 파일로 (폰에서도 파일로 받음) */
+export async function printPdf() {
+  const body = $('prtbody'); if (!body) return;
+  const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  if (!window.html2pdf) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('PDF 도구를 불러오지 못했습니다 — 인터넷을 확인하세요')); document.head.appendChild(s); });
+  const a4 = !!body.querySelector('.pa4');
+  const box = document.createElement('div'); box.id = 'prtpdf'; box.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + (a4 ? 7.47 : 7.7) + 'in;background:#fff';
+  box.innerHTML = '<div id="prtbody" style="padding:0;max-width:none;margin:0">' + body.innerHTML + '</div>';
+  box.querySelectorAll('.noprint,style').forEach(x => { if (x.classList && x.classList.contains('noprint')) x.remove(); });
+  box.querySelector('#prtbody').removeAttribute('id'); box.firstChild.className = 'prtpdf';
+  document.body.appendChild(box);
+  const name = (PRT_NAME || ('THE-ONE-' + today())).replace(/[^A-Za-z0-9_.-]+/g, '-') + '.pdf';
+  try {
+    await window.html2pdf().set({ margin: 0.4, filename: name, image: { type: 'jpeg', quality: 0.96 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' },
+      jsPDF: { unit: 'in', format: a4 ? 'a4' : 'letter', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.ivfoot', '.ivterms', '.ivsig'] } }).from(box.firstChild).save();
+  } finally { box.remove(); }
+  return name;
+}
 export function printClose() { $('prt').classList.remove('on'); }
 
 /* 간단 라우터 — 해시 기반 (#/page/sub) */
