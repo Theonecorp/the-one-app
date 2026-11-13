@@ -313,7 +313,7 @@ header h1{font-size:15px;margin:0;font-weight:700}header .hlogo{width:26px;heigh
 header .hr{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:#94a3b8}
 /* \u{1F4F1} \uC881\uC740 \uD3F0(360px \uB4F1) \u2014 \uBA38\uB9AC\uC904\uC774 \uD654\uBA74\uBCF4\uB2E4 \uB113\uC5B4\uC838 \uD398\uC774\uC9C0 \uC804\uCCB4\uAC00 \uAC00\uB85C\uB85C \uB118\uCE58\uBA74(\uC544\uB798 \uBA54\uB274 \xB7 \uCC3D \u2715 \uAC00 \uD654\uBA74 \uBC16\uC73C\uB85C) \uC548 \uB428: \uBA38\uB9AC\uC904 \uCE78\uB4E4\uC774 \uC904\uC5B4\uB4E4\uAC8C */
 html,body{overflow-x:clip;max-width:100%}header{max-width:100vw;box-sizing:border-box;min-width:0}header h1,#hTitle{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hr{min-width:0;flex-shrink:1;gap:6px}#hWho{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34vw}.hr .hb{flex:none}
-@media (max-width:420px){header{gap:6px;padding-left:8px;padding-right:8px}#hTitle{display:none}#hLang{padding:4px 6px;font-size:11px}#hNet{font-size:0}#hNet::first-letter{font-size:12px}#hWho{max-width:30vw;font-size:11px}}
+@media (max-width:420px){header{gap:6px;padding-left:8px;padding-right:8px}header .hb{padding-left:7px;padding-right:7px}header .hr{gap:4px}#hTitle{display:none}#hLang{padding:4px 6px;font-size:11px}#hNet{font-size:0}#hNet::first-letter{font-size:12px}#hWho{max-width:30vw;font-size:11px}}
 header .hb{background:rgba(255,255,255,.12);color:#fff;border:0;font-size:17px;padding:5px 11px;border-radius:9px}
 #hBack{display:none;font-size:22px;line-height:1;padding:2px 12px 5px;margin-right:2px}#hBack.show{display:inline-block}
 .wrap{max-width:880px;margin:0 auto;padding:12px 12px 0}
