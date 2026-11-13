@@ -42,6 +42,7 @@ import * as Estoque from './estoque.js';
 import * as Etiquetas from './etiquetas.js';
 import * as Produtos from './produtos.js';
 import * as Recebidos from './recebidos.js';
+import * as Repor from './repor.js';
 import * as Reports from './reports.js';
 import * as Flow from './flow.js';
 import * as Invlook from './invlook.js';
@@ -224,7 +225,7 @@ const DGRP = [
 /** 데스크탑 고정 서랍을 아이콘만 보이게 접었나 (이 컴퓨터에 기억) */
 const railOn = () => { try { return localStorage.getItem('theone.rail') === '1'; } catch (e) { return false; } };
 const dockPref = () => { try { return localStorage.getItem('theone.dock') !== '0'; } catch (e) { return true; } };
-export const dockWanted = () => !!(S && S.user) && matchMedia(DOCK_MQ).matches && dockPref();
+export const dockWanted = () => !!(S && S.user) && matchMedia(DOCK_MQ).matches;   // 🖥 컴퓨터에서는 늘 고정 (2026-11-13 창고 매니저: ☰ 로 껐다 켰다 하지 않게 — dockPref 는 더 안 씀)
 export function dockDrawer() {
   const want = dockWanted(), d = $('drawer');
   document.body.classList.toggle('rail', want && railOn());
@@ -237,7 +238,7 @@ export function dockMark() { const d = $('drawer'); if (!d || !d.classList.conta
   d.querySelectorAll('[data-dgo]').forEach(b => b.classList.toggle('on', !(sNow && sNow !== 'home') && location.hash.indexOf('#/' + b.dataset.dgo) === 0));
   d.querySelectorAll('[data-dlf]').forEach(b => b.classList.toggle('on', sNow === b.dataset.dlf)); }
 function userMenu() {
-  if (matchMedia(DOCK_MQ).matches) { try { localStorage.setItem('theone.dock', dockPref() ? '0' : '1'); } catch (e) {} dockDrawer(); if (!dockWanted()) drawerRender(false); return; }   // 데스크탑: ☰ = 고정 켜기 · 끄기 (끄면 이번엔 팝업으로 열어 줌)
+  if (matchMedia(DOCK_MQ).matches) { dockDrawer(); return; }   // 🖥 컴퓨터: 서랍은 늘 고정 — ☰ 는 숨김 (theme.js), 눌려도 고정 그대로   // 데스크탑: ☰ = 고정 켜기 · 끄기 (끄면 이번엔 팝업으로 열어 줌)
   drawerRender(false);
 }
 function drawerRender(dock) {
@@ -245,7 +246,7 @@ function drawerRender(dock) {
   const items = navFor(S.role).filter(x => !/^view\//.test(x[0]));
   const row = x => '<button type="button" data-dgo="' + esc(x[0]) + '"' + (location.hash.indexOf('#/' + x[0]) === 0 && !(sNow && sNow !== 'home') ? ' class="on"' : '') + ' title="' + esc(x[2] + (x[3] ? ' · ' + x[3] : '')) + '"><span class="i">' + routeIcon(x[0], x[1]) + '</span><span class="t">' + esc(x[2]) + '<small>' + esc(x[3] || '') + '</small></span></button>';
   /* 🧾 주문 칸 (담당자) — 주문 화면 안에 따로 있던 왼쪽 기둥 메뉴를 이 서랍 하나로 (고정 서랍이면 그 기둥은 숨김) */
-  const stages = S.role === 'manager' && Orders.stageMenu ? Orders.stageMenu() : [], sNow = stages.length ? Orders.stageNow() : '';
+  const stages = S.role !== 'salesman' && Orders.stageMenu ? Orders.stageMenu() : [], sNow = stages.length ? Orders.stageNow() : '';
   const srow = (k, ic, ko, en) => '<button type="button" data-dlf="' + esc(k) + '"' + (sNow === k ? ' class="on"' : '') + ' title="' + esc(ko + ' · ' + en) + '"><span class="i">' + stageIcon(k, ic) + '</span><span class="t">' + esc(ko) + '<small>' + esc(en) + '</small></span></button>';
   const ord = stages.length ? stages.map(([g, cs]) => '<div class="dsec dord"><small><span class="em">' + g[1] + '</span> ' + esc(g[2]) + ' · ' + esc(g[3]) + '</small>' + cs.map(c => srow(c[0], c[1], c[2], c[3])).join('') + '</div>').join('') : '';
   /* 한 화면은 한 번만 (배송 조회가 재고 · 조회 두 묶음에 다 있어도 서랍에는 처음 나온 곳에만) — v0.8.181 */
@@ -520,7 +521,7 @@ async function afterLogin(user) {
   setTimeout(() => { Notify.autoOn(); }, 4000);
   loadWatch();   /* ⏳ 15초 넘게 도는 "읽는 중" → 다시 연결 · 🔄 다시 시도 (v0.8.184) */
   Offline.autoStart();   /* 📦 세일즈맨: 인터넷이 되면 앱을 열 때마다 · 다시 연결될 때 · 돌아올 때 오프라인 자료를 자동 준비 (v0.8.181) */   /* 🔔 알림 항상 켜짐 — 허락됐으면 기기 등록, 아직이면 처음 누를 때 물어봄 (v0.8.179) */   // 📱💻 알림을 허락한 기기면 하루 한 번 등록 확인 (앱을 닫아도 팝업)   // 🔔 확인 요청 · 주문 문제 실시간 알림 (빠른 시작이면 첫 화면 뒤에)
-  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/balcao') === 0 || location.hash.indexOf('#/shiphist') === 0 || location.hash.indexOf('#/insert') === 0 || location.hash.indexOf('#/estoque') === 0 || location.hash.indexOf('#/produtos') === 0 || location.hash.indexOf('#/recebimento') === 0 || location.hash.indexOf('#/etiquetas') === 0 || location.hash.indexOf('#/notesups') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
+  const valid = navFor(S.role).some(x => location.hash.indexOf('#/' + x[0]) === 0) || location.hash.indexOf('#/entry') === 0 || location.hash.indexOf('#/mine') === 0 || location.hash.indexOf('#/hist') === 0 || location.hash.indexOf('#/find') === 0 || location.hash.indexOf('#/items') === 0 || location.hash.indexOf('#/cat') === 0 || location.hash.indexOf('#/track') === 0 || location.hash.indexOf('#/balcao') === 0 || location.hash.indexOf('#/shiphist') === 0 || location.hash.indexOf('#/insert') === 0 || location.hash.indexOf('#/estoque') === 0 || location.hash.indexOf('#/produtos') === 0 || location.hash.indexOf('#/recebimento') === 0 || location.hash.indexOf('#/repor') === 0 || location.hash.indexOf('#/recheca') === 0 || location.hash.indexOf('#/etiquetas') === 0 || location.hash.indexOf('#/notesups') === 0 || location.hash.indexOf('#/stores') === 0 || location.hash.indexOf('#/reports') === 0 || location.hash.indexOf('#/arup') === 0;
   if (!valid) goHash('#/' + navFor(S.role)[0][0]);
   Router.stack = [];
   if (!ROUTER_ON) { ROUTER_ON = true; Router.start(); } else Router.start();
@@ -572,7 +573,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  BizDay.register(S); Inbound.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); NotesUps.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page); Estoque.register(S); Etiquetas.register(S); Produtos.register(S); Recebidos.register(S);
+  BizDay.register(S); Inbound.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); NotesUps.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page); Estoque.register(S); Etiquetas.register(S); Produtos.register(S); Recebidos.register(S); Repor.register(S);
   Router.on('settings', settingsPage);
   Router.on('', () => {});
   AUTH.onChange(u => {
