@@ -7,6 +7,7 @@
 import { $, esc, Router, bi, bt } from './ui.js';
 import { can, isOwner } from './main.js';
 import { routeIcon } from './icons.js';
+import { canPlan } from './plan.js';   // 🧮 발주 계획 (projeto estoque 의 Planejamento de Compras)
 
 let S = null;
 export function register(state) { S = state; Router.on('hub', page); }
@@ -39,7 +40,8 @@ export const HUBS = {
     ['balcao', '🏪', 'Shipping UPS', 'Shipping UPS', '가게 → 박스 → 라벨 (옛 앱 화면)', 'store → boxes → label (classic screen)', () => can('ship')],
     ['insert', '➕', '인서트 만들기', 'Create insert', '틀 · 훅 · 대체품 → 라벨 3가지 (옛 앱 화면)', 'template · hooks · substitutes → 3 labels (classic screen)', () => can('items')],
     ['inserts', '🧩', '완성된 인서트', 'Ready inserts', '바코드 · 구성 · 재고 있음 / 판매됨', 'barcode · composition · available / sold', () => can('items')],
-    ['displays', '🖼', 'Notes Display', 'Notes Display', 'Empty Display 요청 · 준비 · UPS 박스', 'empty displays · prepare · UPS boxes', () => can('ship') || can('invoice') || can('newOrder')]
+    ['displays', '🖼', 'Notes Display', 'Notes Display', 'Empty Display 요청 · 준비 · UPS 박스', 'empty displays · prepare · UPS boxes', () => can('ship') || can('invoice') || can('newOrder')],
+    ['plan', '🧮', '발주 계획', 'Purchase planning', '살 것 제안 · 공장별 발주서', 'what to buy · POs by supplier', () => canPlan()]
   ] },
   /* 🧑‍💼 세일즈맨 (v0.8.135) */
   smoney: { icon: '💵', ko: '수금', en: 'Collections', items: [
@@ -62,7 +64,8 @@ export const HUBS = {
     ['pay', '🧾', '세일즈맨 정산', 'Salesman settlement', '커미션 · 정산서 · 엑셀', 'commission · statements · Excel', () => isOwner()],   /* 🔒 관리자 · 오너만 (v0.8.218) */
     ['bossar', '💰', '미수금 현황', 'Receivables', '세일즈맨별 · 에이징 · 오래된 미수', 'by salesman · aging · overdue', () => true],
     ['now', '💵', '수금 현황', 'Collections status', '오늘 · 이번 주 · 세일즈맨별', 'today · this week · by salesman', () => true],
-    ['reports', '📊', '판매 리포트', 'Sales reports', '아이템별 · 손님별 · 세일즈맨별 · CSV', 'by item · customer · salesman · CSV', () => true]
+    ['reports', '📊', '판매 리포트', 'Sales reports', '아이템별 · 손님별 · 세일즈맨별 · CSV', 'by item · customer · salesman · CSV', () => true],
+    ['plan', '🧮', '발주 계획', 'Purchase planning', '살 것 제안 · 공장별 발주서', 'what to buy · POs by supplier', () => canPlan()]
   ] }
 };
 /** 칸의 숫자 (열린 요청 수) — 개수만 읽음 */
