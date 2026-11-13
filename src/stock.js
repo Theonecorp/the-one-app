@@ -7,7 +7,7 @@
  *    · 자동: 인보이스 발행 → 그 수량만큼 빠짐(세트는 구성품으로) · VOID → 되돌아옴
  *  stock/{code}    = { code, qty, at, by, min }                              ← 지금 재고 · min = 이 아이템의 부족 기준(없으면 설정 stockMin, 기본 12)
  *    · ⚠️ 부족 알림: 움직임으로 재고가 기준 아래로 내려가는 순간 사무실 · 관리자에게 💬 메시지(+ 이메일 · 챗) 한 번 — 다시 기준 위로 올라갔다 내려오면 또
- *  stockLog/{id}   = { code, d, delta, after, kind: recv|adj|count|inv|void, ref, note, by, at }
+ *  stockLog/{id}   = { code, d, delta, before, after, kind: recv|adj|count|inv|void|out|est, ref, note, by, at, etq?(라벨 코드), origem?, estorna?, estornadoPor? }  ← out · est 와 etq 는 📦 재고(estoque.js) 의 상자 단위 움직임
  *  receipts/{id}   = { id, d, from, fromCode, file, n, qty, lines:[{c, q, d}], note, by, at }   ← 입고 한 건 · fromCode = 경영의 공장 코드 (China 1 ↔ 공장 이름)
  * ============================================================ */
 import { $, esc, money, toast, busy, openModal, closeModal, confirmBox, Router, debounce, bi, bt, today, md, sortBy, itabs, pageHead } from './ui.js';
@@ -98,6 +98,43 @@ export async function applyMoves(moves, kind, ref, note) {
   if (lows.length) await alertLow(lows, false);
   return ops.length / 2;
 }
+/** 📦 상자(라벨) 단위 움직임 — 옛 앱 estoque_aplicar 와 같은 규칙. applyMoves 와 같은 stock · stockLog 모양에 etq(라벨 코드) · origem 을 더함
+ *  moves: [{ c, delta, etq?, note? }] — 합치지 않고 한 줄씩 (상자마다 기록이 따로 남음). 같은 코드는 before → after 가 이어짐
+ *  opt.partial: true = 창고(통로)에서 — 재고가 모자라면 있는 만큼만 빼고 parcial 로 알림 · false = 책상에서 — 모자라면 아무것도 쓰지 않고 거절
+ *  opt.extra: 같은 batch 에 함께 쓸 문서(라벨 · 라벨 기록) · opt.vazia: 입고면 빈 박스 표시를 지움 · opt.log: 모든 기록 줄에 더할 칸 */
+export async function moveStock(moves, kind, ref, note, opt) {
+  opt = opt || {};
+  const L = moves.map(m => ({ c: String(m.c || '').toUpperCase(), delta: Math.trunc(Number(m.delta) || 0), etq: m.etq || '', note: m.note || '', log: m.log || null })).filter(m => m.c && m.delta);
+  const codes = Array.from(new Set(L.map(m => m.c)));
+  const cur = {};
+  for (const c of codes) { let d = null; try { d = await S.DB.get('stock', c); } catch (e) {} STOCK[c] = d; cur[c] = d ? Number(d.qty) || 0 : 0; }   // 늘 새로 읽음 (화면에 보관한 값이 아니라)
+  const now = new Date().toISOString(), day = today(), ops = [], lows = [], rows = [], start = Object.assign({}, cur);
+  let partial = false, pedido = 0, aplicado = 0;
+  for (const m of L) {
+    const before = cur[m.c]; let delta = m.delta;
+    if (before + delta < 0) {
+      if (!opt.partial) { const e = new Error(L3x(m.c, before, -delta)); e.code = 'saldo'; e.saldo = before; throw e; }
+      delta = -before; partial = true;
+    }
+    pedido += Math.abs(m.delta); aplicado += Math.abs(delta);
+    const after = before + delta; cur[m.c] = after;
+    const id = newId('L');
+    const row = Object.assign({ code: m.c, d: day, delta, before, after, kind, ref: ref || '', note: (note || '') + (m.note ? (note ? ' · ' : '') + m.note : ''), by: S.user.email, byName: who(), at: now }, m.etq ? { etq: m.etq } : {}, opt.origem ? { origem: opt.origem } : {}, delta !== m.delta ? { pedido: m.delta } : {}, opt.log || {}, m.log || {});
+    rows.push(Object.assign({ id }, row));
+    if (delta) ops.push({ op: 'set', col: 'stockLog', id, data: row });
+  }
+  codes.forEach(c => {
+    const data = { code: c, qty: cur[c], at: now, by: S.user.email }; if (opt.vazia) data.vazia = false;
+    ops.unshift({ op: 'merge', col: 'stock', id: c, data });
+    STOCK[c] = Object.assign({}, STOCK[c] || {}, data); if (ALL) ALL[c] = cur[c];
+    const mn = minOf(c); if (cur[c] < mn && start[c] >= mn) lows.push({ c, qty: cur[c], min: mn });
+  });
+  (opt.extra || []).forEach(o => ops.push(o));
+  if (ops.length) await S.DB.batch(ops);
+  if (lows.length) await alertLow(lows, false);
+  return { saldo: cur, rows, partial, pedido, aplicado };
+}
+const L3x = (c, tem, tira) => bt(c + ' 재고 ' + tem + ' — ' + tira + ' 를 뺄 수 없습니다', c + ' has ' + tem + ' in stock — cannot take ' + tira);
 /** 인보이스 줄 → 재고 움직임 (세트는 구성품으로, pq 가 있으면 픽킹 수량) */
 export function movesOfLines(lines, sign) {
   const out = [];
@@ -248,7 +285,7 @@ export async function itemSheet(code, done) {
   openModal('<div class="load">…</div>');
   const st = await stockOf([code]); let log = [];
   try { log = sortBy(await S.DB.list('stockLog', { where: [['code', '==', code]] }), x => x.at || '', true).slice(0, 30); } catch (e) {}
-  const K = { recv: '📥 ' + bt('입고', 'Received'), adj: '✏️ ' + bt('조정', 'Adjust'), count: '🔢 ' + bt('실사', 'Count'), inv: '🧾 ' + bt('인보이스', 'Invoice'), void: '↩️ VOID' };
+  const K = { recv: '📥 ' + bt('입고', 'Received'), adj: '✏️ ' + bt('조정', 'Adjust'), count: '🔢 ' + bt('실사', 'Count'), inv: '🧾 ' + bt('인보이스', 'Invoice'), void: '↩️ VOID', out: '📤 ' + bt('출고', 'Stock out'), est: '↩ ' + bt('되돌림', 'Reversal'), etq: '🏷 ' + bt('라벨', 'Label') };
   $('mbox').innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><div><h2 style="margin:0">' + esc(it.c) + '</h2><div class="muted">' + esc(it.d || '') + (locOf(it) ? ' · 📍 ' + esc(locOf(it)) : '') + (it.p ? ' · ' + money(it.p) : '') + '</div></div><button class="b-ghost b-sm xin" id="skX">✕</button></div>' +
     '<div class="kpi" style="margin-top:10px"><div><b' + (st[code] <= 0 ? ' class="warn"' : '') + '>' + st[code].toLocaleString() + '</b><span>' + bt('지금 재고', 'On hand') + '</span></div><div><b>' + (STOCK[code] && STOCK[code].at ? esc(md(STOCK[code].at.substring(0, 10))) : '—') + '</b><span>' + bt('마지막 변동', 'Last change') + '</span></div></div>' +
     '<div class="two" style="margin-top:10px"><div class="fg"><label>🔢 ' + bt('실사 — 세어 본 수량', 'Count — qty on shelf') + '</label><input type="number" inputmode="numeric" id="skCnt" placeholder="' + st[code] + '"></div><div class="fg"><label>± ' + bt('조정 (예: -3 · 12)', 'Adjust (e.g. -3 · 12)') + '</label><input type="number" inputmode="numeric" id="skAdj" placeholder="0"></div></div>' +
@@ -337,7 +374,7 @@ async function paintLog() {
   let R = [], L = [];
   try { R = sortBy(await S.DB.list('receipts', { order: ['at', 'desc'], limit: 50 }), x => x.at || '', true); } catch (e) { try { R = sortBy(await S.DB.list('receipts'), x => x.at || '', true).slice(0, 50); } catch (x) {} }
   try { L = sortBy(await S.DB.list('stockLog', { order: ['at', 'desc'], limit: 150 }), x => x.at || '', true); } catch (e) { try { L = sortBy(await S.DB.list('stockLog'), x => x.at || '', true).slice(0, 150); } catch (x) {} }
-  const K = { recv: '📥', adj: '✏️', count: '🔢', inv: '🧾', void: '↩️' };
+  const K = { recv: '📥', adj: '✏️', count: '🔢', inv: '🧾', void: '↩️', out: '📤', est: '↩', etq: '🏷' };
   box.innerHTML = '<div class="card"><h2 style="font-size:15px">📥 ' + bi('입고 기록', 'Receipts') + ' ' + R.length + '</h2>' + (R.length ? R.map(r => '<div class="pr tap" data-rcp="' + esc(r.id) + '"><div class="ct"><b>' + esc(md(r.d)) + ' · ' + esc(r.fromCode ? supLabel(r.fromCode) : (r.from || bt('입고', 'Receipt'))) + '</b><small>' + (r.file ? '📎 ' + esc(r.file) + ' · ' : '') + esc(r.byName || '') + (r.note ? ' · ' + esc(r.note) : '') + '</small></div><div class="pa"><b>' + Number(r.qty || 0).toLocaleString() + '</b><small>' + r.n + bt('줄', ' lines') + '</small></div></div>').join('') : '<div class="none">' + bt('입고 기록 없음', 'No receipts yet') + '</div>') + '</div>' +
     '<div class="card"><h2 style="font-size:15px">📋 ' + bi('최근 움직임', 'Recent moves') + '</h2>' + (L.length ? '<table><tr><th>' + bt('날짜', 'Date') + '</th><th>' + bt('코드', 'Code') + '</th><th class="r">±</th><th class="r">' + bt('재고', 'After') + '</th><th>' + bt('메모', 'Note') + '</th></tr>' + L.map(x => '<tr class="tap" data-sti="' + esc(x.code) + '"><td>' + esc(md(x.d)) + '</td><td><b>' + esc(x.code) + '</b></td><td class="r"><b' + (x.delta < 0 ? ' class="warn"' : '') + '>' + (K[x.kind] || '') + ' ' + (x.delta > 0 ? '+' : '') + x.delta + '</b></td><td class="r">' + x.after + '</td><td class="muted" style="font-size:11px">' + esc(x.ref || '') + (x.note ? ' · ' + esc(x.note) : '') + (x.byName ? ' · ' + esc(x.byName) : '') + '</td></tr>').join('') + '</table>' : '<div class="none">' + bt('움직임 없음', 'No moves yet') + '</div>') + '</div>';
   box.querySelectorAll('[data-sti]').forEach(el => el.onclick = () => itemSheet(el.dataset.sti, paintLog));
