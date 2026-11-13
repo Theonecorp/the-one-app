@@ -29,6 +29,9 @@ export const HUBS = {
   wh: { icon: '📦', ko: '재고', en: 'Inventory', items: [
     ['stock', '📦', '재고', 'Inventory', '조회 · 입고(팩킹 리스트) · 실사', 'find · receive · count', () => can('items')],
     ['items', '🏷', '아이템 · 위치', 'Items · Locations', '찾기 · 📍 통로 · 등록 · 📋 일괄 등록 · 삭제', 'find · aisle · add · bulk paste · delete', () => can('items')],
+    ['estoque', '📦', '재고 (옛 앱 화면)', 'Inventory (classic)', '통로 지도 · 입고 · 출고 · 상자 라벨 (옛 앱 화면)', 'aisle map · stock in · stock out · box labels (classic screen)', () => can('items')],
+    ['etiquetas', '🏷', '라벨 출력', 'Print labels', '상품의 상자 · 합치기 · 나누기 · 재고 / 피킹 라벨', 'product boxes · merge · divide · stock / picking labels', () => can('items')],
+    ['produtos', '🏷', '상품', 'Products', '상품 목록 · 걸러보기 · 등록 · 수정 · 빈 상자 · 확인 요청 (옛 앱 화면)', 'product list · filters · add · edit · empty box · recheck (classic screen)', () => can('items')],
     ['shiphist', '📦', 'Shipping History', 'Shipping History', 'UPS 출고 기록 · 다시 인쇄 · 취소', 'UPS shipments · reprint · void', () => can('ship') || can('track')],
     ['notesups', '🏷', 'Notes UPS', 'Notes UPS', '박스를 재서 라벨 · 가게별 대기 줄', 'Measure and label boxes · queue per store', () => can('ship')],
     ['balcao', '🏪', 'Shipping UPS', 'Shipping UPS', '가게 → 박스 → 라벨 (옛 앱 화면)', 'store → boxes → label (classic screen)', () => can('ship')],
