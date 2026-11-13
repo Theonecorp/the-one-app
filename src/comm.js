@@ -100,7 +100,12 @@ export function byInvoice(L0, cs) {
   if (!list.length) return [L];
   const got = R2(L.e + L.f), typedSum = R2(list.reduce((a, x) => a + (x.typed || 0), 0)), blank = list.some(x => !x.typed && x.t !== 'CM');
   let auto = false;
-  if (!(Math.abs(typedSum - got) <= 0.01 && !blank)) {
+  /* 자동 배분은 ① 금액 빈칸 ② 일부만 받음(받은 돈 < 적힌 합) 일 때만 — 허용 차이($2 이하)는 적힌 대로(⚠️ 표시만) · 더 받은 것은 예전처럼 금액 오류 (t095) */
+  const TOL = cs && cs.TOL != null ? Number(cs.TOL) : 2;
+  if (!blank && Math.abs(typedSum - got) <= TOL + 0.005) list.forEach(x => { x.amt = x.typed; });
+  else if (!blank && got > typedSum) return [L];
+  else if (list.every(x => x.known && x.t !== 'CM') && got > R2(list.reduce((a, x) => a + (x.cap || 0), 0)) + TOL + 0.005) return [L];
+  else {
     /* 자동 배분: 크레딧(CM · 마이너스)은 적힌 대로 · 나머지는 오래된 인보이스부터 인보이스 금액(모르면 적힌 금액)만큼 · 남으면 마지막에 */
     if (!list.some(x => x.known || x.typed)) return [L];
     if (!list.some(x => x.known) && new Set(list.filter(x => x.t !== 'CM').map(x => x.t)).size > 1) return [L];   // 인보이스를 모르는데 종류가 섞이면 나눌 수 없음 → 예전처럼 💡 금액 고치기
@@ -109,7 +114,7 @@ export function byInvoice(L0, cs) {
     const pos = list.filter(x => !(x.t === 'CM' || x.typed < 0)).sort((a, b) => String(a.d || '9').localeCompare(String(b.d || '9')));
     pos.forEach((x, i) => { const cap = x.cap != null && x.cap > 0 ? x.cap : (x.typed > 0 ? x.typed : Infinity); const take = i === pos.length - 1 ? pool : Math.min(pool, cap); x.amt = R2(Math.max(0, take)); pool = R2(pool - x.amt); });
     if (pos.length && pool > 0.005) { pos[pos.length - 1].amt = R2(pos[pos.length - 1].amt + pool); pool = 0; }
-  } else list.forEach(x => { x.amt = x.typed; });
+  }
   const lim = Number(cs && cs.DISC_LIMIT != null ? cs.DISC_LIMIT : 0.2), limP = lim <= 1 ? lim * 100 : lim;
   const pctOf = x => x.pct != null ? x.pct : (L.disc === '' || L.disc == null ? 0 : Number(L.disc) < 1 && Number(L.disc) > 0 ? Number(L.disc) * 100 : Number(L.disc));
   const over = list.filter(x => x.t === 'A' && pctOf(x) > limP + 1e-9), rest = list.filter(x => !over.includes(x));
