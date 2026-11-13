@@ -210,7 +210,7 @@ const DOCK_MQ = '(min-width:1200px)';
 const DGRP = [
   ['ov', 'dashboard', '개요', 'Overview', ['shome', 'own', 'home', 'catmg', 'flow', 'mg/sales', 'mg', 'reports', 'mysales']],
   ['ops', 'truck', '운영', 'Operations', ['order', 'invs', 'notesups', 'balcao', 'shiphist', 'track', 'displays']],
-  ['inv', 'warehouse', '재고 관리', 'Inventory', ['stock', 'estoque', 'etiquetas', 'produtos', 'recebimento', 'items', 'cat', 'labels', 'photos', 'insert', 'inserts']],
+  ['inv', 'warehouse', '재고 관리', 'Inventory', ['stock', 'estoque', 'etiquetas', 'produtos', 'recebimento', 'repor', 'recheca', 'items', 'cat', 'labels', 'photos', 'insert', 'inserts']],
   ['fin', 'wallet', '수금 · 재무', 'Finance', ['verify', 'now', 'cod', 'ach', 'bounce', 'credit', 'entry', 'mine', 'send', 'hist', 'ar', 'bossar', 'pay']],
   ['mgmt', 'settings', '거래처 · 관리', 'Management', ['stores', 'admin']]
 ];

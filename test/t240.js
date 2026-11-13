@@ -1,4 +1,4 @@
-/* v0.8.212 시험 — 🔁 보충이 필요한 상품(#/repor) · 🔎 재확인할 상품(#/recheca): 옛 WMS 의 Produtos para repor · Produtos para conferir — 요청 목록 · 맡기(한 사람만) · 놓기 · 취소 · 출고/입고가 요청을 닫음 · 요청 만들기 · 세어서 맞추기 · 세일즈맨 보기만
+/* v0.8.201 시험 — 🔁 보충이 필요한 상품(#/repor) · 🔎 재확인할 상품(#/recheca): 옛 WMS 의 Produtos para repor · Produtos para conferir — 요청 목록 · 맡기(한 사람만) · 놓기 · 취소 · 출고/입고가 요청을 닫음 · 요청 만들기 · 세어서 맞추기 · 세일즈맨 보기만
  *   ① 관리자: 묶음 메뉴 재고 = 재고 · 보충 · 재확인 · 라벨 … (옛 메뉴 순서) · 칸 숫자(열린 요청 3 · 3)
  *   ② 보충 목록: 오래된 요청 먼저 (EB103 · AHG100 · GM104) · 맡은 줄은 "Iniciado por Maria Costa" + 제안 수량(지난달 판매 — 인보이스 줄)
  *   ③ 시작 → reposicao iniciada · iniciadaPor 나 · 제안 창(지난달 판매 3 · 취소된 인보이스는 빼고)
@@ -14,7 +14,7 @@
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
-  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8919', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8949', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const SEED = `
@@ -37,7 +37,7 @@ const path = require('path');
       { id: 'K3', code: 'AHG105', motivo: 'misturado', origem: 'estoque', origemRef: '', por: 'luke@theonefl.com', porNome: 'Luke', em: ago(0.5), status: 'aberta' },
       { id: 'K0', code: 'EB103', motivo: 'saldo', origem: 'produtos', por: 'x', porNome: 'X', em: ago(9), status: 'resolvida' }];`;
   const ctx = await br.newContext({ viewport: { width: 1280, height: 1000 } });
-  const mk = async (email, c) => { const pg = await (c || ctx).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: o.name }; window.__AFTER_SEED__ = new Function('s', o.seed); try { localStorage.setItem('theone.lang', 'pt'); } catch (e) {} }, { email, name: email === 'pick@theonefl.com' ? 'Maria Costa' : 'Luke', seed: SEED }); await pg.goto('http://127.0.0.1:8919/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
+  const mk = async (email, c) => { const pg = await (c || ctx).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: o.name }; window.__AFTER_SEED__ = new Function('s', o.seed); try { localStorage.setItem('theone.lang', 'pt'); } catch (e) {} }, { email, name: email === 'pick@theonefl.com' ? 'Maria Costa' : 'Luke', seed: SEED }); await pg.goto('http://127.0.0.1:8949/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const store = (pg, col) => pg.evaluate(c => Object.values(window.__MOCK_STORE__[c] || {}), col);
   const doc = (pg, col, id) => pg.evaluate(a => (window.__MOCK_STORE__[a[0]] || {})[a[1]] || null, [col, id]);
   const go = (pg, h) => pg.evaluate(x => { location.hash = x; }, h);
