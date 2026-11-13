@@ -9,7 +9,7 @@
  *    미수금: 내 담당 AR (오래된 순 · 구간 · 💤 · ✅) → 가게 → 바로 수금 입력
  *  자료는 Firestore entries (기존 모양 그대로) + reports (Daily Report · 체크 사진)
  * ============================================================ */
-import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, debounce, invNo, itabs } from './ui.js';
+import { $, esc, money, num, R2, today, ym, md, dlabel, toast, busy, openModal, closeModal, confirmBox, Router, sum, sortBy, groupBy, printOpen, daysBetween, pad4, nz, bi, bt, debounce, invNo, itabs, addDays } from './ui.js';
 import { newId } from './db.js';
 import { searchAccounts } from './accounts.js';
 import { invType } from './comm.js';
@@ -503,7 +503,7 @@ async function sendPhotosOnly() {
  *  ③ 기록 · 기간 리포트
  * ============================================================ */
 async function paintHist() {
-  const from = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();
+  const from = (() => { const d = new Date(today() + 'T12:00:00'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();   // 정오 기준 — 날짜가 UTC 로 밀리지 않게
   if ($('hubBody')) $('hubBody').innerHTML = '<div class="card"><label>기록 조회 <span class="en">Collection history</span></label><div class="pdrow"><input id="hQ" autocomplete="off" placeholder="계정코드 / 가게 이름 / 체크번호" value="' + esc(HQ) + '"><button type="button" class="pdclr" id="hGo" style="background:var(--blue);color:#fff;border-color:var(--blue)">검색 Search</button></div>' +
     '<div class="hint">예) <b>4001</b> (계정코드) · <b>ali fl</b> (가게 이름) · <b>10432</b> (체크번호). 가게 이름은 <b>일부만 쳐도</b> 됩니다. 그 가게의 수금 · COD · ACH · 카드 기록이 모두 나오고, 합계 · 마지막 수금일이 위에 표시됩니다.<br><span class="en">e.g. account #, store name words, or check #</span></div>' +
     '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:600"><input type="checkbox" id="hOther" style="width:20px;height:20px" checked> COD · ACH · 카드도 같이 <span class="en">incl. COD / ACH / card</span></label></div>' +
@@ -557,7 +557,7 @@ async function periodSearch() {
 /** 📧 내가 보낸 Daily Report — 메일 상태 (⏳ 보내는 중 · ✅ 보냄 · ⚠️ 실패) 와 다시 보내기 · 이메일 앱으로 */
 async function sentReports() {
   const box = $('rpList'); if (!box) return; box.innerHTML = '<div class="load">읽는 중…</div>';
-  const days = []; for (let i = 0; i < 10; i++) { const d = new Date(); d.setDate(d.getDate() - i); days.push(d.toISOString().slice(0, 10)); }
+  const days = []; for (let i = 0; i < 10; i++) days.push(addDays(today(), -i));   // 이 기기 날짜 기준
   let list = [];
   try { list = sortBy(await S.DB.list('reports', { where: [['sm', '==', me()], ['d', 'in', days]] }), r => r.sentAt || '', true); }
   catch (e) { box.innerHTML = '<div class="alert a-red">' + esc(e.code || e.message) + '</div>'; return; }

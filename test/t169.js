@@ -8,7 +8,7 @@ const path = require('path');
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8834', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
-  const seed = `const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().substring(0, 10); }; const ymOf = d => d.substring(0, 7);
+  const seed = `const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d)); }; const ymOf = d => d.substring(0, 7);
     s.invoices = (s.invoices || []).concat([
       { id: 'A10021', no: 'A10021', t: 'A', src: 'legacy', d: day(50), ym: ymOf(day(50)), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 1500, bal: 1500, st: 'open', memo: '10% SHIPPING' },
       { id: 'A10055', no: 'A10055', t: 'A', d: day(10), ym: ymOf(day(10)), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 800, bal: 800, st: 'open', memo: 'delivery', lines: [{ c: 'AHG100', d: 'Aluminum Gold ITEM 0', q: 120, p: 2.5 }, { c: 'AHG105', d: 'Aluminum Gold ITEM 5', q: 100, p: 3.75 }, { c: 'AHG110', d: 'Aluminum Gold ITEM 10', q: 60, p: 3.25 }] },
