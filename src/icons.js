@@ -82,7 +82,7 @@ export const ROUTE_ICON = {
   shome: 'dashboard', own: 'dashboard', home: 'home', catmg: 'dashboard', now: 'wallet',
   order: 'cart', invs: 'file', stores: 'store', flow: 'compass',
   verify: 'wallet', cod: 'card', ach: 'bank', bounce: 'undo', credit: 'receipt',
-  track: 'mapPin', cat: 'book', stock: 'warehouse', items: 'tag', estoque: 'warehouse', produtos: 'package', recebimento: 'inbox', repor: 'refresh', recheca: 'search', plan: 'clipList', etiquetas: 'printer',
+  track: 'mapPin', cat: 'book', stock: 'warehouse', items: 'tag', estoque: 'warehouse', produtos: 'package', recebimento: 'inbox', repor: 'refresh', recheca: 'search', plan: 'clipList', pocompra: 'receipt', etiquetas: 'printer',
   shiphist: 'history', notesups: 'printer', balcao: 'truck', insert: 'plus', inserts: 'puzzle', displays: 'image',
   entry: 'pen', mine: 'clipList', send: 'send', hist: 'history', ar: 'dollar',
   mysales: 'trend', 'mg/sales': 'trend', mg: 'factory', pay: 'receipt', bossar: 'dollar', reports: 'chart',
