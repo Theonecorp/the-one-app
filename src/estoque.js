@@ -14,6 +14,7 @@ import { openScanner } from './scan.js';
 import { itemSheet } from './stock.js';
 import * as E from './etq.js';
 import { L3 } from './balcao.js';
+import { reposAbertas, reporCardHTML, pedirReposicaoPopup, injetarCssRepor } from './repor.js';
 
 const { t, svg, ICO, numFmt, dataBR, horaCurta, corrFmt, CORREDORES, ordemCorr, familiaCodigo, podeMexer, gerente, prod, SIT_CLS, SIT_TXT } = E;
 let S = null;
@@ -172,6 +173,8 @@ function esGradeHTML(rr, rotCorr) {
 }
 /* 줄을 열면 — 상자들 (옛 caixasPainelHTML) */
 function caixasPainelHTML(lista, p) {
+  const rep = lista ? reporCardHTML(p) : '';   // 🔁 채우기 요청 (옛 Consulta 의 cs2-repor 카드)
+  const cs = rep ? '<div class="rp-cs">' + rep + '</div>' : '';
   let r = '';
   if (podeMexer()) {
     if (lista) {
@@ -180,6 +183,7 @@ function caixasPainelHTML(lista, p) {
       else r = '<div class="ajuste-saldo"><div class="as-info"><span>' + esc(t('es_saldo_atual')) + '</span><b>' + p.qtd + ' ' + esc(t('un_curto')) + '</b></div><div class="as-aviso">' + esc(t('es_ajuste_sem_etq')) + '</div></div>';
     } else r = '<div class="ajuste-saldo"><div class="as-info"><span>' + esc(t('es_saldo_atual')) + '</span><b>' + p.qtd + ' ' + esc(t('un_curto')) + '</b></div></div>';
   }
+  r = cs + r;
   if (!lista) return r + '<div class="caixas-painel"><div class="caixas-vazio">' + esc(t('carregando')) + '</div></div>';
   if (!lista.length) return r + '<div class="caixas-painel"><div class="caixas-vazio">' + esc(t('e_caixas_vazio')) + '</div></div>';
   return r + '<div class="caixas-painel">' + lista.map(e => '<div class="caixa-item' + (e.ativa ? '' : ' inativa') + '" data-caixa="' + esc(e.codigo) + '"><div class="cx-qr">' + E.qrSVG(E.etqLink(e.codigo)) + '</div><div class="cx-info"><div class="cx-cod">' + esc(e.codigo) + '</div><div class="cx-meta">' + esc(t('r_corredor')) + ': ' + esc(e.corredor ? corrFmt(e.corredor) : '—') + ' · ' + esc(t('etq_inicial')) + ': ' + e.qtd_inicial + '</div></div>' +
@@ -188,6 +192,7 @@ function caixasPainelHTML(lista, p) {
 }
 async function carregarCaixas(code, re) {
   try { ES.etq[code] = await E.listarEtiquetas(code); } catch (e) { ES.etq[code] = []; toast(String(e.message || e), 'bad'); }
+  try { injetarCssRepor(); await reposAbertas(); } catch (e) {}
   try { await E.loadQr(); } catch (e) {}
   if (re !== false && ES.expand === code) render();
 }
@@ -305,6 +310,7 @@ async function clique(e) {
   if ((b = c('[data-act="cx-salvar"]'))) { e.stopPropagation(); return cxSalvar(b.dataset.cod); }
   if ((b = c('[data-act="cx-excluir"]'))) { e.stopPropagation(); return cxExcluir(b.dataset.cod); }
   if ((b = c('[data-act="cx-reimprimir"]'))) { e.stopPropagation(); const r = (ES.etq[b.dataset.pid] || []).find(x => x.codigo === b.dataset.cod); if (r) E.escolherTamanho([r]); return; }
+  if ((b = c('[data-act="cs-repor"]'))) { e.stopPropagation(); return pedirReposicaoPopup(b.dataset.pid, () => render()); }
   if ((b = c('[data-act="as-aplicar"]'))) { e.stopPropagation(); return ajusteSaldoInline(b.dataset.pid); }
   if ((b = c('[data-act="est-aprovar"],[data-act="est-recusar"]'))) return estornoResolver(b.dataset.id, b.dataset.act === 'est-aprovar');
   if ((b = c('[data-toggle-caixas]')) && !c('select,button,input,a,label')) { const id = b.dataset.toggleCaixas; if (ES.expand === id) { ES.expand = ''; return render(); } ES.expand = id; render(); return carregarCaixas(id); }
