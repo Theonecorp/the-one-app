@@ -20,7 +20,7 @@ const scan = () => {
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8789', '--bind', '127.0.0.1'], { cwd: '/home/user/the-one-app', stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const W = Number(process.env.W || 390);
-  const users = { 'brandon@x.com': ['home', 'order', 'order/new', 'invs', 'stores', 'entry', 'ar', 'mine', 'hist', 'mycomm', 'find', 'track', 'cat'], 'luke@theonefl.com': ['now', 'order', 'invs', 'stores', 'bossar', 'ar', 'verify', 'cod', 'ach', 'pay', 'mg', 'reports', 'flow', 'arup', 'track'] };
+  const users = { 'brandon@x.com': ['home', 'order', 'order/new', 'invs', 'stores', 'entry', 'ar', 'mine', 'hist', 'mycomm', 'find', 'cat'], 'luke@theonefl.com': ['now', 'order', 'invs', 'stores', 'bossar', 'ar', 'verify', 'cod', 'ach', 'pay', 'mg', 'reports', 'flow', 'arup'] };
   for (const em in users) for (const r of users[em]) {
     const pg = await br.newPage({ viewport: { width: W, height: 900 } });
     await pg.addInitScript(([e, L]) => { window.__MOCK_USER__ = { email: e, name: 'X' };

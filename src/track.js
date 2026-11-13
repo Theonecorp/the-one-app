@@ -11,7 +11,8 @@ import { can } from './main.js';
 let S = null;
 const T = { q: '', acct: '' };
 export function register(state) {
-  S = state; Router.on('track', page);
+  /* 🚫 배송 조회 화면 없앰 (2026-11-13 창고 매니저: Shipping History 와 겹침) — 옛 주소 · 버튼은 Shipping History 로 (arg = 찾을 주문 · 인보이스 · 트래킹). 아래 함수들은 shiphist · balcao · store 가 계속 씀 */
+  S = state; Router.on('track', async arg => { const SH = await import('./shiphist.js'); if (arg) { SH._H.q = decodeURIComponent(arg); SH._H.per = 'tudo'; SH._H.pag = 1; } Router.go('shiphist'); });
   Router.up.track = arg => { if (arg) return false; if (T.acct || T.q) { T.acct = ''; T.q = ''; page(''); return true; } return false; };
   Router.upHas.track = () => !!(T.acct || T.q);
 }
@@ -144,7 +145,7 @@ export function trackModal(trk, x, back) {
 }
 
 /** 다른 화면에서 — 이 가게로 바로 */
-export function openStore(acct) { T.acct = acct; T.q = ''; if (location.hash === '#/track') page(''); else Router.go('track'); }
+export async function openStore(acct) { const SH = await import('./shiphist.js'); SH._H.cli = acct; SH._H.q = ''; SH._H.per = 'tudo'; SH._H.pag = 1; Router.go('shiphist'); }   // 가게 창의 📦 → Shipping History (그 가게만)
 /* ---------- 🚚 배송 조회 화면 ---------- */
 async function page(arg) {
   if (arg) T.q = arg;

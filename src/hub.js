@@ -24,7 +24,6 @@ export const HUBS = {
   look: { icon: '📚', ko: '조회', en: 'Lookup', items: [
     ['invs', '📄', '인보이스', 'Invoices', '날짜별 · 가게별 · 번호', 'by date · store · number', () => true],
     ['stores', '🏬', '거래처', 'Customers', '가게 창 · 미수금 · 지도', 'store window · A/R · map', () => true],
-    ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹 · 받은 날', 'boxes · tracking', () => true],
     ['cat', '📒', '아이템 · 카탈로그', 'Items · Catalog', '검색 · 사진 · 재고 · 위치 · 라벨', 'search · photos · stock · location · labels', () => true]
   ] },
   /* 📦 재고 묶음 = 조의 화면(옛 WMS)으로 교체 (v0.8.215 · 2026-11-13 관리자: "중복 없애고 조가 만든 것으로 · 주문 흐름은 그대로") — 예전 📦 재고(#/stock) · 🏷 아이템(#/items) 화면은 주소로는 그대로 열림 (주문 화면 · 카탈로그 · 디자인 담당 메뉴가 씀) */
@@ -38,7 +37,6 @@ export const HUBS = {
     ['shiphist', '📦', 'Shipping History', 'Shipping History', 'UPS 출고 기록 · 다시 인쇄 · 취소', 'UPS shipments · reprint · void', () => can('ship') || can('track')],
     ['notesups', '🏷', 'Notes UPS', 'Notes UPS', '박스를 재서 라벨 · 가게별 대기 줄', 'Measure and label boxes · queue per store', () => can('ship')],
     ['balcao', '🏪', 'Shipping UPS', 'Shipping UPS', '가게 → 박스 → 라벨 (옛 앱 화면)', 'store → boxes → label (classic screen)', () => can('ship')],
-    ['track', '🚚', '배송 조회', 'Tracking', '박스 · 트래킹 · 주문 없이 라벨', 'boxes · tracking · ad-hoc label', () => can('ship')],
     ['insert', '➕', '인서트 만들기', 'Create insert', '틀 · 훅 · 대체품 → 라벨 3가지 (옛 앱 화면)', 'template · hooks · substitutes → 3 labels (classic screen)', () => can('items')],
     ['inserts', '🧩', '완성된 인서트', 'Ready inserts', '바코드 · 구성 · 재고 있음 / 판매됨', 'barcode · composition · available / sold', () => can('items')],
     ['displays', '🖼', 'Notes Display', 'Notes Display', 'Empty Display 요청 · 준비 · UPS 박스', 'empty displays · prepare · UPS boxes', () => can('ship') || can('invoice') || can('newOrder')]
@@ -55,8 +53,7 @@ export const HUBS = {
   slook: { icon: '📚', ko: '조회', en: 'Lookup', items: [
     ['invs', '📄', '인보이스', 'Invoices', '내 인보이스 · 가게별', 'my invoices · by store', () => true],
     ['cat', '📒', '아이템 · 카탈로그', 'Items · Catalog', '검색 · 사진 · 가격 · 재고 · 손님 보기', 'search · photos · prices · stock', () => true],
-    ['mysales', '📈', '내 매출', 'My sales', '이번 달 · 월별 · 가게별', 'this month · by month · by store', () => true],
-    ['track', '🚚', '배송 조회', 'Tracking', '내 가게 박스 · 트래킹', 'boxes · tracking', () => true]
+    ['mysales', '📈', '내 매출', 'My sales', '이번 달 · 월별 · 가게별', 'this month · by month · by store', () => true]
   ] },
   /* 👔 오너 · 관리자 (v0.8.135) */
   biz: { icon: '💼', ko: '경영', en: 'Business', items: [

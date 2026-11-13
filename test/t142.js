@@ -9,13 +9,13 @@ const path = require('path');
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 900, height: 1000 } });
-  const mk = async email => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; }, { email }); await pg.goto('http://127.0.0.1:8893/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
-  /* ① 세일즈맨에겐 없음 · 관리자에겐 있음 */
-  let pg = await mk('brandon@x.com'); await pg.evaluate(() => { location.hash = '#/track'; }); await pg.waitForSelector('#tkQ', { timeout: 8000 });
-  if (await pg.$('#tkAdhoc')) errs.push('① salesmen must not see the ad-hoc label button'); await pg.close();
-  pg = await mk('luke@theonefl.com'); await pg.evaluate(() => { location.hash = '#/track'; }); await pg.waitForSelector('#tkAdhoc', { timeout: 8000 }).catch(() => errs.push('① staff should see ➕ 주문 없이 UPS 라벨'));
+  const mk = async (email, view) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.view) try { localStorage.setItem('theone.view.' + o.email, o.view); } catch (e) {} }, { email, view }); await pg.goto('http://127.0.0.1:8893/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
+  /* ① 세일즈맨에겐 없음 · 담당자에겐 있음 — v0.8.226: 🚚 배송 조회 화면을 없애서(2026-11-13 창고 매니저) 단추는 담당자 홈의 ➕ 주문 없이 UPS 라벨 칸 */
+  let pg = await mk('brandon@x.com'); await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForTimeout(1200);
+  if (await pg.$('[data-hg="adhoc"]')) errs.push('① salesmen must not see the ad-hoc label button'); await pg.close();
+  pg = await mk('luke@theonefl.com', 'manager'); await pg.evaluate(() => { location.hash = '#/shome'; }); await pg.waitForSelector('[data-hg="adhoc"]', { state: 'attached', timeout: 8000 }).then(() => pg.evaluate(() => { const g = document.querySelector('[data-hg="adhoc"]').closest('.hgrp'); if (g && !g.classList.contains('open')) g.querySelector('[data-ghd]').click(); })).catch(() => errs.push('① staff should see ➕ 주문 없이 UPS 라벨'));
   const before = await pg.evaluate(() => ({ orders: Object.keys(window.__MOCK_STORE__.orders || {}).length, accounts: JSON.stringify(window.__MOCK_STORE__.accounts || {}).length }));
-  await pg.click('#tkAdhoc'); await pg.waitForSelector('[data-f="to.name"]', { timeout: 8000 });
+  await pg.click('[data-hg="adhoc"]'); await pg.waitForSelector('[data-f="to.name"]', { timeout: 8000 });
   const A = await pg.evaluate(() => { const L = Object.values(window.__MOCK_STORE__.adhoc || {}); const a = L[L.length - 1]; return a && { id: a.id, no: a.no, st: a.st, store: a.store, col: a.col }; }); log('① adhoc doc:', JSON.stringify(A));
   if (!A || A.st !== 'open' || !/^ADHOC-/.test(A.no) || A.col !== 'adhoc' || A.store) errs.push('① an open adhoc document is created first');
   const empty = await pg.evaluate(() => ['to.name', 'to.addr1', 'to.city', 'to.zip'].map(k => document.querySelector('[data-f="' + k + '"]').value).join('')); if (empty) errs.push('① ship-to starts empty (no store)');

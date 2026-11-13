@@ -28,7 +28,7 @@ const path = require('path');
     const order = keys.filter(k => ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'inv', 'fin', 'mgmt'].includes(k)); if (order.join() !== ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'inv', 'fin', 'mgmt'].filter(k => keys.includes(k)).join()) errs.push('① groups in the old WMS order :: ' + keys.join());
     const dgo = await pg.$$eval('#drawer [data-dgo]', B => B.map(b => b.dataset.dgo)); const dup = dgo.filter((x, i) => dgo.indexOf(x) !== i);
     if (dup.length) errs.push('① a screen appears twice: ' + dup.join());
-    for (const r of ['shome', 'order', 'invs', 'stores', 'cat', 'track', 'notesups', 'balcao', 'insert']   /* v0.8.219: 오피스 매니저 메뉴 = 영업 · 피킹 · 출고 · 인서트 · 조회 · 인보이스 */) if (!dgo.includes(r)) errs.push('① screen missing from drawer: ' + r);
+    for (const r of ['shome', 'order', 'invs', 'stores', 'cat', 'notesups', 'balcao', 'insert']   /* v0.8.219: 오피스 매니저 메뉴 = 영업 · 피킹 · 출고 · 인서트 · 조회 · 인보이스 */) if (!dgo.includes(r)) errs.push('① screen missing from drawer: ' + r);
     for (const r of ['verify', 'estoque', 'admin']) if (dgo.includes(r)) errs.push('① office drawer leaves out ' + r + ' (v0.8.219)');
     /* ② 접기 · 기억 */
     await pg.click('#drawer .dgrp[data-dg="ship"] .dgh'); await pg.waitForTimeout(200);

@@ -66,7 +66,7 @@ const path = require('path'), fs = require('fs');
   /* 완료 목록에 기간 칩 */
   /* 홈 타일은 묶음(📥 접수 · 📦 출고 · 💵 수금 · 📚 조회) 안에 접혀 있음 — 묶음을 펴고 타일을 누름 */
   const tile = async k => { await pg.evaluate(k => { const t = document.querySelector('[data-hg="' + k + '"]'), g = t && t.closest('.hgrp'); if (g) g.classList.add('open'); }, k); await pg.click('[data-hg="' + k + '"]'); };
-  await tile('done'); await pg.waitForTimeout(800); log('done list period chips:', await pg.$$eval('[data-hp2]', e => e.length));
+  await tile('shipped');   /* v0.8.226: 포장 대기(done) 칸 없음 — 인보이스 발행 = ✅ 완료 */ await pg.waitForTimeout(800); log('done list period chips:', await pg.$$eval('[data-hp2]', e => e.length));
   /* 인보이스 인쇄 — 15% 할인: 줄 합 = Total */
   await pg.evaluate(() => { location.hash = '#/order/inv:A00009'; }); await pg.waitForSelector('#iPrint'); await pg.click('#iPrint'); await pg.waitForSelector('#prt.on'); await pg.waitForTimeout(500);
   const tot = await pg.$$eval('#prtbody .ivtot tr', r => r.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
@@ -98,9 +98,8 @@ const path = require('path'), fs = require('fs');
   if (!(await pg.$('#mInv'))) errs.push('picked state should offer invoice');
   await pg.click('#mInv'); await pg.waitForSelector('#ivOk'); await pg.click('#ivOk'); await pg.waitForTimeout(1500); if (await pg.$('#prt.on')) await pg.click('#prtClose');
   log('after invoice:', (await txt(pg, '#page h2')).slice(0, 60), 'ship btn:', !!(await pg.$('#mShip')));
-  await pg.click('#mShipOld'); await pg.waitForSelector('#shOk');   /* v0.8.209: 🚚 은 🏪 카운터로 — 트래킹 직접 입력은 ✍️ 단추 */ await pg.fill('#shTrack', '1Z999TEST'); await pg.click('#shOk'); await pg.waitForTimeout(900);
-  log('after ship:', (await txt(pg, '#page h2')).slice(0, 60), (await txt(pg, '#page .muted')).slice(0, 160));
-  if (!/픽업 대기/.test(await txt(pg, '#page h2'))) errs.push('UPS ship should go to awaiting pickup (packed)');   // v0.8.51: UPS → 📮 픽업 대기
+  /* v0.8.226: 인보이스 발행 = ✅ 완료 — 포장 · UPS · 픽업 단계 없음 (2026-11-13 창고 매니저) */
+  if (!/완료/.test(await txt(pg, '#page h2')) || await pg.$('#mShip') || await pg.$('#mShipOld')) errs.push('invoiced order should be ✅ 완료 with no pack / UPS buttons');
   await home(); await pg.waitForTimeout(800); log('tiles after flow:', await pg.$$eval('.htile', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 44))));
   await shot(pg, 'd4_dash2');
   /* 아이템 등록 */

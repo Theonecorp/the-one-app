@@ -21,10 +21,8 @@ export const STAGES = [
   ['cfok', '👍', '배정 대기', 'To assign', o => o.st === 'sent' && o.cfOk, o => o.cfAt || o.sentAt, 4],
   ['pick', '📦', '출고 작업', 'Picking', o => o.st === 'pick' || o.st === 'ok', o => o.pickAt, 4],
   ['picked', '✅', '검수 · 인보이스 대기', 'Review · Invoice', o => o.st === 'picked', o => o.pickDoneAt || o.pickAt, 3],
-  ['done', '🧾', '포장 대기', 'To pack', o => o.st === 'done', o => o.doneAt, 24],
-  ['packed', '📮', 'UPS 픽업 대기', 'Awaiting pickup', o => o.st === 'packed', o => o.packAt, 30],
-  ['dlv', '🚗', '딜리버리 대기', 'Awaiting delivery', o => o.st === 'dlv', o => o.dlvAt, 72],
-  ['shipped', '📬', '오늘 출고', 'Shipped today', o => o.st === 'shipped', o => o.shipAt, 0]
+  /* 🚫 포장 대기 · UPS 픽업 대기 · 딜리버리 대기 단계 뺌 (2026-11-13 창고 매니저 — orders.js HIDE_ST · 인보이스 발행 = ✅ 완료) */
+  ['shipped', '✅', '오늘 완료', 'Completed today', o => o.st === 'shipped', o => o.shipAt, 0]
 ];
 const stageOf = o => STAGES.find(s => s[4](o));
 /** 이 주문이 지금 단계에 얼마나 머물렀나 — 주문 목록 줄의 ⏱ 표시 · 밀린 주문 (orders.js)

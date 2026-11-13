@@ -52,7 +52,7 @@ export function register(state) {
 /* 주문 상태 흐름: draft(저장됨) → sent(접수 — 화면에선 📥 신규 · ❓ 확인 대기(cfReq) · 👍 확인 완료(cfOk) 로 나눔) → … → done(인보이스 · 포장 대기) → packed(UPS 라벨 부착 · 픽업 대기) → shipped(UPS 트럭에 인계)
  *   🚗 dlv(딜리버리 대기 — UPS 가 아니라 세일즈맨 · 직원이 가져가거나 손님이 픽업) → shipped(배달 완료) · v0.8.178
  * 예전 설명: draft(저장됨) → sent(접수) → pick(픽킹 중 · picker 할당) → picked(픽킹 완료 · 사무실 확인 대기) → done(인보이스 발행 · 포장 대기) → shipped(출고 완료) · x(취소) */
-export const ST = { draft: ['임시 저장', 'Draft', 't-g'], sent: ['주문 접수', 'Received', 't-b'], ok: ['출고 작업', 'In Fulfillment', 't-c'], pick: ['출고 작업', 'In Fulfillment', 't-c'], picked: ['검수 대기', 'Ready for Review', 't-a'], done: ['인보이스 발행', 'Invoiced', 't-k'], packed: ['픽업 대기', 'Awaiting Pickup', 't-c'], dlv: ['딜리버리 대기', 'Awaiting Delivery', 't-a'], shipped: ['출고 완료', 'Shipped', 't-g'], x: ['취소', 'Cancelled', 't-r'], local: ['전송 대기', 'Pending Upload', 't-r'] };
+export const ST = { draft: ['임시 저장', 'Draft', 't-g'], sent: ['주문 접수', 'Received', 't-b'], ok: ['출고 작업', 'In Fulfillment', 't-c'], pick: ['출고 작업', 'In Fulfillment', 't-c'], picked: ['검수 대기', 'Ready for Review', 't-a'], done: ['인보이스 발행', 'Invoiced', 't-k'], packed: ['픽업 대기', 'Awaiting Pickup', 't-c'], dlv: ['딜리버리 대기', 'Awaiting Delivery', 't-a'], shipped: ['완료', 'Completed', 't-g'], x: ['취소', 'Cancelled', 't-r'], local: ['전송 대기', 'Pending Upload', 't-r'] };
 export const stName = st => { const x = ST[st] || ST.draft; return x[0] + ' · ' + x[1]; };
 export const stTag = st => { const x = ST[st] || ST.draft; return '<span class="tag ' + x[2] + '" title="' + x[1] + '">' + x[0] + '</span>'; };
 const isStaff = () => S.role !== 'salesman';
@@ -86,7 +86,9 @@ export async function soStamp(o) {
 export function sendStamp(o) { const now = new Date().toISOString(), t = today(); const x = { st: 'sent', sentAt: now, updatedAt: now, d: t, ym: ym(t) }; if (o.d && o.d !== t && !o.d0) x.d0 = o.d; return x; }
 /** 같은 주소면 hashchange 가 안 생기므로 직접 엶 */
 export function goOrder(id) { if (location.hash === '#/order/' + encodeURIComponent(id)) pageOrder(id); else Router.go('order', id); }
-export const canEdit = o => isStaff() ? (o.st !== 'done' && o.st !== 'x') : (o.sm === mySm() && (o.st === 'draft' || o.st === 'sent' || o.st === 'local'));
+/** 인보이스로 끝난 주문 (v0.8.226 — 인보이스 발행 = ✅ 완료, shipVia INVOICE) = 예전 done 과 같게: 주문 줄은 못 고치고 인보이스 수정 · VOID 로 */
+export const invDone = o => o.st === 'done' || (o.st === 'shipped' && o.shipVia === 'INVOICE');
+export const canEdit = o => isStaff() ? (!invDone(o) && o.st !== 'x') : (o.sm === mySm() && (o.st === 'draft' || o.st === 'sent' || o.st === 'local'));
 
 /* ============================================================
  *  보낼 함 (outbox) — 폰에 저장 → 인터넷 되면 전송
@@ -145,7 +147,7 @@ async function pageHome() {
     '<div class="card"><h2>✅ ' + bi('오늘 할 일', 'Today') + '</h2><div id="dTodo" class="todo"><div class="muted">' + bt('읽는 중…', 'Loading…') + '</div></div></div>' +
     '<div class="card"><h2>📝 ' + bi('오늘 플랜', 'Today\'s plan') + ' <span class="muted" style="font-weight:400;font-size:12px" id="dPlanAt">' + (plan.at ? bt('마지막 수정', 'last edit') + ' ' + esc(md(plan.at.substring(0, 10))) : bt('이 폰에 저장됩니다', 'saved on this phone')) + '</span></h2>' +
     '<textarea id="dPlan" rows="3" placeholder="' + esc(bt('예: 올랜도 3곳 방문 · ALI 수금 · 샘플 전달', 'e.g. 3 stores in Orlando · collect at ALI · drop samples')) + '">' + esc(plan.text) + '</textarea></div>' +
-    '<div class="card"><h2>⚡ ' + bi('바로 가기', 'Quick actions') + '</h2><div class="qgrid">' + qa('order/new', '🛒', bi('새 주문', 'New order'), 'blue') + qa('entry/new', '✍️', bi('수금 입력', 'Payment')) + qa(isStaff() ? 'credit/new' : 'order/credit', '↩', bi('크레딧 · 리턴', 'Credit')) + qa('stores', '🏬', bi('가게 찾기', 'Stores')) + qa('cat', '📒', bi('카탈로그', 'Catalog')) + qa('mysales', '📈', bi('내 매출', 'My sales')) + qa('track', '🚚', bi('배송 조회', 'Tracking')) + qa('mine', '📋', bi('수금 기록', 'Payment log')) + '</div></div>' +
+    '<div class="card"><h2>⚡ ' + bi('바로 가기', 'Quick actions') + '</h2><div class="qgrid">' + qa('order/new', '🛒', bi('새 주문', 'New order'), 'blue') + qa('entry/new', '✍️', bi('수금 입력', 'Payment')) + qa(isStaff() ? 'credit/new' : 'order/credit', '↩', bi('크레딧 · 리턴', 'Credit')) + qa('stores', '🏬', bi('가게 찾기', 'Stores')) + qa('cat', '📒', bi('카탈로그', 'Catalog')) + qa('mysales', '📈', bi('내 매출', 'My sales')) + qa('mine', '📋', bi('수금 기록', 'Payment log')) + '</div></div>' +
     '<div id="dayCf"></div><div id="offCard"></div>' + Notify.blockedHtml();   /* 🔔 알림은 항상 켜짐 (v0.8.179) — 켜기 단추 없이 처음 누를 때 자동으로 물어봄 · 막혔으면 허용하는 법 */
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
   const ta = $('dPlan'); ta.oninput = debounce(() => { planPut(ta.value); const at = $('dPlanAt'); if (at) at.textContent = bt('저장됨', 'saved') + ' ' + md(today()); }, 400);
@@ -313,22 +315,25 @@ async function pageOrder(arg) {
   };
 }
 /* 담당자의 일(job) 에 따라 보이는 칩이 다름 — 픽킹: 들어온 주문 · 픽킹 중 · 백오더 / 인보이스: 픽킹 중(확정 대기) · 완료 · 인보이스 찾기 · 백오더 */
-const CHIPS = [['mine', '👷 내 배정 작업', 'My Assignments'], ['sent', '📥 신규 주문', 'New Orders'], ['cfw', '❓ 확인 대기', 'Awaiting Salesman'], ['cfok', '👍 확인 완료 · 배정 대기', 'Confirmed · To Assign'], ['pick', '📦 출고 작업', 'In Fulfillment'], ['picked', '✅ 검수 대기', 'Ready for Review'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'], ['ups', '🚚 UPS 출고', 'UPS Shipping'], ['packed', '📮 UPS 픽업', 'UPS Pickup'], ['dlv', '🚗 딜리버리 대기', 'Awaiting Delivery'], ['shipped', '📬 출고 완료', 'Shipped'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoice Lookup'], ['draft', '💾 임시 저장', 'Drafts'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체 주문', 'All Orders']];
+const CHIPS = [['mine', '👷 내 배정 작업', 'My Assignments'], ['sent', '📥 신규 주문', 'New Orders'], ['cfw', '❓ 확인 대기', 'Awaiting Salesman'], ['cfok', '👍 확인 완료 · 배정 대기', 'Confirmed · To Assign'], ['pick', '📦 출고 작업', 'In Fulfillment'], ['picked', '✅ 검수 대기', 'Ready for Review'], ['done', '🧾 인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'], ['ups', '🚚 UPS 출고', 'UPS Shipping'], ['packed', '📮 UPS 픽업', 'UPS Pickup'], ['dlv', '🚗 딜리버리 대기', 'Awaiting Delivery'], ['shipped', '✅ 완료', 'Completed'], ['bo', '⏳ 백오더', 'Backorders'], ['inv', '📄 인보이스 조회', 'Invoice Lookup'], ['draft', '💾 임시 저장', 'Drafts'], ['x', '✕ 취소', 'Cancelled'], ['all', '📋 전체 주문', 'All Orders']];
 const JOB_CHIPS = { pick: ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'dlv', 'shipped', 'bo'], whmgr: ['ups', 'packed', 'dlv', 'done', 'shipped', 'bo', 'picked', 'pick', 'mine', 'cfok', 'sent', 'cfw', 'all'], pickinv: ['sent', 'cfw', 'cfok', 'mine', 'pick', 'picked', 'done', 'ups', 'packed', 'dlv', 'shipped', 'inv', 'bo', 'all'], invoice: ['sent', 'cfw', 'cfok', 'picked', 'pick', 'done', 'packed', 'dlv', 'shipped', 'inv', 'bo', 'draft', 'all'], acct: ['inv', 'done', 'packed', 'shipped', 'bo', 'all'] };
 const LIVE_ST = ['sent', 'pick', 'ok', 'picked', 'done', 'packed', 'dlv'];
 const STG = [['recv', '📥', '접수', 'Intake', ['sent', 'cfw', 'cfok', 'draft']], ['ship', '📦', '출고', 'Fulfill', ['mine', 'pick', 'picked', 'done', 'ups', 'packed', 'dlv']], ['fin', '✅', '완료 · 조회', 'Done', ['shipped', 'inv', 'all']], ['etc', '⏳', '기타', 'Other', ['bo', 'x']]];   // 주문 처리 단계 묶음
 export const stageOfChip = st => (STG.find(g => g[4].includes(st)) || [])[0];
 export function goStage(g) { const av = chipsFor(), G = STG.find(x => x[0] === g); const first = G && av.find(c => G[4].includes(c[0])); if (first) { LF.st = first[0]; LF.list = true; } }
 const OPEN_CH = ['mine', 'pick', 'picked', 'done', 'packed', 'dlv'];   // 목록 칩 중 아직 안 끝난 일 (오래된 것이 위)   // 아직 끝나지 않은 주문 (출고 전)
-export function chipsFor() { const J = myJobs(); if (J.some(j => !JOB_CHIPS[j])) return CHIPS.filter(c => c[0] !== 'ups' || can('ship')); const keys = []; J.forEach(j => JOB_CHIPS[j].forEach(k => { if (!keys.includes(k)) keys.push(k); })); keys.sort((a, b) => CHIPS.findIndex(c => c[0] === a) - CHIPS.findIndex(c => c[0] === b)); return (keys.map(k => CHIPS.find(c => c[0] === k)).filter(Boolean)).filter(c => c[0] !== 'ups' || can('ship')); }
-export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div><div><b>…</b><span>🧾 포장 대기 · Packing</span></div><div><b>…</b><span>📮 픽업 대기 · Pickup</span></div></div>'; }
+/* 🚫 인보이스 뒤 단계 숨김 (2026-11-13 창고 매니저: 포장 대기 · UPS 출고 · UPS 픽업 · 딜리버리 대기는 이 앱에서 안 씀 — 인보이스 발행 = ✅ 완료, 다른 기능과 이을 때까지) */
+export const HIDE_ST = ['done', 'ups', 'packed', 'dlv'];
+export function chipsFor() { return chipsFor0().filter(c => !HIDE_ST.includes(c[0])); }
+function chipsFor0() { const J = myJobs(); if (J.some(j => !JOB_CHIPS[j])) return CHIPS.filter(c => c[0] !== 'ups' || can('ship')); const keys = []; J.forEach(j => JOB_CHIPS[j].forEach(k => { if (!keys.includes(k)) keys.push(k); })); keys.sort((a, b) => CHIPS.findIndex(c => c[0] === a) - CHIPS.findIndex(c => c[0] === b)); return (keys.map(k => CHIPS.find(c => c[0] === k)).filter(Boolean)).filter(c => c[0] !== 'ups' || can('ship')); }
+export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div></div>'; }   // 🚫 포장 · 픽업 대기 칸 뺌 (HIDE_ST)
 export async function fillStrip() {
   const el = $('oStrip'); if (!el) return;
   try {
     const live = await S.DB.list('orders', { where: [['st', 'in', LIVE_ST]] });
     if (!$('oStrip')) return;
     const b = el.querySelectorAll('b');
-    b[0].textContent = live.filter(o => o.st === 'sent').length; b[1].textContent = live.filter(o => o.st === 'pick' || o.st === 'ok').length; b[2].textContent = live.filter(o => o.st === 'picked').length; b[3].textContent = live.filter(o => o.st === 'done').length; if (b[4]) b[4].textContent = live.filter(o => o.st === 'packed').length;
+    b[0].textContent = live.filter(o => o.st === 'sent').length; b[1].textContent = live.filter(o => o.st === 'pick' || o.st === 'ok').length; b[2].textContent = live.filter(o => o.st === 'picked').length; if (b[3]) b[3].textContent = live.filter(o => o.st === 'done').length; if (b[4]) b[4].textContent = live.filter(o => o.st === 'packed').length;
     el.querySelectorAll('div').forEach((d, i) => { d.onclick = () => { LF.st = ['sent', 'pick', 'picked', 'done', 'packed'][i]; LF.list = true; if (i === 3) LF.hp = 'year'; pageOrder(''); }; d.classList.add('tap'); });
   } catch (e) { el.querySelectorAll('b').forEach(x => { x.textContent = '—'; }); }
 }
@@ -350,10 +355,10 @@ async function staffHome() {
   if (can('pick') && !can('invoice')) T.push(tile('mine', '👷', bi('내 배정 작업', 'My Assignments'), '읽는 중…', 'blue'));
   if (W) T.push(tile('sent', '📥', bi('신규 주문', 'New Orders'), '읽는 중…', can('assign') || can('invoice') ? 'blue' : ''), tile('cfw', '❓', bi('세일즈맨 확인 대기', 'Awaiting Salesman'), '읽는 중…', 'amber'), tile('cfok', '👍', bi('확인 완료 · 배정 대기', 'Confirmed · To Assign'), '읽는 중…'), tile('pick', '📦', bi('출고 작업', 'In Fulfillment'), '읽는 중…'));
   if (W) T.push(tile('picked', '✅', bi('작업 완료 · 검수 대기', 'Ready for Review'), '읽는 중…'));
-  if (can('invoice') || can('ship') || can('invLookup')) T.push(tile('done', '🧾', bi('인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'), '읽는 중…'));
-  if (can('ship')) T.push(tile('ups', '🚚', bi('UPS 출고', 'UPS Shipping'), '읽는 중…', 'green'), tile('packed', '📮', bi('UPS 픽업 · 트럭 인계', 'UPS Pickup'), '읽는 중…'));
-  if (can('ship') || can('invoice')) T.push(tile('dlv', '🚗', bi('딜리버리 대기', 'Awaiting delivery'), '읽는 중…'));   /* UPS 가 아니라 세일즈맨 · 직원이 가져가는 주문 */
-  T.push(tile('shipped', '📬', bi('출고 완료', 'Shipped'), '읽는 중…'));
+  if (!HIDE_ST.includes('done') && (can('invoice') || can('ship') || can('invLookup'))) T.push(tile('done', '🧾', bi('인보이스 발행 · 포장 대기', 'Invoiced · Awaiting Packing'), '읽는 중…'));
+  if (!HIDE_ST.includes('ups') && can('ship')) T.push(tile('ups', '🚚', bi('UPS 출고', 'UPS Shipping'), '읽는 중…', 'green'), tile('packed', '📮', bi('UPS 픽업 · 트럭 인계', 'UPS Pickup'), '읽는 중…'));
+  if (!HIDE_ST.includes('dlv') && (can('ship') || can('invoice'))) T.push(tile('dlv', '🚗', bi('딜리버리 대기', 'Awaiting delivery'), '읽는 중…'));   /* UPS 가 아니라 세일즈맨 · 직원이 가져가는 주문 */
+  T.push(tile('shipped', '✅', bi('완료', 'Completed'), '읽는 중…'));
   if (can('bo')) T.push(tile('bo', '⏳', bi('백오더', 'Backorders'), '읽는 중…'));
   if (can('ship') || can('invoice') || can('newOrder')) T.push(tile('displays', '🖼', 'Notes Display', '읽는 중…', 'amber'));
   if (can('ship')) T.push(tile('shiphist', '📦', 'Shipping History', bt('UPS 출고 기록 · 다시 인쇄 · 취소', 'UPS shipments · reprint · void')));
@@ -371,7 +376,6 @@ async function staffHome() {
   /* 🏷 오피스 · 인보이스 담당도 아이템을 바로 등록 — 홈에서 한 번에 (v0.8.172) */
   if (can('items')) A.push(tile('items/new', '＋', bi('아이템 등록', 'New item'), bt('코드 · 이름 · 가격 · 분류', 'code · name · price · category')), (S.me && S.me.role === 'admin' ? tile('items/bulk', '📋', bi('아이템 일괄 등록', 'Bulk add items'), bt('엑셀처럼 칸에 쭉 입력 · 붙여넣기', 'spreadsheet cells · paste')) : ''));
   A.push(tile('cat', '📒', bi('카탈로그 · 바코드', 'Catalog · Barcodes'), '사진 · 바코드 라벨 · 엑셀'));
-  A.push(tile('track', '🚚', bi('배송 조회', 'Tracking'), '가게 · 인보이스 · 트래킹'));
   A.push(tile('all', '📋', bi('전체 주문', 'All orders'), ptxt));
   /* 담당자 홈 = 주문 처리 먼저 (접수 · 픽킹 · 인보이스 · 포장), 바로가기, 매출은 맨 아래 */
   /* 🏭 창고 매니저 — 주문 처리보다 재고 · UPS 출고 · 픽업 · 백오더가 먼저 (주문 처리 타일은 아래 작은 칸) */
