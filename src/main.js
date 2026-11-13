@@ -10,6 +10,7 @@ import { loadCatalog, catalog, exactItem, searchItems, thumb } from './catalog.j
 import { storeSheet, invDetail } from './store.js';
 import { CSS } from './style.js';
 import * as Sales from './sales.js';
+import * as Plan from './plan.js';   // 🧮 발주 계획
 import * as Collect from './collect.js';
 import * as Ach from './ach.js';
 import * as BizDay from './bizday.js';
@@ -247,7 +248,7 @@ const DGRP = [
   ['sep', 'truck', '피킹', 'Picking', ['flow'], 'Separação'],
   ['ship', 'truck', '출고', 'Shipping', ['displays', 'notesups', 'balcao', 'shiphist', 'track'], 'Expedição'],
   ['ins', 'package', '인서트', 'Inserts', ['insert', 'inserts'], 'Inserts'],
-  ['look', 'search', '조회', 'Lookup', ['cat'], 'Consulta'],
+  ['look', 'search', '조회', 'Lookup', ['cat', 'plan'], 'Consulta'],   // 🧮 발주 계획 — 조회 묶음 (오피스 · 창고 매니저 서랍에 재고 묶음이 없어서, v0.8.219)
   ['inv', 'warehouse', '재고', 'Inventory', ['produtos', 'etiquetas', 'recebimento', 'estoque', 'repor', 'recheca', 'stock', 'items', 'labels', 'photos'], 'Estoque'],
   ['mov', 'layers', '주문', 'Orders', [], 'Movimentação'],
   ['fin', 'wallet', '재무', 'Finance', ['mg', 'mg/sales', 'invs', 'now', 'verify', 'entry', 'mine', 'send', 'hist', 'cod', 'ach', 'bounce', 'credit', 'ar', 'bossar', 'pay'], 'Financeiro'],
@@ -613,7 +614,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  BizDay.register(S); Inbound.register(S); Sales.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); NotesUps.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page); Estoque.register(S); Etiquetas.register(S); Produtos.register(S); Recebidos.register(S); Repor.register(S);
+  BizDay.register(S); Inbound.register(S); Sales.register(S); Plan.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); NotesUps.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page); Estoque.register(S); Etiquetas.register(S); Produtos.register(S); Recebidos.register(S); Repor.register(S);
   Router.on('settings', settingsPage);
   /* 🔒 경영 화면 잠금 (v0.8.217) — 경영 현황 · 매출 · 정산 · 미수금 현황 · 수금 현황 · 오너 홈은 오너 · 관리자만 (주소를 알아도). 판매 리포트는 오피스 매니저도 (매출은 보여도 됨) */
   const lockR = (name, ok) => { const f = Router.routes[name]; if (!f) return; Router.routes[name] = a => ok() ? f(a) : ($('page').innerHTML = '<div class="card"><div class="none">🔒 ' + bt('오너 · 관리자만 보는 화면입니다', 'Owners and admins only') + '</div></div>'); };
