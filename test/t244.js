@@ -2,7 +2,8 @@
  *   ① 📦 재고 묶음(#/hub/wh): 조의 재고 · 상품 · 상품 받기 · 보충 · 재확인 · 라벨 출력 — 예전 📦 재고(stock) · 🏷 아이템(items) 칸은 없음
  *   ② 예전 화면은 주소로 그대로 열림 (#/stock · #/items — 주문 화면 · 카탈로그 · 디자인 담당 메뉴가 씀)
  *   ③ 대시보드 빠른 작업 📥 입고 → 조의 상품 받기(#/recebimento)
- *   ④ 주문 흐름 칸은 그대로: 접수 · 출고(배정 · 피킹 · 인보이스 · UPS · 포장 · 딜리버리) · 완료 */
+ *   ④ 주문 흐름 칸: 접수 · 출고(배정 · 피킹 · 검수) · 완료 — 포장 대기 · UPS 출고 · UPS 픽업 · 딜리버리 대기는 숨김
+ *      (2026-11-13 창고 매니저 요청 · 시험용 사본 — 주문 흐름이 바뀌므로 실제 반영은 관리자 승인 필요, t266) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -27,7 +28,8 @@ const path = require('path');
   /* ④ */
   const st = await pg.evaluate(async () => { const O = await import('/src/orders.js'); return O.stageMenu().map(([g, cs]) => g[0] + ':' + cs.map(c => c[0]).join(',')).join(' | '); });
   log('④ stages:', st);
-  for (const k of ['sent', 'pick', 'picked', 'done', 'packed', 'shipped']) if (!new RegExp('[:,]' + k + '(,|$| )').test(st)) errs.push('④ order flow stage still there: ' + k);
+  for (const k of ['sent', 'pick', 'picked', 'shipped']) if (!new RegExp('[:,]' + k + '(,|$| )').test(st)) errs.push('④ order flow stage still there: ' + k);
+  for (const k of ['done', 'ups', 'packed', 'dlv']) if (new RegExp('[:,]' + k + '(,|$| )').test(st)) errs.push('④ hidden stage should be gone: ' + k);
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
 })();

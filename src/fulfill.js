@@ -112,7 +112,7 @@ export function manage(o, lines) {
     (can('assign') && (o.st === 'pick' || o.st === 'ok') ? '<button class="b-ghost b-sm" id="mUnpick">↩️ ' + bi('신규 주문으로 되돌리기', 'Return to New Orders') + '</button><button class="b-ghost b-sm" id="mReassign">👷 ' + bi('작업자 변경', 'Reassign Picker') + '</button>' : '') +
     (o.st === 'picked' ? '<button class="b-ghost b-sm" id="mRepick">↩️ ' + bi('출고 작업으로 되돌리기', 'Return to Fulfillment') + '</button>' : '') +
     (o.st === 'packed' || o.st === 'dlv' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('포장 대기로 되돌리기', 'Back to packing') + '</button>' : '') +
-    (o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('출고 취소', 'Undo shipping') + '</button><button class="b-ghost b-sm" id="mTrk">📦 ' + bi('배송 조회', 'Tracking') + '</button>' : '') +
+    (o.st === 'shipped' && o.shipVia !== 'INVOICE' ? '<button class="b-ghost b-sm" id="mUnship">↩️ ' + bi('출고 취소', 'Undo shipping') + '</button>' + (can('ship') || can('track') ? '<button class="b-ghost b-sm" id="mTrk">📦 Shipping History</button>' : '') : '') +
     ((o.st === 'sent' || o.st === 'pick' || o.st === 'ok') && !o.cfOk ? '<button class="b-ghost b-sm" id="mCfReq">❓ ' + bi(o.cfReq ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman') + '</button>' : '') +
     '<button class="b-ghost b-sm" id="mAsk">💬 ' + bi('구글 챗으로 묻기', 'Ask on Google Chat') + '</button>' + ((S.settings && S.settings.chatUrl) ? '<button class="b-ghost b-sm" id="mChat">💬 ' + bi('챗 열기', 'Open Chat') + '</button>' : '') +
     (o.st === 'done' || o.st === 'shipped' ? '<button class="b-ghost b-sm" id="mInvPrint">🖨 ' + bi('인보이스 인쇄', 'Print invoice') + '</button>' : '') +
@@ -271,7 +271,7 @@ export function manage(o, lines) {
   if ($('mDlvDone')) $('mDlvDone').onclick = () => dlvDone(o);
   if ($('mPickup')) $('mPickup').onclick = () => { Router.go('order'); setTimeout(() => window.dispatchEvent(new CustomEvent('theone:list', { detail: 'packed' })), 0); };
   if ($('mCfOk')) $('mCfOk').onclick = async () => { if (!(await confirmBox(bt('세일즈맨 확인 완료로 바꿀까요? (전화 · 문자로 확인한 경우)', 'Mark as confirmed by the salesman?'), '👍'))) return; busy(true); try { const now = new Date().toISOString(); await S.DB.update('orders', o.id, { cfReq: true, cfOk: true, cfAt: now, cfBy: S.user.email, cfHow: 'staff' }); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
-  if ($('mTrk')) $('mTrk').onclick = () => Router.go('track', o.no);
+  if ($('mTrk')) $('mTrk').onclick = () => Router.go('track', o.no);   // → Shipping History 에서 이 주문 찾기 (track.js)
   if ($('mUnship')) $('mUnship').onclick = async () => { const back = o.st === 'shipped' && o.pickupId ? 'packed' : o.st === 'shipped' && o.dlvAt ? 'dlv' : 'done'; if (!(await confirmBox(back === 'packed' ? bt('UPS 인계를 취소할까요? (픽업 대기로 돌아감)', 'Undo handover? (back to awaiting pickup)') : bt('포장 · 출고를 취소할까요? (포장 대기로 돌아감)', 'Undo packing/shipping? (back to packing)'), bt('되돌리기', 'Undo')))) return; busy(true); try { await S.DB.update('orders', o.id, Object.assign({ st: back, updatedAt: new Date().toISOString() }, back === 'packed' ? { pickupId: '' } : {})); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mPickPrint')) $('mPickPrint').onclick = () => printPicking(o, lines);
   document.body.classList.toggle('pkkits', pickKits());
@@ -443,7 +443,7 @@ async function upsPage(LF, head) {
   h += '<div class="card"><h2>🚚 ' + bi('라벨 대기 — 인보이스 발행 · 포장 대기', 'To ship — invoiced, awaiting packing') + ' ' + wait.length + '건</h2><div class="muted">' + bi('<b>🚚 출고</b>를 누르면 주소 확인 → UPS 라벨 → 인쇄 → 출고 완료까지 한 창에서 합니다. 주소는 그 창에서 이 주문만 바꾸거나 거래처 주소를 고칠 수 있습니다.', 'Tap Ship to check the address, create the UPS label, print and mark shipped.') + '</div>' +
     (wait.length ? wait.map(o => row(o, true)).join('') : '<div class="none">' + bt('포장 대기 주문이 없습니다', 'Nothing waiting') + '</div>') + '</div>';
   h += '<div class="card"><h2>📬 ' + bi('최근 출고 (3일)', 'Recently shipped (3 days)') + ' ' + recent.length + '건</h2>' + (recent.length ? recent.map(o => row(o, false)).join('') : '<div class="none">' + bt('없음', 'None') + '</div>') + '</div>';
-  h += '<div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="upTrk">🚚 ' + bi('배송 조회 (가게 · 인보이스 · 트래킹)', 'Tracking (store · invoice · tracking #)') + '</button></div><div id="upDiff"></div>';
+  h += '<div class="btns" style="justify-content:flex-start"><button class="b-ghost" id="upTrk">📦 Shipping History</button></div><div id="upDiff"></div>';
   $('page').innerHTML = head + h;
   bindListHead(LF, head);
   const all = wait.concat(recent), byId = id => all.find(o => o.id === id);
@@ -611,7 +611,7 @@ async function confirmInvoice(o, lines) {
     const memo = $('ivMemo').value.trim(); keepFrt(); const frt = R2(o.freight || 0), frtT = groups.length > 1 && $('ivFrtT') ? $('ivFrtT').value : groups[0].t; closeModal(); busy(true);
     try {
       const fresh = await S.DB.get('orders', o.id);
-      if (fresh && (fresh.st === 'done' || fresh.st === 'x')) throw new Error('이미 처리된 주문입니다 (' + fresh.st + ')');
+      if (fresh && (fresh.st === 'done' || fresh.st === 'shipped' || fresh.st === 'x')) throw new Error('이미 처리된 주문입니다 (' + fresh.st + ')');
       const now = new Date().toISOString(), d = today(), acc = acctOf(o.acct), invs = [], ops = [];
       for (const g of groups) {
         const t = types.find(x => x.c === g.t) || { c: g.t, start: 1, pad: 5 };
@@ -623,7 +623,7 @@ async function confirmInvoice(o, lines) {
         invs.push(inv); ops.push({ op: 'set', col: 'invoices', id: no, data: inv });
       }
       if (bo.length) ops.push({ op: 'set', col: 'backorders', id: o.id, data: { order: o.no, orderId: o.id, acct: o.acct || '', store: o.store, sm: o.sm, d, lines: bo, qty: bo.reduce((a, l) => a + l.q, 0), amt: R2(bo.reduce((a, l) => a + l.q * l.p, 0)), st: 'open', newOrders: [], createdAt: now } });
-      const doc = orderDoc(Object.assign({}, o, { st: 'done', invs: invs.map(x => x.no), doneAt: now, doneBy: S.user.email, bo: bo.length ? o.id : '', updatedAt: now }), lines, o.disc);
+      const doc = orderDoc(Object.assign({}, o, { st: 'shipped', shipAt: now, shipBy: S.user.email, shipVia: 'INVOICE', invs: invs.map(x => x.no), doneAt: now, doneBy: S.user.email, bo: bo.length ? o.id : '', updatedAt: now }), lines, o.disc);
       doc.amt = R2(invs.reduce((a, x) => a + x.total, 0));
       ops.push({ op: 'set', col: 'orders', id: o.id, data: doc }, { op: 'set', col: 'orderLines', id: o.id, data: { sm: o.sm, lines } });
       const wake = acc && acc.inactive;   // 💤 비활성 거래처에 다시 인보이스 → 자동으로 활성

@@ -57,7 +57,7 @@ const path = require('path');
   if (await of.$('#crrOk')) { await of.click('#crrOk'); await of.waitForSelector('#cfOk'); await of.click('#cfOk'); await of.waitForTimeout(1500); }
   const st4 = await of.evaluate(id => { const M = window.__MOCK_STORE__; const o = M.orders[id]; const cm = Object.values(M.invoices || {}).find(x => x.fromOrder === id); return { st: o.st, cmNo: o.cmNo, cm: cm && { no: cm.no, total: cm.total, bal: cm.bal, reviewed: cm.reviewed, q: cm.lines.map(l => l.c + ':' + l.q + '@' + l.p).join(), why: cm.why, sm: cm.sm, src: cm.src }, hash: location.hash }; }, crId);
   log('④ issued:', JSON.stringify(st4));
-  if (st4.st !== 'done' || !st4.cm || st4.cmNo !== st4.cm.no || st4.cm.total !== -4.5 || st4.cm.bal !== -4.5 || !st4.cm.reviewed || st4.cm.q !== 'AHG100:-2@2.25' || st4.cm.src !== 'credit' || st4.cm.sm !== 'BRANDON') errs.push('④ confirm → CM −$4.50 (reviewed, lines −2 @ 2.25) · request done with cmNo');
+  if (st4.st !== 'shipped' ||   /* v0.8.226: 크레딧 메모 발행 = ✅ 완료 */ !st4.cm || st4.cmNo !== st4.cm.no || st4.cm.total !== -4.5 || st4.cm.bal !== -4.5 || !st4.cm.reviewed || st4.cm.q !== 'AHG100:-2@2.25' || st4.cm.src !== 'credit' || st4.cm.sm !== 'BRANDON') errs.push('④ confirm → CM −$4.50 (reviewed, lines −2 @ 2.25) · request done with cmNo');
   if (!/credit/.test(st4.hash)) errs.push('④ goes to the issued CM');
   /* 픽킹 배정에서 빠짐 */
   const fl = await of.evaluate(async () => { const F = await import('/src/fulfill.js'); return typeof F.assignPicker; }); if (fl !== 'function') errs.push('④ assignPicker exists');

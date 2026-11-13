@@ -232,7 +232,7 @@ const DOCK_MQ = '(min-width:1200px)';
  *   회계: 메인 · 재무(인보이스 포함) · 거래처 · 디자인: 메인 · 아이템 · 거래처 · 카탈로그
  *   ※ 메뉴는 보기 편하게 하는 것 — 중요 자료 잠금은 firestore.rules(isOwner) 와 아래 경영 화면 잠금(lockR)이 함 */
 export const DPLAN = {
-  owner: ['ov', 'sales:stores', 'look', 'ship:track', 'fin', 'inv', 'mgmt'],
+  owner: ['ov', 'sales:stores', 'look', 'ship:shiphist', 'fin', 'inv', 'mgmt'],
   office: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'], whmgr: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'], pickinv: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'],
   acct: ['ov', 'fin', 'sales:stores'],
   catalog: ['ov', 'inv:items,photos,labels', 'sales:stores', 'look:cat']
@@ -246,7 +246,7 @@ const DGRP = [
   ['ov', 'dashboard', '메인', 'Main', ['shome', 'own', 'home', 'catmg'], 'Principal'],
   ['sales', 'cart', '영업', 'Sales', ['order', 'stores', 'mysales'], 'Vendas'],
   ['sep', 'truck', '피킹', 'Picking', ['flow'], 'Separação'],
-  ['ship', 'truck', '출고', 'Shipping', ['displays', 'notesups', 'balcao', 'shiphist', 'track'], 'Expedição'],
+  ['ship', 'truck', '출고', 'Shipping', ['displays', 'notesups', 'balcao', 'shiphist'], 'Expedição'],   // 🚫 배송 조회(track) 화면 없앰 → Shipping History (2026-11-13 창고 매니저)
   ['ins', 'package', '인서트', 'Inserts', ['insert', 'inserts'], 'Inserts'],
   ['look', 'search', '조회', 'Lookup', ['cat', 'plan'], 'Consulta'],   // 🧮 발주 계획 — 조회 묶음 (오피스 · 창고 매니저 서랍에 재고 묶음이 없어서, v0.8.219)
   ['inv', 'warehouse', '재고', 'Inventory', ['produtos', 'etiquetas', 'recebimento', 'estoque', 'repor', 'recheca', 'stock', 'items', 'labels', 'photos'], 'Estoque'],

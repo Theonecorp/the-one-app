@@ -386,7 +386,7 @@ export async function reviewRequest(o, lines) {
         lines: L.map(l => { const it = C && C.byCode[l.c]; return { c: l.c, d: l.d, q: -l.q, p: l.p, lp: l.lp, dc: l.dc, src: 'order', g: it ? productLine(it) : '', ty: l.t, recent: null }; }),
         qty: -q, sub: -sub, list: -R2(L.reduce((a, l) => a + l.q * l.lp, 0)), disc: 0, total: -sub, bal: -sub, discMap: o.disc || {}, dback: o.dback != null ? o.dback : null, flags: [], terms: (acc && acc.terms) || '', st: 'open',
         reviewed: true, reviewedBy: S.user.email, reviewedAt: now, createdBy: o.createdBy || S.user.email, createdAt: now, issuedBy: S.user.email, fromOrder: o.id };
-      await S.DB.batch([{ op: 'set', col: 'invoices', id: no, data: doc }, { op: 'update', col: 'orders', id: o.id, data: { st: 'done', cmNo: no, invs: [no], doneAt: now, doneBy: S.user.email, updatedAt: now } }]);
+      await S.DB.batch([{ op: 'set', col: 'invoices', id: no, data: doc }, { op: 'update', col: 'orders', id: o.id, data: { st: 'shipped', shipAt: now, shipBy: S.user.email, shipVia: 'INVOICE', cmNo: no, invs: [no], doneAt: now, doneBy: S.user.email, updatedAt: now } }]);
       dropInvCache(monthsOf([doc]));
       try { const N = await import('./notify.js'); await N.queue({ kind: 'creditReq', toSm: o.sm, pushOnly: true, subject: '[THE ONE] ↩ 크레딧 발행 ' + no + ' — ' + o.store, text: '↩ ' + no + ' · ' + o.store + ' −' + money(sub) + ' (' + (o.why || '') + ')' }); } catch (e) {}
       toast('↩ ' + no + ' — ' + bt('발행', 'issued') + ' −' + money(sub), 'good');

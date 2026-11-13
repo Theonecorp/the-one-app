@@ -20,7 +20,8 @@ const path = require('path');
   if (!by('ship') || !by('ship').ic || !/배송/.test(by('ship').head)) errs.push('① second group is 배송 (truck icon)');
   const has = (k, t) => by(k) && by(k).tiles.includes(t);
   ['new', 'sent', 'cfw', 'cfok', 'pick', 'picked', 'flow'].forEach(t => { if (!has('sale', t)) errs.push('① 세일 should hold ' + t); });
-  ['done', 'ups', 'packed', 'shipped', 'bo', 'displays', 'adhoc', 'track'].forEach(t => { if (!has('ship', t)) errs.push('① 배송 should hold ' + t); });
+  ['shipped', 'bo', 'displays', 'adhoc'].forEach(t =>   /* 🚚 배송 조회(track) 화면 없앰 v0.8.226 */ { if (!has('ship', t)) errs.push('① 배송 should hold ' + t); });
+  ['done', 'ups', 'packed', 'dlv'].forEach(t => { if (has('ship', t) || has('sale', t)) errs.push('① hidden stage tile should be gone: ' + t); });   // 2026-11-13 창고 매니저: 인보이스 발행 = ✅ 완료 (t266)
   if (!has('money', 'credit') || !has('money', 'verify')) errs.push('① 수금 holds credit · verify'); if (!has('look', 'inv') || !has('look', 'stores')) errs.push('① 조회 holds invoices · customers');
   const all = G.flatMap(g => g.tiles); if (new Set(all).size !== all.length) errs.push('① no tile appears in two groups');
   if (!by('sale').open || G.filter(g => g.open).length !== 1) errs.push('① 세일 is the only group open by default for office');
@@ -31,7 +32,7 @@ const path = require('path');
   pg = await mk('wh@x.com', "s.users.push({ id: 'wh@x.com', email: 'wh@x.com', name: 'W', role: 'manager', job: 'whmgr', active: true });");
   await pg.evaluate(() => { location.hash = '#/shome'; }); await pg.waitForSelector('.hgrp', { timeout: 8000 });
   G = await groups(pg); log('② whmgr groups:', JSON.stringify(G.map(g => g.k + (g.open ? '*' : '') + ':' + g.tiles.join(','))));
-  if (!by('ship') || !by('ship').open || !has('ship', 'adhoc') || !has('ship', 'ups')) errs.push('② warehouse manager: 배송 open by default with UPS · ad-hoc label');
+  if (!by('ship') || !by('ship').open || !has('ship', 'adhoc') || has('ship', 'ups')) errs.push('② warehouse manager: 배송 open by default with ad-hoc label (no UPS stage tile — v0.8.226)');
   if (by('sale') && by('sale').tiles.includes('new')) errs.push('② warehouse manager has no 새 주문 tile');
   await br.close(); srv.kill();
   console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
