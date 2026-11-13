@@ -335,8 +335,8 @@ async function applyModal(x, done) {
 }
 function creditHtml(x) {
   const co = company(S);
-  return '<h1>Credit Memo · 크레딧 메모</h1><div class="meta"><b>' + esc(x.no) + '</b> &nbsp;|&nbsp; ' + esc(x.d) + ' &nbsp;|&nbsp; ' + esc(co.name) + '</div>' +
-    '<table class="box"><tr><td>Store</td><td><b>' + esc(x.store) + '</b> (' + esc(x.acct || '') + ')</td></tr><tr><td>Salesman</td><td>' + esc(x.sm || '') + '</td></tr><tr><td>Reason</td><td>' + esc(x.why || '') + (x.note ? ' — ' + esc(x.note) : '') + '</td></tr>' + (x.st === 'x' ? '<tr><td>VOID</td><td>' + esc(x.voidReason || '') + '</td></tr>' : '') + '</table>' +
+  return '<h1>Credit Memo · 크레딧 메모</h1><div class="meta"><b>' + esc(x.no) + '</b> &nbsp;|&nbsp; ' + esc(x.d) + ' &nbsp;|&nbsp; <b class="doccn">' + esc(co.name) + '</b></div>' +
+    '<table class="box"><tr><td>Store</td><td><b class="docnm">' + esc(x.store) + '</b> (' + esc(x.acct || '') + ')</td></tr><tr><td>Salesman</td><td>' + esc(x.sm || '') + '</td></tr><tr><td>Reason</td><td>' + esc(x.why || '') + (x.note ? ' — ' + esc(x.note) : '') + '</td></tr>' + (x.st === 'x' ? '<tr><td>VOID</td><td>' + esc(x.voidReason || '') + '</td></tr>' : '') + '</table>' +
     '<table><tr><th>Code</th><th>Description</th><th class="r">Qty</th><th class="r">List</th><th class="r">Disc</th><th class="r">Unit</th><th class="r">Credit</th></tr>' + (x.lines || []).map(l => '<tr><td>' + esc(l.c) + '</td><td>' + esc(l.d || '') + '</td><td class="r">' + Math.abs(l.q) + '</td><td class="r">' + money(l.lp != null ? l.lp : l.p) + '</td><td class="r">' + (num(l.dc) ? num(l.dc) + '%' : '') + '</td><td class="r">' + money(l.p) + '</td><td class="r">−' + money(R2(Math.abs(l.q) * l.p)) + '</td></tr>').join('') +
     '<tr class="fin"><td colspan="6" class="r"><b>TOTAL CREDIT</b></td><td class="r"><b>' + money(x.total) + '</b></td></tr></table>' +
     '<div style="font-size:11px;color:#666;margin-top:10px">This credit is applied to the store balance. 이 크레딧은 가게 잔액에 반영됩니다.</div><div class="sig"><div>Store</div><div>Salesman</div></div>';
