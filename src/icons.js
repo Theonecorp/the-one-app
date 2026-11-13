@@ -84,7 +84,7 @@ export const ROUTE_ICON = {
   shiphist: 'history', notesups: 'printer', balcao: 'truck', insert: 'plus', inserts: 'puzzle', displays: 'image',
   entry: 'pen', mine: 'clipList', send: 'send', hist: 'history', ar: 'dollar',
   mysales: 'trend', 'mg/sales': 'trend', mg: 'factory', pay: 'receipt', bossar: 'dollar', reports: 'chart',
-  photos: 'camera', adhoc: 'plus', 'items/new': 'plus', 'items/bulk': 'clipList', new: 'cart', labels: 'printer', admin: 'settings', 'view/menu': 'swap', 'view/salesman': 'car',
+  photos: 'camera', adhoc: 'plus', 'items/new': 'plus', 'items/bulk': 'clipList', new: 'cart', labels: 'printer', admin: 'settings', settings: 'settings', 'view/menu': 'swap', 'view/salesman': 'car',
   'hub/money': 'wallet', 'hub/smoney': 'wallet', 'hub/look': 'book', 'hub/slook': 'book', 'hub/wh': 'warehouse', 'hub/biz': 'briefcase'
 };
 /** 주문 단계 칸(서랍 · 주문 메뉴) → 아이콘 이름 */
