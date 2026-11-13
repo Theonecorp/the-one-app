@@ -82,10 +82,15 @@ async function serverOrder(id) {
 /** 폰 보관함의 주문을 서버에 올릴 때 — 서버에만 있는 칸(사무실 확인 cfOk · cfHow · 요청 cfReq … · 만든 시각 등)은 그대로 이어 붙임
  *  (v0.8.236: 폰 주문에는 이 칸이 없어 통째로 덮으면 "칸을 지움"이 되고, 세일즈맨은 그 칸을 못 바꾸는 규칙(L4)에 막혀 permission-denied —
  *   임시 저장해 둔 주문을 사무실 · 세일즈맨이 "맞습니다"로 확인한 뒤 보내려 할 때) */
+/* 세일즈맨이 못 바꾸는 칸 (firestore.rules smOrderUpdate L4 와 같은 목록 + 사무실 확인 표시) — 폰 값과 달라도 늘 서버 값으로 (v0.8.239:
+ *   이미 회사에 들어간 주문이 폰 보관함에 남아 있으면 다시 올릴 때 "만든 시각(createdAt)" 등이 서버와 달라 계속 permission-denied 이던 것) */
+const SM_LOCK = ['createdBy', 'createdAt', 'picker', 'pickerName', 'pickAt', 'pickBy', 'packAt', 'packBy', 'shipVia', 'track', 'boxes', 'shipCost', 'shipAt', 'shipBy', 'pickupId', 'invs',
+  'cfReq', 'cfReqAt', 'cfReqBy', 'cfNote', 'cfHow', 'cfIssueDoneAt', 'cfIssueDoneBy', 'cfOk', 'cfAt', 'cfBy', 'cfIssue', 'cfIssueAt', 'cfIssueOpen'];
 export function keepServer(o, cur) {
   if (!cur) return o;
   const out = Object.assign({}, o);
   Object.keys(cur).forEach(k => { if (k !== 'id' && out[k] === undefined) out[k] = cur[k]; });
+  SM_LOCK.forEach(k => { if (k in cur) out[k] = cur[k]; else delete out[k]; });   // 잠긴 칸: 서버에 있으면 서버 값 · 없으면 폰도 넣지 않음
   return out;
 }
 export async function soStamp(o, cur0) {
