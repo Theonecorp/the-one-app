@@ -539,6 +539,8 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 .pl-chips{display:flex;gap:6px;flex-wrap:wrap}.pl-chips button{min-height:40px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);cursor:pointer}.pl-chips button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
 @media (max-width:640px){.pl-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.pl-filters>*{flex:1 1 140px}.pl-filters #plQ,.pl-filters .pl-only{flex:1 1 100%}}
 ` + THEME + `
+/* ↩ 결제 입력의 미결 CM 칩 (v0.8.232) */
+.chips button.cmchip{background:#fff7ed;border-color:#fdba74;color:#9a3412}
 /* 🏷 타사 제품 — 🧾 담은 것 (맨 위 고정 · 줄마다 − 수량 + 🗑, v0.8.231) */
 .obsel{position:sticky;top:-14px;z-index:2;background:#fff7ed;border:1.5px solid #fdba74;border-radius:12px;padding:8px 10px;margin:8px 0;max-height:34vh;overflow:auto}
 .obsel>b{display:block;font-size:13px;margin-bottom:4px;color:#9a3412}
