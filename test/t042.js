@@ -8,7 +8,7 @@ const path = require('path'), fs = require('fs');
   const pg = await br.newPage({ viewport: { width: 430, height: 1000 } }); const errs = [], log = (...a) => console.log(...a);
   pg.on('pageerror', e => errs.push(e.message + ' @ ' + String(e.stack).split('\n')[1])); pg.on('dialog', d => d.accept());
   const shot = n => pg.screenshot({ path: path.resolve(__dirname, 'out', n + '.png'), fullPage: true });
-  const T = new Date(), d0 = T.toISOString().substring(0, 10), d1 = new Date(T - 86400000).toISOString().substring(0, 10), d40 = new Date(T - 40 * 86400000).toISOString().substring(0, 10);
+  const T = new Date(), d0 = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(T)), d1 = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date(T - 86400000))), d40 = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(new Date(T - 40 * 86400000)));
   await pg.addInitScript(([d0, d1, d40]) => {
     window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'Luke' };
     window.__AFTER_SEED__ = s => {

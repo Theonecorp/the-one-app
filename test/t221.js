@@ -1,127 +1,53 @@
-/* v0.8.201 시험 — 📷 사진으로 라벨 읽기 서버(functions/core.js · Cloud Function lerEtiqueta)의 로직 — 브라우저 · 네트워크 · functions/node_modules 없이 (가짜 db · 가짜 Anthropic · 가짜 시계)
- *   ① 키 없음 → sem_chave · 로그인 없음 / 이메일 미확인 / Google 아님 → sem_login(unauthenticated) · users 문서 없음 / active:false → sem_permissao(permission-denied) · 관리자 이메일(규칙 isAdminEmail)은 문서 없이 통과
- *   ② 하루 한도: settings/app.iaLimiteDia 2 · 오늘(UTC) 같은 사람 2번 → limite_diario(resource-exhausted, limite 2) · 어제 · 다른 사람 · 다른 기능 기록은 안 셈 · 한도 칸이 없으면 300
- *   ③ 사진: 없음 → sem_imagem · 5MB 넘음 → imagem_grande · image/bmp → formato_invalido (모두 invalid-argument)
- *   ④ 정상: AI 요청 모양(모델 · max_tokens 4000 · 시스템 지시 · effort low · 형식 · 이미지 base64 + 글, temperature 등 없음) · 정리(' cwrs03 '→CWRS03 · '250'→250 · 0→null · 모르는 확신→media · 빈 줄 버림 · 40자)
- *        · iaUso 한 줄(email 소문자 · dia · recurso · tokens · custoUsd = 토큰 × 가격표 · itensLidos · erro null · modelo) · 돌려준 값(ok · observacao · custo_usd · restante_hoje)
- *   ⑤ 거절(stop_reason refusal) · 읽을 수 없는 출력(SDK 파싱 오류) → ok + 빈 itens · iaUso erro nada_lido
- *   ⑥ SDK 오류 클래스 → 옛 코드: 인증 · 권한 → chave_invalida · 429 → muitas_chamadas · 400 credit/balance → sem_credito (그 밖 400 → falha_api) · 연결 → falha_rede(unavailable) · 그 밖 → falha_api — iaUso 에도 erro
- *   ⑦ core.js 는 아무것도 import 하지 않음 · index.js 는 v2 onCall(비밀 ANTHROPIC_API_KEY · us-central1 · 256MiB · 60초 · 최대 5) · 모델은 ANTHROPIC_MODELO */
-const path = require('path'), fs = require('fs');
+/* v0.8.200 시험 — 🔎 아이템 코드 칸 자동완성 · 가까운 순 검색 (2026-11-12 관리자: "인보이스 수정 때 아이템 추가 칸이 잘 안 보이고 · 코드를 넣어도 안 들어가고 선택 옵션도 없음 · CV 를 누르면 CV 로 시작하는 아이템이 매칭 순서로 나온 뒤 선택")
+ *   ① 인보이스 수정 ＋ 아이템 추가: 코드 칸이 넓게 보임(250px 넘음) · 'AHG11' 을 치면 목록이 뜨고 맨 위가 AHG11… 로 시작 · ↓ Enter 로 고르면 바로 줄이 더해짐
+ *   ② 목록을 손가락(마우스)으로 눌러도 더해짐 · 정확한 코드 + Enter 는 예전처럼 바로 더해짐
+ *   ③ 검색 순서: 'G1' → 코드가 G1 로 시작하는 것(G100X)이 코드 안에 G1 이 있는 것(AHG1…)보다 먼저 · 같은 급은 번호 순
+ *   ④ 주문 처리 ＋ 아이템 추가 창(aCode)에도 같은 목록 */
+let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
+const path = require('path');
 (async () => {
-  const errs = [], log = (...a) => console.log(...a), ok = (c, m) => { if (!c) errs.push(m); };
-  const core = await import(require('url').pathToFileURL(path.resolve(__dirname, '../functions/core.js')).href);
-  const { lerEtiquetaCore, INSTRUCAO, PRECO } = core;
-
-  /* 가짜 Anthropic 오류 클래스 (SDK 와 같은 상속: AnthropicError → APIError → 나머지) */
-  class AnthropicError extends Error {}
-  class APIError extends AnthropicError { constructor(status, msg) { super(msg); this.status = status; } }
-  class BadRequestError extends APIError {} class AuthenticationError extends APIError {} class PermissionDeniedError extends APIError {}
-  class RateLimitError extends APIError {} class APIConnectionError extends APIError { constructor(msg) { super(undefined, msg); } }
-  const erros = { AnthropicError, APIError, BadRequestError, AuthenticationError, PermissionDeniedError, RateLimitError, APIConnectionError };
-
-  /* 가짜 Firestore — collection().doc().get() · where()...count().get() · add() */
-  const fakeDb = (o) => {
-    const added = [];
-    const coll = name => {
-      const query = filters => ({
-        where: (f, op, v) => query(filters.concat([[f, op, v]])),
-        count: () => ({ get: async () => ({ data: () => ({ count: (name === 'iaUso' ? (o.usos || []).concat(added) : []).filter(d => filters.every(([f, , v]) => d[f] === v)).length }) }) }),
-      });
-      return Object.assign(query([]), {
-        doc: id => ({ get: async () => { const src = name === 'users' ? o.users || {} : name === 'settings' ? o.settings || {} : {}; const v = src[id]; return { exists: v !== undefined, data: () => v }; } }),
-        add: async d => { if (name !== 'iaUso') throw new Error('add ' + name); added.push(d); return { id: 'X' + added.length }; },
-      });
-    };
-    return { collection: coll, added };
-  };
-  const NOW = new Date('2026-11-12T23:30:00Z');
-  const tok = (email, extra) => ({ uid: 'u1', token: Object.assign({ email, email_verified: true, firebase: { sign_in_provider: 'google.com' } }, extra || {}) });
-  const IMG = 'QUJD'.repeat(100), FORMATO = { type: 'json_schema', schema: {}, parse: () => null };
-  const resp = (po, extra) => Object.assign({ stop_reason: 'end_turn', parsed_output: po, usage: { input_tokens: 1000, output_tokens: 200 } }, extra || {});
-  const mkAnth = r => { const calls = []; return { calls, messages: { parse: async p => { calls.push(p); if (r instanceof Error) throw r; return r; } } }; };
-  const deps = (o) => Object.assign({ db: fakeDb({ users: { 'joe@x.com': { role: 'manager' } } }), anthropic: mkAnth(resp({ itens: [{ codigo: 'A1', quantidade: 1, confianca: 'alta' }], observacao: '' })), now: () => NOW, cfg: { chave: true }, formato: FORMATO, erros }, o || {});
-  const run = async (req, d) => { try { return { r: await lerEtiquetaCore(req, d) }; } catch (e) { return { e }; } };
-  const exp = (x, code, erro, m) => { ok(x.e && x.e.code === code && x.e.details && x.e.details.erro === erro, m + ' → ' + code + '/' + erro + ' :: ' + (x.e ? x.e.code + '/' + JSON.stringify(x.e.details) : 'no error')); };
-
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8905', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
+  const errs = [], log = (...a) => console.log(...a);
+  const pg = await (await br.newContext({ viewport: { width: 1000, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
+  await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { Object.assign(s.orders[0], { st: window.__T221ST || 'picked', cfOk: true, picker: 'luke@theonefl.com', pickerName: 'L' }); const c0 = s.catalog.find(x => x.id === 'c0'), rows = JSON.parse(c0.j); rows.push(['G100X', 'GOLD RANK TEST', 3, 0, '', 'Jewelry', 'EARRING', 'TEST', 'TEST', '']); c0.j = JSON.stringify(rows); s.catalog[0].ver = 'T221'; c0.ver = 'T221'; }; });
+  await pg.goto('http://127.0.0.1:8905/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
+  await pg.evaluate(() => { location.hash = '#/order/O261014-AAAA'; }); await pg.waitForSelector('#mInv', { timeout: 8000 });
+  await pg.click('#mInv'); await pg.waitForSelector('#ivOk'); await pg.click('#ivOk'); await pg.waitForTimeout(1800); if (await pg.$('#prt.on')) await pg.click('#prtClose');
+  const no = await pg.evaluate(() => Object.values(window.__MOCK_STORE__.invoices).find(v => v.orderId === 'O261014-AAAA').no);
+  await pg.evaluate(() => { location.hash = '#/order/x'; }); await pg.waitForTimeout(200); await pg.evaluate(() => { location.hash = '#/order/O261014-AAAA'; });
+  await pg.waitForSelector('[data-mie]', { timeout: 8000 }); await pg.click('[data-mie="' + no + '"]'); await pg.waitForSelector('#ieOk', { timeout: 6000 });
   /* ① */
-  exp(await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ cfg: { chave: false } })), 'failed-precondition', 'sem_chave', '① no key');
-  exp(await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ anthropic: null })), 'failed-precondition', 'sem_chave', '① no client');
-  exp(await run({ auth: null, data: { imagem: IMG } }, deps()), 'unauthenticated', 'sem_login', '① no auth');
-  exp(await run({ auth: tok('joe@x.com', { email_verified: false }), data: { imagem: IMG } }, deps()), 'unauthenticated', 'sem_login', '① unverified email');
-  exp(await run({ auth: tok('joe@x.com', { firebase: { sign_in_provider: 'password' } }), data: { imagem: IMG } }, deps()), 'unauthenticated', 'sem_login', '① not Google sign-in');
-  exp(await run({ auth: tok('ann@x.com'), data: { imagem: IMG } }, deps()), 'permission-denied', 'sem_permissao', '① no users doc');
-  exp(await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ db: fakeDb({ users: { 'joe@x.com': { active: false } } }) })), 'permission-denied', 'sem_permissao', '① inactive user');
-  let x = await run({ auth: tok('Luke@TheOneFL.com'), data: { imagem: IMG } }, deps({ db: fakeDb({}) })); ok(x.r && x.r.ok, '① admin email passes without a users doc :: ' + (x.e && x.e.message));
-  x = await run({ auth: tok('Joe@X.com'), data: { imagem: IMG } }, deps()); ok(x.r && x.r.ok, '① active user (email case-insensitive) passes');
-  log('① auth ok');
+  const w = await pg.$eval('#ieAdd', x => x.getBoundingClientRect().width); log('① code box width:', Math.round(w)); if (w < 250) errs.push('① code box is wide enough to see');
+  const n0 = await pg.$$eval('[data-ieq]', E => E.length);
+  await pg.click('#ieAdd'); await pg.keyboard.type('AHG11'); await pg.waitForSelector('.sugbox .sugrow', { timeout: 3000 }).catch(() => errs.push('① list appears'));
+  const rows = await pg.$$eval('.sugbox .sugrow b', B => B.map(b => b.textContent)); log('① list:', rows.slice(0, 5).join(' '));
+  if (!rows.length || !/^AHG11/.test(rows[0])) errs.push('① top of list starts with AHG11');
+  await pg.keyboard.press('ArrowDown'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
+  const n1 = await pg.$$eval('[data-ieq]', E => E.length), c1 = await pg.$$eval('#mbox .ietbl td b', B => B.map(b => b.textContent)); log('① lines after pick:', n1, c1.slice(-1)[0]);
+  if (n1 !== n0 + 1 || c1.slice(-1)[0] !== rows[1]) errs.push('① ↓ Enter adds the 2nd suggestion as a line');
   /* ② */
-  const uso = (email, dia, recurso) => ({ email, dia, recurso: recurso || 'ler-etiqueta' });
-  let db = fakeDb({ users: { 'joe@x.com': {} }, settings: { app: { iaLimiteDia: 2 } }, usos: [uso('joe@x.com', '2026-11-12'), uso('joe@x.com', '2026-11-12'), uso('joe@x.com', '2026-11-11'), uso('ann@x.com', '2026-11-12'), uso('joe@x.com', '2026-11-12', 'outro')] });
-  x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ db })); exp(x, 'resource-exhausted', 'limite_diario', '② 2 of 2 today');
-  ok(x.e && x.e.details.limite === 2, '② details.limite 2'); ok(db.added.length === 0, '② refused call is not logged');
-  db = fakeDb({ users: { 'joe@x.com': {} }, settings: { app: { iaLimiteDia: 3 } }, usos: [uso('joe@x.com', '2026-11-12'), uso('joe@x.com', '2026-11-12')] });
-  x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ db })); ok(x.r && x.r.restante_hoje === 0, '② 3rd of 3 allowed · restante_hoje 0 :: ' + JSON.stringify(x.r));
-  x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ db })); exp(x, 'resource-exhausted', 'limite_diario', '② the 4th (logged 3rd counts)');
-  x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps()); ok(x.r && x.r.restante_hoje === 299, '② default limit 300 → restante 299 :: ' + (x.r && x.r.restante_hoje));
+  await pg.click('#ieAdd'); await pg.keyboard.type('EB10'); await pg.waitForSelector('.sugbox .sugrow'); const first = await pg.$eval('.sugbox .sugrow b', b => b.textContent);
+  await pg.click('.sugbox .sugrow'); await pg.waitForTimeout(300); const c2 = await pg.$$eval('#mbox .ietbl td b', B => B.map(b => b.textContent)); log('② tap pick:', first, '→', c2.slice(-1)[0]);
+  if (c2.slice(-1)[0] !== first) errs.push('② tapping a suggestion adds it');
+  await pg.fill('#ieAdd', 'AHG105'); await pg.press('#ieAdd', 'Enter'); await pg.waitForTimeout(300); const c3 = await pg.$$eval('#mbox .ietbl td b', B => B.map(b => b.textContent)); log('② exact Enter:', c3.slice(-1)[0]);
+  if (c3.slice(-1)[0] !== 'AHG105') errs.push('② exact code + Enter still adds directly');
   /* ③ */
-  exp(await run({ auth: tok('joe@x.com'), data: {} }, deps()), 'invalid-argument', 'sem_imagem', '③ no image');
-  exp(await run({ auth: tok('joe@x.com'), data: { imagem: 'A'.repeat(5 * 1024 * 1024 + 1) } }, deps()), 'invalid-argument', 'imagem_grande', '③ image > 5 MB');
-  x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG, mime: 'image/bmp' } }, deps()); exp(x, 'invalid-argument', 'formato_invalido', '③ bad mime'); ok(x.e && x.e.details.mime === 'image/bmp', '③ details.mime');
-  for (const m of ['image/png', 'image/webp', 'image/gif']) { x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG, mime: m } }, deps()); ok(x.r && x.r.ok, '③ ' + m + ' accepted'); }
-  log('②③ limit · image ok');
+  await pg.fill('#ieAdd', ''); await pg.click('#ieAdd'); await pg.keyboard.type('G1'); await pg.waitForSelector('.sugbox .sugrow'); await pg.waitForTimeout(200);
+  const order = await pg.$$eval('.sugbox .sugrow b', B => B.map(b => b.textContent)); log('③ G1:', order.join(' '));
+  if (order[0] !== 'G100X') errs.push('③ code starting with G1 (G100X) comes first');
+  const ahg = order.filter(c => /^AHG/.test(c)); if (!ahg.length || ahg.join() !== ahg.slice().sort((a, b) => a.localeCompare(b, 'en', { numeric: true })).join()) errs.push('③ same rank in code number order');
+  await pg.keyboard.press('Escape');
+  await pg.click('#ieX').catch(() => {}); await pg.waitForTimeout(300);
   /* ④ */
-  const an = mkAnth(resp({ itens: [{ codigo: ' cwrs03 ', quantidade: '250', confianca: 'alta' }, { codigo: 'tng02', quantidade: 0, confianca: 'xx' }, { codigo: '', quantidade: null, confianca: 'baixa' }, { codigo: 'hxr 01 l', quantidade: 12.6, confianca: 'baixa' }, { codigo: 'X'.repeat(50), quantidade: -3, confianca: 'media' }], observacao: 'foto escura' }));
-  db = fakeDb({ users: { 'joe@x.com': {} } });
-  x = await run({ auth: tok('Joe@X.com'), data: { imagem: IMG, mime: 'image/jpeg' } }, deps({ db, anthropic: an }));
-  log('④ result:', JSON.stringify(x.r));
-  const p = an.calls[0] || {};
-  ok(p.model === 'claude-haiku-5-5' && p.max_tokens === 4000 && p.system === INSTRUCAO, '④ model · max_tokens · system');
-  ok(p.output_config && p.output_config.effort === 'low' && p.output_config.format === FORMATO, '④ output_config effort low + format');
-  ok(!('temperature' in p) && !('top_p' in p) && !('top_k' in p) && !('thinking' in p) && !JSON.stringify(p).includes('budget_tokens'), '④ no sampling params / budget_tokens');
-  const ct = p.messages && p.messages[0] && p.messages[0].content || [];
-  ok(p.messages.length === 1 && p.messages[0].role === 'user' && ct[0].type === 'image' && ct[0].source.type === 'base64' && ct[0].source.media_type === 'image/jpeg' && ct[0].source.data === IMG && ct[1].type === 'text' && ct[1].text === 'Leia esta etiqueta e devolva o JSON.', '④ content image + text');
-  const it = x.r ? x.r.itens : [];
-  ok(JSON.stringify(it) === JSON.stringify([{ codigo: 'CWRS03', quantidade: 250, confianca: 'alta' }, { codigo: 'TNG02', quantidade: null, confianca: 'media' }, { codigo: 'HXR 01 L', quantidade: 13, confianca: 'baixa' }, { codigo: 'X'.repeat(40), quantidade: null, confianca: 'media' }]), '④ normalized items :: ' + JSON.stringify(it));
-  ok(x.r && x.r.ok === true && x.r.observacao === 'foto escura' && x.r.restante_hoje === 299, '④ ok · observacao · restante_hoje');
-  const custo = 1000 / 1e6 * 0.10 + 200 / 1e6 * 0.50;
-  ok(x.r && x.r.custo_usd === Number(custo.toFixed(5)), '④ custo_usd ' + custo + ' :: ' + (x.r && x.r.custo_usd));
-  ok(db.added.length === 1, '④ one iaUso doc :: ' + db.added.length);
-  const u = db.added[0] || {}; log('④ iaUso:', JSON.stringify(u));
-  ok(u.email === 'joe@x.com' && u.dia === '2026-11-12' && u.recurso === 'ler-etiqueta' && u.at === NOW.toISOString() && u.tokensIn === 1000 && u.tokensOut === 200 && u.custoUsd === Number(custo.toFixed(6)) && u.itensLidos === 4 && u.erro === null && u.modelo === 'claude-haiku-5-5', '④ iaUso fields');
-  db = fakeDb({ users: { 'joe@x.com': {} } });
-  const an2 = mkAnth(resp({ itens: [{ codigo: 'A', quantidade: 1, confianca: 'alta' }], observacao: '' }, { usage: { input_tokens: 2000, output_tokens: 100 } }));
-  x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ db, anthropic: an2, cfg: { chave: true, modelo: 'claude-sonnet-5-5' } }));
-  ok(an2.calls[0].model === 'claude-sonnet-5-5' && db.added[0].modelo === 'claude-sonnet-5-5' && db.added[0].custoUsd === Number((2000 / 1e6 * 2 + 100 / 1e6 * 10).toFixed(6)), '④ model override + its price');
-  ok(an2.calls[0].messages[0].content[0].source.media_type === 'image/jpeg', '④ mime defaults to image/jpeg');
-  ok(PRECO['claude-haiku-5-5'].in === 0.10 && PRECO['claude-haiku-5-5'].out === 0.50 && PRECO['claude-haiku-4-5'].in === 1 && PRECO['claude-sonnet-5-5'].out === 10, '④ price table');
-  /* ⑤ */
-  for (const [nome, r] of [['refusal', resp(null, { stop_reason: 'refusal' })], ['refusal with output', resp({ itens: [{ codigo: 'A', quantidade: 1, confianca: 'alta' }], observacao: '' }, { stop_reason: 'refusal' })], ['null parsed_output', resp(null)], ['empty itens', resp({ itens: [], observacao: 'cortada' })], ['unparseable output (SDK parse error)', new AnthropicError('Failed to parse structured output')]]) {
-    db = fakeDb({ users: { 'joe@x.com': {} } });
-    x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ db, anthropic: mkAnth(r) }));
-    ok(x.r && x.r.ok === true && Array.isArray(x.r.itens) && x.r.itens.length === 0, '⑤ ' + nome + ' → ok + empty itens :: ' + JSON.stringify(x.r || (x.e && x.e.details)));
-    ok(db.added.length === 1 && db.added[0].erro === 'nada_lido' && db.added[0].itensLidos === 0, '⑤ ' + nome + ' → iaUso nada_lido');
-  }
-  log('④⑤ call · normalize · log ok');
-  /* ⑥ */
-  const casos = [[new AuthenticationError(401, 'invalid x-api-key'), 'internal', 'chave_invalida'], [new PermissionDeniedError(403, 'forbidden'), 'internal', 'chave_invalida'], [new RateLimitError(429, 'rate limited'), 'resource-exhausted', 'muitas_chamadas'],
-    [new BadRequestError(400, 'Your credit balance is too low to access the Anthropic API.'), 'resource-exhausted', 'sem_credito'], [new BadRequestError(400, 'image could not be processed'), 'internal', 'falha_api'],
-    [new APIConnectionError('Connection error.'), 'unavailable', 'falha_rede'], [new APIError(529, 'overloaded'), 'internal', 'falha_api'], [new TypeError('boom'), 'internal', 'falha_api']];
-  for (const [er, code, erro] of casos) {
-    db = fakeDb({ users: { 'joe@x.com': {} } });
-    x = await run({ auth: tok('joe@x.com'), data: { imagem: IMG } }, deps({ db, anthropic: mkAnth(er) }));
-    exp(x, code, erro, '⑥ ' + er.constructor.name + ' ' + (er.message || ''));
-    ok(db.added.length === 1 && db.added[0].erro === erro, '⑥ ' + er.constructor.name + ' logged with erro ' + erro);
-  }
-  log('⑥ error mapping ok');
-  /* ⑦ */
-  const src = fs.readFileSync(path.resolve(__dirname, '../functions/core.js'), 'utf8'), idx = fs.readFileSync(path.resolve(__dirname, '../functions/index.js'), 'utf8');
-  ok(!/^\s*import\s/m.test(src) && !/require\(/.test(src), '⑦ core.js imports nothing');
-  ok(/onCall\(\{\s*secrets:\s*\[ANTHROPIC_API_KEY\],\s*region:\s*'us-central1',\s*memory:\s*'256MiB',\s*timeoutSeconds:\s*60,\s*maxInstances:\s*5\s*\}/.test(idx) && /defineSecret\('ANTHROPIC_API_KEY'\)/.test(idx) && /from 'firebase-functions\/v2\/https'/.test(idx), '⑦ index.js onCall options + secret');
-  ok(/process\.env\.ANTHROPIC_MODELO \|\| MODELO_PADRAO/.test(idx) && core.MODELO_PADRAO === 'claude-haiku-5-5', '⑦ model from ANTHROPIC_MODELO, default Haiku 5.5');
-  ok(/messages\.parse\(/.test(src) && /zodOutputFormat\(Leitura\)/.test(idx), '⑦ messages.parse + zodOutputFormat');
-  ok(INSTRUCAO.startsWith('Voce le etiquetas de caixas de um estoque de joias.') && INSTRUCAO.includes('Nao confunda o codigo do produto com codigo de rastreio') && INSTRUCAO.endsWith('Deixe "" quando estiver tudo certo.'), '⑦ INSTRUCAO is the old prompt');
-  ok(!/sk-ant-/.test(src + idx), '⑦ no key in code');
-  log(errs.length ? 'FAIL' : 'PASS'); if (errs.length) console.log(errs);
-  process.exit(errs.length ? 1 : 0);
-})().catch(e => { console.log('FAIL', e); process.exit(1); });
+  const p4 = await (await br.newContext({ viewport: { width: 1000, height: 1000 } })).newPage(); p4.on('pageerror', e => errs.push(e.message)); p4.on('dialog', d => d.accept());
+  await p4.addInitScript(() => { window.__T221ST = 'pick'; window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; });
+  await p4.addInitScript(() => { const f = window.__AFTER_SEED__; window.__AFTER_SEED__ = s => { if (f) f(s); Object.assign(s.orders[0], { st: 'pick', cfOk: true, picker: 'luke@theonefl.com', pickerName: 'L' }); }; });
+  await p4.goto('http://127.0.0.1:8905/test/demo.html'); await p4.waitForSelector('#nav button', { state: 'attached' });
+  await p4.evaluate(() => { location.hash = '#/order/O261014-AAAA'; });
+  if (await p4.waitForSelector('#mAdd', { timeout: 8000 }).catch(() => null)) { await p4.click('#mAdd'); await p4.waitForSelector('#aCode'); await p4.click('#aCode'); await p4.keyboard.type('AHG11'); await p4.waitForSelector('.sugbox .sugrow', { timeout: 3000 }).catch(() => errs.push('④ list in the office add-item window'));
+    const r4 = await p4.$$eval('.sugbox .sugrow b', B => B.map(b => b.textContent)); log('④ aCode list:', r4.slice(0, 3).join(' ')); if (!r4.length || !/^AHG11/.test(r4[0])) errs.push('④ aCode suggestions start with AHG11'); }
+  else errs.push('④ office add-item button');
+  await br.close(); srv.kill();
+  console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
+})();

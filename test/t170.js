@@ -9,7 +9,7 @@ const path = require('path');
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8835', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
-  const seed = `const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().substring(0, 10); };
+  const seed = `const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d)); };
     s.invoices = (s.invoices || []).concat([{ id: 'CM-000009', no: 'CM-000009', t: 'CM', kind: 'credit', src: 'credit', d: day(2), ym: day(2).substring(0, 7), acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', why: '대미지', lines: [{ c: 'AHG100', d: 'x', q: -12, p: 2.5, lp: 2.5 }], qty: -12, sub: -30, list: -30, disc: 0, total: -30, bal: -30, st: 'open', reviewed: false, createdBy: 'brandon@x.com', createdAt: new Date().toISOString() }]);`;
   const mk = async (email, w) => { const pg = await (await br.newContext({ viewport: { width: w || 430, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push(email + ': ' + e.message)); pg.on('dialog', d => d.accept());
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8835/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300); return pg; };

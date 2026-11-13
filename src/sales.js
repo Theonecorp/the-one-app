@@ -175,18 +175,42 @@ async function arDoc() {
   CACHE.arAt = Date.now(); return CACHE.ar;
 }
 /** 기준일 뒤에 내가 받은 인보이스별 금액 (AR 잔액에서 빼기) */
-async function paidSince(asOf) {
-  const rows = await myEntries(), out = {};
+async function paidSince(asOf, acct) {
+  /* 직원(사무실 · 회계)은 그 가게의 모든 수금 (세일즈맨이 이미 받은 것까지 빼야 두 번 적용하지 않음 · v0.8.202) · 세일즈맨은 내 수금 */
+  let rows = [];
+  if (acct && S.role !== 'salesman') { try { rows = (await S.DB.list('entries', { where: [['acct', '==', acct]] })).filter(e => !e.void); } catch (e) { rows = []; } }
+  else rows = await myEntries();
+  const out = {};
   rows.forEach(e => { if (e.d <= asOf || e.repl) return; (e.invs || []).forEach(v => { const k = (v.acct || e.acct) + '|' + v.no; out[k] = R2((out[k] || 0) + num(v.amt)); }); });
   return out;
 }
-export async function openInvoices(acct) {
-  const ar = await arDoc(); if (!ar || !ar.stores) return { asOf: '', list: [] };
-  const st = ar.stores.find(s => s.acct === acct); if (!st) return { asOf: ar.asOf, list: [] };
-  const paid = await paidSince(ar.asOf || '');
+/* 📋 이 가게의 AR — 가게 기준으로 찾음 (v0.8.202 — 2026-11-12 관리자: "수금 입력에서 AR 미결 인보이스가 제대로 안 뜸")
+ *   전에는 입력하는 사람 본인 세일즈맨 코드의 AR(ar/{me})만 봐서, 사무실(오피스 · 회계)이 입력하면 비고 · 다른 세일즈맨 가게도 안 보였음
+ *   찾는 순서: 입력 화면에서 고른 세일즈맨 → 나 → 그 가게의 담당 세일즈맨 → (직원) 모든 세일즈맨 AR */
+const AR_BY = {};
+async function arOf(sm) { if (!sm) return null; const c = AR_BY[sm]; if (c && Date.now() - c.at < 600000) return c.d; let d = null; try { d = await S.DB.get('ar', sm); } catch (e) { d = null; } AR_BY[sm] = { d, at: Date.now() }; return d; }
+let AR_ALL = null;
+async function arStoreOf(acct, smHint) {
+  const a = S.accounts && S.accounts.byCode ? S.accounts.byCode[acct] : null;
+  const tries = Array.from(new Set([smHint, me(), a && a.sm].map(x => String(x || '').toUpperCase()).filter(Boolean)));
+  let first = null;
+  for (const sm of tries) { const d = await arOf(sm); if (d && !first) first = d; const st = d && d.stores && d.stores.find(x => x.acct === acct); if (st) return { ar: d, st }; }
+  if (S.role !== 'salesman') {
+    if (!AR_ALL || Date.now() - AR_ALL.at > 600000) { let L = []; try { L = await S.DB.list('ar'); } catch (e) {} AR_ALL = { L: L.filter(d => d.id !== '_all' && d.sm !== '_all'), at: Date.now() }; }
+    for (const d of AR_ALL.L) { const st = d.stores && d.stores.find(x => x.acct === acct); if (st) return { ar: d, st }; }
+  }
+  return { ar: first, st: null };
+}
+export async function openInvoices(acct, smHint) {
+  const fd = await arStoreOf(acct, smHint), ar = fd.ar || { asOf: '' }, st = fd.st;
+  if (!st) { const list = []; await addApp(list); list.sort((a, b) => a.d < b.d ? -1 : 1); return { asOf: ar.asOf || '', list: list.filter(v => v.bal > 0.005 || v.bal < -0.005) }; }
+  const paid = await paidSince(ar.asOf || '', acct);
   const list = (st.invs || []).map(v => { const p = v.app ? 0 : (paid[acct + '|' + v.inv] || 0); return { no: v.inv, d: v.d, amt: v.amt, paid: p, bal: R2(v.bal - p), pdd: v.pdd, bk: v.bk }; });
+  await addApp(list);
+  list.sort((a, b) => a.d < b.d ? -1 : 1);
+  return { asOf: ar.asOf, list: list.filter(v => v.bal > 0.005 || v.bal < -0.005) };
   /* 앱에서 확정한 인보이스 (아직 올린 AR 에 없는 것) 도 같이 — 세일즈맨이 어느 인보이스에 얼마를 적용할지 고를 수 있게 */
-  try {
+  async function addApp(list) { try {
     const wh = [['acct', '==', acct], ['st', '==', 'open']]; if (S.role === 'salesman') wh.push(['sm', '==', me()]);
     const app = await S.DB.list('invoices', { where: wh });
     /* ↩ 크레딧을 AR 인보이스에 바로 적용한 것 (AR 기준일 뒤) — 그 줄 잔액에서 뺌 */
@@ -197,9 +221,7 @@ export async function openInvoices(acct) {
       /* 앱 인보이스: bal 에는 담당자가 확인한 수금이 이미 빠져 있음 → 아직 확인 전인 내 수금만 더 뺌 */
       const pays = x.pays || {}, p = ents.filter(e => !e.void && !e.repl && !(e.id in pays)).reduce((a, e) => a + (e.invs || []).filter(v => v.no === x.no).reduce((b, v) => b + num(v.amt), 0), 0), pdd = Math.max(0, daysBetween(x.d, today()) - 30);
       list.push({ no: x.no, d: x.d, amt: x.total, paid: R2((x.total || 0) - (x.bal != null ? x.bal : x.total) + p), bal: R2((x.bal != null ? x.bal : x.total) - p), pdd, bk: pdd <= 0 ? 0 : pdd <= 30 ? 1 : pdd <= 60 ? 2 : pdd <= 90 ? 3 : 4, app: true }); });
-  } catch (e) {}
-  list.sort((a, b) => a.d < b.d ? -1 : 1);
-  return { asOf: ar.asOf, list: list.filter(v => v.bal > 0.005 || v.bal < -0.005) };
+  } catch (e) {} }
 }
 async function paintArPick() {
   const box = $('arPick'); if (!box) return;
@@ -329,7 +351,7 @@ async function pageAR() {
   $('page').innerHTML = '<div class="load">AR 읽는 중…</div>';
   const ar = await arDoc();
   if (!ar || !ar.stores) { $('page').innerHTML = '<div class="card"><div class="none">아직 올라온 AR 이 없습니다. 담당자가 미수금(AR)을 올리면 여기에 보입니다.</div></div>'; return; }
-  const paid = await paidSince(ar.asOf || '');
+  const paid = await paidSince(ar.asOf || '', acct);
   const stores = ar.stores.map(s => {
     let net = 0; const b = [0, 0, 0, 0, 0];
     const invs = (s.invs || []).map(v => { const p = v.app ? 0 : (paid[s.acct + '|' + v.inv] || 0); const bal = R2(v.bal - p); return Object.assign({}, v, { paid: p, net: bal }); });

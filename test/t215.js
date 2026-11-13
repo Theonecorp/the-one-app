@@ -7,7 +7,7 @@
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
-  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8885', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8899', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const open = async (lines, st) => {
@@ -20,7 +20,7 @@ const path = require('path');
       Object.assign(s.orders[0], { st: o.st, picker: 'luke@theonefl.com', pickerName: 'L', cfOk: true });
       s.orderLines[0].lines = o.lines;
       (s.invoices = s.invoices || []).push({ id: 'A-043001', no: 'A-043001', t: 'A', acct: s.orders[0].acct, store: s.orders[0].store, sm: s.orders[0].sm, d: '2026-11-01', ym: '2026-11', lines: [{ c: 'GZGT01', d: 'GRILLZ GOLD TOP 01', q: 2, p: 5, lp: 5, g: '<DISCONTINUE ITEM>' }], qty: 2, sub: 10, list: 10, disc: 0, total: 10, bal: 10, st: 'open', terms: 'N30' }); }; }, { lines, st });
-    await pg.goto('http://127.0.0.1:8885/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
+    await pg.goto('http://127.0.0.1:8899/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
     return pg;
   };
   const L = (pq) => [{ c: 'AHG100', d: 'ITEM 0', q: 5, p: 2.5, t: 'A' }, { c: 'GZGT01', d: 'GRILLZ GOLD TOP 01', q: 2, p: 5, t: 'P' }, { c: 'EB103', d: 'EDGE BOOSTER', q: 4, p: 3.25, t: 'P' }, { c: 'EBTCSBOX', d: 'EB EXTRA STRENGTH BOX', q: 1, p: 119.52, t: 'P' }].map(l => pq ? Object.assign(l, { pq: l.q, ok: true }) : l);
