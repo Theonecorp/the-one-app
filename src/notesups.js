@@ -28,6 +28,7 @@ import * as E from './etq.js';
 import { NU_CSS, NU_MAIS, ETQN_CSS } from './notesups-css.js';
 import { D } from './notes-txt.js';
 import { LANG } from './i18n.js';
+import { filaExpedicao, paginaHTML, seloHTML as prtSeloHTML, ligarSelo as prtLigarSelo } from './prtq.js';
 
 let S = null;
 export function register(state) { S = state; E.init(state); Object.assign(ICO, E.ICO, BICO, ICO_MAIS); Router.on('notesups', page); }
@@ -118,8 +119,13 @@ function numerar(lista, fila) {
 }
 export function imprimirNotas(lista, fila, semTotal) {
   const L = numerar((lista || []).filter(Boolean), fila).map(n => semTotal ? Object.assign(n, { semTotal: true }) : n); if (!L.length) return 0;
-  printOpen('<style>' + ETQN_CSS + '</style>' + L.map(n => '<div class="nulp">' + etiquetaHTML(n) + '</div>').join(''));
+  imprimirFolhas(L);
   return L.length;
+}
+/** 🖨 출고 PC 에이전트가 켜져 있으면 대기열로 (옛 imprimirNotasUps → etqFilaExpedicao 'etiqueta_notes_ups' · 박스 하나 = 일 하나 · 제목 "가게 2/3"), 아니면 브라우저 인쇄 창 */
+function imprimirFolhas(L) {
+  if (filaExpedicao(L.map(n => ({ titulo: String(n.store || n.acct || '') + ' ' + (n.cxN || 1) + (n.semTotal ? '' : '/' + (n.cxT || 1)), html: paginaHTML(ETQN_CSS, ['<div class="nulp">' + etiquetaHTML(n) + '</div>'], 4, 6) })), 'etiqueta_notes_ups')) return;
+  printOpen('<style>' + ETQN_CSS + '</style>' + L.map(n => '<div class="nulp">' + etiquetaHTML(n) + '</div>').join(''));
 }
 /** 옛 nuImprimirLoja — 그 가게 대기 줄 전부 (번호를 다시 매김) */
 export async function imprimirLoja(acct) { await carregarFila(true); return imprimirNotas(daLoja(acct), N.fila); }
@@ -131,7 +137,7 @@ function reimprimir(id) {
   if (n.st === 'x') return toast(t('nu_excl_tit'), 'bad');
   if (n.st === 'open' && (N.fila || []).some(x => x.id === id)) return imprimirNotas([n], N.fila);
   const m = /^\s*(\d+)\s*\/\s*(\d+)\s*$/.exec(String(n.caixa || ''));   // 나간 박스는 처음 라벨의 "2/3" (caixa) — 없으면 번호만
-  printOpen('<style>' + ETQN_CSS + '</style><div class="nulp">' + etiquetaHTML(Object.assign({}, n, m ? { cxN: +m[1], cxT: +m[2] } : { cxN: 1, semTotal: true })) + '</div>');
+  imprimirFolhas([Object.assign({}, n, m ? { cxN: +m[1], cxT: +m[2] } : { cxN: 1, semTotal: true })]);
 }
 
 /* ====================  머리 · 숫자 칸 (옛 nuCabecalhoHTML · nuKpi · nuDelta)  ==================== */
@@ -338,11 +344,11 @@ export const ocupado = () => E.modalAberto() || (document.activeElement && /^(IN
 export function render() {
   if (location.hash.indexOf('#/notesups') !== 0) return;
   const cli = N.cli ? acctOf(N.cli) || { acct: N.cli, store: '' } : null, lista = cli ? daLoja(cli.acct) : (N.fila || []);
-  let h = cabecalhoHTML(false) + kpisHTML();
+  let h = cabecalhoHTML(false) + prtSeloHTML() + kpisHTML();
   if (N.novo || cli) h += cli ? lancarHTML(cli, medirHTML(), { n: lista.length, rot: t('nu_cx_loja') }) : escolherLojaHTML(false);
   h += filaHTML(cli, lista) + histPainelHTML();
   $('page').innerHTML = '<div class="sb nu-raiz"><div id="conteudo" class="nu-tela">' + h + '</div></div>';
-  ligar();
+  ligar(); prtLigarSelo(render);
   if (cli) verificarAuto(cli);
 }
 /** 입력 칸 · 공용 단추 묶기 — Notes Display 도 부름 */

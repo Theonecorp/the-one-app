@@ -1,0 +1,56 @@
+{
+  "_leia": "Faltam google_client_id, google_client_secret e o nome das impressoras. Depois: entrar-google.bat (uma vez) e iniciar.bat.",
+  "_firebase": "THE ONE APP (Firebase). A chave publica e o projeto ja estao preenchidos — sao os mesmos do site.",
+  "firebase_api_key": "AIzaSyAEvQhEi6H0pPiIRpKRNRXt5m348aU8i24",
+  "firebase_projeto": "the-one-app-ff40e",
+  "_google": "Login do agente = uma CONTA GOOGLE so dele (o app so aceita login do Google). O administrador cria um ID de cliente OAuth do tipo App para computador no Google Cloud do projeto the-one-app-ff40e e passa estes dois valores. Depois rode o entrar-google.bat UMA vez neste PC.",
+  "google_client_id": "PREENCHER-id-do-cliente-oauth",
+  "google_client_secret": "PREENCHER-chave-do-cliente-oauth",
+  "_imprimir": "Este PC imprime? Deixe true (ou tire a linha) no PC da impressora. Ponha false no PC que so tem leitor: assim ele nunca pede trabalho da fila e nao rouba etiqueta do outro PC. Com false, o campo 'impressora' deixa de ser obrigatorio.",
+  "imprimir": true,
+  "_impressoras": "De-para: o site manda o apelido, aqui vira a impressora. Basta um pedaco do nome (Zebra, TSC); o agente acha a fila e prefere a que esta em porta USB.",
+  "impressoras": {
+    "grande": "Zebra",
+    "pequena": "TSC",
+    "_insert": "Insert padrao (17/09/2026): 'insert' e a TSC com o rolo de 1 x 0,5 in (etiquetas dos hooks e do valor); 'checklist' e a impressora do checklist de picking. Sem essas duas linhas o trabalho fica em erro na fila dizendo que nao achou a impressora — preencha e reinicie o agente; nao precisa publicar nada.",
+    "insert": "TSC 1x0.5",
+    "checklist": "NOME-DA-IMPRESSORA-DO-CHECKLIST"
+  },
+  "_estacao": "Onde este PC fica. So importa quando MAIS DE UM PC imprime: a etiqueta carimbada com esta estacao so sai aqui, e nunca na outra sala. Em branco = este agente pega apenas etiqueta sem endereco, que e o certo quando ha um PC so. Nao confunda com o 'estacao' la de baixo, dentro de 'leitor': aquele nomeia a bancada do leitor de codigo de barras e vai gravado no motivo da baixa. Costumam ser o mesmo lugar, mas sao campos separados.",
+  "estacao": "",
+  "impressora": "TSC",
+  "_girar": "Quanto girar o desenho em cada impressora, em graus (0, 90 ou 270 giram o desenho; 180 vira de cabeca para baixo sem mudar as medidas). ATENCAO: 90 e 270 TROCAM largura por altura — num cabecote de 4in (Zebra ZP 450) um desenho de 6in girado pede 6in de largura e sai CORTADO. Os valores que funcionam aqui hoje sao grande=180 e pequena=0; foram achados imprimindo, nao deduzidos. O site ja gira a 6x4 para caber no cabecote de 4in; isto e o ajuste FINO, por impressora, para o texto sair na direcao certa no rolo que esta carregado. Mude e reinicie o agente — nao precisa publicar o site.",
+  "girar": {
+    "grande": 180,
+    "pequena": 0,
+    "padrao": 0
+  },
+  "linguagem": "tspl",
+  "dpi": 300,
+  "_leitor": "Leitor de codigo de barras. Precisa estar em MODO COM (porta serial), nao em modo teclado — troca-se bipando um codigo do manual do proprio leitor. Descubra a porta no Gerenciador de Dispositivos, em Portas (COM e LPT).",
+  "leitor": {
+    "ligado": false,
+    "porta": "COM3",
+    "baud": 9600,
+    "estacao": "Bancada 1",
+    "reconecta_segundos": 5
+  },
+  "intervalo_segundos": 3,
+  "etiquetas": {
+    "etiqueta_produto": {
+      "largura_mm": 57.1,
+      "altura_mm": 31.7,
+      "gap_mm": 2
+    },
+    "etiqueta_caixa": {
+      "largura_mm": 152.4,
+      "altura_mm": 101.6,
+      "gap_mm": 3
+    },
+    "recibo": {
+      "largura_mm": 57.1,
+      "altura_mm": 100,
+      "gap_mm": 2
+    }
+  }
+}

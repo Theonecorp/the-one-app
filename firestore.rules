@@ -68,7 +68,8 @@ service cloud.firestore {
       allow read: if registered();
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountsVer', 'arAsOf', 'displayItems', 'updatedAt']))   // 담당자는 버전 · AR 기준일 · 🖼 디스플레이 품목 목록만
-                    || (role() == 'manager' && userDoc().get('job', '') in ['catalog', 'itemmgr'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoDrive', 'catStart', 'catLoc', 'catPins', 'updatedAt']));   // 🎨 디자인 · 카탈로그 담당 · 🏷 아이템 · 재고 관리: 사진 · 분류 시작 · 위치 · 고정
+                    || (role() == 'manager' && userDoc().get('job', '') in ['catalog', 'itemmgr'] && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoDrive', 'catStart', 'catLoc', 'catPins', 'updatedAt']))   // 🎨 디자인 · 카탈로그 담당 · 🏷 아이템 · 재고 관리: 사진 · 분류 시작 · 위치 · 고정
+                    || (staffJob(['whmgr']) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['printDireta', 'updatedAt']));   // 🖨 창고 매니저: 출고 PC 로 바로 인쇄 켜기 · 끄기 (prtq.js)   // 🧮 오피스 매니저: 발주 계획 공장 설정 (plan.js openParams)
     }
 
     // ---------- 현장 수금 ----------
@@ -250,6 +251,15 @@ service cloud.firestore {
         || request.resource.data.get('iniciadaPor', '') == ''
         || (resource.data.get('iniciadaPor', '') == '' && request.resource.data.get('iniciadaPor', '') == email()));
     }
+    // 🖨 프린터 에이전트 대기열 (src/prtq.js · agente-impressao/agente.mjs — 옛 WMS 의 impressao_fila) — 화면이 'pendente' 로 넣고, 에이전트(전용 직원 계정 · 역할 manager · job 'agente')가 가져가 'feito' / 'erro'
+    //   에이전트가 바꾸는 칸은 상태 칸뿐 (라벨 내용 · 보낸 사람 · 방(estacao)은 못 바꿈)
+    match /printJobs/{id} {
+      allow read: if isStaff();
+      allow create: if (ordJob() || itemJob()) && request.resource.data.st == 'pendente' && request.resource.data.by == email();
+      allow update: if isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['st', 'tentativas', 'agente', 'pegoEm', 'feitoEm', 'erro']);
+      allow delete: if isAdmin();
+    }
+    match /printAgents/{id} { allow read: if registered(); allow write: if isStaff(); }   // 🖨 에이전트가 30초마다 '살아 있음' (기계 이름 · 방 · 버전)
     match /adhoc/{id} { allow read: if isStaff(); allow write: if ordJob(); }                                                                           // ➕ 주문 없이 만든 UPS 라벨 (임의 출고)
     match /pushTokens/{id} {                                                                                                         // 📱💻 웹 푸시 기기 — 자기 것만 적고 지움 (보내기는 Apps Script)
       // 🔐 L2: 등록된 사용자만, 고칠 때는 원래 주인이어야

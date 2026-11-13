@@ -1,0 +1,37 @@
+{
+  "_leia": "PC DA EXPEDICAO (Zebra, etiquetas 4x6). Faltam so google_client_id e google_client_secret (o administrador passa). Depois: entrar-google.bat (uma vez) e iniciar.bat.",
+  "_firebase": "THE ONE APP (Firebase). A chave publica e o projeto ja estao preenchidos — sao os mesmos do site.",
+  "firebase_api_key": "AIzaSyAEvQhEi6H0pPiIRpKRNRXt5m348aU8i24",
+  "firebase_projeto": "the-one-app-ff40e",
+  "_google": "Login do agente = uma CONTA GOOGLE so dele (o app so aceita login do Google). O administrador cria um ID de cliente OAuth do tipo App para computador no Google Cloud do projeto the-one-app-ff40e e passa estes dois valores. Depois rode o entrar-google.bat UMA vez neste PC.",
+  "google_client_id": "PREENCHER-id-do-cliente-oauth",
+  "google_client_secret": "PREENCHER-chave-do-cliente-oauth",
+  "_maquina": "Como este PC aparece na tela de 'quem esta imprimindo'. Sem esta linha, o agente usa o nome do computador no Windows.",
+  "maquina": "Expedicao",
+  "_estacao": "A ESTACAO E O QUE FAZ ESTE AGENTE SER O DA EXPEDICAO. So sai aqui a etiqueta carimbada com 'Expedicao' — Shipping UPS e Notes UPS. As do estoque (sem carimbo) NUNCA saem aqui. O valor tem de ser exatamente o mesmo que o site carimba (ESTACAO_EXPEDICAO em src/prtq.js): 'Expedicao', sem acento.",
+  "estacao": "Expedicao",
+  "imprimir": true,
+  "_impressoras": "De-para: o site manda o apelido, aqui vira a impressora. Basta um pedaco do nome; o agente acha a fila e prefere a que esta em porta USB. Neste PC so existe a Zebra, e toda etiqueta da expedicao e 'grande' (4x6 ou 6x4).",
+  "impressoras": {
+    "grande": "Zebra ZP 500"
+  },
+  "impressora": "Zebra ZP 500",
+  "_girar": "Quanto girar o desenho na Zebra, em graus. So 0 ou 180: NAO mudam as medidas (90 e 270 trocam largura por altura e a 6in sai cortada no cabecote de 4in). 180 e o que funciona na Zebra do estoque, entao comeca assim; se a primeira etiqueta sair de cabeca para baixo, troque por 0 e reinicie o agente.",
+  "girar": {
+    "grande": 180,
+    "padrao": 180
+  },
+  "_deslocar": "Ajuste fino da margem, em pontos da impressora (203 por polegada). x anda no sentido da largura, y no sentido em que o papel corre. Deixe 0 ate ver a primeira etiqueta.",
+  "deslocar": {
+    "x": 0,
+    "y": 0
+  },
+  "leitor": {
+    "ligado": false,
+    "porta": "COM3",
+    "baud": 9600,
+    "estacao": "Expedicao",
+    "reconecta_segundos": 5
+  },
+  "intervalo_segundos": 3
+}

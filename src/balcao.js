@@ -19,6 +19,7 @@ import { SB_CSS, SH_CSS, SB2_CSS } from './balcao-css.js';
 import { LANG } from './i18n.js';
 import { abertasDe, marcarEnviadas } from './notesups.js';
 import { D as TXT } from './balcao-txt.js';
+import { filaExpedicao, paginaHTML, direta as prtDireta, seloHTML as prtSeloHTML, ligarSelo as prtLigarSelo } from './prtq.js';
 /* 숫자가 끼는 문구 · Enter 같은 영어가 섞인 문구는 사전 바꿔 끼우기가 어색해서 언어별로 바로 */
 export const L3 = (ko, en, pt) => LANG === 'pt' ? pt : LANG === 'en' ? en : bt(ko, en);
 /** 옛 문구 (balcao-txt.js) — {n} 같은 자리는 v 로 */
@@ -427,7 +428,8 @@ export async function page() {
   const a = cliAtual(), cab = (t, s, bts) => '<div class="page-head"><div><h1>' + t + '</h1><p>' + s + '</p></div>' + (bts ? '<div class="su-head-bts">' + bts + '</div>' : '') + '</div>';
   if (!can('ship')) { $('page').innerHTML = '<div class="sb">' + cab('Shipping UPS', bt('출고 권한이 없습니다', 'No shipping permission')) + '</div>'; return; }
   pedirEnv();
-  const teste = '<div id="sbTeste">' + seloTesteHTML() + '</div>';
+  const teste = '<div id="sbTeste">' + seloTesteHTML() + '</div>' + prtSeloHTML();
+  setTimeout(() => prtLigarSelo(page), 0);   // 🖨 에이전트 상태 띠 (그린 뒤에 연결)
   if (!a) {
     $('page').innerHTML = '<div class="sb">' + cab('Shipping UPS', esc(tx('su_sub'))) + teste +
       '<div class="panel ups-painel"><div class="ups-passo"><label class="ups-lbl">' + esc(tx('su_conta')) + '</label><div class="ups-busca-l"><input id="sbBusca" class="ups-busca" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="numeric" placeholder="' + esc(tx('su_conta_ph')) + '" value="' + esc(B.busca) + '">' +
@@ -607,7 +609,8 @@ export function baixar(q) {
   return L.length;
 }
 /** 라벨 내보내기 — GIF 는 imprimir, 나머지는 baixar. 돌려주는 값 { imp, dl } */
-function saida(q) { const gifs = (q.labels || []).filter(l => l && l.img && fmtDe(l, q) === 'GIF'); if (gifs.length) imprimir(Object.assign({}, q, { labels: gifs })); return { imp: gifs.length, dl: baixar(q) }; }
+function saida(q) { if (prtDireta()) { const z = (q.labels || []).map((l, i) => ({ l, i })).filter(x => x.l && x.l.img && fmtDe(x.l, q) === 'ZPL'); if (z.length && filaExpedicao(z.map(x => ({ titulo: 'UPS ' + (x.l.trk || x.i + 1), zpl: atob(x.l.img) })), 'etiqueta_ups')) { const rest = (q.labels || []).filter(l => !(l && l.img && fmtDe(l, q) === 'ZPL')); const r = saida(Object.assign({}, q, { labels: rest })); return { imp: r.imp + z.length, dl: r.dl }; } }
+  const gifs = (q.labels || []).filter(l => l && l.img && fmtDe(l, q) === 'GIF'); if (gifs.length) imprimir(Object.assign({}, q, { labels: gifs })); return { imp: gifs.length, dl: baixar(q) }; }
 
 /* ---------- 출고 (옛 suFinalizar) ---------- */
 async function finalizar() {
@@ -673,7 +676,10 @@ export function imprimir(q) {
   const norm = im => { const deit = im.naturalWidth > im.naturalHeight, w = deit ? im.naturalHeight : im.naturalWidth; let h = deit ? im.naturalWidth : im.naturalHeight; const alvo = Math.round(w * 1.5); if (h > alvo) h = alvo;
     const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); if (deit) { g.translate(w, 0); g.rotate(Math.PI / 2); } g.drawImage(im, 0, 0);
     const d = g.getImageData(0, 0, w, h), p = d.data; for (let i = 0; i < p.length; i += 4) { const v = (p[i] * 299 + p[i + 1] * 587 + p[i + 2] * 114) / 1000 < 128 ? 0 : 255; p[i] = p[i + 1] = p[i + 2] = v; p[i + 3] = 255; } g.putImageData(d, 0, 0); return c.toDataURL('image/png'); };
-  const fim = () => { if (--pend) return; printOpen('<style>@page{size:4in 6in;margin:0}.sblbl{width:4in;height:6in;page-break-after:always;break-after:page;overflow:hidden}.sblbl img{display:block;width:4in;height:6in}</style>' + prontas.map(s => '<div class="sblbl"><img src="' + s + '" alt=""></div>').join('')); };
+  const fim = () => { if (--pend) return;
+    /* 🖨 출고 PC 에이전트로 (옛 etqFilaExpedicao 'etiqueta_ups') — 이미 흑백이라 pixelated (203dpi 로 다시 그릴 때 회색 테두리가 생겨 가는 선이 사라지지 않게) · 라벨 하나 = 일 하나 */
+    if (filaExpedicao(prontas.map((s, i) => ({ titulo: 'UPS ' + (L[i].trk || ''), html: paginaHTML('.etq-pag img{display:block;width:4in;height:6in;image-rendering:pixelated}', ['<img src="' + s + '" alt="">'], 4, 6) })), 'etiqueta_ups')) return;
+    printOpen('<style>@page{size:4in 6in;margin:0}.sblbl{width:4in;height:6in;page-break-after:always;break-after:page;overflow:hidden}.sblbl img{display:block;width:4in;height:6in}</style>' + prontas.map(s => '<div class="sblbl"><img src="' + s + '" alt=""></div>').join('')); };
   L.forEach((l, i) => { const im = new Image(), src = 'data:image/gif;base64,' + l.img; im.onload = () => { try { prontas[i] = norm(im); } catch (e) { prontas[i] = src; } fim(); }; im.onerror = () => { prontas[i] = src; fim(); }; im.src = src; });
 }
 /** 덮개 (기다림 · 성공 · 오류) — tit 는 HTML (이미 esc), sub 는 글 · extra 는 HTML (내려받기 링크) */
