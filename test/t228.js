@@ -6,13 +6,13 @@
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
-  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8914', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8940', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const ds = n => new Date(Date.now() - n * 864e5).toISOString().substring(0, 10);
   const pg = await (await br.newContext({ viewport: { width: 1400, height: 1000 } })).newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
   await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' }; window.__AFTER_SEED__ = s => { const mk = (id, d, amt) => ({ id, d, ym: d.substring(0, 7), sm: 'BRANDON', acct: '1111', store: 'OLDTEST ' + id, addr: '', pays: [{ m: 'CHECK', ref: id, amt, dep: d, mob: false }], invs: [{ no: 'A1' + id, t: 'A', amt }], total: amt, invTotal: amt, sb: true, rc: true, v: false, vn: '', settled: '', void: false, createdBy: 'brandon@x.com', createdAt: d, rep: true }); s.entries.push(mk('8801', o.old1, 100), mk('8802', o.old2, 200), mk('8803', o.recent, 300)); }; }, { old1: ds(60), old2: ds(45), recent: ds(3) });
-  await pg.goto('http://127.0.0.1:8914/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
+  await pg.goto('http://127.0.0.1:8940/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/pay'; }); await pg.waitForSelector('#pGo', { timeout: 8000 }); await pg.waitForTimeout(400);
   /* ① */
   const tops = await pg.evaluate(() => ['#pSm', '#pFrom', '#pTo', '#pGo'].map(q => Math.round(document.querySelector(q).getBoundingClientRect().top)));
