@@ -182,7 +182,7 @@ function pintarResumo(L) {
 }
 
 /* ---------- 주소 확인 (가게를 고르면 자동, 한 번) ---------- */
-function verHTML(a) {
+export function verHTML(a) {
   const v = B.av[a.acct];
   if (!v) return '<button type="button" class="btn sm" data-act="sb-ver">' + L3('UPS 로 확인', 'Verify with UPS', 'Verificar na UPS') + '</button>';
   if (v.st === 'wait') return '<span class="cl-selo off"><span class="fb-spin"></span> ' + L3('UPS 에 묻는 중…', 'Asking UPS…', 'Consultando a UPS…') + '</span>';
@@ -194,7 +194,9 @@ function verHTML(a) {
   return '<div class="su-ver-faixa av"><div>' + svg(ICO.pin, 14) + ' <b>' + L3('UPS 추천 주소', 'UPS suggests', 'A UPS sugere') + '</b><span>' + esc([c.addr1, c.addr2].filter(Boolean).join(', ')) + '<br>' + esc([c.city, c.state, c.zip].filter(Boolean).join(', ')) + '</span></div>' +
     (can('items') || S.role === 'admin' || S.role === 'owner' ? '<button type="button" class="btn sm primary" data-act="sb-ver-aplicar">' + bt('거래처에 적용', 'Apply') + '</button>' : '') + '</div>';
 }
-async function verificar(a, forcar) {
+/** UPS 주소 확인 (Notes UPS · Notes Display 의 가게 카드도 씀 — pinta: 그 화면의 다시 그리기) */
+export async function verificar(a, forcar, pinta) {
+  const pintarVer = pinta || pintarVer0;
   if (!a || (B.av[a.acct] && !forcar)) return;
   if (!a.addr || !a.zip) { B.av[a.acct] = { none: true }; return pintarVer(); }
   B.av[a.acct] = { st: 'wait' }; pintarVer();
@@ -203,16 +205,18 @@ async function verificar(a, forcar) {
   catch (e) { B.av[a.acct] = { st: 'error', err: String(e.code || e.message) }; }
   pintarVer();
 }
-function pintarVer() { const a = cliAtual(), el = document.querySelector('.sb .ups-ver'); if (a && el) { el.innerHTML = verHTML(a); ligarVer(); } }
+function pintarVer0() { const a = cliAtual(), el = document.querySelector('.sb .ups-ver'); if (a && el) { el.innerHTML = verHTML(a); ligarVer(); } }
 function ligarVer() {
   const a = cliAtual(); if (!a) return;
   document.querySelectorAll('.sb [data-act="sb-ver"]').forEach(b => b.onclick = () => verificar(a, true));
-  document.querySelectorAll('.sb [data-act="sb-ver-aplicar"]').forEach(b => b.onclick = async () => {
-    const c = (B.av[a.acct].cands || [])[0]; if (!c) return;
-    if (!(await confirmBox(bt('거래처 주소를 UPS 추천 주소로 바꿀까요?', 'Replace the customer address with the UPS suggestion?') + '\n' + [c.addr1, c.addr2, c.city, c.state, c.zip].filter(Boolean).join(', '), bt('적용', 'Apply')))) return;
-    try { await S.DB.update('accounts', a.acct, { addr: c.addr1, addr2: c.addr2 || a.addr2 || '', city: c.city, state: c.state, zip: c.zip, updatedAt: new Date().toISOString(), addrBy: S.user.email }); Object.assign(a, { addr: c.addr1, addr2: c.addr2 || a.addr2 || '', city: c.city, state: c.state, zip: c.zip }); await bumpAccountsVer(); B.av[a.acct] = { valid: true, cands: [para(a)] }; B.cot = null; toast(bt('주소를 바꿨습니다', 'Address updated'), 'good'); page(); }
-    catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
-  });
+  document.querySelectorAll('.sb [data-act="sb-ver-aplicar"]').forEach(b => b.onclick = async () => { if (await aplicarVer(a)) { B.cot = null; page(); } });
+}
+/** UPS 추천 주소를 거래처에 적용 — 바꿨으면 true (Notes UPS · Notes Display 도 씀) */
+export async function aplicarVer(a) {
+  const c = ((B.av[a.acct] || {}).cands || [])[0]; if (!c) return false;
+  if (!(await confirmBox(bt('거래처 주소를 UPS 추천 주소로 바꿀까요?', 'Replace the customer address with the UPS suggestion?') + '\n' + [c.addr1, c.addr2, c.city, c.state, c.zip].filter(Boolean).join(', '), bt('적용', 'Apply')))) return false;
+  try { await S.DB.update('accounts', a.acct, { addr: c.addr1, addr2: c.addr2 || a.addr2 || '', city: c.city, state: c.state, zip: c.zip, updatedAt: new Date().toISOString(), addrBy: S.user.email }); Object.assign(a, { addr: c.addr1, addr2: c.addr2 || a.addr2 || '', city: c.city, state: c.state, zip: c.zip }); await bumpAccountsVer(); B.av[a.acct] = { valid: true, cands: [para(a)] }; toast(bt('주소를 바꿨습니다', 'Address updated'), 'good'); return true; }
+  catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); return false; }
 }
 
 /* ---------- 화면 ---------- */

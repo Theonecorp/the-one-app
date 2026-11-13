@@ -405,7 +405,7 @@ async function staffHome() {
     const sentIn = ords.filter(o => o.sentAt && o.st !== 'draft' && o.st !== 'x' && inR(o.sentAt)), doneIn = ords.filter(o => (o.st === 'done' || o.st === 'shipped') && o.doneAt && inR(o.doneAt)), shipIn = ords.filter(o => o.st === 'shipped' && o.shipAt && inR(o.shipAt));
     const wait = live.filter(o => o.st === 'sent'), pk = live.filter(o => o.st === 'pick' || o.st === 'ok'), pkd = live.filter(o => o.st === 'picked'), topack = live.filter(o => o.st === 'done'), mine = pk.filter(o => o.picker === S.user.email);
     const put = (id, v) => { const el = $('ht-' + id); if (el) el.innerHTML = v; };
-    if ($('ht-displays')) S.DB.list('displays', { where: [['st', 'in', ['open', 'prep', 'done']]] }).then(D => { const w = D.filter(d => d.st === 'open' || d.st === 'prep'), late = w.filter(d => d.due && d.due < today()).length, ups = D.filter(d => d.st === 'done').length; put('displays', D.length ? bt('대기', 'waiting') + ' ' + w.length + (ups ? ' · 📦 UPS ' + ups : '') + (late ? ' · <b class="warn">⚠️ ' + late + bt(' 지남', ' late') + '</b>' : '') : bt('없음', 'none')); }).catch(() => put('displays', ''));
+    if ($('ht-displays')) import('./displays.js').then(D => D.resumo()).then(r => { put('displays', r.lojas ? bt('대기', 'waiting') + ' ' + r.lojas + (r.atrasadas ? ' · <b class="warn">⚠️ ' + r.atrasadas + bt(' 지남', ' late') + '</b>' : '') : bt('없음', 'none')); }).catch(() => put('displays', ''));   // 🖼 Notes Display — 옛 WMS 흐름(notasDisplay · 가게 수)
     const nm = (L, f) => L.length ? L.length + '건 · ' + money(L.reduce((a, o) => a + (f ? f(o) : o.amt || 0), 0)) : '없음 · none';
     put('mine', nm(mine)); NewAcct.pendingBanner($('naBanH'));
     /* ⚠️ 하루 넘게 한 단계에 머문 주문 — 누르면 가장 오래된 주문이 있는 칸을 밀린 것만 */
@@ -420,7 +420,7 @@ async function staffHome() {
       alert: k => { if (k === 'old') { const CH = { new: 'sent', cfw: 'cfw', cfok: 'cfok', pick: 'pick', picked: 'picked', done: 'done', packed: 'packed', dlv: 'dlv' }; LF.st = CH[olds[0].a.key] || 'sent'; LF.old = true; LF.list = true; return pageOrder(''); } if (k === 'ups' || k === 'bo') { LF.st = k; LF.list = true; return pageOrder(''); } dOpen(k); },
       openOrder: id => goOrder(id),
       lowStock: async () => { const m = await stockAll(false); await loadCatalog(S); const C = catalog(); const low = Object.keys(m).filter(c => { const q = Number(m[c]) || 0, it = C && C.byCode[c]; return it && !it.h && (q <= 0 || q < minOf(c)); }).length; const nobar = C ? (C.items || []).filter(x => !x.b && !x.virt && !x.h).length : 0; return { low, nobar }; },
-      displaysLate: (can('ship') || can('invoice') || can('newOrder')) ? async () => (await S.DB.list('displays', { where: [['st', 'in', ['open', 'prep']]] })).filter(d => d.due && d.due < today()).length : null,
+      displaysLate: (can('ship') || can('invoice') || can('newOrder')) ? async () => (await (await import('./displays.js')).resumo()).atrasadas : null,
       recvLog: async () => (await S.DB.list('stockLog', { where: [['kind', '==', 'recv']], order: ['at', 'desc'], limit: 5 })) });
     Dash.fill(dctx);
     put('flow', bt('작업 중', 'working') + ' ' + pk.length + ' · 👷 ' + new Set(pk.map(o => o.picker).filter(Boolean)).size + bt('명', '') + ' · ' + bt('출고 전 전체', 'open') + ' ' + live.length);
