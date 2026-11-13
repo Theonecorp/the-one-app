@@ -7,7 +7,34 @@ export const bi = (ko, en) => ko + ' <span class="en">' + en + '</span>';
 /* bt: 앞뒤에 보이지 않는 표시(U+2062 · U+2063) — 언어 전환(i18n.js)이 한글 / English 짝의 정확한 경계를 알게 (뒤에 붙는 날짜 · 이름이 안 사라지게) */
 export const bt = (ko, en) => '\u2062' + ko + ' / ' + en + '\u2063';
 export const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
-export const money = n => { n = Number(n) || 0; return (n < 0 ? '−$' : '$') + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+/* 👁 금액 숨기기 (옛 WMS 의 "Ocultar valores" — 2026-11-13 창고 매니저) — 켜면 화면의 모든 금액이 ••• (인쇄 · PDF 는 진짜 금액)
+ *   money() 가 숨김일 때만 보이지 않는 표시(⁠ … ⁡)로 감싸고, 아래 maskVals() 가 화면(#prt 밖)의 그 글자를 ••• 로 바꿈. 꺼져 있으면 money() 는 예전 그대로 */
+export const VM0 = '\u2060', VM1 = '\u2061';
+export let HIDE_VAL = false; try { HIDE_VAL = localStorage.getItem('theone.hideVal') === '1'; } catch (e) {}
+const money0 = n => { n = Number(n) || 0; return (n < 0 ? '−$' : '$') + Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+export const money = n => HIDE_VAL ? VM0 + money0(n) + VM1 : money0(n);
+export const unmark = s => typeof s === 'string' ? s.replace(/[\u2060\u2061]/g, '') : s;
+const VRX = /\u2060[^\u2061]*\u2061/g;
+function maskNode(root) {
+  if (!HIDE_VAL || !root) return;
+  if (root.nodeType === 3) { if (root.nodeValue.indexOf(VM0) >= 0 && !(root.parentElement && root.parentElement.closest('#prt'))) root.nodeValue = root.nodeValue.replace(VRX, '•••'); return; }
+  if (root.nodeType !== 1 || root.closest && root.closest('#prt')) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let t; while ((t = w.nextNode())) if (t.nodeValue.indexOf(VM0) >= 0) t.nodeValue = t.nodeValue.replace(VRX, '•••');
+}
+let VOBS = null;
+export function initHideVal() {
+  document.body.classList.toggle('hideval', HIDE_VAL);
+  if (VOBS || typeof MutationObserver === 'undefined') return;
+  VOBS = new MutationObserver(ms => { if (!HIDE_VAL) return; ms.forEach(m => { if (m.type === 'characterData') maskNode(m.target); else m.addedNodes.forEach(maskNode); }); });
+  VOBS.observe(document.body, { childList: true, subtree: true, characterData: true });
+  maskNode(document.body);
+}
+/** 👁 켜기 · 끄기 — 지금 화면을 다시 그려서 바로 적용 */
+export function setHideVal(on) {
+  HIDE_VAL = !!on; try { localStorage.setItem('theone.hideVal', HIDE_VAL ? '1' : '0'); } catch (e) {}
+  document.body.classList.toggle('hideval', HIDE_VAL); window.dispatchEvent(new Event('theone:hideval'));
+  Router.rerender();
+}
 export const k = n => { n = Number(n) || 0; const a = Math.abs(n), s = n < 0 ? '−' : ''; if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(2) + 'M'; if (a >= 1e3) return s + '$' + Math.round(a / 1e3) + 'K'; return s + '$' + Math.round(a); };
 export const num = v => { const n = Number(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
 export const R2 = x => Math.round((Number(x) || 0) * 100) / 100;
@@ -272,7 +299,8 @@ export function inputDate(id, v, extra) { return '<input type="date" id="' + id 
 export function sel(id, opts, v, extra) {
   return '<select id="' + id + '" ' + (extra || '') + '>' + opts.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return '<option value="' + esc(val) + '" ' + (val === v ? 'selected' : '') + '>' + esc(lab) + '</option>'; }).join('') + '</select>';
 }
-export function printOpen(html) { $('prtbody').innerHTML = html; $('prt').classList.add('on'); window.scrollTo(0, 0); guardSync(); }
+/* 👁 인쇄는 늘 진짜 금액 (금액 숨기기 표시를 지움) */
+export function printOpen(html) { $('prtbody').innerHTML = unmark(html); $('prt').classList.add('on'); window.scrollTo(0, 0); guardSync(); }
 export function printClose() { $('prt').classList.remove('on'); }
 
 /* 간단 라우터 — 해시 기반 (#/page/sub) */
@@ -295,6 +323,8 @@ export const Router = {
     if (name === 'hub') { if (this.home && name !== this.home) this.go(this.home); return; }   // 🗂 묶음 → 홈
     if (arg) this.go(name); else if (this.parent && this.parent[name] && location.hash !== '#/' + this.parent[name]) { const [r, a2] = this.parent[name].split('/'); this.go(r, a2); } else if (this.home && name !== this.home) this.go(this.home);
   },
+  /** 지금 화면을 같은 주소로 다시 그림 (👁 금액 숨기기 등) */
+  rerender() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); const fn = this.routes[name] || this.routes['']; if (fn) { try { fn(arg ? decodeURIComponent(arg) : ''); } catch (e) {} } },
   hasUp() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); return this.stack.length > 1 || !!arg || !!(this.home && name !== this.home) || !!(this.upHas[name] && this.upHas[name]()); },
   refreshBack() { const bk = $('hBack'); if (bk) bk.classList.toggle('show', this.hasUp()); },
   start() {
