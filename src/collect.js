@@ -374,11 +374,12 @@ async function saveEntry() {
 let PHOTOS = [];
 async function paintToday() {
   /* rep 가 없는 옛 기록(이 버전 이전 입력) 은 이미 처리된 것으로 봄 — 전송 대기는 rep === false 만 */
-  const rows = (await myEntries(true)).filter(r => r.d === TODAY_D || (r.rep === false && !r.sb && r.d < today()));
+  /* 사무실이 먼저 ① 접수 확인(sb)한 수금도 리포트에 — 전에는 빠져서 "수금 넣을까요?" 로 넣은 수금이 Daily Report 에 안 뜸 (2026-11-12 · v0.8.204) */
+  const rows = (await myEntries(true)).filter(r => r.d === TODAY_D || (r.rep === false && r.d < today()));
   const live = rows.filter(r => !r.void);
   const tot = sum(live, r => r.total), by = { CHECK: 0, ZELLE: 0, CASH: 0 };
   live.forEach(r => (r.pays || []).forEach(p => { by[p.m === 'CASH' ? 'CASH' : p.m === 'ZELLE' ? 'ZELLE' : 'CHECK'] += num(p.amt); }));
-  const pend = live.filter(r => r.rep === false && !r.sb), late = pend.filter(r => r.d < TODAY_D);
+  const pend = live.filter(r => r.rep === false), late = pend.filter(r => r.d < TODAY_D);
   let h = '<div class="sumcard"><div class="lbl">' + (TODAY_D === today() ? '오늘 수금 합계 · Today total' : '수금 합계 · Total') + ' (' + esc(TODAY_D) + ')</div><div class="big">' + money(tot) + '</div><div class="split"><div>CHECK <b>' + money(by.CHECK) + '</b></div><div>ZELLE <b>' + money(by.ZELLE) + '</b></div><div>CASH <b>' + money(by.CASH) + '</b></div><div><b>' + live.length + '</b> 건</div></div></div>';
   if (pend.length) h += '<div class="pendbar">⏰ 아직 전송하지 않은 수금 <b>' + pend.length + '건</b> · ' + money(sum(pend, r => r.total)) + (late.length ? '<br><span style="font-weight:700">그중 <b>' + late.length + '건</b>은 지난 날짜에 입력한 것입니다 — 지워지지 않았고, 전송하면 같이 나갑니다.</span>' : '') + '<br><span style="font-weight:400">일과를 마치면 아래 <b>📧 Daily Report 전송</b> 을 눌러 주세요 · Send today’s report before you finish.</span></div>';
   h += rows.length ? rows.map(r => entCard(r)).join('') : '<div class="none">오늘 입력한 내역이 없습니다.<br><span class="en">No entries today.</span></div>';
