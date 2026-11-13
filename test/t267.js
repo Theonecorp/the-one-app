@@ -1,4 +1,4 @@
-/* v0.8.226 시험 — 🖨 프린터 에이전트 (옛 WMS 의 Agente de impressão 그대로): Shipping UPS · Notes UPS 라벨이 출고 PC 의 Zebra 로 바로 (2026-11-13 창고 매니저 요청)
+/* v0.8.227 시험 — 🖨 프린터 에이전트 (옛 WMS 의 Agente de impressão 그대로): Shipping UPS · Notes UPS 라벨이 출고 PC 의 Zebra 로 바로 (2026-11-13 창고 매니저 요청)
  *   A. 에이전트 (agente-impressao/agente.mjs) — 가짜 Google · Firebase 서버로, Windows · 프린터 없이
  *     ① 구글 로그인 (refresh token → id_token → signInWithIdp providerId google.com) · 모든 Firestore 요청에 그 토큰
  *     ② 자기 방(estacao Expedicao) 의 pendente 만 가져감 · 다른 방(재고 '')은 그대로 · ZPL 은 프린터로 그대로 → st feito + 누가 찍었나
