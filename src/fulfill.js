@@ -95,7 +95,7 @@ export function manage(o, lines) {
   if (o.st === 'picked') B.push('<button class="b-ghost" id="mPickSave">💾 ' + bi('수량 저장', 'Save') + '</button>' + (canInv ? '<button class="b-green" id="mInv">🧾 ' + bi('인보이스 발행', 'Issue invoice') + '</button>' : '<span class="muted" style="align-self:center">' + bi('인보이스 발행은 사무실에서 합니다', 'Office issues the invoice') + '</span>'));
   if (o.st === 'sent' && !o.cfOk) B.push('<button class="b-ghost" id="mCfOk">👍 ' + bi('확인 완료로 (전화 등)', 'Mark confirmed') + '</button>');
   if (o.pay === 'ACH' && (o.st === 'done' || o.st === 'packed' || o.st === 'dlv' || o.st === 'shipped') && o.invs && o.invs.length && can('invoice')) B.push(o.achId ? '<span class="tag t-b" style="align-self:center">🏦 ACH ' + bt('입력됨', 'entered') + '</span>' : '<button class="b-blue" id="mAch">🏦 ' + bi('ACH 입력', 'Enter ACH') + '</button>');
-  if (o.st === 'done' && can('ship')) B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · UPS 라벨', 'Pack · UPS label') + '</button><button class="b-ghost" id="mShipOld">✍️ ' + bi('트래킹 직접 입력 · 다른 운송', 'Manual tracking · other carrier') + '</button>');   /* 🚚 = 🏪 카운터 · ✍️ = 예전 출고 창 (v0.8.206) */
+  if (o.st === 'done' && can('ship')) B.push('<button class="b-green" id="mShip">🚚 ' + bi('포장 · UPS 라벨', 'Pack · UPS label') + '</button><button class="b-ghost" id="mShipOld">✍️ ' + bi('트래킹 직접 입력 · 다른 운송', 'Manual tracking · other carrier') + '</button>');   /* 🚚 = 🏪 카운터 · ✍️ = 예전 출고 창 (v0.8.209) */
   /* 🚗 UPS 가 아니라 세일즈맨 · 다른 직원이 가져가거나 손님이 픽업 — 딜리버리 대기로 (UPS 출고 목록에서 빠짐) */
   if (o.st === 'done' && (can('ship') || can('invoice'))) B.push('<button class="b-ghost" id="mDlv">🚗 ' + bi('딜리버리로 (UPS 아님)', 'Delivery (not UPS)') + '</button>');
   if (o.st === 'dlv') B.push('<div class="alert a-amb" style="flex-basis:100%;margin:0">🚗 ' + bi('딜리버리 대기', 'Awaiting delivery') + ' — <b>' + esc(DLVK[o.dlvKind] ? bt(DLVK[o.dlvKind][0], DLVK[o.dlvKind][1]) : '') + (o.dlvBy ? ' · ' + esc(o.dlvBy) : '') + '</b>' + (o.dlvNote ? ' · 📝 ' + esc(o.dlvNote) : '') + ' <span class="muted">' + esc(String(o.dlvAt || '').substring(5, 16).replace('T', ' ')) + '</span></div>' +
@@ -405,7 +405,7 @@ export function printLabels(q) {
 }
 /** 🚚 출고 창 — ship.js (UPS 프로그램처럼 자세히) */
 export function shipModal(o, after) { return Ship.shipModal(o, after); }
-/** 🚚 출고 — 인보이스 뒤 UPS 출고는 🏪 Shipping UPS 카운터 하나로 (v0.8.206 · 2026-11-12 관리자: "인보이스 발행 뒤 겹치는 UPS 단계를 조의 화면으로 통합")
+/** 🚚 출고 — 인보이스 뒤 UPS 출고는 🏪 Shipping UPS 카운터 하나로 (v0.8.209 · 2026-11-12 관리자: "인보이스 발행 뒤 겹치는 UPS 단계를 조의 화면으로 통합")
  *   카운터는 거래처 주소로만 라벨을 만들므로, 다른 주소(shipTo)로 가는 주문 · 이미 라벨 요청이 있는 주문은 예전 출고 창 (취소 · 다시 인쇄) */
 async function toCounter(o, old) {
   if (!o || o.shipTo || !o.acct) return old();

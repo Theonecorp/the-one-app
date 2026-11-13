@@ -680,7 +680,7 @@ async function pageAR() {
   else if (AV === 'top') h += '<div class="card"><h2>연체 큰 순 (61일 이상)</h2>' + (top.map(s => storeRow(s, '<span class="agebadge ' + (s.maxPdd > 90 ? 'a4' : 'a3') + '">' + s.maxPdd + '일</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'stale') h += '<div class="card"><h2>잔액은 있는데 60일 넘게 수금 없음</h2>' + (stale.map(s => storeRow(s, '<span class="agebadge a3">' + (s.lastPaid ? daysBetween(s.lastPaid, t) + '일' : '없음') + '</span>')).join('') || '<div class="none">없음</div>') + '</div>';
   else if (AV === 'moved') h += '<div class="card"><h2>거래처 담당과 실제 수금 담당이 다른 가게</h2><div class="alert a-blu">앱은 최근 1년 실제 수금한 사람을 담당으로 봅니다. 거래처의 담당을 고치면 사라집니다.</div>' + (moved.map(s => storeRow(s)).join('') || '<div class="none">없음</div>') + '</div>';
-  else if (AV === 'chk') h += '<div class="card" id="ckBox"></div>';   /* 🧮 AR 파일 ↔ 옛 시스템 인보이스 대조 (v0.8.206) */
+  else if (AV === 'chk') h += '<div class="card" id="ckBox"></div>';   /* 🧮 AR 파일 ↔ 옛 시스템 인보이스 대조 (v0.8.209) */
   else h += '<div class="card" id="oldBox"></div>';
   $('page').innerHTML = h;
   if (AV === 'chk') { const M = await import('./archeck.js'); M.paintArCheck($('ckBox'), { S, file: all, ents: C.ents, cods: C.cod }); }

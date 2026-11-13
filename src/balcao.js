@@ -59,7 +59,7 @@ export function register(state) { S = state; Router.on('balcao', page); }
 /** ✏️ Shipping History 의 "출고 고치기" — 옛 라벨은 취소한 뒤 같은 가게 · 박스 · 서비스 · COD 로 카운터를 엶 */
 export function abrirEdicao(acct, caixas, svc, cod, de) { zerar(); B.cli = acct; B.busca = ''; B.caixas = caixas.map(c => ({ peso: c.peso, c: c.c, l: c.l, a: c.a })); B.svc = svc || '03'; B.codCli = acct; B.cod = cod ? true : null; B.codValor = cod ? String(cod) : ''; B.editando = de || ''; Router.go('balcao'); }
 export const _B = B;   // 시험용
-/** 🧾 인보이스가 나온 주문을 이 카운터로 — 주문 화면의 🚚 출고 · UPS 출고 목록에서 (v0.8.206: 인보이스 뒤 UPS 출고를 이 화면 하나로) */
+/** 🧾 인보이스가 나온 주문을 이 카운터로 — 주문 화면의 🚚 출고 · UPS 출고 목록에서 (v0.8.209: 인보이스 뒤 UPS 출고를 이 화면 하나로) */
 export function abrirPedido(o) { zerar(); B.cli = o.acct; B.busca = ''; B.editando = ''; B.sel = {}; delete B.ords[o.acct]; B.oSel = { [o.id]: true }; B.oPre = o.id; B.foco = 'sbP'; Router.go('balcao'); }
 
 const acctOf = c => (S.accounts && S.accounts.byCode ? S.accounts.byCode[c] : null);
@@ -80,7 +80,7 @@ function notasHTML(a) {
   return '<h4 class="ups-h4">Notes UPS · ' + L.length + ' <button type="button" class="btn sm" data-act="sb-notas-tudo" style="margin-left:8px">' + (tudo ? L3('모두 빼기', 'Unmark all', 'Desmarcar todas') : L3('모두 넣기 (A)', 'Mark all (A)', 'Marcar todas (A)')) + '</button></h4><div class="su-notas">' +
     L.map((n, i) => '<label class="su-nota"><input type="checkbox" data-sb-nota="' + esc(n.id) + '"' + (B.sel[n.id] ? ' checked' : '') + '><span><b>' + (i + 1) + '/' + L.length + '</b> · ' + num1(n.w) + ' lb · ' + num1(n.l) + ' × ' + num1(n.wd) + ' × ' + num1(n.h) + ' in' + (n.prod ? '<span class="su-nota-prods">' + esc(n.prod) + '</span>' : '') + '</span></label>').join('') + '</div>';
 }
-/* ---------- 🧾 이 가게의 출고할 주문 (인보이스 발행 · 포장 대기 = st 'done') — 고른 주문은 라벨이 나오면 📦 포장 완료(packed) · 트래킹이 붙음 → 🚛 UPS 인계 (v0.8.206)
+/* ---------- 🧾 이 가게의 출고할 주문 (인보이스 발행 · 포장 대기 = st 'done') — 고른 주문은 라벨이 나오면 📦 포장 완료(packed) · 트래킹이 붙음 → 🚛 UPS 인계 (v0.8.209)
  *   다른 주소(shipTo)로 가는 주문은 거래처 주소로 라벨이 나가면 안 되므로 여기서 고를 수 없음 → 주문 화면의 예전 출고 창 */
 const ordsSel = () => ((B.ords[B.cli] || []).filter(o => B.oSel[o.id] && !o.shipTo));
 function ordsHTML(a) {
