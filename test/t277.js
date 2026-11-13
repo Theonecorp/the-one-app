@@ -1,6 +1,6 @@
-/* v0.8.237 시험 — 🔗 연결 지도 tools/impact.mjs: 통째 덮어쓰기 위험 · 폰 저장 자료 · 규칙 · 부르는 곳 · 같이 돌릴 시험을 뽑는다 (2026-11-13 관리자: "변경할 때마다 기존 연결을 잃지 않게")
+/* v0.8.237 시험 — 🔗 연결 지도 tools/impact.mjs: 통째 덮어쓰기 위험 · 폰 저장 자료 · 규칙 · 앱 밖 프로그램 · 부르는 곳 · 같이 돌릴 시험을 뽑는다 (2026-11-13 관리자: "변경할 때마다 기존 연결을 잃지 않게")
  *   ① 오늘 사고 모양: 보관함 보내기가 orders 를 통째로(set) 쓰는데 규칙은 칸 단위(affectedKeys) · 다른 파일은 칸만(update) 붙임 → ⚠️ 위험 · 폰 키 theone.outbox.v1(한 단계 건너 readOut) · 시험 t9xx 가 맨 위
- *   ② 칸만 바꾸는(update) 변경 → 통째 덮어쓰기 위험 없음 · ③ 규칙 · functions 가 바뀌면 옛 앱 호환 · 배포 할 일이 나옴 · ④ 실제 저장소에서 CLI 가 돈다 (읽기만) */
+ *   ② 칸만 바꾸는(update) 변경 → 통째 덮어쓰기 위험 없음 · ③ 규칙 · functions 가 바뀌면 옛 앱 호환 · 배포 할 일이 나옴 · ④ 실제 저장소에서 CLI 가 돈다 (읽기만) · ⑤ 앱 밖 프로그램(Apps Script · 출고 PC 에이전트)이 같은 모음을 쓰면 🔌 — 규칙만 바뀌어도 */
 const path = require('path'), { execFileSync } = require('child_process');
 (async () => {
   const errs = [], log = (...a) => console.log(...a);
@@ -50,6 +50,19 @@ const path = require('path'), { execFileSync } = require('child_process');
   const diff3 = ['+++ b/firestore.rules', '@@ -3,0 +3 @@', '+  match /x/{id} { allow read: if true; }', '+++ b/functions/core.js', '@@ -1,0 +1 @@', '+export const A = 1;'].join('\n');
   const r3 = I.report(I.analyze({ diff: diff3, files, tests, testIndex, rules }));
   if (!/옛 앱의 쓰기도 받아야/.test(r3) || !/deploy-rules/.test(r3) || !/함수 배포/.test(r3)) errs.push('③ 규칙 · 함수 바뀜 → 옛 앱 호환 · 배포 할 일');
+
+  /* ⑤ 앱 밖 프로그램 (Apps Script · 출고 PC 에이전트) — 같은 모음을 쓰면 🔌 · 규칙 줄만 바뀌어도 그 모음으로 */
+  const external = { 'apps-script/Code.gs': "queryVal_('orders', 'st', { stringValue: 'draft' })", 'agente-impressao/agente.mjs': "await fsBuscar('printJobs', [['st', 'pendente']])" };
+  const rules5 = rules.replace('} }', "  match /printJobs/{id} {\n    allow read, write: if isStaff();\n  }\n} }");
+  const e1 = I.analyze({ diff: diff1, files, tests, testIndex, rules, external });
+  const r5 = I.report(e1), oc = e1.cols.find(x => x.col === 'orders');
+  log('⑤ orders external:', oc && oc.external.join(','));
+  if (!oc || oc.external.join() !== 'apps-script/Code.gs' || !/🔌 \*\*orders\*\*/.test(r5)) errs.push('⑤ orders 를 쓰는 Apps Script 가 🔌 로 나와야 함');
+  const ln = rules5.split('\n').findIndex(l => /allow read, write: if isStaff/.test(l)) + 1;
+  const diff5 = ['+++ b/firestore.rules', '@@ -' + ln + ' +' + ln + ' @@', '+    allow read, write: if isStaff();'].join('\n');
+  const e2 = I.analyze({ diff: diff5, files, tests, testIndex, rules: rules5, external }), pc = e2.cols.find(x => x.col === 'printJobs');
+  log('⑤ rule-only change cols:', e2.cols.map(x => x.col).join(','), '· external:', pc && pc.external.join(','));
+  if (!pc || pc.external.join() !== 'agente-impressao/agente.mjs' || !/🔌 \*\*printJobs\*\*/.test(I.report(e2))) errs.push('⑤ printJobs 규칙만 바뀌어도 출고 PC 에이전트가 🔌 로 나와야 함');
 
   /* 바탕 함수 */
   if (I.enclosingFn(orders, 5) !== 'syncOutbox' || I.enclosingFn(orders, 2) !== 'readOut') errs.push('enclosingFn');

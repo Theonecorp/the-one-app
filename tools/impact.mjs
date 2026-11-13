@@ -4,6 +4,7 @@
  *            ② ⚠️ 통째 덮어쓰기(set)가 칸 단위 규칙 · 다른 곳이 붙이는 칸과 부딪힐 위험 (v0.8.233~236 세일즈맨 주문 permission-denied 의 모양)
  *            ③ 폰에 저장되는 자료(localStorage 'theone.*') — 옛 버전 앱이 남긴 자료를 새 코드가 그대로 읽는지
  *            ④ 바뀐 함수를 부르는 곳 · ⑤ 같이 돌려야 할 시험 · ⑥ 규칙 · 서버 함수가 바뀌었으면 배포 · 옛 앱 호환 할 일
+ *            ⑦ 앱 배포와 따로 도는 바깥 프로그램(Apps Script · 출고 PC 프린터 에이전트 · 서버 함수)이 같은 모음을 쓰는지 — 이들은 옛 모양을 계속 씀
  *   analyze() 는 순수 함수 (시험 t277) — 아래 CLI 가 git · 파일을 모아 넘김 */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -67,9 +68,10 @@ export function rulesFor(rules, col) {
  * @param o.files  { 'src/x.js': 내용 } — 지금 작업 폴더의 src (· functions) 파일들
  * @param o.tests  { t123: 내용 } · o.testIndex { t123: '지키는 것' }
  * @param o.rules  firestore.rules 내용
+ * @param o.external { 'apps-script/Code.gs': 내용 } — 앱과 따로 배포되는 바깥 프로그램
  */
 export function analyze(o) {
-  const rows = parseDiff(o.diff), files = o.files || {}, tests = o.tests || {}, idx = o.testIndex || {}, rules = o.rules || '';
+  const rows = parseDiff(o.diff), files = o.files || {}, external = o.external || {}, tests = o.tests || {}, idx = o.testIndex || {}, rules = o.rules || '';
   const code = rows.filter(r => /^(src|functions)\/.*\.(m?js)$/.test(r.file) && !/^src\/.*-txt\.js$/.test(r.file));
   const changedFiles = uniq(rows.map(r => r.file));
   const text = code.map(r => r.text).join('\n');
@@ -90,7 +92,9 @@ export function analyze(o) {
   });
 
   /* Firestore 모음 */
-  const cols = uniq(all(COL_RE, text));
+  /* 바뀐 규칙 줄이 속한 모음 (match /x/{id} — 위로 올라가며 처음 만나는 것) · 규칙만 바뀌어도 그 모음을 쓰는 앱 · 바깥 프로그램을 봄 */
+  const RL = String(rules).split('\n'), ruleCols = rows.filter(r => r.file === 'firestore.rules').map(r => { for (let i = Math.min(r.line, RL.length) - 1; i >= 0; i--) { const m = RL[i].match(/match\s+\/(\w+)\/\{/); if (m) return m[1]; } return null; });
+  const cols = uniq(all(COL_RE, text).concat(ruleCols));
   const writeLines = (col, re) => { const out = []; Object.keys(files).forEach(f => files[f].split('\n').forEach((l, i) => { if (re.test(l) && new RegExp('[\'"]' + col + '[\'"]').test(l)) out.push(f + ':' + (i + 1)); })); return out; };
   const colInfo = cols.map(col => {
     const r = rulesFor(rules, col), partial = writeLines(col, PART_RE), sets = writeLines(col, SET_RE);
@@ -98,7 +102,8 @@ export function analyze(o) {
     const risk = setChanged && ((r && r.fieldLevel) || partial.length)
       ? '통째 덮어쓰기(set) — ' + (r && r.fieldLevel ? '이 모음 규칙이 칸 단위로 막음(affectedKeys/diff). ' : '') + (partial.length ? '다른 곳이 칸만 붙이는 쓰기 ' + partial.length + '곳 → 서버에만 있는 칸을 지우게 됨. ' : '') + '서버 문서를 읽어 없는 칸을 이어 붙이거나(update/merge) 규칙 시뮬레이션으로 확인'
       : null;
-    return { col, rules: r, partialWriters: partial, setWriters: sets, risk };
+    const ext = Object.keys(external).filter(f => new RegExp('[\'"/]' + col + '[\'"/]').test(external[f]));   /* 'orders' · "orders" · /orders/ */
+    return { col, rules: r, partialWriters: partial, setWriters: sets, risk, external: ext };
   });
 
   /* 바뀐 함수를 부르는 곳 */
@@ -125,8 +130,9 @@ export function report(a) {
   if (a.changedFns.length) L.push('바뀐 함수: ' + a.changedFns.join(' · '));
   const risks = a.cols.filter(c => c.risk);
   L.push('', '## ⚠️ 먼저 볼 것');
-  if (!risks.length && !a.keys.length && !a.rulesChanged && !a.fnChanged) L.push('- 없음');
+  if (!risks.length && !a.keys.length && !a.rulesChanged && !a.fnChanged && !a.cols.some(c => c.external.length)) L.push('- 없음');
   risks.forEach(c => L.push('- **' + c.col + '**: ' + c.risk));
+  a.cols.filter(c => c.external.length).forEach(c => L.push('- 🔌 **' + c.col + '** 를 앱 밖 프로그램도 씀: ' + c.external.join(' · ') + ' — 앱 배포로 같이 바뀌지 않음(옛 모양을 계속 씀). 칸 · 상태 이름을 바꾸거나 규칙을 좁히면 이쪽도 고치고 따로 반영 (Apps Script 붙여 넣기 · 출고 PC 에이전트 · 함수 배포)'));
   a.keys.forEach(k => L.push('- 📱 폰 저장 `' + k + '` — 직원 폰에는 옛 버전이 저장한 이 자료가 남아 있음. 새 코드가 옛 모양을 그대로 읽고 보내는지 시험으로 확인' + ((a.keyUsers[k] || []).length > 1 ? ' (같이 쓰는 파일: ' + a.keyUsers[k].join(' · ') + ')' : '')));
   if (a.rulesChanged) L.push('- 🔐 firestore.rules 바뀜 — 폰은 앱을 다시 열 때까지 **옛 앱**: 새 규칙이 옛 앱의 쓰기도 받아야 함 · `node tools/rules-test.mjs` 에 옛 모양 · 새 모양 둘 다 · 머지 뒤 `node tools/deploy-rules.js`');
   if (a.fnChanged) L.push('- ☁️ functions/ 바뀜 — 함수 배포 필요 (`functions/README.md`) · 옛 앱이 부르는 모양도 받아야 함');
@@ -162,6 +168,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (range) { const B = ref.split('..')[1] || 'HEAD'; parseDiff(diff).map(r => r.file).filter((f, i, a) => a.indexOf(f) === i && f in files).forEach(f => { try { files[f] = sh('git show ' + B + ':' + f); } catch (e) {} }); }   /* 줄 번호가 그때 파일과 맞게 */
   const tests = {}; fs.readdirSync(path.join(root, 'test')).filter(f => /^t\d+\.js$/.test(f)).forEach(f => { tests[f.replace('.js', '')] = fs.readFileSync(path.join(root, 'test', f), 'utf8'); });
   const testIndex = {}; try { fs.readFileSync(path.join(root, 'test/INDEX.md'), 'utf8').split('\n').forEach(l => { const m = l.match(/^\| (t\d+) \| [^|]* \| (.*) \|$/); if (m) testIndex[m[1]] = m[2]; }); } catch (e) {}
+  const external = {}; [...walk(path.join(root, 'apps-script')), ...walk(path.join(root, 'agente-impressao')), ...walk(path.join(root, 'functions'))].filter(f => /\.(gs|m?js)$/.test(f)).forEach(f => { external[path.relative(root, f)] = fs.readFileSync(f, 'utf8'); });
   const rules = fs.existsSync(path.join(root, 'firestore.rules')) ? fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8') : '';
-  console.log(report(analyze({ diff: diff + '\n' + extra, files, tests, testIndex, rules })));
+  console.log(report(analyze({ diff: diff + '\n' + extra, files, tests, testIndex, rules, external })));
 }
