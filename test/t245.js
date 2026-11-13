@@ -6,6 +6,7 @@
  *   ② 오피스 매니저 홈: 접수 · 주문 · 인보이스 숫자 · 매출 칸 있음 / 창고 매니저 · 출고 담당(예전 창고 직원): 창고 대시보드 · 매출 없음
  *   ③ 디자인 홈: 📥 아이템 흐름(최근 들어온 상품 · 사진 없는 것 먼저 · 카탈로그에 없는 코드) · 경영 · 매출 · 미수 없음
  *   ④ 경영 화면(경영 현황 · 정산 · 미수금 현황 · 수금 현황 · 오너 홈)은 주소로 열어도 담당자에게 🔒 · 관리자(오너 겸)는 열림 · 판매 리포트는 오피스도
+ *   ⑥ 왼쪽 메뉴(v0.8.218): 경영 현황 · 세일즈맨 정산 · 수금 현황 · 미수금 현황은 관리자 · 오너 메뉴에만 — 오피스 · 회계 · 창고 · 출고 · 디자인 메뉴에는 없음 · 오너에게도 정산
  *   ⑤ firestore.rules: 정산 · 공제 · 은행 · 공장 송금 · 1099 · 보너스 · 원가는 isOwner() · 미수금은 오피스 · 회계 · 자기 것 · 월 매출은 인보이스 일만 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs');
@@ -41,6 +42,12 @@ const path = require('path'), fs = require('fs');
   await o.evaluate(() => { location.hash = '#/reports'; }); await o.waitForTimeout(800); if (/🔒/.test(await o.textContent('#page'))) errs.push('④ office can open 판매 리포트');
   const a = await open('luke@theonefl.com', '');
   await a.evaluate(() => { location.hash = '#/pay'; }); await a.waitForTimeout(1200); if (/🔒/.test(await a.textContent('#page'))) errs.push('④ admin (owner) opens 정산');
+  /* ⑥ */
+  const TOPR = ['mg', 'pay', 'now', 'bossar', 'own'];
+  for (const [pg, who] of [[o, 'office'], [c, 'design']]) { const d = await pg.$$eval('#drawer [data-dgo]', B => B.map(b => b.dataset.dgo)).catch(() => []); if (d.some(x => TOPR.includes(x))) errs.push('⑥ ' + who + ' menu has no business screens: ' + d.join(' ')); }
+  const ow = await (async () => { const pg = await (await br.newContext({ viewport: { width: 1300, height: 900 } })).newPage(); await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'own@x.com', name: 'O' }; window.__AFTER_SEED__ = s => { s.users.push({ id: 'own@x.com', email: 'own@x.com', name: 'O', role: 'owner', active: true }); }; }); await pg.goto('http://127.0.0.1:8952/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(1500); return pg; })();
+  const od = await ow.$$eval('#drawer [data-dgo]', B => B.map(b => b.dataset.dgo)).catch(() => []); log('⑥ owner menu:', od.join(' '));
+  if (!od.includes('mg') || !od.includes('pay')) errs.push('⑥ owner menu has 경영 현황 · 세일즈맨 정산');
   /* ⑤ */
   const R = fs.readFileSync(path.resolve(__dirname, '../firestore.rules'), 'utf8');
   for (const col of ['bank', 'bankM', 'payees', 'pay1099', 'factoryPayments', 'bonusAcc', 'prodCusto', 'sales']) if (!new RegExp('match /' + col + '/\\{id\\} \\{ allow read, write: if isOwner\\(\\); \\}').test(R)) errs.push('⑤ ' + col + ' is owner-only');

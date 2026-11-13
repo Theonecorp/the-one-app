@@ -261,8 +261,11 @@ function drawerRender(dock) {
   const ord = stages.length ? stages.map(([g, cs]) => '<div class="dsec dord"><small><span class="em">' + g[1] + '</span> ' + esc(g[2]) + ' · ' + esc(g[3]) + '</small>' + cs.map(c => srow(c[0], c[1], c[2], c[3])).join('') + '</div>').join('') : '';
   /* 한 화면은 한 번만 (배송 조회가 재고 · 조회 두 묶음에 다 있어도 서랍에는 처음 나온 곳에만) — v0.8.181 */
   const flat = [], seen = new Set();
+  /* 🔒 경영 현황 · 매출 · 세일즈맨 정산 · 수금 현황 · 미수금 현황 · 오너 홈은 관리자 · 오너 메뉴에만 (v0.8.218 · 2026-11-13 관리자: "모든 역할에서 빼고 관리자와 오너만") */
+  const TOP_ONLY = ['own', 'mg', 'mg/sales', 'pay', 'now', 'bossar'];
   items.forEach(x => { if (!/^hub\//.test(x[0])) { flat.push(x); seen.add(x[0]); } });
   items.forEach(x => { if (/^hub\//.test(x[0])) Hub.hubItems(x[0].split('/')[1]).forEach(c => { if (!seen.has(c[0])) { seen.add(c[0]); flat.push([c[0], c[1], c[2], c[3]]); } }); });
+  if (!isOwner()) for (let i = flat.length - 1; i >= 0; i--) if (TOP_ONLY.includes(flat[i][0])) flat.splice(i, 1);
   /* 🧭 v0.8.203 묶음 — 개요 · 운영 · 재고 관리 · 수금 · 재무 · 거래처 · 관리 (+ 기타). 역할이 볼 수 있는 화면만, 묶음에 없는 화면은 기타로 (빠지는 화면 없음)
    *   묶음 머리를 누르면 접고 펼침 (이 기기에 기억) · 지금 화면이 든 묶음은 늘 펼침 */
   let fold = []; try { fold = JSON.parse(localStorage.getItem('theone.dfold') || '[]'); if (!Array.isArray(fold)) fold = []; } catch (e) {}
