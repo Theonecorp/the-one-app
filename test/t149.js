@@ -1,6 +1,7 @@
 /* v0.8.171 시험 — 🔐 보안 2차: H3 직무별 규칙 · M2 크레딧 한도 · L4 세일즈맨 주문 칸 제한 (firestore.rules 불변식 + 크레딧 화면)
  *   ① firestore.rules: 직무 helper(staffJob · money · invJob · ordJob · opsJob · itemJob) 가 있고 수금 · COD · ACH · 리포트 · 체크 · 정산은 money() 만, 아이템 · 재고 · 사진은 itemJob(), 주문 · 출고 · UPS 는 ordJob(), 인보이스는 invJob()
  *      — isStaff() 로 쓰기가 열린 컬렉션이 돈 · 아이템 · 주문 묶음에 하나도 남지 않음. 세일즈맨 크레딧은 creditMax() 안 · reviewed 못 붙임. 세일즈맨 주문 수정은 번호 · 피킹 · 출고 · 인보이스 칸을 못 건드림
+ *      (v0.8.233: 번호 'no' 는 임시 → 보냄 때 한 번만 SA 번호로 — soNoOk)
  *   ② 크레딧 화면: settings/app.creditMax 를 넘는 크레딧은 세일즈맨이 확정 못 함 (⛔ 표시 · 확정 누르면 안내) · 한도 안은 확정됨 · 사무실(인보이스 권한)은 한도 없음 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs');
@@ -28,7 +29,10 @@ const path = require('path'), fs = require('fs');
   /* L4 */
   const smu = (R.match(/function smOrderUpdate\(\) \{[^]*?\n    \}/) || [''])[0];
   ['no', 'createdBy', 'picker', 'pickAt', 'packAt', 'track', 'shipAt', 'pickupId', 'invs', 'cfReq', 'cfHow'].forEach(k => { if (smu.indexOf("'" + k + "'") < 0) errs.push('① smOrderUpdate must block field ' + k); });
-  if (!/okSt\(request\.resource\.data\.st\)\n\s+&& !keys\.hasAny\(\[/.test(smu)) errs.push('① content edit branch must use !keys.hasAny([...])');
+  if (!/okSt\(request\.resource\.data\.st\)\n\s+&& \(!keys\.hasAny\(\['no'\]\) \|\| soNoOk\(\)\)\n\s+&& !keys\.hasAny\(\[/.test(smu)) errs.push('① content edit branch must use !keys.hasAny([...]) (no: only soNoOk)');
+  /* v0.8.233: 'no' 의 예외는 하나 — 임시 → 보냄 때 한 번만 SA 번호 모양으로 */
+  const sok = (R.match(/function soNoOk\(\) \{[^]*?\n    \}/) || [''])[0];
+  if (!/resource\.data\.st == 'draft' && request\.resource\.data\.st == 'sent'/.test(sok) || !/matches\('S\[A-Z\]-\[0-9\]\{6\}'\)/.test(sok) || !/!\(resource\.data\.get\('no'/.test(sok)) errs.push('① soNoOk: only draft → sent, SA-000000 shape, once');
   if (/isStaff\(\)/.test(smu)) errs.push('① smOrderUpdate is salesman-only');
   log('① rules checks done · errs so far', errs.length);
 
