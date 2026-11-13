@@ -157,7 +157,7 @@ async function pageHome() {
   const todo = [];
   try {
     const rows = await S.DB.list('orders', { where: [['sm', '==', sm], ['ym', 'in', recentYms(2)]] });
-    const t = today(), drafts = rows.filter(o => o.st === 'draft').length + out.length, todayN = rows.filter(o => o.d === t && o.st !== 'x').length + out.filter(x => x.o.d === t).length;
+    const t = today(), outIds = new Set(out.map(x => x.o.id)), drafts = rows.filter(o => o.st === 'draft' && !outIds.has(o.id)).length + out.length,   /* 폰 보관함에 있는 주문은 서버 임시 저장과 겹쳐 세지 않음 (v0.8.233: 2건이 4건으로 보이던 것) */ todayN = rows.filter(o => o.d === t && o.st !== 'x').length + out.filter(x => x.o.d === t).length;
     const cf = rows.filter(o => o.cfReq && !o.cfOk && o.st !== 'x').length;
     if ($('dkToday')) $('dkToday').textContent = todayN; if ($('dkSend')) $('dkSend').textContent = drafts;
     if (drafts) todo.push(['order', '📤', bt('보낼 주문', 'Orders to send') + ' <b>' + drafts + '</b>' + bt('건', ''), bt('주문 확인 · 보낼 주문에서 한 번에', 'review and send together'), 'warn']);

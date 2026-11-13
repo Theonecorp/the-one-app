@@ -233,7 +233,7 @@ const DOCK_MQ = '(min-width:1200px)';
  *   ※ 메뉴는 보기 편하게 하는 것 — 중요 자료 잠금은 firestore.rules(isOwner) 와 아래 경영 화면 잠금(lockR)이 함 */
 export const DPLAN = {
   owner: ['ov', 'sales:stores', 'look', 'ship:shiphist', 'fin', 'inv', 'mgmt'],
-  office: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'], whmgr: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'], pickinv: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'],
+  office: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'], whmgr: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'inv', 'fin:invs'], pickinv: ['ov', 'sales', 'sep', 'ship', 'ins', 'look', 'fin:invs'],   // 📦 창고 매니저 서랍에 재고 묶음 (v0.8.233 · 2026-11-13 창고 매니저: 컴퓨터 왼쪽 메뉴에 재고 화면이 하나도 없었음)
   acct: ['ov', 'fin', 'sales:stores'],
   catalog: ['ov', 'inv:items,photos,labels', 'sales:stores', 'look:cat']
 };
