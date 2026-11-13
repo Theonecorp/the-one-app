@@ -22,7 +22,7 @@ const path = require('path'), fs = require('fs');
   /* ① */
   const o = await open('office@x.com', 'office');
   const jobs = await o.evaluate(async () => { const M = await import('/src/main.js'); return M.JOBS.map(j => j[0]).join(','); }); log('① jobs:', jobs);
-  if (jobs !== 'office,acct,whmgr,pickinv,catalog') errs.push('① five jobs');
+  if (jobs !== 'office,acct,whmgr,pickinv,catalog,agente') errs.push('① five jobs (+ 🖨 print agent machine account, v0.8.235 t275)');
   /* ② */
   const D = await o.evaluate(() => ({ h: location.hash, k: ['in', 'cf', 'rv', 'iv'].map(k => !!document.getElementById('wk-' + k)), sales: !!document.getElementById('wdSales') }));
   log('② office:', JSON.stringify(D)); if (D.h !== '#/shome' || D.k.includes(false) || !D.sales) errs.push('② office dashboard: intake · orders · invoices + sales');

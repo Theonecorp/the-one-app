@@ -1910,6 +1910,7 @@
 "추적 번호 · 메모 (선택)":["Tracking # · note (optional)","Rastreio · nota (opcional)"],
 "추적 타임라인":["Tracking timeline","Linha do tempo"],
 "출고":["Shipped","Expedição"],
+"출고 PC 의 프린터 에이전트 전용 계정 — 화면 없음 · 인쇄 대기열만":["Account only for the shipping PC print agent — no screens, print queue only","Conta só do agente de impressão da expedição — sem telas, só a fila de impressão"],
 "출고 · 라벨":["Label created","Etiqueta criada"],
 "출고 · 인보이스":["Fulfillment & Invoicing","Expedição e faturamento"],
 "출고 · 포장":["Fulfillment","Expedição"],
@@ -2170,6 +2171,7 @@
 "휴일 — 앱의 며칠 지남 · 요약 메일 · 알림은 영업일(주말 · 휴일 빼고) 기준. 회사가 일하는 공휴일은 체크를 끄세요":["Holidays — day counts, summary email and alerts use business days (no weekends · holidays). Uncheck federal holidays the company works","Feriados — contagem de dias, e-mail de resumo e avisos usam dias úteis (sem fins de semana · feriados). Desmarque os feriados federais em que a empresa trabalha"],
 "🏷 아이템 화면에서 공급업체를 넣으면 들어갑니다.":["Set the supplier on the item to include it.","Cadastre o fornecedor no produto para incluí-lo."],
 "📋 제안 탭에서 고른 아이템":["Items selected in Suggestions","Produtos selecionados em Sugestões"],
+"🖨 프린터 에이전트":["Print agent","Agente de impressão"],
 "＋ 아이템 코드 · 바코드":["+ Item code · barcode","+ Código · código de barras"]
 },
 "r":{

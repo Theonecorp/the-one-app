@@ -100,7 +100,7 @@ const ROLES = [
   ['admin', '⚙️', '관리자', 'Admin', '모든 화면 + 관리(사용자 · 설정 · 가져오기). 오너 · 담당자 · 세일즈맨 화면으로 바꿔 볼 수 있음'],
   ['manager', '🧑‍💼', '담당자', 'Staff', '고른 "일"에 따라 화면이 달라짐 — 주문 · 출고 · 인보이스 · 수금 확인 · 창고'],
   ['salesman', '🚗', '세일즈맨', 'Salesman', '내 가게 · 주문 · 수금 입력 · 미수금 · 정산서 (자기 것만)']];
-const JOB_TXT = { office: '주문 · 인보이스 · 출고 · 재고 · 수금 · COD · ACH 거의 전부', acct: '수금 확인 · COD · 카드 · ACH · 인보이스 조회', pickinv: '작업 배정 · 피킹 · 인보이스 발행 · 포장 · UPS · 재고', invoice: '주문 · 인보이스 발행 · 수금 확인', whmgr: '작업 배정 · 피킹 · 포장 · UPS · 재고 위치', pick: '내 배정 작업 · 피킹 · 포장 · 재고 위치' };
+const JOB_TXT = { office: '주문 · 인보이스 · 출고 · 재고 · 수금 · COD · ACH 거의 전부', acct: '수금 확인 · COD · 카드 · ACH · 인보이스 조회', pickinv: '작업 배정 · 피킹 · 인보이스 발행 · 포장 · UPS · 재고', invoice: '주문 · 인보이스 발행 · 수금 확인', whmgr: '작업 배정 · 피킹 · 포장 · UPS · 재고 위치', pick: '내 배정 작업 · 피킹 · 포장 · 재고 위치', agente: '출고 PC 의 프린터 에이전트 전용 계정 — 화면 없음 · 인쇄 대기열만' };
 const roleTag = r => '<span class="tag ' + ({ owner: 't-c', admin: 't-a', manager: 't-b', salesman: 't-k' }[r] || 't-g') + '">' + (ROLES.find(x => x[0] === r) || ['', '', r])[1] + ' ' + (ROLES.find(x => x[0] === r) || ['', '', r])[2] + '</span>';
 async function users() {
   const all = await S.DB.list('users'), ord = { owner: 0, admin: 1, manager: 2, salesman: 3 };
@@ -142,7 +142,7 @@ export function userForm(u) {
     const subJob = () => { const b = $('uJobBox'); if (b) b.innerHTML = F.extra.includes('manager') ? '<div class="rolepick sm">' + JOBS.map(j => '<button type="button" class="' + (F.job === j[0] ? 'on' : '') + '" data-uj="' + j[0] + '"><b>' + j[1] + '</b><small>' + (JOB_TXT[j[0]] || '') + '</small></button>').join('') + '</div>' : ''; bindJob(); };
     /* 👥 같이 하는 일 — 한 사람에게 일을 여럿 (예: 창고 직원 + 출고 · 인보이스). 할 수 있는 것 · 메뉴가 합쳐짐 (2026-11-12 관리자) */
     const paintJob2 = () => { const b = $('uJob2'); if (!b) return; F.job2 = F.job2.filter(j => j !== F.job);
-      b.innerHTML = '<div class="fg"><label>👥 ' + bt('같이 하는 일 (선택 · 여러 개)', 'Also does (optional · several)') + '</label><div class="chips">' + JOBS.filter(j => j[0] !== F.job).map(j => '<button type="button" class="' + (F.job2.includes(j[0]) ? 'on' : '') + '" data-uj2="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div><div class="muted" style="font-size:12px">' + bt('예: 창고 직원 + 출고 · 인보이스 → 피킹 · 출고 · 인보이스를 한 사람이', 'e.g. Warehouse Staff + Fulfillment & Invoicing → one person picks, ships and invoices') + '</div></div>';
+      b.innerHTML = '<div class="fg"><label>👥 ' + bt('같이 하는 일 (선택 · 여러 개)', 'Also does (optional · several)') + '</label><div class="chips">' + JOBS.filter(j => j[0] !== F.job && j[0] !== 'agente').map(j => '<button type="button" class="' + (F.job2.includes(j[0]) ? 'on' : '') + '" data-uj2="' + j[0] + '">' + j[1] + ' <span class="en">' + j[2] + '</span></button>').join('') + '</div><div class="muted" style="font-size:12px">' + bt('예: 창고 직원 + 출고 · 인보이스 → 피킹 · 출고 · 인보이스를 한 사람이', 'e.g. Warehouse Staff + Fulfillment & Invoicing → one person picks, ships and invoices') + '</div></div>';
       b.querySelectorAll('[data-uj2]').forEach(x => x.onclick = () => { const k = x.dataset.uj2; F.job2 = F.job2.includes(k) ? F.job2.filter(j => j !== k) : F.job2.concat([k]); x.classList.toggle('on', F.job2.includes(k)); }); };
     const bindJob = () => document.querySelectorAll('[data-uj]').forEach(b => b.onclick = () => { F.job = b.dataset.uj; document.querySelectorAll('[data-uj]').forEach(x => x.classList.toggle('on', x === b)); paintJob2(); });
     const tog = (id, key) => { const el = $(id); if (!el) return; el.onclick = () => { const on = !F.extra.includes(key); F.extra = F.extra.filter(x => x !== key); if (on) F.extra.push(key); el.classList.toggle('on', on); if (key === 'salesman') subSm(); if (key === 'manager') subJob(); }; };
@@ -162,7 +162,7 @@ export function userForm(u) {
     if (r === 'salesman' && !smv) smv = name.toUpperCase().split(/\s+/)[0];
     if (extra.includes('salesman') && !smv) return toast('세일즈맨 화면을 주려면 세일즈맨 코드를 넣으세요', 'bad');
     if (r !== 'salesman' && r !== 'admin' && !extra.includes('salesman')) smv = '';
-    const doc = { email, name, role: r, job: r === 'manager' || extra.includes('manager') ? F.job : '', job2: r === 'manager' ? F.job2.filter(j => j !== F.job) : [], sm: smv, extra, achAccess: r === 'admin' ? true : (r === 'salesman' ? false : F.ach), active: F.active, updatedAt: new Date().toISOString() };
+    const doc = { email, name, role: r, job: r === 'manager' || extra.includes('manager') ? F.job : '', job2: r === 'manager' && F.job !== 'agente' ? F.job2.filter(j => j !== F.job) : [], sm: smv, extra, achAccess: r === 'admin' ? true : (r === 'salesman' ? false : F.ach), active: F.active, updatedAt: new Date().toISOString() };
     if (isMe && r !== 'admin') return toast('내 계정은 관리자로 둡니다', 'bad');
     busy(true); try {
       let made = '';
