@@ -1,4 +1,4 @@
-/* v0.8.204 시험 — ⚙️ 설정: ☰ 서랍에는 ⚙️ 설정 한 줄만 → 설정 화면(#/settings)에 묶음별(화면 바꾸기 · 입력 · 알림 / 연결 / 이 기기) · 버튼 id 그대로 · 숫자 입력 · 📡 창 · 🔎 점검 · 포르투갈어 */
+/* v0.8.205 시험 — ⚙️ 설정: ☰ 서랍에는 ⚙️ 설정 한 줄만 → 설정 화면(#/settings)에 묶음별(화면 바꾸기 · 입력 · 알림 / 연결 / 이 기기) · 버튼 id 그대로 · 숫자 입력 · 📡 창 · 🔎 점검 · 포르투갈어 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -13,6 +13,7 @@ const path = require('path');
   for (const sel of ['#mPush', '#mNet', '#mDiag', '#mReload', '[data-np]', '[data-r]', '.dseg']) if (await pg.$('#drawer ' + sel)) errs.push('drawer should not hold ' + sel + ' any more');
   await pg.click('#drawer [data-dgo="settings"]'); await pg.waitForSelector('.stpage', { timeout: 5000 }).catch(() => errs.push('settings row should open the settings page'));
   if (!/#\/settings/.test(await pg.evaluate(() => location.hash))) errs.push('settings page should live at #/settings');
+  const ht = (await pg.textContent('#hTitle')).trim(); log('header title:', ht); if (!/설정/.test(ht)) errs.push('header title should say 설정');
   /* ① 묶음 머리 · 줄 모양 (예전 b-ghost 버튼 덩어리 아님) */
   const heads = await pg.$$eval('.stpage .sth', L => L.map(x => x.textContent.trim())); log('groups:', heads);
   ['화면 바꾸기', '입력 · 알림', '연결', '이 기기'].forEach(h => { if (!heads.includes(h)) errs.push('settings should have group ' + h); });
