@@ -885,10 +885,10 @@ function paintEditor() {
 /* 📐 주문 화면 세 칸 — 위(가게 · 탭 · 검색) 고정 · 아래(프리셋 · 합계 · 저장) 고정 · 가운데(#eBody)만 스크롤. 분류 · 검색을 눌러도 위아래는 그대로, 가운데만 바뀜 */
 function eHeadH() {
   const e = $('eHead'); if (e) document.documentElement.style.setProperty('--eh', e.offsetHeight + 'px');
-  const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--hdr', hd.offsetHeight + 'px');
+  const hd = document.querySelector('header'); if (hd) document.documentElement.style.setProperty('--ehdr', hd.offsetHeight + 'px');   // 주문 화면 위 고정 칸의 자리 (--hdr 은 다른 화면 머리띠 높이라 건드리지 않음 — 폰 주문 화면은 머리띠가 낮아짐, v0.8.231)
   const b = $('eBody'), st = $('page') && $('page').querySelector('.sticky'); if (!b || !O) return;
   const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-  const nav = document.body.classList.contains('kb') ? 0 : (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--navh')) || 0);
+  const nav = document.body.classList.contains('kb') ? 0 : (parseFloat(getComputedStyle(document.body).getPropertyValue('--navh')) || 0);   // body 기준 (폰 주문 화면은 아래 메뉴를 숨겨 0)
   const h = vh - nav - (st ? st.offsetHeight : 0) - b.getBoundingClientRect().top - 6;
   if (h > 160) { b.classList.add('epane'); b.style.height = h + 'px'; } else { b.classList.remove('epane'); b.style.height = ''; }
 }
@@ -1015,11 +1015,22 @@ function otherSheet() {
     const box = $('obGrid'); if (!box) return;
     box.innerHTML = OB_PRICES.map(v => { const c = 'OB-' + v.toFixed(2), n = IDX[c] ? IDX[c].q : 0; return '<button type="button" class="' + (n ? 'on' : '') + '" data-obp="' + v.toFixed(2) + '">$' + v.toFixed(2) + (n ? ' <b>×' + n + '</b>' : '') + '<small>→ ' + money(obWhole(v)) + '</small></button>'; }).join('');
     box.querySelectorAll('[data-obp]').forEach(b => b.onclick = () => { const v = Number(b.dataset.obp); obAdd('OB-' + v.toFixed(2), 'OTHER BRAND (RETAIL $' + v.toFixed(2) + ')', obWhole(v), 1, v); paint(); });
+    /* 🧾 담은 것 — 맨 위에 줄마다 − 수량 + · 🗑 (v0.8.231 관리자: "누를 때마다 수량은 올라가는데 잘못 찍었을 때 수정이 어려움") */
+    const sel = O.lines.filter(l => l.t === OB && l.q > 0);
+    const lab = l => /^OB-/.test(l.c) ? bt('소매', 'Retail') + ' $' + Number(l.rp != null ? l.rp : l.c.slice(3)).toFixed(2) + ' → ' + money(l.p) : /^OBB-/.test(l.c) ? '💎 ' + bt('바디', 'Body') + ' ' + money(l.p) : '✍️ ' + esc(l.d) + ' · ' + money(l.p);
+    $('obSel').innerHTML = sel.length ? sel.map(l => '<div class="obrow"><span class="obl">' + lab(l) + '</span><span class="qty"><button type="button" data-obm="' + esc(l.c) + '">−</button><input type="number" inputmode="numeric" min="0" data-obq="' + esc(l.c) + '" value="' + l.q + '"><button type="button" data-obpl="' + esc(l.c) + '">+</button></span><b class="oba">−' + money(R2(l.q * l.p)) + '</b><button type="button" class="obx" data-obx="' + esc(l.c) + '" title="' + esc(bt('지우기', 'Remove')) + '">🗑</button></div>').join('')
+      : '<div class="muted" style="font-size:12.5px">' + bt('아직 없음 — 아래 가격을 누르면 여기에 담깁니다', 'Nothing yet — tap a price below') + '</div>';
+    const setQ = (c, q) => { const l = IDX[c]; if (!l) return; l.q = Math.max(0, Math.floor(Number(q) || 0)); if (!l.q) { O.lines = O.lines.filter(x => x !== l); delete IDX[c]; } saveWip(); refreshTotals(); paint(); };
+    $('obSel').querySelectorAll('[data-obm]').forEach(b => b.onclick = () => setQ(b.dataset.obm, (IDX[b.dataset.obm] || {}).q - 1));
+    $('obSel').querySelectorAll('[data-obpl]').forEach(b => b.onclick = () => setQ(b.dataset.obpl, (IDX[b.dataset.obpl] || {}).q + 1));
+    $('obSel').querySelectorAll('[data-obx]').forEach(b => b.onclick = () => setQ(b.dataset.obx, 0));
+    $('obSel').querySelectorAll('[data-obq]').forEach(i => { i.onfocus = () => i.select(); i.onchange = () => setQ(i.dataset.obq, i.value); });
     const man = O.lines.filter(l => l.t === OB && /^MAN-/.test(l.c));
     $('obMan').innerHTML = man.length ? man.map(l => '<div>✍️ ' + esc(l.d) + ' · ' + l.q + ' × ' + money(l.p) + ' = <b>' + money(R2(l.q * l.p)) + '</b></div>').join('') : '';
     const ob = O.lines.filter(l => l.t === OB && l.q > 0); $('obTot').textContent = ob.length ? ob.reduce((a, l) => a + l.q, 0) + bt('개 · ', ' pcs · ') + '−' + money(R2(ob.reduce((a, l) => a + l.q * l.p, 0))) : '';
   };
-  openModal('<h2>🏷 ' + bi('타사 제품 · 가격으로', 'Other brands · by price') + '</h2><div class="muted">' + bt('우리 코드가 없는 물건은 붙어 있는 소매가를 누르세요 — 누를 때마다 1개. 크레딧은 우리 판매가(→ 옆 금액, 예: $9.99 → $5.00)에서 할인 백(없으면 가게 기본 할인)을 뺀 금액입니다. 수량은 ✅ 크레딧 확인에서 고칠 수 있습니다.', 'Tap the retail price on the item — one per tap. The credit is our selling price (→, e.g. $9.99 → $5.00) minus the discount back (or the store discount). Fix quantities in Review.') + '</div>' +
+  openModal('<h2>🏷 ' + bi('타사 제품 · 가격으로', 'Other brands · by price') + '</h2><div class="muted">' + bt('우리 코드가 없는 물건은 붙어 있는 소매가를 누르세요 — 누를 때마다 1개. 크레딧은 우리 판매가(→ 옆 금액, 예: $9.99 → $5.00)에서 할인 백(없으면 가게 기본 할인)을 뺀 금액입니다. 잘못 누르면 위 🧾 담은 것에서 − · 수량 · 🗑 로 바로 고치세요.', 'Tap the retail price on the item — one per tap. The credit is our selling price (→, e.g. $9.99 → $5.00) minus the discount back (or the store discount). Tapped wrong? Fix it right away in 🧾 Added above with − · qty · 🗑.') + '</div>' +
+    '<div class="obsel"><b>🧾 ' + bt('담은 것 — 잘못 눌렀으면 − 또는 🗑', 'Added — fix with − or 🗑') + '</b><div id="obSel"></div></div>' +
     '<div class="obgrid" id="obGrid"></div>' +
     '<div class="card" style="margin:10px 0 0;padding:10px"><b>💎 ' + bt('바디 주얼리 — 우리 판매가를 바로 누르세요', 'Body jewelry — tap our selling price') + '</b><div class="muted" style="font-size:12px">' + bt('바디 주얼리는 소매가 ÷ 2 가 아닙니다 (예: 소매 $4.99 → 판매가 $2.00)', 'Body jewelry is not retail ÷ 2 (e.g. retail $4.99 → our price $2.00)') + '</div><div class="obgrid" id="obBody" style="max-height:none"></div></div>' +
     '<div class="card" style="margin:10px 0 0;padding:10px"><b>✍️ ' + bt('직접 입력 — 특이사항', 'Manual — special cases') + '</b><div class="two" style="margin-top:6px"><input id="obD" placeholder="' + esc(bt('설명 (예: 가발 리턴 · 가격 조정)', 'Description')) + '"><div style="display:flex;gap:6px"><input id="obP" type="number" step="0.01" inputmode="decimal" placeholder="' + esc(bt('판매가 $', 'Our price $')) + '" style="flex:1 1 0;min-width:0"><input id="obQ" type="number" inputmode="numeric" value="1" style="flex:0 0 64px;min-width:0"><button type="button" class="b-blue b-sm" id="obAdd" style="flex:0 0 auto;width:auto">＋</button></div></div><div id="obMan" class="muted" style="font-size:12.5px;margin-top:6px"></div></div>' +
