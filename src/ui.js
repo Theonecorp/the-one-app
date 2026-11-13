@@ -310,7 +310,22 @@ export function printFit() {
 }
 export function printOpen(html, name) { PRT_NAME = name || ''; $('prtbody').innerHTML = unmark(html); $('prt').classList.add('on'); printFit(); window.scrollTo(0, 0); guardSync(); }
 /** 📄 PDF 저장 — 인쇄 창에 보이는 장(.iv · 인보이스 · 스테이트먼트 등)을 종이 크기 그대로 PDF 파일로 (폰에서도 파일로 받음) */
-export async function printPdf() {
+export const canShareFile = () => { try { return !!(navigator.canShare && navigator.share && navigator.canShare({ files: [new File([''], 'x.pdf', { type: 'application/pdf' })] })); } catch (e) { return false; } };
+/** 📤 파일만 보내기 — 공유 창에 PDF 파일 하나만 (앱 주소 · 제목 글을 같이 넣지 않음 · v0.8.227 관리자: "인보이스만 보내지도록")
+ *   PDF 를 만드는 동안 누른 효과가 끝나 폰이 막으면(NotAllowedError) 한 번 더 누르는 단추를 띄움 */
+export async function shareFile(file) {
+  try { await navigator.share({ files: [file] }); return true; }
+  catch (e) {
+    if (e && e.name === 'AbortError') return false;
+    if (e && e.name !== 'NotAllowedError') throw e;
+    return new Promise(res => {
+      openModal('<h2>📤 ' + esc(file.name) + '</h2><div class="btns"><button class="b-ghost" id="shNo">' + bt('닫기', 'Close') + '</button><button class="b-blue" id="shGo">📤 ' + bt('보내기', 'Send') + '</button></div>');
+      $('shNo').onclick = () => { closeModal(); res(false); };
+      $('shGo').onclick = async () => { closeModal(); try { await navigator.share({ files: [file] }); res(true); } catch (x) { res(false); } };
+    });
+  }
+}
+export async function printPdf(mode) {
   const body = $('prtbody'); if (!body) return;
   const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
   if (!window.html2pdf) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('PDF 도구를 불러오지 못했습니다 — 인터넷을 확인하세요')); document.head.appendChild(s); });
@@ -324,8 +339,10 @@ export async function printPdf() {
   box.appendChild(pb); document.body.appendChild(box);
   const name = (PRT_NAME || ('THE-ONE-' + today())).replace(/[^A-Za-z0-9_.-]+/g, '-') + '.pdf';
   try {
-    await window.html2pdf().set({ margin: 0.4, filename: name, image: { type: 'jpeg', quality: 0.96 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' },
-      jsPDF: { unit: 'in', format: a4 ? 'a4' : 'letter', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.ivfoot', '.ivterms', '.ivsig'] } }).from(pb).save();
+    const job = window.html2pdf().set({ margin: 0.4, filename: name, image: { type: 'jpeg', quality: 0.96 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' },
+      jsPDF: { unit: 'in', format: a4 ? 'a4' : 'letter', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.ivfoot', '.ivterms', '.ivsig'] } }).from(pb);
+    if (mode === 'file') return new File([await job.outputPdf('blob')], name, { type: 'application/pdf' });   // 📤 보내기용 파일 (shareFile)
+    await job.save();
   } finally { box.remove(); }
   return name;
 }

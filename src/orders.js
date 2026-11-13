@@ -1449,6 +1449,7 @@ async function saveOrder(st) {
   const id = O.id, acct = base.acct, store = base.store, kd = O.kind; O = null; clearWip(kd);
   busy(true); const r = await syncOutbox(true); busy(false);
   const left = !!readOut()[id];
+  if (kd === 'credit' && isStaff() && st === 'sent' && !left) { toast('↩ ' + bt('크레딧 요청을 고쳤습니다 — 확인 후 CM 발행', 'Credit request updated — review and issue the CM'), 'good'); return goOrder(id); }   // ✏️ 사무실이 확인 대기 크레딧을 고친 뒤 → 다시 확인 화면 (v0.8.227)
   if (kd === 'credit') { toast(left ? '📱 ' + bt('폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다', 'Saved on the phone') : '↩ ' + bt('크레딧 저장 — 보낼 주문에서 주문과 같이 보냅니다', 'Credit saved — send it with your orders'), left ? '' : 'good'); return Router.go(Router.home || 'order'); }
   toast(left ? '📱 폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다' : (st === 'sent' ? '보냈습니다 📤' : '저장했습니다 — 수정 · 추가는 보내기 전까지 자유, 하루 치는 "보낼 주문"에서 한 번에 보냅니다'), left ? '' : 'good');
   /* 💵 그 가게에 받을 돈이 있으면 "수금할 것 있나요?" → 수금 입력으로 바로 (v0.8.185) */
