@@ -315,15 +315,17 @@ export async function printPdf() {
   const src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
   if (!window.html2pdf) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('PDF 도구를 불러오지 못했습니다 — 인터넷을 확인하세요')); document.head.appendChild(s); });
   const a4 = !!body.querySelector('.pa4');
-  const box = document.createElement('div'); box.id = 'prtpdf'; box.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + (a4 ? 7.47 : 7.7) + 'in;background:#fff';
-  box.innerHTML = '<div id="prtbody" style="padding:0;max-width:none;margin:0">' + body.innerHTML + '</div>';
-  box.querySelectorAll('.noprint,style').forEach(x => { if (x.classList && x.classList.contains('noprint')) x.remove(); });
-  box.querySelector('#prtbody').removeAttribute('id'); box.firstChild.className = 'prtpdf';
-  document.body.appendChild(box);
+  /* 인보이스 모양(CSS)은 모두 '#prtbody …' 아래에 걸려 있으므로 복사본도 id="prtbody" 를 그대로 가짐 (v0.8.224: 이 이름표를 떼서 PDF 에 로고만 크게 · 칸이 풀려 나오던 것)
+   *   html2pdf 는 넘긴 요소를 다시 복사해 그리므로 넘기는 요소 자체가 #prtbody 여야 함 · 폰 축소(zoom)는 #prt.pz 아래에만 걸려 복사본에는 없음 */
+  const W = (a4 ? 7.47 : 7.7) + 'in';
+  const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + W + ';background:#fff';
+  const pb = document.createElement('div'); pb.id = 'prtbody'; pb.className = 'prtpdf'; pb.style.cssText = 'padding:0;margin:0;max-width:none;width:' + W;
+  pb.innerHTML = body.innerHTML; pb.querySelectorAll('.noprint').forEach(x => x.remove());
+  box.appendChild(pb); document.body.appendChild(box);
   const name = (PRT_NAME || ('THE-ONE-' + today())).replace(/[^A-Za-z0-9_.-]+/g, '-') + '.pdf';
   try {
     await window.html2pdf().set({ margin: 0.4, filename: name, image: { type: 'jpeg', quality: 0.96 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' },
-      jsPDF: { unit: 'in', format: a4 ? 'a4' : 'letter', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.ivfoot', '.ivterms', '.ivsig'] } }).from(box.firstChild).save();
+      jsPDF: { unit: 'in', format: a4 ? 'a4' : 'letter', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.ivfoot', '.ivterms', '.ivsig'] } }).from(pb).save();
   } finally { box.remove(); }
   return name;
 }
