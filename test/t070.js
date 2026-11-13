@@ -39,7 +39,7 @@ const path = require('path');
   pg = await mk('wh@x.com');
   await pg.waitForTimeout(800); const land = (await pg.textContent('#page')).replace(/\s+/g, ' '); log('whmgr landing:', land.slice(0, 90)); if (await pg.$('[data-lf="home"]')) await pg.click('[data-lf="home"]'); await pg.waitForSelector('.hgrp', { timeout: 8000 }).catch(() => errs.push('no warehouse home groups'));
   /* v0.8.125 — 홈은 묶음(.hgrp) 4개: 머리글은 🏭 창고, 창고 매니저는 📦 출고 묶음(UPS 출고 · 픽업 · 포장 대기 · 백오더 · 출고 완료)만 기본으로 펼쳐짐 = 창고 일이 먼저. 📥 주문 접수 묶음은 접힌 채 아래(= 주문 처리는 작게) */
-  if (!/🏭 창고/.test(land)) errs.push('whmgr home should be headed 🏭 창고');
+  if (!/대시보드.*창고/.test(land)) errs.push('whmgr home should be headed 대시보드 · 창고');   // v0.8.203: 머리 = 대시보드 + 창고 (아이콘은 선 아이콘)
   const grps = await pg.$$eval('.hgrp', g => g.map(x => x.dataset.grp + (x.classList.contains('open') ? '*' : '') + ':' + [...x.querySelectorAll('[data-hg]')].map(b => b.dataset.hg).join(',')));
   const nav = await pg.$$eval('#nav button', b => b.map(x => x.textContent.trim()).join('|'));
   log('groups:', grps, 'nav:', nav);
