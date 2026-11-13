@@ -230,10 +230,22 @@ function drawerRender(dock) {
   items.forEach(x => { if (/^hub\//.test(x[0])) { const k = x[0].split('/')[1], H = Hub.HUBS[k], L = Hub.hubItems(k).filter(c => !seen.has(c[0]) && seen.add(c[0])); if (L.length) secs += '<div class="dsec"><small>' + (H ? H.icon + ' ' : '') + esc(x[2]) + ' · ' + esc(x[3] || '') + '</small>' + L.map(c => row([c[0], c[1], c[2], c[3]])).join('') + '</div>'; } });
   const main = plain.length ? '<div class="dsec"><small>' + bt('주요 화면', 'Main') + '</small>' + plain.map(row).join('') + '</div>' : '';
   const seg = (arr, attr, cur, lab) => '<div class="seg dseg">' + arr.map(a => '<button type="button" class="' + (cur === a[0] ? 'on' : '') + '" data-' + attr + '="' + esc(a[0]) + '">' + lab(a) + '</button>').join('') + '</div>';
+  /* ⚙️ 설정 — 서랍 줄과 같은 모양으로 묶음별 (화면 · 입력 · 알림 · 연결 · 앱). 버튼 id(mPush · mNet · mDiag · mInst · mReload)는 그대로 — v0.8.204 */
+  const nst = Notify.notifyState(), outN = Orders.outboxList().length, isOff = navigator.onLine === false;
+  const srowB = (id, ic, t, sub, cls) => '<button type="button" class="dsrow' + (cls ? ' ' + cls : '') + '" id="' + id + '"><span class="i">' + ic + '</span><span class="t">' + esc(t) + '<small>' + esc(sub) + '</small></span><span class="chev">›</span></button>';
+  const sgrp = (h, body) => body ? '<div class="dsgrp"><div class="dsh">' + esc(h) + '</div>' + body + '</div>' : '';
   const settings = '<div class="dsec dset"><small>⚙️ ' + bt('설정', 'Settings') + '</small>' +
-    (roles.length ? '<label>' + bt('화면 바꾸기', 'Switch view') + '</label>' + seg(roles.map(r => [r]), 'r', S.role, a => roleLabel(a[0]).split(' ')[0]) + (S.role === 'manager' && isAdm ? seg(JOBS, 'j', jobOf(), a => a[1]) : '') : '') +
-    '<label>🔢 ' + bt('숫자 입력', 'Number entry') + '</label>' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', a => a[1]) +
-    '<div class="btns" style="justify-content:flex-start;margin-top:8px;flex-wrap:wrap">' + (isApp() ? '' : '<button type="button" class="b-ghost b-sm" id="mInst">📲 ' + bt('앱으로 설치', 'Install app') + '</button>') + '<button type="button" class="b-ghost b-sm" id="mPush">' + (Notify.notifyState() === 'granted' ? '🔔 ' + bt('팝업 알림 항상 켜짐', 'Pop-ups always on') : Notify.notifyState() === 'denied' ? '🔕 ' + bt('알림 막힘 — 허용하는 법', 'Blocked — how to allow') : '🔔 ' + bt('알림 허용', 'Allow notifications')) + '</button><button type="button" class="b-ghost b-sm" id="mNet">📡 ' + bt('연결 · 보낼 함', 'Connection · outbox') + '</button><button type="button" class="b-ghost b-sm" id="mDiag">🔎 ' + bt('연결 점검', 'Check connection') + '</button><button type="button" class="b-ghost b-sm" id="mReload">🔄 ' + bt('새로고침', 'Reload') + '</button></div><div id="diagOut"></div></div>';
+    sgrp(bt('화면 바꾸기', 'Switch view'), roles.length ? '<div class="dsbox">' + seg(roles.map(r => [r]), 'r', S.role, a => roleLabel(a[0]).split(' ')[0]) + (S.role === 'manager' && isAdm ? seg(JOBS, 'j', jobOf(), a => a[1]) : '') + '</div>' : '') +
+    sgrp(bt('입력 · 알림', 'Input · alerts'),
+      '<div class="dsrow dsnp"><span class="i">🔢</span><span class="t">' + bt('숫자 입력', 'Number entry') + '<small>' + bt('수량 · 금액 칸', 'Qty · amount fields') + '</small></span></div>' +
+      '<div class="dsbox">' + seg([['1', bt('팝업 패드', 'Pad')], ['0', bt('폰 키보드', 'Keyboard')]], 'np', numPadOn() ? '1' : '0', a => a[1]) + '</div>' +
+      srowB('mPush', nst === 'denied' ? '🔕' : '🔔', bt('알림', 'Notifications'), nst === 'granted' ? bt('팝업 알림 항상 켜짐', 'Pop-ups always on') : nst === 'denied' ? bt('알림 막힘 — 허용하는 법', 'Blocked — how to allow') : bt('알림 허용', 'Allow notifications'), nst === 'denied' ? 'warn' : '')) +
+    sgrp(bt('연결', 'Connection'),
+      srowB('mNet', '📡', bt('연결 · 보낼 함', 'Connection · outbox'), isOff ? bt('오프라인', 'Offline') + (outN ? ' · 📤 ' + outN : '') : bt('온라인', 'Online') + (outN ? ' · 📤 ' + outN : ''), isOff || outN ? 'warn' : '') +
+      srowB('mDiag', '🔎', bt('연결 점검', 'Check connection'), bt('안 될 때 원인 찾기', 'Find out what is wrong')) + '<div id="diagOut"></div>') +
+    sgrp(bt('이 기기', 'This device'),
+      (isApp() ? '' : srowB('mInst', '📲', bt('앱으로 설치', 'Install app'), bt('홈 화면에 아이콘', 'Icon on the home screen'))) +
+      srowB('mReload', '🔄', bt('새로고침', 'Reload'), bt('최신 버전 받기', 'Get the latest version'))) + '</div>';
   const name = S.user.name || S.user.email, ini = String(name).split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase();
   let d = $('drawer'); if (!d) { d = document.createElement('div'); d.id = 'drawer'; document.body.appendChild(d); }
   d.innerHTML = '<div class="dback" id="dBack"></div><aside class="dpanel"><div class="dhead"><img src="logo-96.png" alt=""><b>THE ONE CORP</b><button type="button" class="hb" id="dX">✕</button></div>' +
