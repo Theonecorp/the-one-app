@@ -19,7 +19,7 @@
  *  권한: 세일즈맨 = 보기만 · 재고 담당(can items) = 상자 · 조정 · 확인 요청 · 라벨 · 고치기(창고는 위치만) · 원가 · 가치 · 내보내기 = 관리자 · 오너 · 삭제 = 관리자 (items.js 와 같음, 재고가 남은 상품은 거절)
  *  옮기지 않음: 변형(variacoes) 보기 · 사진 여러 장 · 판매 제한 · 가져오기 화면(📋 일괄 등록 #/items/bulk 로) · 사진 일괄(#/photos 로)
  * ============================================================ */
-import { $, esc, toast, Router, busy, debounce, printOpen, R2, num } from './ui.js';
+import { $, esc, toast, Router, busy, debounce, printOpen, R2, num, money } from './ui.js';
 import { openScanner } from './scan.js';
 import { can, isTop } from './main.js';
 import { catalog, loadCatalog, locOf, levelsOf, thumb, exactItem, editCatalog, ensureCats, setHidden, setLoc } from './catalog.js';
@@ -69,7 +69,7 @@ const SIT_CLS = { ok: 'ok', baixo: 'low', alto: 'high', picking: 'pick', empty: 
 const SIT_TXT = { sempreco: 'st_sem_preco', ok: 'st_ok', baixo: 'st_baixo', alto: 'st_alto', picking: 'st_picking', empty: 'st_empty', inativo: 'st_inativo' };
 const colsAtivas = () => COLS.filter(c => visiveis.indexOf(c.k) >= 0 && (!c.ger || ger()));
 const mob = () => window.innerWidth <= 760;
-const vlr = n => n == null ? '—' : (Number(n) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const vlr = n => n == null ? '—' : money(n);   // ui.money — 👁 금액 숨기기를 따름 (예전 toLocaleString 과 같은 $1,234.50)
 const ini = s => String(s || '?').trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase();
 const rot = v => String(v == null ? '' : v);
 /** 옛 gvFamilia — 코드 앞 글자 묶음 (V- · N_ · 14K 같은 앞말은 뺌) */
