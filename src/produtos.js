@@ -15,7 +15,7 @@
  *        prodCusto/{code} = { custo, at, by }                      — 원가 (관리자 · 오너만 읽고 씀 — inboundCost 처럼 따로)
  *    확인 요청(옛 rpc_solicitar_rechecagem) = rechecagem/{id} = { id, code, motivo: saldo|misturado|nao_encontrado, origem, origemRef, por, porNome, em, status:'aberta' }
  *        같은 상품의 열린 요청이 있으면 새로 만들지 않고 그것을 고침 (옛 앱과 같음)
- *    채우기 요청 reposicao/{id} = { id, code, tipo, qtd, por, porNome, em, status, iniciadaPor, iniciadaEm } 은 움직임 탭에서 읽기만 (만드는 화면은 다음 이식)
+ *    채우기 요청 reposicao/{id} — 서랍의 요청 카드(repor.js reporCardHTML · 옛 Consulta 의 cs2-repor) 로 만들고 · 🔁 채울 상품(#/repor) 에서 처리 · 움직임 탭에 보임
  *  권한: 세일즈맨 = 보기만 · 재고 담당(can items) = 상자 · 조정 · 확인 요청 · 라벨 · 고치기(창고는 위치만) · 원가 · 가치 · 내보내기 = 관리자 · 오너 · 삭제 = 관리자 (items.js 와 같음, 재고가 남은 상품은 거절)
  *  옮기지 않음: 변형(variacoes) 보기 · 사진 여러 장 · 판매 제한 · 가져오기 화면(📋 일괄 등록 #/items/bulk 로) · 사진 일괄(#/photos 로)
  * ============================================================ */
@@ -27,6 +27,7 @@ import { stockAll, minOf, supLabel, supSelect, supValue, supBind } from './stock
 import { newId } from './db.js';
 import * as E from './etq.js';
 import { L3 } from './balcao.js';
+import { reposAbertas, reporCardHTML, pedirReposicaoPopup, injetarCssRepor } from './repor.js';
 import { PM_CSS, PM_MAIS, PM_DOC_CSS } from './produtos-css.js';
 import { D } from './produtos-txt.js';
 
@@ -546,7 +547,7 @@ function caixasHTML(p) {
 function movLinhas() {
   const out = [];
   (PM.mov && PM.mov.log || []).forEach(m => { const d = Number(m.delta) || 0; out.push({ em: m.at, tipo: d > 0 ? 'entrada' : d < 0 ? 'saida' : 'ajuste', rot: d > 0 ? t('mm_entrada') : d < 0 ? t('mm_saida') : t('mov_ajuste'), quem: m.byName || m.by, motivo: m.note || '', qtd: d }); });
-  (PM.mov && PM.mov.rep || []).forEach(r => { out.push({ em: r.em, tipo: 'reposicao', rot: t('mov_rep_pedida'), quem: r.porNome || r.por, motivo: r.iniciadaEm ? '' : t('mov_rep_aguarda'), qtd: null }); if (r.iniciadaEm) out.push({ em: r.iniciadaEm, tipo: 'reposicao', rot: t('mov_rep_aceita'), quem: r.iniciadaPor, motivo: t('mov_rep_andamento'), qtd: null }); });
+  (PM.mov && PM.mov.rep || []).forEach(r => { out.push({ em: r.em, tipo: 'reposicao', rot: t('mov_rep_pedida'), quem: r.porNome || r.por, motivo: r.iniciadaEm ? '' : t('mov_rep_aguarda'), qtd: null }); if (r.iniciadaEm) out.push({ em: r.iniciadaEm, tipo: 'reposicao', rot: t('mov_rep_aceita'), quem: r.iniciadaPorNome || r.iniciadaPor, motivo: t('mov_rep_andamento'), qtd: null }); });
   (PM.mov && PM.mov.rc || []).forEach(r => { out.push({ em: r.em, tipo: 'reposicao', rot: t('rc_enviar_btn'), quem: r.porNome || r.por, motivo: t({ saldo: 'cs_recheca_saldo', misturado: 'cs_recheca_misturado', nao_encontrado: 'cs_recheca_sumiu' }[r.motivo] || 'cs_recheca_saldo'), qtd: null }); });
   return out.sort((x, y) => String(y.em || '').localeCompare(String(x.em || '')));
 }
@@ -557,20 +558,21 @@ function movLinhaHTML(l, i) {
 async function carregarMov(code) {
   PM.movPediu = code; const r = { log: [], rep: [], rc: [] };
   try { r.log = (await S.DB.list('stockLog', { where: [['code', '==', code]] })).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 50); } catch (e) {}
-  try { r.rep = (await S.DB.list('reposicao', { where: [['code', '==', code]] })).filter(x => x.status === 'aberta' || x.status === 'andamento'); } catch (e) {}
+  try { r.rep = (await S.DB.list('reposicao', { where: [['code', '==', code]] })).filter(x => x.status === 'aberta' || x.status === 'iniciada'); } catch (e) {}
   try { r.rc = (await S.DB.list('rechecagem', { where: [['code', '==', code]] })).filter(x => x.status === 'aberta'); } catch (e) {}
   if (PM.drawer !== code) return; PM.mov = r; pintarDrawer();
 }
 async function carregarCaixasDr(code) {
   let L = []; try { L = await E.listarEtiquetas(code); } catch (e) {}
   try { await E.loadQr(); } catch (e) {}
+  try { injetarCssRepor(); await reposAbertas(); } catch (e) {}
   if (PM.drawer !== code) return; PM.caixas = L; pintarDrawer();
 }
 function pintarDrawer() {
   const a = prodPorId(PM.drawer); if (!a) return fecharDrawer();
   let corpo;
   if (PM.aba === 'geral') {
-    corpo = '<div class="sec pf-sec pm-foto-hero">' + (a.foto ? '<img src="' + esc(thumb(a.foto, 600)) + '" alt="" loading="lazy">' : '<div class="pm-foto-vazia">' + svg(ICO.imagem, 34) + '<span>' + esc(t('pm_sem_foto')) + '</span></div>') + '</div>' + pvHero(a) + caixasHTML(a) +
+    corpo = '<div class="sec pf-sec pm-foto-hero">' + (a.foto ? '<img src="' + esc(thumb(a.foto, 600)) + '" alt="" loading="lazy">' : '<div class="pm-foto-vazia">' + svg(ICO.imagem, 34) + '<span>' + esc(t('pm_sem_foto')) + '</span></div>') + '</div>' + pvHero(a) + (reporCardHTML(a) ? '<div class="sec rp-cs">' + reporCardHTML(a) + '</div>' : '') + caixasHTML(a) +
       '<div class="sec"><h3>' + esc(t('detalhes')) + '</h3><div class="rows">' + linha(t('r_barcode'), esc(a.barcode || '—')) + linha(t('c_cat'), esc([a.grupo, a.categoria].filter(Boolean).join(' › ') || '—')) + linha(t('r_corredor'), '<span class="tag">' + esc(a.corredor ? corrFmt(a.corredor) : '—') + '</span>' + (a.loc && a.loc !== a.corredor ? ' <span style="color:var(--muted)">' + esc(a.loc) + '</span>' : '')) + linha(t('c_forn'), esc(a.fornecedor || '—')) +
       (a.ex.peso || a.ex.comp ? linha(t('f_envio_tit'), esc([a.ex.peso ? a.ex.peso + ' lb' : '', a.ex.comp ? [a.ex.comp, a.ex.larg, a.ex.alt].map(x => x || '—').join(' × ') + ' in' : ''].filter(Boolean).join(' · '))) : '') + '</div></div>' +
       '<div class="sec"><h3>' + esc(t('precos')) + '</h3><div class="rows">' + linha(t('c_preco'), vlr(a.preco)) + (ger() ? linha(t('custo_unit'), vlr(a.custo)) + linha(t('margem'), (a.margem == null ? 0 : a.margem) + '%') + linha(t('valor_total'), vlr(a.valor_estoque)) : '') + '</div>' + (ger() ? '' : '<div class="locked">' + svg(ICO.lock, 15) + ' ' + esc(t('bloq_custos')) + '</div>') + '</div>';
@@ -589,7 +591,7 @@ function pintarDrawer() {
     '<div class="dr-actions">' + acoes + '</div><div class="tabs">' + [['geral', 'aba_geral'], ['forn', 'aba_forn'], ['mov', 'aba_mov']].map(x => '<button class="tab ' + (PM.aba === x[0] ? 'active' : '') + '" data-act="aba" data-aba="' + x[0] + '">' + esc(t(x[1])) + '</button>').join('') + '</div></div><div class="dr-body">' + corpo + '</div>';
   let w = document.querySelector('.pm-dw');
   if (!w) {
-    w = document.createElement('div'); w.className = 'sb pm-raiz pm-dw';   // pm-raiz: 서랍도 상품 CSS(.sb.pm-raiz …) 를 받게 (body 아래라 화면 밖) w.style.cssText = 'position:fixed;inset:0;z-index:170;padding:0;margin:0;min-height:0;background:transparent';
+    w = document.createElement('div'); w.className = 'sb pm-raiz pm-dw'; w.style.cssText = 'position:fixed;inset:0;z-index:170;padding:0;margin:0;min-height:0;background:transparent';   // pm-raiz: 서랍도 상품 CSS(.sb.pm-raiz …) 를 받게 (body 아래라 #page 의 pm-raiz 밖)
     w.innerHTML = '<div class="scrim show" data-act="fechar-drawer"></div><div class="drawer show" id="pmDrawer"></div>';
     w.addEventListener('click', clique); document.body.appendChild(w);
   }
@@ -608,6 +610,7 @@ async function acaoDrawer(a, b) {
   if (a === 'bar-gerar') return gerarBarcode([p.id]);
   if (a === 'etq-produto') return etiquetasLote([p.id], true);
   if (a === 'conf-um') return conferirLote([p.id]);
+  if (a === 'cs-repor') return pedirReposicaoPopup(p.id, () => { PM.mov = null; PM.movPediu = ''; pintarDrawer(); });
   if (a === 'toggle-ativo') return toggleAtivo(p);
   if (a === 'excluir') return excluirLote([p.id], true);
   if (a === 'cx-reimprimir') { const r = (PM.caixas || []).find(x => x.codigo === b.dataset.cod); if (r) E.escolherTamanho([r]); }
@@ -626,7 +629,7 @@ function ajustar(p) {
   const w = E.abrirModal('<div class="modal-head"><h2>' + esc(t('ajustar')) + '</h2><button class="x" data-act="fechar-modal">' + svg(ICO.x, 17) + '</button></div><div class="modal-body"><div class="sel-prod" style="margin:0 0 14px">' + svg(ICO.prod, 18) + '<div><b>' + esc(p.nome) + '</b><span>' + esc(t('ajuste_saldo_atual')) + ': ' + p.qtd + '</span></div></div><div class="aviso" style="margin:0 0 14px">' + svg(ICO.ajuda, 16) + '<div>' + esc(t('ajuste_perg')) + '</div></div>' +
     '<div class="grid2"><div class="field full"><label>' + esc(t('ajuste_qtd_label')) + '</label><input id="ajQtd" type="number" inputmode="numeric" placeholder="10, -3…"></div><div class="field full"><label>' + esc(t('aj_tipo_label')) + '</label><select id="ajTipo">' + AJ_TIPOS.map(x => '<option value="' + x + '">' + esc(t('aj_tipo_' + x.toLowerCase().replace(/ /g, '_'))) + '</option>').join('') + '</select></div><div class="field full"><label>' + esc(t('ajuste_motivo')) + ' *</label><input id="ajMotivo" autocomplete="off" placeholder="' + esc(t('aj_motivo_ph')) + '"></div></div></div>' +
     '<div class="modal-foot"><button class="btn" data-act="fechar-modal">' + esc(t('cancelar')) + '</button><button class="btn primary" id="ajOk">' + esc(t('ajustar')) + '</button></div>');
-  { const x = w.querySelector('#ajQtd'); if (x) x.focus(); }   // 바로 — 미루면 빨리 치는 글자가 다른 칸으로 감
+  setTimeout(() => { const x = w.querySelector('#ajQtd'); if (x) x.focus(); }, 40);
   w.querySelector('#ajOk').onclick = async () => {
     const d = parseInt(String(w.querySelector('#ajQtd').value).trim(), 10), mot = w.querySelector('#ajMotivo').value.trim(), tipo = w.querySelector('#ajTipo').value || 'Other';
     if (!d) return toast(t('ajuste_inv'), 'bad');
@@ -687,7 +690,7 @@ function modalProduto(e, comQtd) {
     (comQtd ? '<div class="field full"><div class="aviso" style="margin:0">' + svg(ICO.ajuda, 16) + '<div>' + esc(t('pm_receb_aviso')) + '</div></div></div>' : '<div class="field full"><label>' + esc(t('f_envio_tit')) + '</label><div class="hint">' + esc(t('f_envio_hint')) + '</div><div class="p-envio">' + [['pEnvP', 'f_envio_peso', ex.peso], ['pEnvC', 'f_envio_c', ex.comp], ['pEnvL', 'f_envio_l', ex.larg], ['pEnvA', 'f_envio_a', ex.alt]].map(f => '<label class="p-envio-c"><span>' + esc(t(f[1])) + '</span><input id="' + f[0] + '" type="number" inputmode="decimal" step="0.01" min="0" value="' + (f[2] == null ? '' : esc(f[2])) + '"' + dis + '></label>').join('') + '</div></div>') +
     '</div></div><div class="modal-foot"><button class="btn" data-act="fechar-modal">' + esc(t('cancelar')) + '</button><button class="btn primary" id="pSalvar">' + esc(t(e ? 'salvar_alt' : 'criar_produto')) + '</button></div>');
   supBind('pForn'); if (so) { const f = w.querySelector('#pForn'); if (f) { f.disabled = true; f.style.background = '#f4f6f8'; } }
-  { const x = w.querySelector(e ? (so ? '#pCorredor' : '#pDesc') : '#pSku'); if (x) x.focus(); }   // 바로 — 40ms 뒤에 옮기면 다른 칸에 치던 글자가 설명 칸으로 감 (CI 실패)
+  setTimeout(() => { const x = w.querySelector(e ? (so ? '#pCorredor' : '#pDesc') : '#pSku'); if (x) x.focus(); }, 40);
   w.addEventListener('click', ev => {
     if (ev.target.closest('[data-pscan]')) openScanner(code => { const i = $('pBarcode'); if (i) i.value = code; }, { title: t('sc_abrir') });
     if (ev.target.closest('[data-pbar]')) { const i = $('pBarcode'); if (String(i.value || '').trim()) return toast(t('bar_ja_tem'), 'bad'); const C = catalog(); i.value = proxBarcode(C ? C.rows : [], []); toast(t('bar_no_campo', { cod: i.value }), 'good'); }
