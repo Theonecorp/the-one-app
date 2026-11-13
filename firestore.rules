@@ -147,6 +147,11 @@ service cloud.firestore {
     match /reposicao/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /etqEventos/{id} { allow read: if registered(); allow create: if itemJob(); }   // 기록은 쌓기만 (고치거나 지우지 않음)
     match /estornos/{id} { allow read: if registered(); allow create: if itemJob(); allow update, delete: if isAdmin(); }   // 요청은 재고 담당이, 승인 · 거절은 관리자 · 오너가
+    // 📥 상품 받기 (옛 WMS 의 Produtos recebidos) — REC(cargas) · 받은 줄(recebimentos) · 받은 사진(recebFotos, 작은 JPEG) · REC 인보이스(cargaInvoice, 관리자 · 오너만)
+    match /cargas/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /recebimentos/{id} { allow read: if registered(); allow write: if itemJob(); }
+    match /recebFotos/{id} { allow read: if registered(); allow create, update: if itemJob(); }
+    match /cargaInvoice/{id} { allow read, write: if isAdmin(); }
     match /inbound/{id} { allow read: if isStaff(); allow write: if itemJob(); }   // 🚢 입고 예정 — 공장 인보이스 (단가는 아래 inboundCost 에 따로)
     match /inboundCost/{id} { allow create: if itemJob(); allow read, update, delete: if isRealAdmin(); }   // 💰 공장 단가 · 금액 — 관리자만 읽음 (오피스가 등록할 때는 쓰기만)
     match /itemPhotos/{id} { allow read: if registered(); allow write: if itemJob(); }
@@ -210,6 +215,7 @@ service cloud.firestore {
       allow read: if isStaff() || (registered() && mySm() != '' && id == 'inv2');
       allow write: if opsJob();
       allow write: if itemJob() && id == 'ins';   // 🧩 인서트 번호 INS-0001 (재고 담당 — 아이템 전담 포함)
+      allow write: if itemJob() && id == 'rec';   // 📥 REC 번호 REC-000001 (재고 담당)
       // ↩ 크레딧 번호(CM) 는 세일즈맨도 올림 — inv2 문서의 CM 칸만
       // 🔐 L3: 세일즈맨은 CM 칸을 +1 만 (아무 값으로 되돌려 중복 번호를 만들지 못하게)
       allow write: if registered() && mySm() != '' && id == 'inv2' && (resource == null || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['CM']) && request.resource.data.get('CM', 0) == resource.data.get('CM', request.resource.data.get('CM', 0) - 1) + 1));
