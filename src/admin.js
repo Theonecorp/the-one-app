@@ -22,6 +22,24 @@ import { invTypes, fmtNo, company, dropInvCache, rebuildSalesM, getInvoice, FOOT
 let S = null, TAB = 'users';
 export function register(state) { S = state; Router.on('admin', pageAdmin); Router.on('catmg', pageCatMg); }
 /** 📷 사진 없는 아이템 — Level 1 별 숫자, 누르면 아이템 화면에서 그 분류의 사진 없는 것만 (카탈로그 담당의 작업 목록) */
+/* 🎨 디자인 대시보드 — 📥 아이템 흐름 (v0.8.217 · 2026-11-13 관리자: "디자이너가 일하기 편하게 — 아이템 흐름 · 사진 · 새로 등록해야 할 사진 · 카탈로그")
+ *   최근 14일 창고에 들어온 상품(stockLog 입고) — 사진 없는 것 먼저 · 카탈로그에 없는 코드(새로 등록할 것) · 누르면 그 아이템 창 (사진 올리기)
+ *   경영 · 매출 · 정산 · 미수금은 보이지 않음 */
+async function itemFlowCard() {
+  const box = $('adminBody'); if (!box) return;
+  box.insertAdjacentHTML('afterbegin', '<div class="card" id="cfFlow"><h2>📥 ' + bt('아이템 흐름 — 최근 14일 들어온 상품', 'Item flow — received in the last 14 days') + '</h2><div class="load">' + bt('읽는 중…', 'Loading…') + '</div></div>');
+  const C = catalog() || { items: [] }, by = {}; C.items.forEach(x => { by[String(x.c).toUpperCase()] = x; });
+  let L = []; try { L = await S.DB.list('stockLog', { where: [['at', '>=', addDaysA(today(), -14) + 'T00:00:00']], order: ['at', 'desc'], limit: 400 }); } catch (e) { L = []; }
+  const g = {}; L.filter(m => Number(m.delta) > 0 && (m.kind === 'recv' || !m.kind)).forEach(m => { const k = String(m.code || m.c || '').toUpperCase(); if (!k) return; const x = g[k] = g[k] || { k, q: 0, at: m.at }; x.q += Number(m.delta) || 0; if (m.at > x.at) x.at = m.at; });
+  const rows = Object.values(g).map(x => Object.assign(x, { it: by[x.k] || null })).sort((a, b) => ((a.it && a.it.ph) ? 1 : 0) - ((b.it && b.it.ph) ? 1 : 0) || String(b.at).localeCompare(String(a.at)));
+  const noPh = rows.filter(x => x.it && !x.it.ph).length, newC = rows.filter(x => !x.it).length;
+  const el = $('cfFlow'); if (!el) return;
+  el.innerHTML = '<h2>📥 ' + bt('아이템 흐름 — 최근 14일 들어온 상품', 'Item flow — received in the last 14 days') + '</h2>' +
+    '<div class="kpi" style="grid-template-columns:repeat(3,1fr)"><div><b>' + rows.length + '</b><span>' + bt('들어온 코드', 'codes in') + '</span></div><div><b class="' + (noPh ? 'warn' : '') + '">' + noPh + '</b><span>📷✕ ' + bt('사진 없음', 'no photo') + '</span></div><div><b class="' + (newC ? 'warn' : '') + '">' + newC + '</b><span>🆕 ' + bt('카탈로그에 없음', 'not in catalog') + '</span></div></div>' +
+    (rows.length ? '<div style="max-height:360px;overflow:auto;margin-top:8px">' + rows.slice(0, 120).map(x => '<div class="pr tap" data-cff="' + esc(x.k) + '"><div class="ct"><b>' + esc(x.k) + '</b> ' + (x.it ? esc(x.it.d || '') : '<span class="tag t-r">🆕 ' + bt('등록 필요', 'needs registering') + '</span>') + '<small>' + esc(String(x.at).substring(5, 10)) + ' · +' + x.q + (x.it && x.it.l1 ? ' · ' + esc(x.it.l1) : '') + '</small></div><div class="amt">' + (x.it ? (x.it.ph ? '📷 ✓' : '<span class="warn">📷 ✕</span>') : '') + '</div></div>').join('') + '</div>'
+      : '<div class="none">' + bt('최근 14일 들어온 상품이 없습니다', 'Nothing received in the last 14 days') + '</div>');
+  el.querySelectorAll('[data-cff]').forEach(r => r.onclick = async () => { const it = by[r.dataset.cff]; if (it) { const M = await import('./catpage.js'); M.itemSheet(it); } else Router.go('items', 'new'); });
+}
 function photoMissingCard() {
   const C = catalog(); if (!C || !C.items.length || !$('adminBody')) return;
   const st = photoStats(C), vis = C.items.filter(x => !x.h).length;
@@ -49,7 +67,7 @@ async function pageCatMg(arg) {
     (CTAB ? '<div id="adminBody"><div class="load">읽는 중…</div></div>' : '<div id="adminBody"></div>');
   document.querySelectorAll('[data-ct2]').forEach(b => b.onclick = () => pageCatMg(b.dataset.ct2));
   document.querySelectorAll('[data-cg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.cg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
-  if (!CTAB) { photoMissingCard(); return; }
+  if (!CTAB) { photoMissingCard(); itemFlowCard(); return; }
   if (CTAB === 'tree' && S.role !== 'admin') CTAB = '';
   try { if (CTAB === 'tree') await treeAdmin(); else await catalogAdmin(); }
   catch (e) { $('adminBody').innerHTML = '<div class="card"><div class="alert a-red">' + esc(e.code || e.message) + '</div></div>'; }
@@ -96,7 +114,8 @@ async function users() {
   $('uNew').onclick = () => userForm(null);
   document.querySelectorAll('[data-u]').forEach(el => el.onclick = () => userForm(list.find(u => u.email === el.dataset.u)));
 }
-function userForm(u) {
+/** 👤 사용자 추가 · 고치기 창 — ⚙️ 설정 화면의 "사용자 만들기" 도 이 창을 씀 (v0.8.214) */
+export function userForm(u) {
   u = u || {};
   const F = { role: u.role || 'salesman', job: u.job || 'office', job2: (Array.isArray(u.job2) ? u.job2 : []).slice(), extra: (u.extra || []).slice(), ach: !!u.achAccess, active: u.active !== false };
   const isMe = u.email && u.email === S.user.email;
@@ -150,10 +169,10 @@ function userForm(u) {
       if (doc.sm && !S.smByCode[doc.sm]) { await S.DB.set('salesmen', doc.sm, { code: doc.sm, name: doc.name || doc.sm, email: r === 'salesman' ? email : '', rates: Object.assign({}, RATE_DEFAULT), active: true, updatedAt: new Date().toISOString() }); await reloadSms(); made = ' · 세일즈맨 ' + doc.sm + ' 새로 만듦 (요율은 세일즈맨 탭에서 확인)'; }
       await S.DB.set('users', email, Object.assign({ createdAt: today() }, u, doc)); closeModal(); toast('저장' + made, 'good');
       if (isMe) { S.me = Object.assign({}, S.me, doc); }
-      users();
+      if ($('adminBody')) users();
     } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false);
   };
-  if ($('uDel')) $('uDel').onclick = async () => { if (!(await confirmBox('이 사용자를 지울까요? 로그인이 막힙니다.', '삭제'))) return; busy(true); try { await S.DB.del('users', u.email); closeModal(); users(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
+  if ($('uDel')) $('uDel').onclick = async () => { if (!(await confirmBox('이 사용자를 지울까요? 로그인이 막힙니다.', '삭제'))) return; busy(true); try { await S.DB.del('users', u.email); closeModal(); if ($('adminBody')) users(); } catch (e) { toast('실패: ' + e.message, 'bad'); } busy(false); };
 }
 
 /* ---- 세일즈맨 · 요율 ---- */

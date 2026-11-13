@@ -11,6 +11,9 @@ service cloud.firestore {
     function role() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('role', '') : ''; }
     function isRealAdmin() { return isAdminEmail() || role() == 'admin'; }                 // 관리자 — 사용자 등록 · ACH 은행은 관리자만
     function isAdmin() { let r = role(); return isAdminEmail() || r == 'admin' || r == 'owner'; }                       // 관리자급 (오너 포함) — 자료는 관리자와 같음 (역할은 한 번만 읽음: 규칙 계산 한도 1000)
+    // 🔒 오너급 — 현금 흐름 · 페이먼트(정산 · 공제 · 은행 · 공장 송금 · 1099 · 보너스 · 원가) · 경영 매출 자료 (v0.8.217 · 2026-11-13 관리자: "직원에게 노출되면 안 되는 자료는 오너만 · 나도 관리자이면서 오너")
+    //    루크(관리자 겸 오너) · 역할 오너 · owner 표시가 있는 관리자만. 다른 관리자 · 담당자는 못 봄
+    function isOwner() { return isAdminEmail() || (registered() && (userDoc().get('role', '') == 'owner' || (userDoc().get('role', '') == 'admin' && userDoc().get('owner', false) == true))); }
     function isStaff() { let r = role(); return isAdminEmail() || r == 'admin' || r == 'owner' || r == 'manager'; }    // 담당자(회계) + 관리자
     function mySm() { return registered() && exists(/databases/$(database)/documents/users/$(email())) ? userDoc().get('sm', '') : ''; }
     function achOk() { return isRealAdmin() || (registered() && userDoc().get('achAccess', false) == true); }
@@ -18,7 +21,7 @@ service cloud.firestore {
     // 👥 같이 하는 일(users.job2 — 한 사람에게 일 여럿, 2026-11-12 관리자)도 같은 표로 봄 — 앱의 myJobs() 와 같음
     function staffJob(jobs) { let r = role(); return isAdminEmail() || r == 'admin' || r == 'owner' || (r == 'manager' && (userDoc().get('job', 'office') in jobs || userDoc().get('job2', []).hasAny(jobs))); }
     function money() { return staffJob(['office', 'acct']); }                                                        // 💵 수금 · COD · ACH · 리포트 · 체크 · 정산 보기
-    function invJob() { return staffJob(['office', 'acct', 'pickinv', 'invoice']); }                                 // 🧾 인보이스 · 월 매출 요약
+    function invJob() { return staffJob(['office', 'acct', 'pickinv', 'invoice', 'pick']); }   // v0.8.217: 예전 창고 직원(pick) · 인보이스 담당(invoice) = 출고 · 인보이스 담당                                 // 🧾 인보이스 · 월 매출 요약
     function ordJob() { return staffJob(['office', 'pickinv', 'invoice', 'whmgr', 'pick']); }                        // 📦 주문 · 피킹 · 출고 · UPS · 픽업
     function opsJob() { return staffJob(['office', 'acct', 'pickinv', 'invoice', 'whmgr', 'pick']); }                // 🏬 거래처 · 번호 (아이템 전담은 제외)
     function itemJob() { return staffJob(['office', 'pickinv', 'invoice', 'whmgr', 'pick', 'catalog', 'itemmgr']); } // 🏷 아이템 · 재고 · 사진 (회계는 제외)
@@ -96,8 +99,8 @@ service cloud.firestore {
       allow delete: if money();
     }
     // 🏦 은행 명세서 — 관리자 · 오너만 (민감)
-    match /bank/{id} { allow read, write: if isAdmin(); }
-    match /bankM/{id} { allow read, write: if isAdmin(); }   // 월별 요약 (PDF)
+    match /bank/{id} { allow read, write: if isOwner(); }
+    match /bankM/{id} { allow read, write: if isOwner(); }   // 월별 요약 (PDF)
     match /envelopes/{id} {
       allow read: if money() || (registered() && resource.data.sm == mySm());
       allow create: if money() || (registered() && request.resource.data.sm == mySm() && request.resource.data.by == email() && request.resource.data.st == 'sent');
@@ -118,13 +121,13 @@ service cloud.firestore {
     }
     // ---------- AR (세일즈맨은 자기 것만) ----------
     match /ar/{sm} {
-      allow read: if isStaff() || (registered() && sm == mySm());   // 미수 현황은 모든 담당자 (홈 타일)
+      allow read: if money() || (registered() && sm == mySm());   // 🔒 미수금 — 오너 · 오피스 · 회계(수금 입력의 미결 인보이스) · 세일즈맨 자기 것 (v0.8.217: 창고 · 출고 · 디자인은 못 봄)
       allow write: if money();
     }
     // ---------- 정산 ----------
     match /settlements/{id} {
-      allow read: if money() || (registered() && resource.data.sm == mySm());
-      allow write: if isAdmin();
+      allow read: if isOwner() || (registered() && resource.data.sm == mySm());   // 🔒 정산(커미션 지급) — 오너 · 세일즈맨 자기 것 (v0.8.217: 오피스 · 회계는 못 봄)
+      allow write: if isOwner();
     }
     // ---------- ACH (은행 정보는 따로) ----------
     match /ach/{id} { allow read, write: if money(); }
@@ -143,7 +146,7 @@ service cloud.firestore {
     match /etiquetas/{id} { allow read: if registered(); allow write: if itemJob(); }
     // 📦 상품 (옛 WMS 의 Produtos) — 카탈로그에 없는 칸: 배송 박스 무게 · 크기 · 많음 기준(prodExtra) · 원가(prodCusto, 관리자 · 오너만) · 확인 요청(rechecagem) · 채우기 요청(reposicao)
     match /prodExtra/{id} { allow read: if registered(); allow write: if itemJob(); }
-    match /prodCusto/{id} { allow read, write: if isAdmin(); }
+    match /prodCusto/{id} { allow read, write: if isOwner(); }
     match /rechecagem/{id} { allow read: if registered(); allow write: if itemJob(); }
     // 🔁 채우기 요청 — 맡기(iniciadaPor)는 비어 있을 때 자기 이메일로만 · 놓기는 '' 로만 · 남이 맡은 문서를 다른 사람으로 덮어쓰지 못함 (옛 rpc_iniciar_reposicao 의 "iniciada_por is null" 잠금)
     match /reposicao/{id} {
@@ -159,11 +162,11 @@ service cloud.firestore {
     match /cargas/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /recebimentos/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /recebFotos/{id} { allow read: if registered(); allow create, update: if itemJob(); }
-    match /cargaInvoice/{id} { allow read, write: if isAdmin(); }
+    match /cargaInvoice/{id} { allow read, write: if isOwner(); }
     // 📷 사진으로 라벨 읽기 사용 기록 (Cloud Function lerEtiqueta 가 Admin SDK 로 씀 — 규칙을 거치지 않음) · 토큰 · 비용은 관리자 · 오너만 봄
-    match /iaUso/{id} { allow read: if isAdmin(); allow write: if false; }
+    match /iaUso/{id} { allow read: if isOwner(); allow write: if false; }
     match /inbound/{id} { allow read: if isStaff(); allow write: if itemJob(); }   // 🚢 입고 예정 — 공장 인보이스 (단가는 아래 inboundCost 에 따로)
-    match /inboundCost/{id} { allow create: if itemJob(); allow read, update, delete: if isRealAdmin(); }   // 💰 공장 단가 · 금액 — 관리자만 읽음 (오피스가 등록할 때는 쓰기만)
+    match /inboundCost/{id} { allow create: if itemJob(); allow read, update, delete: if isOwner(); }   // 💰 공장 단가 · 금액 — 관리자만 읽음 (오피스가 등록할 때는 쓰기만)
     match /itemPhotos/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /photoUploads/{id} { allow read, write: if itemJob(); }   // ☁️ 드라이브로 올릴 큰 사진 큐 (스크립트가 올리고 비움)   // 📷 앱에서 올린 아이템 사진 (디자인 · 카탈로그 담당 · 담당자)
     function okSt(st) { return st == 'draft' || st == 'sent'; }
@@ -267,17 +270,17 @@ service cloud.firestore {
     match /upsLog/{id} { allow read: if isStaff(); allow write: if ordJob(); }                                                                           // 📡 Quantum View 출고 · 배달 기록 (UPS.gs qvSync)                                                                            // 🚚 UPS 라벨 요청 (apps-script/UPS.gs 가 처리)
 
     // ---------- 경영 (루크만) ----------
-    match /factories/{id} { allow read, write: if isAdmin(); }
-    match /factoryInvoices/{id} { allow read, write: if isAdmin(); }
-    match /factoryPayments/{id} { allow read, write: if isAdmin(); }
-    match /pay1099/{id} { allow read, write: if isAdmin(); }
-    match /payees/{id} { allow read, write: if isAdmin(); }
-    match /bonusAcc/{id} { allow read, write: if isAdmin(); }
-    match /bonusDist/{id} { allow read, write: if isAdmin(); }
-    match /bonusSplit/{id} { allow read, write: if isAdmin(); }
-    match /deductions/{id} { allow read: if money() || (registered() && resource.data.sm == mySm()); allow write: if isAdmin(); }   // 6개월 초과 디덕션
-    match /sales/{id} { allow read, write: if isAdmin(); }
-    match /salesM/{id} { allow read: if isStaff(); allow write: if invJob(); }                                                                           // 월별 매출 요약 (현황 · 대시보드)                                                                            // 회사 매출 (월별)
+    match /factories/{id} { allow read, write: if isOwner(); }
+    match /factoryInvoices/{id} { allow read, write: if isOwner(); }
+    match /factoryPayments/{id} { allow read, write: if isOwner(); }
+    match /pay1099/{id} { allow read, write: if isOwner(); }
+    match /payees/{id} { allow read, write: if isOwner(); }
+    match /bonusAcc/{id} { allow read, write: if isOwner(); }
+    match /bonusDist/{id} { allow read, write: if isOwner(); }
+    match /bonusSplit/{id} { allow read, write: if isOwner(); }
+    match /deductions/{id} { allow read: if isOwner() || (registered() && resource.data.sm == mySm()); allow write: if isOwner(); }   // 6개월 초과 디덕션
+    match /sales/{id} { allow read, write: if isOwner(); }
+    match /salesM/{id} { allow read: if invJob(); allow write: if invJob(); }   // 🔒 월별 매출 — 인보이스를 내는 일(오피스 · 회계 · 출고 · 인보이스)만 (창고 매니저 · 디자인은 못 봄 · v0.8.217)                                                                           // 월별 매출 요약 (현황 · 대시보드)                                                                            // 회사 매출 (월별)
 
     match /{document=**} { allow read, write: if false; }
   }
