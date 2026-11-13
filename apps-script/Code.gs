@@ -157,11 +157,13 @@ function notifyRun_() {
       }
       const push = [];
       smUsers.forEach(u => add(push, u.email || u._id)); if (toUser && (staffSender || known(toUser.email || toUser._id))) add(push, toUser.email || toUser._id);
-      toList.forEach(e => add(push, e));
+      if (!n.noPush) toList.forEach(e => add(push, e));   // 🧾 발주서 메일(noPush): 받는 사람은 공장 — 팝업 대상 아님
       if (n.toGroup) group(n.toGroup).forEach(e => add(push, e)); else if (n.toStaff) group('g:office').forEach(e => add(push, e));
       const pushTo = push.filter(e => e !== by);   // 보낸 사람 자신에게는 팝업 안 함
       const lines = String(n.text || '').split('\n');
-      if (mail.length) MailApp.sendEmail({ to: mail.join(','), subject: n.subject || '[THE ONE] 알림', name: 'THE ONE', replyTo: isEmail_(n.by) ? n.by : REPLY_TO,
+      /* 📎 첨부 (🧾 발주서 PDF — plan 의 poMail: atts = [{ name, type, b64 }]) */
+      const atts = (n.atts || []).map(x => Utilities.newBlob(Utilities.base64Decode(String(x.b64 || '')), x.type || 'application/octet-stream', x.name || 'file'));
+      if (mail.length) MailApp.sendEmail({ to: mail.join(','), subject: n.subject || '[THE ONE] 알림', name: 'THE ONE', replyTo: isEmail_(n.by) ? n.by : REPLY_TO, attachments: atts,
         htmlBody: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px">' + lines.map(esc_).join('<br>') + (n.byName || n.by ? '<p style="color:#64748b;font-size:13px">— ' + esc_(n.byName || n.by) + '</p>' : '') +
           (url ? '<p><a href="' + esc_(url) + '" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:bold">앱에서 열기 · Open in app</a></p>' : '') + '</div>' });
       /* 구글 챗 — 세일즈맨: 개인 방만 · 한 사람: 그 사람 방 · 그 밖(사무실): 사무실 방 */

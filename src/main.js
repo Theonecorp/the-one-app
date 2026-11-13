@@ -248,7 +248,7 @@ const DGRP = [
   ['sep', 'truck', '피킹', 'Picking', ['flow'], 'Separação'],
   ['ship', 'truck', '출고', 'Shipping', ['displays', 'notesups', 'balcao', 'shiphist'], 'Expedição'],   // 🚫 배송 조회(track) 화면 없앰 → Shipping History (2026-11-13 창고 매니저)
   ['ins', 'package', '인서트', 'Inserts', ['insert', 'inserts'], 'Inserts'],
-  ['look', 'search', '조회', 'Lookup', ['cat', 'plan'], 'Consulta'],   // 🧮 발주 계획 — 조회 묶음 (오피스 · 창고 매니저 서랍에 재고 묶음이 없어서, v0.8.219)
+  ['look', 'search', '조회', 'Lookup', ['cat', 'plan', 'pocompra'], 'Consulta'],   // 🧮 발주 계획 — 조회 묶음 (오피스 · 창고 매니저 서랍에 재고 묶음이 없어서, v0.8.219)
   ['inv', 'warehouse', '재고', 'Inventory', ['produtos', 'etiquetas', 'recebimento', 'estoque', 'repor', 'recheca', 'stock', 'items', 'labels', 'photos'], 'Estoque'],
   ['mov', 'layers', '주문', 'Orders', [], 'Movimentação'],
   ['fin', 'wallet', '재무', 'Finance', ['mg', 'mg/sales', 'invs', 'now', 'verify', 'entry', 'mine', 'send', 'hist', 'cod', 'ach', 'bounce', 'credit', 'ar', 'bossar', 'pay'], 'Financeiro'],

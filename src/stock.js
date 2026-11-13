@@ -62,6 +62,8 @@ export const supBind = id => { const sel = $(id); if (!sel) return; sel.onchange
 /* ---------- ⚠️ 부족 기준 — 아이템마다(stock.min) 없으면 설정(stockMin), 그것도 없으면 12 ---------- */
 let MINS = {};
 export const defMin = () => { const v = S && S.settings ? Number(S.settings.stockMin) : NaN; return isNaN(v) || v < 0 ? 12 : v; };
+/** 손으로 정한 기준만 (설정 기본값 빼고) — 🧮 발주 계획의 "수동 최소" (옛 produto_minimo.manual) · 없으면 null */
+export const minManual = c => { const d = STOCK[c]; if (d && d.min != null && d.min !== '') return Number(d.min) || 0; return MINS[c] != null ? MINS[c] : null; };
 export const minOf = c => { const d = STOCK[c]; if (d && d.min != null && d.min !== '') return Number(d.min) || 0; if (MINS[c] != null) return MINS[c]; return defMin(); };
 /** 재고가 기준 아래로 내려간 아이템들을 사무실 · 관리자에게 — 💬 메시지(앱) + 이메일 · 구글 챗(notifyq, Msg.sendMsg 가 같이 넣음). manual = ⚠️ 부족 탭의 "지금 알리기" */
 export async function alertLow(list, manual) {
