@@ -201,3 +201,5 @@
 | t238 | v0.8.206 | 🏭 오너 · 관리자 홈(own) 새 디자인, 컴퓨터 먼저: 머리(기간 칩) · 숫자 4칸(매출 · 들어온 돈 · 미수금 · 공장 미지급, 누르면 그 화면) · 상세 2열(넓은 화면) · 폰은 한 열 · 숫자 칸 이름이 잘리지 않음 |
 | t239 | v0.8.200 | 📥 상품 받기(#/recebimento): 옛 WMS 의 Produtos recebidos — REC 목록 · 만들기 · 줄 넣기(스캔) · 재고에 넣기(한 번만) · 다른 REC 로 · 닫기/다시 열기 · 확인 요청 · 세일즈맨 보기만 |
 | t240 | v0.8.201 | 🔁 보충이 필요한 상품(#/repor) · 🔎 재확인할 상품(#/recheca): 옛 WMS 의 Produtos para repor · Produtos para conferir — 요청 목록 · 맡기(한 사람만) · 놓기 · 취소 · 출고/입고가 요청을 닫음 · 요청 만들기 · 세어서 맞추기 · 세일즈맨 보기만 |
+| t250 | v0.8.214 | 📦 Shipping History 옛 앱과 같게: 출고 × 반품 탭 · UPS 반품 라벨(shipq ret · 메일 mail) · 출고 등록(다른 운송사) + 배송 완료 · 운송사 필터 · UPS 청구서 CSV 가져오기 · 영업 담당 변경 · SHP 번호 · 전체 기간 + 개씩 · 세일즈맨 보기만 |
+| t251 | v0.8.214 | ↩ UPS.gs 반품 라벨 · 반품 라벨 메일 (브라우저 없이 node 로): retShipment_ 의 UPS 요청 모양(ReturnService 9 · ShipFrom = 손님 · ShipTo = 우리 RETURNS · 회사 계정) |

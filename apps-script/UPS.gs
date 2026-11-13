@@ -9,6 +9,8 @@
  *          주소 확인: 앱에서 "✅ UPS 주소 확인" → shipq/{id} (st:'av') → UPS Address Validation API → 추천 주소(cands) 를 적음(st:'avdone').
  *          요금 보기: st:'rate' → UPS Rating(Shop) API → 서비스별 요금(rates) (st:'ratedone').
  *          배송 조회: st:'trk' → UPS Tracking API → 상태 · 스캔 기록(res) (st:'trkdone') + shipments/{트래킹} 갱신.
+ *          반품 라벨: st:'ret' → UPS Shipping API (ReturnService 9) → 라벨(labels) (st:'retdone') + shipments/{트래킹}(ret:true). 취소는 같은 void.
+ *          반품 라벨 메일: st:'mail' (job = 반품 shipq 문서) → MailApp 으로 라벨(PDF · GIF) 첨부 (st:'maildone' | 'mailerr') — 매니페스트에 script.send_mail 권한 필요
  *          📦 shipments/{트래킹} = 박스 한 개: { trk, orderId, no, acct, store, sm, invs:[이 박스의 인보이스], box, boxes, w, dims, svc, shipDate, status, events, delivered, deliveredAt, receivedBy, trkSt:'open'|'done' }
  *             라벨을 만들 때 · Quantum View 로 다른 프로그램 출고를 받을 때 생기고, trackSync 가 3시간마다 배달 안 된 것을 조회함.
  *          Firestore 무료 한도(하루 읽기 5만)를 아끼려고 1분에 읽기 1번만 함.
@@ -67,10 +69,10 @@ function run() {
   try {
     /* 1분에 Firestore 읽기 1번만 — 라벨(wait) · 취소(void) · 주소 확인(av) 을 한 번에 찾음. 설정은 라벨이 있을 때만 */
     let jobs = [];
-    try { jobs = fsQueryIn_('shipq', 'st', ['wait', 'void', 'av', 'rate', 'trk'], 20); }
+    try { jobs = fsQueryIn_('shipq', 'st', ['wait', 'void', 'av', 'rate', 'trk', 'ret', 'mail'], 20); }
     catch (e) { if (/ 429/.test(String(e.message))) { Logger.log('Firestore 하루 무료 한도 초과 — 한도가 다시 차면(밤 12시 태평양 시간) 저절로 이어집니다'); return; } throw e; }
     if (!jobs.length) return;
-    const from = jobs.some(q => q.st === 'wait' || q.st === 'rate') ? settingsFrom_() : null;
+    const from = jobs.some(q => q.st === 'wait' || q.st === 'rate' || q.st === 'ret') ? settingsFrom_() : null;
     jobs.forEach(q => {
       if (q.st === 'wait') {
         try {
@@ -89,6 +91,18 @@ function run() {
         const res = {};
         [].concat(q.trks || []).slice(0, 25).forEach(t => { try { res[t] = track_(t); updShipment_(t, res[t]); } catch (e) { res[t] = { err: String(e && e.message || e).substring(0, 200) }; } });
         fsPatch_('shipq', q._id, { st: 'trkdone', at: iso_(), res });
+      } else if (q.st === 'ret') {
+        /* ↩ 반품 라벨 (Shipping History → UPS 반품 만들기) — 손님 주소 → 우리 창고, 회사 계정으로 */
+        try {
+          fsPatch_('shipq', q._id, { st: 'working', at: iso_() });
+          const r = shipReturn_(q, from);
+          fsPatch_('shipq', q._id, { st: 'retdone', at: iso_(), env: env_(), shipId: r.shipId, charge: r.charge, list: r.list, track: r.labels.map(x => x.trk).join(' '), labels: r.labels, err: '' });
+          saveReturn_(q, r);
+        } catch (e) { fsPatch_('shipq', q._id, { st: 'reterr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
+      } else if (q.st === 'mail') {
+        /* ✉️ 반품 라벨을 손님에게 메일로 (제목 · 글은 여기서 고정 — 앱은 받는 주소만) */
+        try { const r = mailReturn_(q); fsPatch_('shipq', q._id, { st: 'maildone', at: iso_(), para: r.para, err: '' }); }
+        catch (e) { fsPatch_('shipq', q._id, { st: 'mailerr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
       } else if (q.st === 'av') {
         try { fsPatch_('shipq', q._id, Object.assign({ st: 'avdone', at: iso_(), err: '' }, xav_(q.to || {}))); }
         catch (e) { fsPatch_('shipq', q._id, { st: 'averr', at: iso_(), err: String(e && e.message || e).substring(0, 500) }); }
@@ -201,6 +215,73 @@ function xav_(a) {
   const cls = R.AddressClassification ? String(R.AddressClassification.Description || R.AddressClassification.Code || '') : '';
   const cands = [].concat(R.Candidate || []).map(c => { const k = c.AddressKeyFormat || {}, L = [].concat(k.AddressLine || []); return { addr1: L[0] || '', addr2: L[1] || '', city: k.PoliticalDivision2 || '', state: k.PoliticalDivision1 || '', zip: k.PostcodePrimaryLow || '', zip4: k.PostcodeExtendedLow || '', cls: c.AddressClassification ? String(c.AddressClassification.Description || '') : '' }; });
   return { valid: 'ValidAddressIndicator' in R, ambiguous: 'AmbiguousAddressIndicator' in R, none: 'NoCandidatesIndicator' in R, cls, cands };
+}
+/* ============================================================
+ *  ↩ UPS 반품 라벨 (옛 ups-retorno · ReturnService 9 = Print Return Label) — 한 번에 박스 하나 · 라벨 하나
+ *    Shipper = 우리(돈 내는 계정) · ShipFrom = 손님(박스가 나오는 곳 — 반품에선 꼭 있어야 함) · ShipTo = 우리 창고(ATTN RETURNS)
+ *    q = { to:{name, attn, phone, addr1, addr2, city, state, zip}, box:{w, l, wd, h}, svc, desc, shp, acct, store, sm, retDe, retDeShp, by }
+ * ============================================================ */
+function retShipment_(q, from, acct) {
+  const to = q.to || {}, b = q.box || {}, f = Object.assign({}, from || {});
+  if (!to.addr1 || !to.city || !to.state || !to.zip) throw new Error('손님 주소가 부족합니다 (주소 · 도시 · 주 · ZIP)');
+  const desc = clip_(q.desc || 'JEWELRY', 35);
+  if (!desc) throw new Error('반품 내용을 적어 주세요');
+  if (!(Number(b.w) > 0) || !(Number(b.l) > 0 && Number(b.wd) > 0 && Number(b.h) > 0)) throw new Error('무게 · 치수가 잘못되었습니다');
+  const party = (x, ad) => ({ Name: clip_(x.name, 35), AttentionName: clip_(x.attn || x.name, 35), Phone: { Number: phone_(x.phone) }, Address: ad });
+  return {
+    Description: desc,
+    ReturnService: { Code: '9' },
+    Shipper: Object.assign(party(f, addr_(f)), { ShipperNumber: acct }),
+    ShipFrom: party(to, addr_(to)),
+    ShipTo: Object.assign(party(f, addr_(f)), { AttentionName: 'RETURNS' }),
+    PaymentInformation: { ShipmentCharge: [{ Type: '01', BillShipper: { AccountNumber: acct } }] },
+    Service: { Code: String(q.svc || '03') },
+    ShipmentRatingOptions: { NegotiatedRatesIndicator: '' },
+    Package: [{ Description: desc, Packaging: { Code: '02' },
+      Dimensions: { UnitOfMeasurement: { Code: 'IN' }, Length: String(Math.ceil(b.l)), Width: String(Math.ceil(b.wd)), Height: String(Math.ceil(b.h)) },
+      PackageWeight: { UnitOfMeasurement: { Code: 'LBS' }, Weight: String(Math.max(1, Math.ceil(Number(b.w)))) } }]
+  };
+}
+function shipReturn_(q, from) {
+  const body = { ShipmentRequest: { Request: { RequestOption: 'nonvalidate', TransactionReference: { CustomerContext: clip_('RETURN ' + (q.shp || q.acct || ''), 35) } }, Shipment: retShipment_(q, from, prop_('UPS_ACCOUNT')),
+    LabelSpecification: { LabelImageFormat: { Code: 'GIF' }, HTTPUserAgent: 'Mozilla/4.5' } } };
+  const j = upsFetch_('/api/shipments/v2403/ship', 'post', body);
+  const R = j.ShipmentResponse.ShipmentResults, pk = [].concat(R.PackageResults || []);
+  const neg = Number((((R.NegotiatedRateCharges || {}).TotalCharge) || {}).MonetaryValue || 0), list = Number(((R.ShipmentCharges || {}).TotalCharges || {}).MonetaryValue || 0);
+  return { shipId: R.ShipmentIdentificationNumber, charge: neg || list, list, billW: Number(((R.BillingWeight || {}).Weight) || 0), labels: pk.map(p => ({ trk: p.TrackingNumber, img: (p.ShippingLabel || {}).GraphicImage || '' })) };
+}
+/** 반품 라벨이 나오면 shipments/{트래킹} — ret:true · retJob(이 shipq 문서: 다시 인쇄 · 취소) · retDe(원래 출고) */
+function saveReturn_(q, r) {
+  const b = q.box || {}, to = q.to || {}, svc = String(q.svc || '03');
+  r.labels.forEach((l, i) => { try { fsPatch_('shipments', l.trk, { shipId: r.shipId || '', lead: (r.labels[0] || {}).trk || '', cost: i === 0 ? (Number(r.charge) || 0) : 0, list: i === 0 ? (Number(r.list) || 0) : 0, dw: Number(r.billW) || 0, cod: 0, adhocId: '', retJob: q._id, ret: true, retDe: q.retDe || '', retDeShp: q.retDeShp || '', retDesc: q.desc || '', shp: q.shp || '', carrier: 'UPS', trk: l.trk, orderId: '', no: q.shp || '', acct: q.acct || '', store: q.store || '', sm: q.sm || '', invs: [], box: i + 1, boxes: r.labels.length, w: Number(b.w) || 0, dims: [b.l, b.wd, b.h].filter(Number).join('×'), svc, svcName: SVC_[svc] || '', shipDate: iso_().substring(0, 10), to: [to.addr1, to.city, to.state, to.zip].filter(Boolean).join(', '), city: to.city || '', state: to.state || '', zip: to.zip || '', by: q.by || '', src: 'app', env: env_(), status: 'Label created', trkSt: 'open', delivered: false, at: iso_() }); } catch (e) {} });
+}
+/** 받는 주소 정리 — 쉼표 · 세미콜론 · 빈칸으로 나눔, 같은 주소는 한 번, 틀린 주소는 따로 (옛 emailsLimpar) */
+function emailsLimpar_(lista) {
+  const vistos = {}, bons = [], ruins = [];
+  [].concat(lista || []).join(',').split(/[,;\s]+/).filter(Boolean).forEach(e => { if (!/^[^@\s<>"',;]+@[^@\s<>"',;]+\.[^@\s<>"',;]+$/.test(e)) { ruins.push(e); return; } const k = e.toLowerCase(); if (!vistos[k]) { vistos[k] = 1; bons.push(e); } });
+  return { bons, ruins };
+}
+/** 메일 본문 (영어 — 손님은 미국) · 제목 · 글은 고정 */
+function retMailHtml_(trks) {
+  return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222"><p><b>UPS RETURN LABEL</b></p><p>Tracking: ' + trks.join(', ') + '</p><ol>' +
+    '<li>Print the attached label at actual size (100%). Do not scale it to fit.</li><li>Tape it flat on the box. Cover or remove any old labels.</li><li>Drop the box at any UPS location, or hand it to a UPS driver.</li></ol><p>Shipping is paid by THE ONE CORP.</p></div>';
+}
+function mailReturn_(q) {
+  const v = emailsLimpar_(q.emails);
+  if (v.ruins.length) throw new Error('잘못된 이메일: ' + v.ruins.join(', '));
+  if (!v.bons.length) throw new Error('이메일이 없습니다');
+  if (v.bons.length > 10) throw new Error('한 번에 최대 10개');
+  const job = fsGet_('shipq', q.job || '');
+  if (!job || job.kind !== 'ret' || job.st !== 'retdone') throw new Error('반품 라벨이 아닙니다');   /* 이 길로는 반품 라벨만 — 아무 메일이나 보내는 통로가 되지 않게 */
+  const L = [].concat(job.labels || []).filter(l => l && l.img);
+  if (!L.length) throw new Error('저장된 라벨이 없습니다');
+  const atts = L.map(l => Utilities.newBlob(Utilities.base64Decode(l.img), 'image/gif', 'UPS-RETURN-' + l.trk + '.gif'));
+  try {   /* 일반 프린터용 PDF (라벨 4×6 in 실제 크기) — 안 되면 GIF 만 */
+    const html = '<html><body style="margin:0">' + L.map(l => '<div style="page-break-after:always;padding:36px"><img src="data:image/gif;base64,' + l.img + '" style="width:4in;height:6in"><p style="font-family:Arial;font-size:11px">UPS RETURN LABEL · Tracking ' + l.trk + ' · Print at 100%</p></div>').join('') + '</body></html>';
+    atts.unshift(Utilities.newBlob(html, 'text/html', 'label.html').getAs('application/pdf').setName('UPS-RETURN-' + L[0].trk + '.pdf'));
+  } catch (e) {}
+  MailApp.sendEmail({ to: v.bons.join(','), subject: 'UPS Return Label — THE ONE CORP · ' + L.map(l => l.trk).join(', '), htmlBody: retMailHtml_(L.map(l => l.trk)), name: 'THE ONE CORP', attachments: atts });
+  return { para: v.bons.join(', ') };
 }
 function voidShip_(shipId) { if (!shipId) throw new Error('취소할 출고 번호가 없습니다'); upsFetch_('/api/shipments/v2403/void/cancel/' + encodeURIComponent(shipId), 'delete'); }
 

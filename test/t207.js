@@ -24,7 +24,7 @@ const GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed: SEED });
     await pg.goto('http://127.0.0.1:8907/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
   const kpis = pg => pg.$$eval('.sb .sh-kpis .fin-kpi', L => L.map(k => (k.querySelector('.lbl') || {}).textContent + '=' + (k.querySelector('b') || {}).textContent));
-  const rows = pg => pg.$$eval('.sb .sh-tbl tbody tr', L => L.map(r => r.querySelector('.sh-num').textContent));
+  const rows = pg => pg.$$eval('.sb .sh-tbl tbody tr', L => L.map(r => r.dataset.envio.split('|')[0]));   // v0.8.2xx: .sh-num 은 이제 SHP 번호 — 출고 key 로 확인
   try {
     /* ① */
     const pg = await mk('luke@theonefl.com');
