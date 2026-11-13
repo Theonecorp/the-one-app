@@ -187,7 +187,7 @@ async function pagePay() {
   const pr = presets(); if (!P.from) { const c = pr.list.find(x => x.k === pr.cur); P.from = c.from; P.to = c.to; }
   const o = overview(rangeFrom(), rangeTo());
   let h = '<div class="card"><h2>🧾 정산 — 확인 후 커미션 확정</h2><div class="chips"><button class="' + (P.all ? 'on' : '') + '" data-pall>📋 미정산 전체</button>' + pr.list.map(x => '<button class="' + (!P.all && P.from === x.from && P.to === x.to ? 'on' : '') + '" data-pp="' + x.from + '|' + x.to + '">' + x.label + '</button>').join('') + '</div>' +
-    /* 한 줄: 세일즈맨 · 기간 · 🔍 검색 — 날짜를 바꿔도 바로 안 바뀌고 🔍 검색을 눌러야 그 기간 (v0.8.205 · 2026-11-13 관리자) · 세일즈맨을 고르면 그 사람의 미정산 전체 */
+    /* 한 줄: 세일즈맨 · 기간 · 🔍 검색 — 날짜를 바꿔도 바로 안 바뀌고 🔍 검색을 눌러야 그 기간 (v0.8.204 · 2026-11-13 관리자) · 세일즈맨을 고르면 그 사람의 미정산 전체 */
     '<div class="payhd">' + sel('pSm', [['', '— 세일즈맨 전체 —']].concat(S.sms.filter(s => s.active !== false).map(s => [s.code, s.code])), P.sm) + inputDate('pFrom', P.from) + '<span class="muted">~</span>' + inputDate('pTo', P.to) + '<button type="button" class="b-blue b-sm" id="pGo">🔍 ' + bt('검색', 'Search') + '</button></div>' +
     '<div class="payopt"><label><input type="checkbox" id="pSb" ' + (P.sbOnly ? 'checked' : '') + '> 담당자 접수 확인(①)된 것만 — 커미션 대상</label>' + (P.sm ? '<button class="b-ghost b-sm" id="pOld" title="옛 시스템(구글 시트)에서 이미 정산한 줄이 계속 다시 올라올 때">📁 ' + bt('옛 정산 정리', 'Close old settlements') + '</button>' : '') + '<button class="b-ghost b-sm" id="pHist">📁 보관함 (정산 완료)</button><button class="b-ghost b-sm" id="pRates">% 요율표</button></div>' +
     (P.all ? '<div class="hint" style="text-align:left">📋 담당자 확인을 거쳐 넘어온 <b>미정산 기록 전부</b>입니다 (기간 상관없음). 확정하면 이 목록에서 빠져 📁 보관함으로 갑니다 — 기간을 좁히려면 위 칩이나 날짜를 고르세요.</div>' : '') + '</div><div id="pOut"></div>';
@@ -203,7 +203,7 @@ async function pagePay() {
   if (!P.sm) return paintCards(o);
   paintSm(o);
 }
-/* 📁 옛 정산 정리 (v0.8.205 — 2026-11-13 관리자: "전에 정산했던 것이 계속 반복돼서 나옴 · 금액도 계속 고쳐야 함")
+/* 📁 옛 정산 정리 (v0.8.204 — 2026-11-13 관리자: "전에 정산했던 것이 계속 반복돼서 나옴 · 금액도 계속 고쳐야 함")
  *   옛 시스템(구글 시트 커미션)에서 이미 정산했는데 앱에는 미정산으로 남은 줄 — 이 세일즈맨의 "이 날까지" 미정산 수금 · COD · ACH · 카드를 한 번에 정산 끝남으로
  *   보관함에 한 줄(src: old)로 남고, 줄마다 settled = 그 기록 번호 · 되돌릴 때는 보관함에서 그 기록을 보고 관리자에게 */
 function closeOld() {
