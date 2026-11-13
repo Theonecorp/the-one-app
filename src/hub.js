@@ -41,7 +41,8 @@ export const HUBS = {
     ['insert', '➕', '인서트 만들기', 'Create insert', '틀 · 훅 · 대체품 → 라벨 3가지 (옛 앱 화면)', 'template · hooks · substitutes → 3 labels (classic screen)', () => can('items')],
     ['inserts', '🧩', '완성된 인서트', 'Ready inserts', '바코드 · 구성 · 재고 있음 / 판매됨', 'barcode · composition · available / sold', () => can('items')],
     ['displays', '🖼', 'Notes Display', 'Notes Display', 'Empty Display 요청 · 준비 · UPS 박스', 'empty displays · prepare · UPS boxes', () => can('ship') || can('invoice') || can('newOrder')],
-    ['plan', '🧮', '발주 계획', 'Purchase planning', '살 것 제안 · 공장별 발주서', 'what to buy · POs by supplier', () => canPlan()]
+    ['plan', '🧮', '발주 계획', 'Purchase planning', '상품 → 공장별 → 검토 → 만들 발주서 (옛 앱 화면)', 'products → by supplier → review → POs to create (classic screen)', () => canPlan()],
+    ['pocompra', '🧾', '발주서', 'Purchase orders', '보냄 · 받은 수량 · 고치기(이력) · 취소 · PDF (옛 앱 화면)', 'send · received qty · edit (history) · cancel · PDF (classic screen)', () => canPlan()]
   ] },
   /* 🧑‍💼 세일즈맨 (v0.8.135) */
   smoney: { icon: '💵', ko: '수금', en: 'Collections', items: [
@@ -65,7 +66,8 @@ export const HUBS = {
     ['bossar', '💰', '미수금 현황', 'Receivables', '세일즈맨별 · 에이징 · 오래된 미수', 'by salesman · aging · overdue', () => true],
     ['now', '💵', '수금 현황', 'Collections status', '오늘 · 이번 주 · 세일즈맨별', 'today · this week · by salesman', () => true],
     ['reports', '📊', '판매 리포트', 'Sales reports', '아이템별 · 손님별 · 세일즈맨별 · CSV', 'by item · customer · salesman · CSV', () => true],
-    ['plan', '🧮', '발주 계획', 'Purchase planning', '살 것 제안 · 공장별 발주서', 'what to buy · POs by supplier', () => canPlan()]
+    ['plan', '🧮', '발주 계획', 'Purchase planning', '상품 → 공장별 → 검토 → 만들 발주서 (옛 앱 화면)', 'products → by supplier → review → POs to create (classic screen)', () => canPlan()],
+    ['pocompra', '🧾', '발주서', 'Purchase orders', '보냄 · 받은 수량 · 고치기(이력) · 취소 · PDF (옛 앱 화면)', 'send · received qty · edit (history) · cancel · PDF (classic screen)', () => canPlan()]
   ] }
 };
 /** 칸의 숫자 (열린 요청 수) — 개수만 읽음 */

@@ -120,7 +120,8 @@ export async function invoicesBetween(S, from, to) {
     const first = miss[0], last = miss[miss.length - 1];
     const rows = await S.DB.list('invoices', { where: [['d', '>=', first + '-01'], ['d', '<=', last + '-31']] });
     miss.forEach(k => INV_M.set(k, []));
-    rows.forEach(r => { const k = String(r.d || '').substring(0, 7); if (INV_M.has(k)) INV_M.get(k).push(r); });
+    const want = new Set(miss);   // 이미 읽어 둔 달(사이에 낀 달)은 다시 넣지 않음 — 넣으면 그 달 인보이스가 두 번 셈 (🧮 발주 계획에서 찾음)
+    rows.forEach(r => { const k = String(r.d || '').substring(0, 7); if (want.has(k)) INV_M.get(k).push(r); });
     miss.filter(k => k < cur).forEach(k => kvSet('inv.m.' + k, { rows: INV_M.get(k), at: Date.now(), ver }).catch(() => {}));
   }
   const out = []; months.forEach(k => (INV_M.get(k) || []).forEach(r => { if (r.d >= from && r.d <= to) out.push(r); }));

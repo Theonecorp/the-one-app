@@ -142,6 +142,8 @@ service cloud.firestore {
     match /stockLog/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /receipts/{id} { allow read: if registered(); allow write: if itemJob(); }
     match /purchaseOrders/{id} { allow read, write: if staffJob(['office', 'whmgr']); }   // 🧮 발주 계획 — 발주서 (관리자 · 오너 · 오피스 매니저 · 창고 매니저 = plan.js canPlan)
+    match /poCusto/{id} { allow read, write: if isOwner(); }   // 🧾 발주서 줄 단가 (옛 pedido_compra_itens.custo_unit) — 원가(prodCusto)처럼 관리자 · 오너만
+    match /planCfg/{id} { allow read: if staffJob(['office', 'whmgr']); allow write: if staffJob(['office']); }   // ✉️ 발주서 메일 설정 (옛 compras_config: 받는 사람 · 제목 · 글 · 자동) — 보기 = canPlan · 저장 = 공장 설정과 같은 사람
     // 🧩 인서트 (옛 WMS 의 Criar insert · Inserts prontos) — 틀(insModelos) · 만든 인서트(inserts). 재고 담당이 쓰고, 직원은 보기 (v0.8.195)
     match /insModelos/{id} { allow read: if isStaff(); allow write: if itemJob(); }
     match /inserts/{id} { allow read: if isStaff(); allow write: if itemJob(); }
