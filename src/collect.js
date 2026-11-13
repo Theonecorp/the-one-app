@@ -414,40 +414,66 @@ function entCard(r) {
     (!vd && r.rep !== true && !r.sb ? '<div class="act"><button type="button" data-ed="' + esc(r.id) + '" style="color:#1d4ed8;border-color:#bfdbfe">수정 Edit</button><button type="button" data-vd="' + esc(r.id) + '">취소 Void</button></div>' : '') + '</div>';
 }
 /* 체크 사진 줄이기 — 한 장씩 차례로 (여러 장을 한꺼번에 줄이면 폰 메모리가 모자라 빈 사진 "data:," 이 되던 문제 · 수금 앱 v81 과 같음)
- *  결과가 비었으면 더 작게 한 번 더, 그래도 안 되면 실패로. 20초 안에 못 읽어도 실패 */
-function shrink(file, max) {
+ *  결과가 비었으면 더 작게 한 번 더, 그래도 안 되면 실패로. 20초 안에 못 읽어도 실패
+ *  v0.8.232 (관리자: "갤러리에서 사진 첨부 시 에러"): 리포트 한 건에 사진을 다 합쳐 850KB 까지만 들어가는데(Firestore 문서 한도),
+ *   갤러리 사진은 한 장이 50~300KB 라 3~5장에서 "용량 한도"로 나머지가 빠졌음 → 장수에 맞춰 전부 다시 줄여 15장까지 다 들어가게 (fitPhotos)
+ *   · 사진 읽기: <img> 가 못 읽으면 createImageBitmap 으로 한 번 더 (큰 갤러리 사진 · 일부 안드로이드) */
+const PH_BUDGET = 820000, PH_MAX = 15;
+function decodeImg(src) {
+  return new Promise(res => { const img = new Image(); let done = false; const fin = v => { if (!done) { done = true; res(v); } }; img.onload = () => fin(img); img.onerror = () => fin(null); setTimeout(() => fin(null), 20000); img.src = src; });
+}
+function drawJpeg(img, max, q) {
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height; if (!w || !h) return null;
+  const sc = Math.min(1, max / Math.max(w, h)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc));
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+  const d = c.toDataURL('image/jpeg', q); c.width = 0; c.height = 0;   // 메모리 바로 돌려주기
+  return /^data:image\/jpeg;base64,/.test(d) && d.length >= 3000 ? d : null;
+}
+async function shrink(file, max) {
   max = max || 1100;
-  return new Promise(res => {
-    const url = URL.createObjectURL(file), img = new Image(); let done = false;
-    const fin = d => { if (done) return; done = true; try { URL.revokeObjectURL(url); } catch (e) {} res(d); };
-    img.onload = () => {
-      try {
-        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, sc = Math.min(1, max / Math.max(w, h));
-        const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * sc)); c.height = Math.max(1, Math.round(h * sc));
-        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
-        const d = c.toDataURL('image/jpeg', 0.55); c.width = 0; c.height = 0;   // 메모리 바로 돌려주기
-        if (!/^data:image\/jpeg;base64,/.test(d) || d.length < 3000) { if (max > 800) { done = true; try { URL.revokeObjectURL(url); } catch (e) {} return shrink(file, 800).then(res); } return fin(null); }
-        fin(d);
-      } catch (e) { fin(null); }
-    };
-    img.onerror = () => fin(null);
-    setTimeout(() => fin(null), 20000);
-    img.src = url;
-  });
+  const url = URL.createObjectURL(file);
+  try {
+    let img = await decodeImg(url);
+    if (!img && typeof createImageBitmap === 'function') { try { img = await createImageBitmap(file); } catch (e) { img = null; } }
+    if (!img) return null;
+    let d = null; try { d = drawJpeg(img, max, 0.55) || drawJpeg(img, 800, 0.5); } catch (e) { d = null; }
+    try { if (img.close) img.close(); } catch (e) {}
+    return d;
+  } finally { try { URL.revokeObjectURL(url); } catch (e) {} }
+}
+/** 이미 줄인 사진(data URL)을 더 작게 — 크기 · 화질을 한 단계씩 내려 target 글자 수 이하로 */
+const STEPS = [[1000, 0.5], [900, 0.46], [800, 0.42], [720, 0.4], [640, 0.38], [560, 0.36]];
+async function smaller(d, target) {
+  if (d.length <= target) return d;
+  const img = await decodeImg(d); if (!img) return d;
+  let best = d;
+  for (const [mx, q] of STEPS) { let x = null; try { x = drawJpeg(img, mx, q); } catch (e) {} if (x && x.length < best.length) best = x; if (best.length <= target) break; }
+  return best;
+}
+/** 모든 사진이 리포트 한도(PH_BUDGET) 안에 들어가게 — 큰 사진부터 장수만큼 나눈 몫으로 */
+async function fitPhotos() {
+  for (let round = 0; round < 3; round++) {
+    const tot = PHOTOS.reduce((a, x) => a + x.length, 0); if (tot <= PH_BUDGET || !PHOTOS.length) return true;
+    const target = Math.floor(PH_BUDGET / PHOTOS.length);
+    for (let i = 0; i < PHOTOS.length; i++) if (PHOTOS[i].length > target) { PHOTOS[i] = await smaller(PHOTOS[i], target); renderPhotos(); await new Promise(r => setTimeout(r, 20)); }
+  }
+  return PHOTOS.reduce((a, x) => a + x.length, 0) <= PH_BUDGET;
 }
 let PH_BUSY = 0;
 async function addPhotos(files) {
   let list = Array.from(files || []); if (!list.length) return;
-  if (PHOTOS.length + list.length > 15) { toast('사진은 15장까지. · Up to 15 photos.', 'bad'); list = list.slice(0, Math.max(0, 15 - PHOTOS.length)); }
-  let fail = 0; PH_BUSY += list.length; renderPhotos();
+  if (PHOTOS.length + list.length > PH_MAX) { toast('사진은 15장까지. · Up to 15 photos.', 'bad'); list = list.slice(0, Math.max(0, PH_MAX - PHOTOS.length)); }
+  let fail = 0, heic = 0; PH_BUSY += list.length; renderPhotos();
   for (const f of list) {
     const d = await shrink(f); PH_BUSY = Math.max(0, PH_BUSY - 1);
-    if (d && PHOTOS.reduce((a, x) => a + x.length, 0) + d.length > 900000) { toast('사진 용량이 한도를 넘었습니다 — 더 넣을 수 없습니다. · Photo size limit reached.', 'bad'); PH_BUSY = 0; break; }
-    if (d) PHOTOS.push(d); else fail++;
+    if (d) PHOTOS.push(d); else { fail++; if (/hei[cf]/i.test(f.type || f.name || '')) heic++; }
     renderPhotos(); await new Promise(r => setTimeout(r, 30));
+    if (PHOTOS.reduce((a, x) => a + x.length, 0) > PH_BUDGET) await fitPhotos();   // 넘을 때마다 바로 줄여 메모리도 아낌
   }
+  PH_BUSY = 0; renderPhotos();
+  if (!(await fitPhotos())) { while (PHOTOS.length && PHOTOS.reduce((a, x) => a + x.length, 0) > PH_BUDGET) PHOTOS.pop(); toast('사진 용량이 한도를 넘어 마지막 사진을 뺐습니다. · Photo size limit — last photo removed.', 'bad'); }
   renderPhotos();
-  if (fail) toast('사진 ' + fail + '장을 읽지 못했습니다 — 다시 찍어 주세요. · Could not read ' + fail + ' photo(s).', 'bad');
+  if (fail) toast('사진 ' + fail + '장을 읽지 못했습니다' + (heic ? ' (HEIC — 폰 설정 › 카메라 › 포맷 › "높은 호환성")' : '') + ' — 다른 사진으로 다시 골라 주세요. · Could not read ' + fail + ' photo(s).', 'bad');
 }
 function renderPhotos() {
   const g = $('phGrid'); if (!g) return;
@@ -471,7 +497,7 @@ async function sendReport(pend) {
   busy(true);
   try {
     const now = new Date().toISOString(), id = me() + '_' + TODAY_D + '_' + now.substring(11, 19).replace(/:/g, '');
-    let bytes = 0; const photos = []; for (const p of PHOTOS) { bytes += p.length; if (bytes > 850000) { toast('사진 용량이 많아 ' + photos.length + '장까지만 첨부됩니다', ''); break; } photos.push(p); }
+    await fitPhotos(); let bytes = 0; const photos = []; for (const p of PHOTOS) { bytes += p.length; if (bytes > 850000) { toast('사진 용량이 많아 ' + photos.length + '장까지만 첨부됩니다', ''); break; } photos.push(p); }
     /* 📧 메일용 표 — 구글 Apps Script(apps-script/Code.gs)가 1분마다 mail:'wait' 을 찾아 보낸 사람 + 담당자 알림 이메일로 보냄 */
     const rows = pend.map(r => { const a = (S.accounts.byCode && S.accounts.byCode[r.acct]) || {}; const pays = r.pays || [], ck = pays.filter(p => p.m === 'CHECK'); return { store: r.store || '', acct: r.acct || '', addr: [a.addr || r.addr || '', [a.city, a.state].filter(Boolean).join(', ') + (a.zip ? ' ' + a.zip : '')].filter(Boolean).join(', '), pay: Array.from(new Set(pays.map(p => p.m))).join(', '), ref: pays.map(p => p.ref).filter(Boolean).join(', '), amt: R2(r.total || 0), invs: (r.invs || []).map(v => ({ no: v.no, amt: R2(v.amt || 0) })), memo: r.memo || '', rcv: r.d || TODAY_D, dep: (ck.find(p => p.dep) || {}).dep || '' }; });
     try { await S.DB.set('reports', id, { id, sm: me(), d: TODAY_D, n: pend.length, total: R2(sum(pend, r => r.total)), entries: pend.map(r => r.id), rows, photos, to: REPORT_TO(), sentAt: now, by: S.user.email, mail: 'wait' }); }
@@ -492,7 +518,7 @@ async function sendPhotosOnly() {
   busy(true);
   try {
     const now = new Date().toISOString(), id = me() + '_' + TODAY_D + '_' + now.substring(11, 19).replace(/:/g, '') + '_PH';
-    let bytes = 0; const photos = []; for (const p of PHOTOS) { bytes += p.length; if (bytes > 850000) { toast('사진 용량이 많아 ' + photos.length + '장까지만 보냅니다', ''); break; } photos.push(p); }
+    await fitPhotos(); let bytes = 0; const photos = []; for (const p of PHOTOS) { bytes += p.length; if (bytes > 850000) { toast('사진 용량이 많아 ' + photos.length + '장까지만 보냅니다', ''); break; } photos.push(p); }
     await S.DB.set('reports', id, { id, sm: me(), d: TODAY_D, n: 0, total: 0, entries: [], rows: [], photos, photoOnly: true, to: REPORT_TO(), sentAt: now, by: S.user.email, mail: 'wait' });
     PHOTOS = PHOTOS.slice(photos.length);
     toast('📷 체크 사진 ' + photos.length + '장을 보냈습니다 · Photos sent', 'good'); paintToday();
