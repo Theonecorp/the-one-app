@@ -1,5 +1,6 @@
 /* v0.8.124 시험 (안드로이드 흉내) — 뒤로가기 = 한 단계 위(창 → 상세 → 목록 → 홈), 화면 이동은 기록을 쌓지 않음 · 홈에서는 빈 칸 없음
- *   · 긴 창의 맨 아래 버튼(확인 · 저장)이 작은 화면에서도 보임 · 입력 칸을 누르면(키보드) 아래 메뉴 · 고정 칸이 숨음 */
+ *   · 긴 창의 맨 아래 버튼(확인 · 저장)이 작은 화면에서도 보임 · 입력 칸을 누르면(키보드) 아래 메뉴 · 고정 칸이 숨음
+ *   · v0.8.231: 폰 주문 화면은 아래 메뉴를 처음부터 숨김 — 키보드가 내려가면 고정 바만 돌아옴 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -42,9 +43,11 @@ const path = require('path');
   const nh0 = await pg.evaluate(() => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navh')) || 0);
   await pg.evaluate(() => window.dispatchEvent(new Event('resize'))); await pg.waitForTimeout(200);
   const nh1 = await pg.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--navh').trim()); log('--navh while typing:', nh0, '→', nh1); if (nh1 === '0px' || parseInt(nh1) < 40) errs.push('--navh must keep its value while the nav is hidden for typing, got ' + nh1);
-  await pg.evaluate(() => document.activeElement.blur()); await pg.waitForTimeout(400); const kb2 = await pg.evaluate(() => ({ kb: document.body.classList.contains('kb'), nav: getComputedStyle(document.getElementById('nav')).display })); log('after typing:', JSON.stringify(kb2)); if (kb2.kb || kb2.nav === 'none') errs.push('nav should come back after typing');
+  await pg.evaluate(() => document.activeElement.blur()); await pg.waitForTimeout(400); const kb2 = await pg.evaluate(() => ({ kb: document.body.classList.contains('kb'), nav: getComputedStyle(document.getElementById('nav')).display })); log('after typing:', JSON.stringify(kb2)); if (kb2.kb) errs.push('keyboard mode should end after typing');   // v0.8.231: 폰 주문 화면에서는 아래 메뉴가 원래 숨어 있음 (가운데 목록을 넓게) — 키보드 모드만 풀리면 됨 · 고정 바가 돌아오는지는 아래
   await pg.waitForTimeout(500); const nh2 = await pg.evaluate(() => ({ navh: parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navh')) || 0, nav: document.getElementById('nav').offsetHeight, over: window.scrollY > Math.max(0, document.documentElement.scrollHeight - window.innerHeight) + 1 })); log('after keyboard:', JSON.stringify(nh2));
-  if (nh2.navh < 40 || nh2.navh > 140 || Math.abs(nh2.navh - nh2.nav) > 2) errs.push('--navh should equal the real nav height after the keyboard closes'); if (nh2.over) errs.push('page must not stay over-scrolled after the keyboard closes');
+  if (nh2.navh < 40 || nh2.navh > 140) errs.push('--navh (page menu height) should be kept after the keyboard closes');   // v0.8.231: 주문 화면은 메뉴를 숨겨(body --navh 0) 실제 높이 비교는 안 함
+  const st2 = await pg.evaluate(() => { const s = document.querySelector('.sticky'); if (!s) return null; const r = s.getBoundingClientRect(); return { disp: getComputedStyle(s).display, bottom: Math.round(r.bottom), vh: innerHeight }; }); log('sticky after keyboard:', JSON.stringify(st2));
+  if (!st2 || st2.disp === 'none' || st2.bottom > st2.vh + 1) errs.push('order bottom bar should come back on screen after typing'); if (nh2.over) errs.push('page must not stay over-scrolled after the keyboard closes');
   /* v0.8.129: body 가 스크롤 상자가 아니어야 — 아니면 아래 고정 바가 화면 대신 body 상자에 붙어 내용이 짧을 때 화면 가운데 떠서 카테고리 타일을 덮음 */
   if (await pg.$('[data-ev="add"]')) await pg.tap('[data-ev="add"]'); await pg.waitForSelector('.ecard', { timeout: 8000 }); await pg.waitForTimeout(600);
   const geo = await pg.evaluate(() => { const cs = getComputedStyle(document.body), st = document.querySelector('.sticky'), card = document.querySelector('.ecard'); return { bodyOv: cs.overflowX + '/' + cs.overflowY, stTop: st ? Math.round(st.getBoundingClientRect().top) : -1, stBot: st ? Math.round(st.getBoundingClientRect().bottom) : -1, cardBot: card ? Math.round(card.getBoundingClientRect().bottom) : -1, line: innerHeight - (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--navh')) || 0) }; });
