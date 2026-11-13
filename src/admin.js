@@ -2,6 +2,7 @@
  *  관리 — 사용자 · 세일즈맨(요율) · 설정 · 옛 시트에서 가져오기
  * ============================================================ */
 import { REQ_DEFAULT, reqKindsText, setReqKinds, parseReqKinds } from './reqs.js';
+import { itemSuggest } from './suggest.js';
 import { $, esc, money, num, R2, today, ym, toast, busy, openModal, closeModal, confirmBox, Router, sel, sum, sortBy, pad4, nz, addDays as addDaysA, bt, invNo, bi, itabs } from './ui.js';
 import { newId } from './db.js';
 import * as BizDay from './bizday.js';
@@ -403,7 +404,7 @@ const KINDS = [
 const kindName = k => (KINDS.find(x => x[0] === k) || ['', '❓ 모르는 파일 — 종류를 골라 주세요'])[1];
 /* 🐝 SmartBee 를 아직 쓰는 세일즈맨 — AR 과 새 인보이스만 (거래처 · 아이템 · 수금 등 다른 자료는 그대로) · v0.8.182 */
 function sbSyncCard() {
-  const d30 = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().substring(0, 10); })();
+  const d30 = addDaysA(today(), -30);   // 이 기기 날짜 기준 (UTC 로 자르면 저녁 7시 넘어 하루 밀림)
   return '<div class="card" style="border:2px solid #f59e0b"><h2>🐝 ' + bi('SmartBee 업데이트 — AR · 새 인보이스만', 'SmartBee update — A/R and new invoices only') + '</h2>' +
     '<div class="muted">' + bt('SmartBee 를 아직 쓰는 세일즈맨의 미수금과 새로 만든 인보이스만 앱에 맞춥니다. 거래처 · 아이템 · 수금 · 커미션은 건드리지 않습니다.', 'Brings in only A/R and newly created invoices from SmartBee. Customers, items, payments and commissions are untouched.') + '</div>' +
     '<div class="sumbox" style="margin-top:8px"><b>① ' + bt('AR 에이징', 'A/R aging') + '</b> <span class="muted" style="font-size:12px">' + bt('SmartBee → AR Aging 내보내기 (엑셀 · CSV, 전체 세일즈맨) — 미리보기 뒤 기준일의 미수금으로 바뀝니다', 'SmartBee A/R Aging export (Excel · CSV, all salesmen) — preview, then replaces A/R as of the date') + '</span>' +
@@ -618,7 +619,7 @@ async function importSales(file) {
   if (!file) return; busy(true); outEl().innerHTML = '';
   try {
     const { XLSX, wb } = await readBook(file);
-    const ops = []; let nC = 0, nF = 0, missing = 0, nShift = 0, nDone = 0, nCut = 0; const cut = settleCut();
+    const ops = []; let nC = 0, nF = 0, missing = 0, nShift = 0, nDone = 0, nCut = 0, nTwin = 0; const cut = settleCut();
     const cod = aoa(XLSX, wb, 'COD 입력');
     /* 🔒 앱에서 이미 정산한 건(settled)은 파일을 다시 올려도 건드리지 않음 — 안 그러면 정산이 풀려 또 정산해야 함. 있는 문서는 set 이 아니라 merge(적은 칸만) */
     const codOld = {}; if (cod) (await S.DB.list('cod')).forEach(x => { codOld[x.id] = x; });
@@ -634,6 +635,11 @@ async function importSales(file) {
         /* ID 칸이 비어 있으면 줄 내용으로 같은 ID 를 만듦 — 같은 파일을 다시 올려도 두 번 들어가지 않게 */
         const id = String(r[H.id] || '').trim() || ('C' + hash36([String(r[H.sm]).trim().toUpperCase(), d, pad4(r[H.acct]), method, String(r[H.ref] || '').trim(), R2(num(r[H.amt])), invs.map(v => v.no).join(',')].join('|')));
         const old = codOld[id]; if (old && old.settled) { nDone++; continue; }
+        /* 👯 같은 수금이 다른 ID 로 이미 있으면(ACH 시트 · 앱 ACH 완료 · 다른 파일) 건너뜀 — 가게 · 날짜 · 금액 · 방법이 같으면 같은 수금 (v0.8.199) */
+        const mth = /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', nnI = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^([APW]|CM)0+/, '$1'), myInv = invs.map(v => nnI(v.no)).filter(Boolean),
+          twin = !old && Object.values(codOld).find(x => !x.void && x.id !== id && x.acct === pad4(r[H.acct]) && Math.abs((Number(x.amt) || 0) - R2(num(r[H.amt]))) < 0.005 && String(x.method || '').toUpperCase() === mth
+            && (x.d === d || (Math.abs((new Date(x.d) - new Date(d)) / 864e5) <= 10 && (x.invs || []).some(i => myInv.includes(nnI(i.no))))));   // 날짜가 며칠 달라도 같은 인보이스면 같은 수금 (v0.8.203)
+        if (twin) { nTwin++; continue; }
         const data = { id, d, ym: ym(d), sm: String(r[H.sm]).trim().toUpperCase(), acct: pad4(r[H.acct]), store: String(r[H.store] || '').trim(), method: /CARD|CREDIT/.test(method) ? 'CREDIT CARD' : /ACH/.test(method) ? 'ACH' : 'COD', ref: String(r[H.ref] || '').trim(), amt: R2(num(r[H.amt])), invs, disc: r[H.disc] === '' ? '' : num(r[H.disc]) * (num(r[H.disc]) <= 1 ? 100 : 1), note: String(r[H.note] || '').trim(), v: r[H.v] === true || /TRUE/i.test(String(r[H.v])), vn: String(r[H.vn] || '').trim(), settled: '', void: false, imported: true };
         if (old) { delete data.settled; if (old.void) delete data.void; if (old.v && !data.v) { delete data.v; delete data.vn; } }   /* 있는 건: 앱에서 한 ✓ · 취소 표시를 파일이 되돌리지 않음 */
         if (cut && d <= cut) { data.settled = 'sheet:' + cut; data.settledAt = cut; data.v = true; nCut++; }   /* 📌 마감일까지 = 정산 완료 */
@@ -660,7 +666,7 @@ async function importSales(file) {
     Object.values(ents).forEach(e => { if (e._p) ops.push({ op: 'update', col: 'entries', id: e.id, data: e._p }); });
     await S.DB.batch(ops);
     dropBossCache();
-    say('COD·카드·ACH ' + nC + '건' + (nShift ? ' (칸 밀린 옛 줄 ' + nShift + '건 바로잡음)' : '') + ' · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
+    say('COD·카드·ACH ' + nC + '건' + (nTwin ? ' · 👯 이미 있는 같은 수금 ' + nTwin + '건 건너뜀' : '') + (nShift ? ' (칸 밀린 옛 줄 ' + nShift + '건 바로잡음)' : '') + ' · 세일즈맨 탭 확인 표시 ' + nF + '건 반영' + (missing ? ' · 수금 파일에 없는 ID ' + missing + '건 건너뜀' : '') + (nCut ? ' · 📌 ' + cut + ' 까지 ' + nCut + '건 정산 완료로' : '') + (nDone ? ' · 🔒 앱에서 이미 정산한 ' + nDone + '건은 그대로 둠' : '') + '<br><b>저장 완료</b> — 다음은 ③ 커미션 파일');
   } catch (e) { outEl().insertAdjacentHTML('beforeend', '<div class="alert a-red">' + esc(e.message) + '</div>'); }
   busy(false);
 }
@@ -1173,6 +1179,7 @@ function setForm(code, sets) {
       '<div class="btns">' + (code ? '<button class="b-ghost" id="sfDel" style="color:#991b1b">세트 삭제</button>' : '') + '<button class="b-blue" id="sfSave">저장</button></div>');
     document.querySelectorAll('[data-sfq]').forEach(inp => inp.onchange = () => { st.k[+inp.dataset.sfq][1] = Math.max(1, Math.floor(Number(inp.value) || 1)); });
     document.querySelectorAll('[data-sfx]').forEach(b => b.onclick = () => { st.k.splice(+b.dataset.sfx, 1); keep(); paint(); });
+    itemSuggest($('sfAdd'), () => { const el = $('sfAdd'); el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });   // 🔎 고르면 바로 넣음 (정확한 코드라 원래 Enter 동작) (v0.8.200)
     $('sfAdd').onkeydown = e => { if (e.key !== 'Enter') return; e.preventDefault(); const it = exactItem($('sfAdd').value); const c = it ? it.c : $('sfAdd').value.trim().toUpperCase(); if (!c) return; const q = Math.max(1, Math.floor(Number($('sfAddQ').value) || 1)); const ex = st.k.find(x => x[0] === c); if (ex) ex[1] += q; else st.k.push([c, q]); keep(); paint(); setTimeout(() => $('sfAdd').focus(), 30); };
     const keep = () => { st.n = $('sfN').value.trim(); st.p = Number($('sfP').value) || 0; if (!code) code = $('sfC').value.trim().toUpperCase(); };
     $('sfSave').onclick = async () => {

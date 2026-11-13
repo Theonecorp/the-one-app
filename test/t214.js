@@ -6,7 +6,7 @@
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
-  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8884', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
+  const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8898', '--bind', '127.0.0.1'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
   const errs = [], log = (...a) => console.log(...a);
   const pg = await br.newPage({ viewport: { width: 900, height: 1000 } }); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept());
@@ -25,7 +25,7 @@ const path = require('path');
     window.__SHEETS = sh;
     window.XLSX = { read: () => { const S = window.__SHEETS; return { SheetNames: Object.keys(S), Sheets: Object.fromEntries(Object.keys(S).map(n => [n, { rows: S[n] }])) }; }, utils: { sheet_to_json: ws => ws.rows.map(r => r.slice()) } };
   }, sheets);
-  await pg.goto('http://127.0.0.1:8884/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
+  await pg.goto('http://127.0.0.1:8898/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });
   await pg.evaluate(() => { location.hash = '#/admin/imp'; }); await pg.waitForSelector('#f1', { state: 'attached', timeout: 8000 }); await pg.evaluate(() => { const d = document.getElementById('impOld'); if (d) d.open = true; });
   await pg.setInputFiles('#f1', { name: 'THE ONE 수금 입력.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('fake') });
   await pg.waitForFunction(() => document.querySelectorAll('#impOut .alert').length >= 1 && !document.getElementById('busy').classList.contains('on'), null, { timeout: 30000 }).catch(() => errs.push('import should finish'));

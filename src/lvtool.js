@@ -4,11 +4,11 @@
  *    ② 엑셀에서 고치기   ③ 올리기 → 바뀌는 것 미리보기 (새 이름 경고) → 적용
  *  규칙은 이전 시스템 LEVEL_1_AND_2 와 같음: LEVEL 1 이 빈 줄 = 🙈 숨김, 레벨이 있으면 보임 · Group(A · P · W) 은 Level 1 앞글자로
  * ============================================================ */
-import { $, esc, toast, busy, openModal, closeModal, confirmBox } from './ui.js';
+import { $, esc, toast, busy, openModal, closeModal, confirmBox, localDay } from './ui.js';
 import { loadCatalog, catalog, editCatalog, parseBulkSheet, applyBulk, cleanName, SET_L1, NO_L1 } from './catalog.js';
 
 const loadXlsx = () => window.XLSX ? Promise.resolve(window.XLSX) : new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = () => res(window.XLSX); s.onerror = () => rej(new Error('엑셀 도구를 불러오지 못했습니다 (인터넷 확인)')); document.head.appendChild(s); });
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDay(new Date());   // 이 기기 날짜 (UTC 아님)
 const key = s => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
 const lbl = s => s ? cleanName(s) : '—';
 let S = null, F = { by: 'all', q: '', l1: '' };

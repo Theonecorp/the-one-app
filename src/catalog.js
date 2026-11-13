@@ -7,7 +7,7 @@
  *  catalog/sets = { j: JSON { SETCODE: { n: 이름, k: [[code, qty], ...] } } }  ← 세트 · 인서트 구성 (meta.setsVer)
  *  ver 가 바뀔 때만 다시 받습니다 (📦 아이템 올리기 때 바뀜)
  * ============================================================ */
-import { num, R2 } from './ui.js';
+import { num, R2, today, addDays } from './ui.js';
 
 const IDB_NAME = 'theone', IDB_STORE = 'kv', IDB_KEY = 'catalog.v1';
 const CHUNK_BYTES = 700000;   // Firestore 문서 한도(1MB)보다 넉넉히 작게
@@ -245,11 +245,11 @@ export function popularItems(path, start, hist, limit) {
 /** 🆕 새로 나온 — 최근 days 일 안에 앱에 등록된 아이템 (분류 경로 안에서) · 새 순 */
 export function newItems(path, start, days) {
   if (!CAT) return [];
-  const d = new Date(); d.setDate(d.getDate() - (days || 30)); const from = d.toISOString().substring(0, 10);
+  const from = addDays(today(), -(days || 30));   // 이 기기 날짜 기준
   const inPath = x => { if (!path || !path.length) return true; const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); };
   return CAT.items.filter(x => x.at && x.at >= from && !x.h && !x.virt && inPath(x)).sort((a, b) => b.at.localeCompare(a.at) || COLL.compare(a.c, b.c));
 }
-const todayStr = () => new Date().toISOString().substring(0, 10);
+const todayStr = () => today();   // UTC 가 아니라 이 기기 날짜 (저녁 7시 넘어 내일로 바뀌던 것)
 /** 🆕 새 아이템 알림 — 세일즈맨 폰 팝업 (메일 · 챗 없음). Apps Script 가 10분 동안 더 등록이 없으면 한 번에 묶어 영업일 8–19시에 보냄 (newItemsRun_)
  *  한 번에 40개 넘게 생긴 것은 엑셀 전체 바꾸기 · 복구일 수 있어 알리지 않음 */
 export const NEW_NOTICE_MAX = 40;
@@ -397,16 +397,18 @@ export function searchItems(q, path, limit, start, all) {
   if (path && path.length) pool = pool.filter(x => { const L = levelsOf(x, start); return path.every((p, i) => L[i] === p); });
   const words = String(q || '').toUpperCase().split(/\s+/).filter(Boolean);
   if (!words.length) return pool.slice(0, limit);
-  const out = [], ex = exactItem(q);
-  if (ex && pool.includes(ex)) out.push(ex);
+  const ex = exactItem(q), hits = [];
   const nw = words.map(w => ({ w, n: norm(w) }));
-  for (const x of pool) {
-    if (out.length >= limit) break;
-    if (x === ex) continue;
-    if (nw.every(({ w, n }) => x._n.includes(w) || (n && x._n.includes(n)))) out.push(x);
-  }
-  return out;
+  for (const x of pool) { if (x === ex) continue; if (nw.every(({ w, n }) => x._n.includes(w) || (n && x._n.includes(n)))) hits.push(x); }
+  /* 🔎 가까운 순 (v0.8.200 — 2026-11-12 관리자: "CV 를 치면 CV 로 시작하는 아이템이 먼저") — 코드가 그 글자로 시작 > 코드 안에 > 설명이 그 글자로 시작 > 그 밖. 같은 급은 코드 번호 순(CVAG01 → CVAG02 …) · 그 밖은 원래(분류) 순서 */
+  const W = words[0], Wn = norm(W) || W, idx = new Map(hits.map((x, i) => [x, i]));
+  const score = x => { const c = String(x.c || '').toUpperCase(), cn = norm(c) || c; if (c.indexOf(W) === 0 || cn.indexOf(Wn) === 0) return 1; if (c.includes(W) || cn.includes(Wn)) return 2; if (String(x.d || '').toUpperCase().indexOf(W) === 0) return 3; return 4; };
+  const sc = new Map(hits.map(x => [x, score(x)]));
+  hits.sort((a, b) => sc.get(a) - sc.get(b) || (sc.get(a) <= 2 ? SCOLL.compare(a.c, b.c) : idx.get(a) - idx.get(b)));
+  const out = ex && pool.includes(ex) ? [ex] : [];
+  return out.concat(hits).slice(0, limit);
 }
+const SCOLL = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 /** 사진 — Shopify 사진은 작은 크기로 받아 빨리 뜨게 */
 export function thumb(url, w) {
   if (!url) return '';

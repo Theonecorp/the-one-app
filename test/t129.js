@@ -15,7 +15,7 @@ const path = require('path'), fs = require('fs');
     await pg.addInitScript(o => { window.__MOCK_USER__ = { email: 'acct@theonefl.com', name: 'X' }; window.__AFTER_SEED__ = new Function('s', 's.users.forEach(u => { if (u.email === "acct@theonefl.com") u.job = "' + o.job + '"; });' + (o.seed || '')); }, { job, seed });
     await pg.goto('http://127.0.0.1:8883/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); await pg.waitForTimeout(300); return pg;
   };
-  const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().substring(0, 10); };
+  const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d)); };
   /* ① 인보이스 담당 — 주문 창에서 */
   let pg = await mk('invoice', 's.orders[0].req = { WALL: 1 };');
   await pg.evaluate(() => { location.hash = '#/order/O261014-AAAA'; }); await pg.waitForSelector('#mDisp', { timeout: 8000 }).catch(() => errs.push('order screen should have 🖼 Notes Display'));

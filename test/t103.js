@@ -8,7 +8,7 @@ const path = require('path');
   const errs = [], log = (...a) => console.log(...a);
   const ctx = await br.newContext({ viewport: { width: 400, height: 760 } });
   const mk = async (email, seed) => { const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(e.message)); pg.on('dialog', d => d.accept()); await pg.addInitScript(o => { window.__MOCK_USER__ = { email: o.email, name: 'X' }; if (o.seed) window.__AFTER_SEED__ = new Function('s', o.seed); }, { email, seed }); await pg.goto('http://127.0.0.1:8852/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' }); return pg; };
-  const seed = `const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length); const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+  const seed = `const base = s.entries.find(e => e.sm === 'BRANDON' && e.pays && e.pays.length); const d = new Date(); const day = n => { const x = new Date(d); x.setDate(x.getDate() - n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); };
     for (let i = 0; i < 30; i++) { const e = JSON.parse(JSON.stringify(base)); e.id = 'VV' + i; e.d = day(i % 6); e.ym = e.d.slice(0, 7); e.v = false; e.settled = ''; e.sb = false; e.rc = false; e.env = ''; e.mismatch = ''; e.store = 'VSTORE ' + i; e.pays = [{ m: 'CHECK', ref: String(7000 + i), amt: 100 + i }]; e.refs = [String(7000 + i)]; e.invs = []; e.total = 100 + i; s.entries.push(e); }
     const E1 = s.entries.find(e => e.id === 'VV1'), E2 = s.entries.find(e => e.id === 'VV2'); E1.env = 'VENV'; E2.env = 'VENV';
     s.envelopes = [{ id: 'VENV', sm: 'BRANDON', n: 2, total: 203, st: 'sent', sentAt: new Date().toISOString(), by: 'brandon@x.com', entries: ['VV1', 'VV2'], got: {}, miss: {}, checks: [{ eid: 'VV1', ref: '7001', amt: 101, store: E1.store, acct: E1.acct, d: E1.d }, { eid: 'VV2', ref: '7002', amt: 102, store: E2.store, acct: E2.acct, d: E2.d }] }];`;
@@ -52,7 +52,7 @@ const path = require('path');
   log('edited:', a1.addr, a1.tel, /100 NEW ST/.test(a1.sheet)); if (a1.addr !== '100 NEW ST' || a1.tel !== '954-555-0101') errs.push('account not updated'); if (!/100 NEW ST/.test(a1.sheet)) errs.push('store window should show the new address');
   await pg.close();
   /* ---------- 세일즈맨: ✏️ 수정 요청 · 📈 내 매출 ---------- */
-  const seed2 = `const d = new Date(), ym0 = d.toISOString().slice(0, 7), dd = d.toISOString().slice(0, 10); const p = new Date(d); p.setDate(1); p.setMonth(p.getMonth() - 1); const ym1 = p.toISOString().slice(0, 7), d1 = ym1 + '-10';
+  const seed2 = `const d = new Date(), ym0 = d.toISOString().slice(0, 7), dd = (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(d)); const p = new Date(d); p.setDate(1); p.setMonth(p.getMonth() - 1); const ym1 = p.toISOString().slice(0, 7), d1 = ym1 + '-10';
     s.invoices = (s.invoices || []).filter(x => !(x.sm === 'BRANDON' && [ym0, ym1].includes(x.ym))).concat([
       { id: 'A50001', no: 'A50001', t: 'A', d: dd, ym: ym0, acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', total: 1000, bal: 1000, st: 'open' },
       { id: 'W50002', no: 'W50002', t: 'W', d: dd, ym: ym0, acct: '1271', store: 'BEAUTY 4U', sm: 'BRANDON', total: 500, bal: 500, st: 'open' },

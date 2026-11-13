@@ -7,7 +7,7 @@ const path = require('path');
   const errs = [];
   const pg = await br.newPage({ viewport: { width: 430, height: 900 } }); pg.on('pageerror', e => errs.push(e.message));
   await pg.addInitScript(() => { window.__MOCK_USER__ = { email: 'luke@theonefl.com', name: 'L' };
-    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().substring(0, 10); };
+    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return (z => new Date(z - z.getTimezoneOffset() * 6e4).toISOString().substring(0, 10))(new Date(x)); };
     const mk = (id, setup, drawOn) => ({ id, acct: '1111', store: 'ALI B/S # 1', sm: 'BRANDON', amt: 100, terms: 'ACH 30', invDate: d(-30), drawOn, setup, st: setup ? 'SETUP' : 'WAIT', open: true, lines: [{ no: 'A' + id, amt: 100 }], createdAt: d(-30) });
     window.__AFTER_SEED__ = s => { s.ach = [mk('X1', true, d(-1)), mk('X2', false, d(-1)), mk('X3', false, d(5))]; }; });
   await pg.goto('http://127.0.0.1:8794/test/demo.html'); await pg.waitForSelector('#nav button', { state: 'attached' });

@@ -23,6 +23,7 @@ import { fillPinned } from './notes.js';
 import * as Ship from './ship.js';
 import * as Pickup from './pickup.js';
 import * as SH from './sorthead.js';
+import { itemSuggest } from './suggest.js';
 import { stockOut, stockBack } from './stock.js';
 
 let S = null;
@@ -211,6 +212,7 @@ export function manage(o, lines) {
     try { await loadCatalog(S); } catch (e) {}
     openModal('<h2>＋ 아이템 추가</h2><div class="fg"><label>코드 · 바코드</label><input id="aCode" autocomplete="off" style="text-transform:uppercase"></div><div class="two"><div class="fg"><label>수량</label><input id="aQ" type="number" inputmode="numeric" value="1"></div><div class="fg"><label>가격 (비우면 목록가)</label><input id="aP" type="number" step="0.01" inputmode="decimal"></div></div><div class="btns"><button class="b-ghost" id="aX">닫기</button><button class="b-blue" id="aOk">추가</button></div>');
     $('aX').onclick = closeModal; setTimeout(() => { const e = $('aCode'); if (e) e.focus(); }, 50);
+    itemSuggest($('aCode'), () => { const q = $('aQ'); if (q) { q.focus(); q.select(); } });   // 🔎 코드 일부 → 목록에서 고름 (v0.8.200)
     $('aOk').onclick = () => {
       const it = exactItem($('aCode').value); if (!it) return toast('목록에 없는 코드입니다', 'bad');
       const q = Math.max(1, Math.floor(Number($('aQ').value) || 1)), p = $('aP').value ? R2($('aP').value) : it.p;

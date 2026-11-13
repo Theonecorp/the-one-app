@@ -17,8 +17,8 @@ const path = require('path');
   const msgs = () => pg.evaluate(() => Object.values(window.__MOCK_STORE__.msgs || {}).filter(m => m.to === 'g:office' && /기준|minimum|부족|Low/i.test(m.text)).map(m => m.text));
   const nq = () => pg.evaluate(() => Object.values(window.__MOCK_STORE__.notifyq || {}).filter(n => n.kind === 'lowstock').length);   // v0.8.162: 이메일 · 챗은 kind lowstock (받는 사람 = 설정 stockAlertTo, 없으면 담당자 알림 이메일)
   /* ① ☰ 서랍에 📡 연결 · 보낼 함 */
-  await pg.click('#hMenu'); await pg.waitForSelector('#drawer #mNet', { timeout: 3000 }).catch(() => errs.push('drawer should have the 📡 connection button'));
-  if (await pg.$('#drawer #mNet')) { await pg.click('#drawer #mNet'); await pg.waitForSelector('#modal.on #netX', { timeout: 3000 }).catch(() => errs.push('📡 button should open the connection sheet')); await pg.click('#netX').catch(() => {}); }
+  await pg.click('#hMenu'); await pg.click('#drawer [data-dgo="settings"]'); await pg.waitForSelector('.stpage #mNet', { timeout: 3000 }).catch(() => errs.push('⚙️ settings page should have the 📡 connection button'));
+  if (await pg.$('.stpage #mNet')) { await pg.click('.stpage #mNet'); await pg.waitForSelector('#modal.on #netX', { timeout: 3000 }).catch(() => errs.push('📡 button should open the connection sheet')); await pg.click('#netX').catch(() => {}); }
   /* ② 재고 조회 → AHG100 창: 기준(기본 12) · ± 빠른 조정 −12 → 8 → 기준 아래 → 💬 알림 */
   await pg.evaluate(() => { location.hash = '#/stock'; }); await pg.waitForSelector('#skQ', { timeout: 8000 }); await pg.fill('#skQ', 'AHG100'); await pg.waitForTimeout(500);
   await pg.click('[data-sti="AHG100"]'); await pg.waitForSelector('#skSave', { timeout: 5000 }); await pg.waitForTimeout(200);
