@@ -458,7 +458,7 @@ export function pedirMotivo(cfg) {
       '<div class="field"><label>' + esc(L3('이유 종류', 'Reason type', 'Tipo de motivo')) + '</label><select class="flt" id="esMotTipo" style="width:100%">' + MOTIVOS.map(m => '<option value="' + m[0] + '"' + (m[0] === (cfg.tipo || 'Other') ? ' selected' : '') + '>' + esc(L3(m[3], m[2], m[1])) + '</option>').join('') + '</select></div>' +
       '<div class="field" style="margin-top:10px"><label>' + esc(L3('이유', 'Reason', 'Motivo')) + '</label><input id="esMot" autocomplete="off" style="width:100%"></div></div>' +
       '<div class="modal-foot"><button class="btn" data-act="fechar-modal">' + esc(t('cancelar')) + '</button><button class="btn ' + (cfg.perigo ? 'perigo danger' : 'primary') + '" id="esMotOk">' + esc(cfg.sim || t('salvar')) + '</button></div>');
-    const inp = w.querySelector('#esMot'); setTimeout(() => { try { inp.focus(); } catch (e) {} }, 30);
+    const inp = w.querySelector('#esMot'); try { inp.focus(); } catch (e) {}
     const ok = () => { const v = inp.value.trim(); if (!v) { inp.focus(); return toast(L3('이유를 적으세요.', 'Type the reason.', 'Informe o motivo.'), 'bad'); } const tp = w.querySelector('#esMotTipo').value; fecharModal(); res({ motivo: v, tipo: tp }); };
     w.querySelector('#esMotOk').onclick = ok; inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); ok(); } };
     w.addEventListener('click', e => { if (e.target.closest('[data-act="fechar-modal"]')) res(null); });
