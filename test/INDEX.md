@@ -204,3 +204,4 @@
 | t241 | v0.8.213 | 📷 사진으로 라벨 읽기 (📥 상품 받기 · 옛 WMS 의 "Ler etiqueta por foto") — Cloud Function 은 window.__MOCK_IA__ 로 대신 (네트워크 없음) |
 | t242 | v0.8.213 | 📷 사진으로 라벨 읽기 서버(functions/core.js · Cloud Function lerEtiqueta)의 로직 — 브라우저 · 네트워크 · functions/node_modules 없이 (가짜 db · 가짜 Anthropic · 가짜 시계) |
 | t243 | v0.8.213 | 👁 금액 숨기기 (옛 WMS 의 Ocultar valores): 머리띠 눈 단추 → 화면의 모든 금액이 ••• · 이 기기에 기억 · 인쇄는 진짜 금액 · 끄면 다시 보임 |
+| t244 | v0.8.215 | 🧹 재고 · 아이템 중복 정리: 조가 만든 화면(옛 WMS)으로 교체 · 주문 흐름은 그대로 (2026-11-13 관리자: "중복 되는 부분 없애고 조가 만든 것으로 유지 · 큰 틀 · 주문이 진행되는 전체 플로우는 바꾸지 마") |

@@ -385,7 +385,8 @@ async function staffHome() {
   });
   /* 🏠 대시보드 단추 — 원래 있던 화면 · 목록으로 (새 화면 없음) */
   const dOpen = k => {
-    if (k === 'recv' || k === 'inb') return Router.go('stock', k);
+    if (k === 'recv') return Router.go('recebimento');   /* 📥 입고 = 조의 상품 받기(REC) (v0.8.215) */
+    if (k === 'inb') return Router.go('stock', k);
     if (k === 'low') return Router.go('stock', 'low');
     if (k === 'nobar') return Router.go('items', 'nobar');
     if (k === 'notesups' || k === 'cat' || k === 'displays') return Router.go(k);
