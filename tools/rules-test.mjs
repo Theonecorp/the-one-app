@@ -21,6 +21,13 @@ const cases = [
   { name: '세일즈맨이 CM 칸 +1', expectation: 'ALLOW', request: { auth, path: D + '/counters/inv2', method: 'update', resource: { data: { CM: 6, A: 43122 } } }, resource: { data: { CM: 5, A: 43122 } } },
   { name: '세일즈맨이 A 칸 바꾸기', expectation: 'DENY', request: { auth, path: D + '/counters/inv2', method: 'update', resource: { data: { CM: 5, A: 1 } } }, resource: { data: { CM: 5, A: 43122 } } },
   { name: '세일즈맨이 다른 번호표(counters/x) 읽기', expectation: 'DENY', request: { auth, path: D + '/counters/x', method: 'get' } },
+  // 🔢 v0.8.227 세일즈 오더 번호 SA-000001 — counters/so 의 n 을 +1 만
+  { name: '세일즈맨이 주문 번호표(counters/so) 읽기', expectation: 'ALLOW', request: { auth, path: D + '/counters/so', method: 'get' } },
+  { name: '세일즈맨이 so.n +1', expectation: 'ALLOW', request: { auth, path: D + '/counters/so', method: 'update', resource: { data: { n: 8 } } }, resource: { data: { n: 7 } } },
+  { name: '세일즈맨이 so.n 되돌리기', expectation: 'DENY', request: { auth, path: D + '/counters/so', method: 'update', resource: { data: { n: 3 } } }, resource: { data: { n: 7 } } },
+  { name: '세일즈맨이 so 첫 번호 (n=2)', expectation: 'ALLOW', request: { auth, path: D + '/counters/so', method: 'create', resource: { data: { n: 2 } } } },
+  { name: '세일즈맨이 so 를 아무 값으로 만들기', expectation: 'DENY', request: { auth, path: D + '/counters/so', method: 'create', resource: { data: { n: 500 } } } },
+  { name: '세일즈맨이 남의 주문 읽기', expectation: 'DENY', request: { auth, path: D + '/orders/O261113-ZZZZ', method: 'get' }, resource: { data: { sm: 'ALEX' } } },
   { name: '세일즈맨 크레딧 만들기 (자기 가게)', expectation: 'ALLOW', request: { auth, path: D + '/invoices/CM-000006', method: 'create', resource: { data: { src: 'credit', sm: 'BRANDON', total: -50, reviewed: false, createdBy: EMAIL, acct: '1111' } } } },
 ];
 const body = { source: { files: [{ name: 'firestore.rules', content: fs.readFileSync(rulesFile, 'utf8') }] }, testSuite: { testCases: cases.map(c => ({ expectation: c.expectation, request: c.request, resource: c.resource, functionMocks })) } };

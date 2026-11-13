@@ -15,7 +15,7 @@ import { jobOf, can, jobCan } from './main.js';
 import { loadCatalog, catalog, exactItem, locOf, aisleOf, pickSort, prefixRank, cleanName, productLine, isDiscL1 } from './catalog.js';
 import { invTypes, typeOfItem, acctDisc, splitByType, priceDiff, nextInvoiceNo, invoiceHtml, company, docHead, invView, setInvView, dropInvCache, monthsOf, bumpSalesM, invoicesBetween, getInvoice, invByDigits } from './invoicing.js';
 import { storeInfo } from './store.js';
-import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip, sendStamp, smShow, payTag } from './orders.js';
+import { stTag, cfTag, goOrder, openEditor, orderDoc, typeSummary, recentYms, canEdit, fillStrip, sendStamp, soStamp, takeSo, smShow, payTag } from './orders.js';
 import { bumpAccountsVer, storeForm } from './mgr.js';
 import { storeSheet, invDetail } from './store.js';
 import { searchAccounts, sortStores } from './accounts.js';
@@ -231,7 +231,7 @@ export function manage(o, lines) {
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
-  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 주문을 들어온 주문으로 보낼까요?', '보내기'))) return; busy(true); try { await S.DB.update('orders', o.id, sendStamp(o)); toast('보냈습니다 📤', 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 주문을 들어온 주문으로 보낼까요?', '보내기'))) return; busy(true); try { const sx = await soStamp(o); await S.DB.update('orders', o.id, Object.assign(sendStamp(o), sx || {})); toast('보냈습니다 📤' + (sx ? ' ' + sx.no : ''), 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mAssign')) $('mAssign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mReassign')) $('mReassign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mIMemo')) $('mIMemo').onclick = () => imemoForm(o);
@@ -779,7 +779,7 @@ export async function invBrowser(LF, head) {
   /* 🔢 숫자만 쳤을 때 (43350) — A · P · W · CM 중 그 번호로 있는 인보이스: 하나면 바로, 여럿이면 골라서 */
   let digitInv = []; if (/^\d{5,6}$/.test(q)) { try { digitInv = await invByDigits(S, q); } catch (e) {} if (digitInv.length === 1) q = digitInv[0].no; }
   /* 인보이스 번호 · 주문 번호 모양이면 번호로 바로 찾기 */
-  const isNo = /^[A-Z]{1,2}-?\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);   // A42497 · P-007803 · O261022-…
+  const isNo = /^[A-Z]{1,2}-?\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);   // A42497 · P-007803 · O261022-… · SA-000123(주문)
   /* 🏬 거래처별(기본): 전체 거래처 목록 → 검색으로 거르기 → 가게를 누르면 그 가게 인보이스 전부 · 📅 기간별: 예전처럼 */
   const byAcct = LF.im === 'acct';
   let accs = [], acc = null;
@@ -876,7 +876,7 @@ function acctList(LF, head, modeSeg) {
   let lim = 300;
   const paint = () => {
     const q = LF.iq.trim(), hits = q ? searchAccounts(S.accounts, q, 100000) : sortStores(S.accounts.filter(a => !a.inactive)), show = hits.slice(0, lim);   // 💤 비활성은 검색할 때만 (맨 뒤)
-    const isNo = /^[A-Z]{1,2}-?\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);   // A42497 · P-007803 · O261022-…
+    const isNo = /^[A-Z]{1,2}-?\d{3,}$/i.test(q) || /^O\d{6}-/i.test(q);   // A42497 · P-007803 · O261022-… · SA-000123(주문)
     $('iaList').innerHTML = (isNo ? '<button class="b-blue" id="iaNo" style="margin-bottom:8px">🔎 ' + bi('인보이스 · 주문 번호로 찾기', 'Find by number') + ': ' + esc(q.toUpperCase()) + '</button>' : '') +
       '<div class="muted" style="margin:0 0 6px">' + (q ? bt('찾음', 'Found') : bt('전체 거래처 · 이름순', 'All customers · by name')) + ' ' + hits.length.toLocaleString() + ' — ' + bt('가게를 누르면 인보이스 전부', 'tap a store for its invoices') + '</div>' +
       (show.length ? show.map(a => '<div class="pr tap" data-ia="' + esc(a.acct) + '"><div class="ct"><b>' + esc(a.store) + (a.inactive ? ' <span class="tag t-g">💤</span>' : '') + '</b><small>' + esc(a.acct) + ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) + (a.sm ? ' · ' + esc(a.sm) : '') + (a.terms ? ' · ' + esc(a.terms) : '') + '</small></div><div class="pa">›</div></div>').join('') : '<div class="none">없음 · no match</div>') +
@@ -925,12 +925,12 @@ export async function openBackorder(id) {
       const rest = b.lines.filter((_, i) => !pick[i]);
       busy(true);
       try {
-        const now = new Date().toISOString(), d = today(), no = 'O' + d.replace(/-/g, '').substring(2) + '-B' + Math.floor(Math.random() * 46656).toString(36).toUpperCase().padStart(3, '0');
+        const now = new Date().toISOString(), d = today(), oid = 'O' + d.replace(/-/g, '').substring(2) + '-B' + Math.floor(Math.random() * 46656).toString(36).toUpperCase().padStart(3, '0'), no = await takeSo();   // 🔢 백오더 새 주문도 바로 SA 번호 (문서 id 는 예전 모양)
         const acc = acctOf(b.acct);
-        const doc = orderDoc({ id: no, no, d, ym: ym(d), sm: b.sm, acct: b.acct, store: b.store, st: 'sent', memo: '백오더 (' + b.order + ')', createdBy: S.user.email, createdAt: now, updatedAt: now, sentAt: now, fromBo: id }, sel, acctDisc(acc));
-        await S.DB.batch([{ op: 'set', col: 'orders', id: no, data: doc }, { op: 'set', col: 'orderLines', id: no, data: { sm: b.sm, lines: sel } },
+        const doc = orderDoc({ id: oid, no, d, ym: ym(d), sm: b.sm, acct: b.acct, store: b.store, st: 'sent', memo: '백오더 (' + b.order + ')', createdBy: S.user.email, createdAt: now, updatedAt: now, sentAt: now, fromBo: id }, sel, acctDisc(acc));
+        await S.DB.batch([{ op: 'set', col: 'orders', id: oid, data: doc }, { op: 'set', col: 'orderLines', id: oid, data: { sm: b.sm, lines: sel } },
           { op: 'update', col: 'backorders', id, data: { lines: rest.length ? rest : b.lines, st: rest.length ? 'open' : 'used', newOrders: (b.newOrders || []).concat([no]), qty: rest.reduce((a, l) => a + l.q, 0), amt: R2(rest.reduce((a, l) => a + l.q * l.p, 0)), updatedAt: now } }]);
-        toast('새 주문 ' + no + ' (들어온 주문에 있음)', 'good'); goOrder(no);
+        toast('새 주문 ' + no + ' (들어온 주문에 있음)', 'good'); goOrder(oid);
       } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
       busy(false);
     };

@@ -2,7 +2,7 @@
  *  THE ONE 앱 — 진입점: 로그인 → 역할 → 메뉴
  * ============================================================ */
 import { connect, MOCK, newId } from './db.js';
-import { $, esc, toast, busy, Router, openModal, closeModal, printClose, printPdf, printFit, today, bt, bi, numPadOn, setNumPad, goHash, debounce, money, HIDE_VAL, setHideVal, initHideVal } from './ui.js';
+import { $, esc, toast, busy, Router, openModal, closeModal, printClose, printPdf, printFit, canShareFile, shareFile, today, bt, bi, numPadOn, setNumPad, goHash, debounce, money, HIDE_VAL, setHideVal, initHideVal } from './ui.js';
 import { openScanner } from './scan.js';
 import * as Msg from './msg.js';
 import { searchAccounts } from './accounts.js';
@@ -150,7 +150,7 @@ function shell() {
     '<div id="busy"><div class="spin"></div></div><div id="topbar"></div>' +
     '<div id="toast"></div>' +
     '<div id="modal"><div class="box" id="mbox"></div></div>' +
-    '<div id="prt"><div id="prtbar"><button id="prtGo">🖨 ' + bt('인쇄', 'Print') + '</button><button id="prtPdf">📄 ' + bt('PDF 저장', 'Save PDF') + '</button><button id="prtClose">' + bt('닫기', 'Close') + '</button></div><div id="prtbody"></div></div>';
+    '<div id="prt"><div id="prtbar"><button id="prtGo">🖨 ' + bt('인쇄', 'Print') + '</button><button id="prtPdf">📄 ' + bt('PDF 저장', 'Save PDF') + '</button><button id="prtShare" hidden>📤 ' + bt('PDF 보내기', 'Send PDF') + '</button><button id="prtClose">' + bt('닫기', 'Close') + '</button></div><div id="prtbody"></div></div>';
   /* 창은 ✕ · 닫기 버튼으로만 닫힘 (바깥을 눌러도 안 닫힘 — 실수로 닫히는 것 방지, v0.8.115) */
   /* ⏳ 서버에서 읽는 동안 화면 맨 위에 진행 막대 (0.15초 넘게 걸릴 때만) */
   /* 처리 안 된 오류가 나도 화면이 막힌 채 남지 않게 — 동그라미를 풀고 알림 */
@@ -161,6 +161,8 @@ function shell() {
   let tbT = 0; window.addEventListener('dbbusy', e => { const n = e.detail, tb = $('topbar'); if (!tb) return; clearTimeout(tbT); if (n > 0) tbT = setTimeout(() => tb.classList.add('on'), 150); else tb.classList.remove('on'); });
   $('prtClose').onclick = printClose; $('prtGo').onclick = () => window.print();
   /* 📄 PDF 저장 — 세일즈맨도 폰에서 인보이스 · 스테이트먼트를 파일로 (v0.8.223) */
+  /* 📤 PDF 보내기 — 문자 · 메일 · 다른 앱으로 인보이스 PDF 파일만 (앱 주소는 같이 안 감 · 파일 공유가 되는 폰 · 태블릿에서만 보임) */
+  if (canShareFile()) { $('prtShare').hidden = false; $('prtShare').onclick = async () => { let f = null; busy(true); try { f = await printPdf('file'); } catch (e) { toast(bt('PDF 실패', 'PDF failed') + ': ' + (e.message || e), 'bad'); } busy(false); if (f) { try { await shareFile(f); } catch (e) { toast(bt('보내기 실패', 'Send failed') + ': ' + (e.message || e), 'bad'); } } }; }
   $('prtPdf').onclick = async () => { busy(true); try { const n = await printPdf(); toast('📄 ' + n, 'good'); } catch (e) { toast(bt('PDF 실패', 'PDF failed') + ': ' + (e.message || e), 'bad'); } busy(false); };
   window.addEventListener('resize', () => { if ($('prt') && $('prt').classList.contains('on')) printFit(); });
   paintEye(); $('hEye').onclick = () => { setHideVal(!HIDE_VAL); paintEye(); toast(HIDE_VAL ? bt('금액 숨김', 'Amounts hidden') : bt('금액 표시됨', 'Amounts visible')); }; initHideVal();

@@ -6,7 +6,7 @@ const path = require('path'), fs = require('fs'), { execFileSync } = require('ch
 const errs = [], root = path.resolve(__dirname, '..');
 const R = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
 const m = R.match(/match \/counters\/\{id\} \{[^]*?\n    \}/), blk = m ? m[0] : '';
-if (!/allow read: if isStaff\(\) \|\| \(registered\(\) && mySm\(\) != '' && id == 'inv2'\);/.test(blk)) errs.push('① salesmen can read counters/inv2 (needed to take the next CM number)');
+if (!/allow read: if isStaff\(\) \|\| \(\(id == 'inv2' \|\| id == 'so'\) && registered\(\) && mySm\(\) != ''\);/.test(blk))   // v0.8.227: SA 주문 번호(so)도 errs.push('① salesmen can read counters/inv2 (needed to take the next CM number)');
 if (/allow read: if isStaff\(\) \|\| registered\(\)\s*;/.test(blk) || /allow read: if true/.test(blk)) errs.push('① counters are not readable by everyone');
 if (!/affectedKeys\(\)\.hasOnly\(\['CM'\]\)/.test(blk) || !/id == 'inv2'/.test(blk)) errs.push('① salesman write stays limited to inv2 · CM +1');
 console.log('① counters block ok:', !errs.length);
