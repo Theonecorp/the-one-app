@@ -28,6 +28,11 @@ const cases = [
   { name: '세일즈맨이 so 첫 번호 (n=2)', expectation: 'ALLOW', request: { auth, path: D + '/counters/so', method: 'create', resource: { data: { n: 2 } } } },
   { name: '세일즈맨이 so 를 아무 값으로 만들기', expectation: 'DENY', request: { auth, path: D + '/counters/so', method: 'create', resource: { data: { n: 500 } } } },
   { name: '세일즈맨이 남의 주문 읽기', expectation: 'DENY', request: { auth, path: D + '/orders/O261113-ZZZZ', method: 'get' }, resource: { data: { sm: 'ALEX' } } },
+  // 🔢 v0.8.233 임시 저장 → 보내기 때 SA 번호로 (L4 'no' 잠금의 예외 한 가지)
+  { name: '세일즈맨 임시 저장 주문 보내기 + SA 번호', expectation: 'ALLOW', request: { auth, path: D + '/orders/O261113-AAAA', method: 'update', resource: { data: { sm: 'BRANDON', st: 'sent', no: 'SA-000007', tmpNo: 'O261113-AAAA', createdBy: EMAIL, sentAt: 'x' } } }, resource: { data: { sm: 'BRANDON', st: 'draft', no: 'O261113-AAAA', createdBy: EMAIL } } },
+  { name: '세일즈맨이 보낸 주문의 SA 번호 바꾸기', expectation: 'DENY', request: { auth, path: D + '/orders/O261113-BBBB', method: 'update', resource: { data: { sm: 'BRANDON', st: 'sent', no: 'SA-000009', createdBy: EMAIL } } }, resource: { data: { sm: 'BRANDON', st: 'sent', no: 'SA-000008', createdBy: EMAIL } } },
+  { name: '세일즈맨이 보내며 아무 번호나', expectation: 'DENY', request: { auth, path: D + '/orders/O261113-CCCC', method: 'update', resource: { data: { sm: 'BRANDON', st: 'sent', no: 'X-1', createdBy: EMAIL } } }, resource: { data: { sm: 'BRANDON', st: 'draft', no: 'O261113-CCCC', createdBy: EMAIL } } },
+  { name: '세일즈맨 임시 저장 그대로 다시 저장 (번호 그대로)', expectation: 'ALLOW', request: { auth, path: D + '/orders/O261113-DDDD', method: 'update', resource: { data: { sm: 'BRANDON', st: 'draft', no: 'O261113-DDDD', createdBy: EMAIL, memo: 'm' } } }, resource: { data: { sm: 'BRANDON', st: 'draft', no: 'O261113-DDDD', createdBy: EMAIL } } },
   { name: '세일즈맨 크레딧 만들기 (자기 가게)', expectation: 'ALLOW', request: { auth, path: D + '/invoices/CM-000006', method: 'create', resource: { data: { src: 'credit', sm: 'BRANDON', total: -50, reviewed: false, createdBy: EMAIL, acct: '1111' } } } },
 ];
 const body = { source: { files: [{ name: 'firestore.rules', content: fs.readFileSync(rulesFile, 'utf8') }] }, testSuite: { testCases: cases.map(c => ({ expectation: c.expectation, request: c.request, resource: c.resource, functionMocks })) } };
