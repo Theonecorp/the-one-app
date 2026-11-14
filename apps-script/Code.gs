@@ -391,7 +391,14 @@ function inboundBody_(text) {
 function inboundMessage_(m, byCode) {
   const atts = m.getAttachments().filter(a => /\.(xlsx|xls|csv)$/i.test(a.getName()));
   const subj = m.getSubject() || '', from = m.getFrom() || '', B = inboundBody_(m.getPlainBody()), revised = /REVISED/i.test(subj);
-  if (!atts.length) { inboundNotify_('inboundErr', '⚠️ 공장 메일에 엑셀이 없습니다 — ' + subj, from + '\n엑셀(.xlsx · .xls) 인보이스를 첨부해 다시 보내 달라고 해 주세요.', true); return 0; }
+  if (!atts.length) {
+    /* 📭 엑셀 없는 메일 — 공장 인보이스처럼 보일 때만 경고 (v0.8.244 · 2026-11-14 관리자: Google 보안 알림 같은 메일에도 "엑셀이 없습니다" 가 떴음)
+     *   인보이스처럼 보임 = 제목 · 본문에 INVOICE · 发票 · PACKING · 인보이스 … 또는 예전에 공장 인보이스를 보낸 주소 · 그 밖은 기록만 하고 건너뜀 */
+    let known = false; try { known = query_('inbound', 'mailFrom', from, 1).length > 0; } catch (e) {}
+    if (INV_RE.test(subj) || INV_RE.test(String(m.getPlainBody() || '').slice(0, 3000)) || known) inboundNotify_('inboundErr', '⚠️ 공장 메일에 엑셀이 없습니다 — ' + subj, from + '\n엑셀(.xlsx · .xls) 인보이스를 첨부해 다시 보내 달라고 해 주세요.', true);
+    else Logger.log('📭 공장 인보이스가 아닌 메일 — 건너뜀: ' + from + ' · ' + subj);
+    return 0;
+  }
   const year = Number(Utilities.formatDate(m.getDate(), 'America/New_York', 'yyyy'));
   const top = book => book.slice(0, 3).map(sh => (sh.rows || []).slice(0, 6).map(r => (r || []).join(' ')).join(' ')).join(' ');
   const items = atts.map(att => {
