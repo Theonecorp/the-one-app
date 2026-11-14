@@ -21,7 +21,7 @@ const fmtTz = (d, tz, f) => { const p = Object.fromEntries(new Intl.DateTimeForm
     const store = { inbound: {}, inboundCost: {}, notifyq: {} }, labeled = [];
     const ctx = { console, Date, JSON, Math, Number, String, Object, Array, Logger: { log: () => {} }, Utilities: { formatDate: fmtTz, parseCsv: t => t.split('\n').map(l => l.split(',')), newBlob: () => ({ getBytes: () => [] }) },
       PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) },
-      GmailApp: { search: () => msgs.length ? [{ getMessages: () => msgs, addLabel: () => labeled.push(1) }] : [], getUserLabelByName: () => ({}), createUserLabel: () => ({}) } };
+      GmailApp: { search: () => msgs.length ? [{ getMessages: () => msgs, addLabel: () => labeled.push(1) }] : [], getUserLabelByName: () => ({}), createLabel: () => ({}) } };
     vm.createContext(ctx); vm.runInContext(gs + '\n' + code, ctx);
     ctx.inboundCatalog_ = () => CAT; ctx.inboundAoa_ = att => att.aoa; ctx.inboundBook_ = att => [{ name: 'Sheet1', rows: att.aoa }]; ctx.today_ = () => '2026-11-11'; ctx.listAll_ = () => []; ctx.MailApp = { sendEmail: () => {} }; ctx.inboundSaveFile_ = () => '';
     ctx.query_ = (col, f, v) => Object.entries(store[col] || {}).map(([id, d]) => Object.assign({ _id: id }, d)).filter(d => String(d[f]) === String(v));

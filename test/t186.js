@@ -59,7 +59,7 @@ const path = require('path'), fs = require('fs'), vm = require('vm');
     factoryInvoices: { a: { f: 'SX', d: '2026-01-10', amt: 45300, type: '인보이스' } }, factoryPayments: { b: { f: 'SX', d: '2026-01-08', amt: 2000 } } }, mails = [];
   const ctx = { console, Date, JSON, Math, Number, String, Object, Array, Logger: { log: () => {} }, Utilities: { formatDate: () => '2026', newBlob: () => ({ getBytes: () => [] }) }, MailApp: { sendEmail: o => mails.push(o) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) },
-    GmailApp: { search: () => [{ getMessages: () => [{ getSubject: () => 'STATUS - 2026-09-23', getFrom: () => 'Lily <lily@163.com>', getDate: () => new Date('2026-11-11T10:00:00Z'), getPlainBody: () => '', getAttachments: () => [{ getName: () => 'THE ONE STATUS 20260923.xlsx', aoa: ST }] }], addLabel: () => {} }], getUserLabelByName: () => ({}), createUserLabel: () => ({}) } };
+    GmailApp: { search: () => [{ getMessages: () => [{ getSubject: () => 'STATUS - 2026-09-23', getFrom: () => 'Lily <lily@163.com>', getDate: () => new Date('2026-11-11T10:00:00Z'), getPlainBody: () => '', getAttachments: () => [{ getName: () => 'THE ONE STATUS 20260923.xlsx', aoa: ST }] }], addLabel: () => {} }], getUserLabelByName: () => ({}), createLabel: () => ({}) } };
   vm.createContext(ctx); vm.runInContext(gs + '\n' + code, ctx);
   ctx.inboundCatalog_ = () => ({}); ctx.inboundBook_ = att => [{ name: 'YM STATUS', rows: att.aoa }]; ctx.inboundSaveFile_ = () => 'https://drive.google.com/file/d/S';
   const docs = col => Object.entries(store[col] || {}).map(([id, d]) => Object.assign({ _id: id }, d));
