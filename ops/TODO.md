@@ -8,8 +8,7 @@
 - [ ] 2026-11-13 · AR ③ 옛 CM 30장 만들기 — 앱 CM 번호(21)가 옛 CM 번호 122–340 과 겹치므로 CM 번호를 341 부터로 올린 뒤 만들기 (라이브 자료 수정 · 승인 필요)
 
 ## 🔧 저장소 밖 반영 필요
-- [ ] 2026-11-14 · Drive API 켜기 (Google Cloud 콘솔 · 프로젝트 the-one-app-ff40e) — inbound 엑셀 변환이 403
-- [ ] 2026-11-14 · 관리자 계정 "THE ONE Mail" 스크립트에 `apps-script/Code.gs` 통째로 붙여 넣기 → `inboundRelayRetry` 실행 (라벨 만들기 · 재시도 · PO PDF 첨부)
+- [ ] 2026-11-14 · 관리자 계정 "THE ONE Mail" 스크립트에 `apps-script/Code.gs` 통째로 붙여 넣기(v0.8.244 — 엑셀 없는 메일은 인보이스처럼 보일 때만 경고) → `inboundRelayRetry` 실행 → 재고 › 입고 확인에 Jinruijia 입고 예정이 생겼는지
 
 ## 👥 담당자 회신 대기
 - [ ] 2026-11-13 · 창고 매니저: "재고가 안 보인다" 화면 스크린샷 받기
@@ -20,3 +19,4 @@
 - [ ] ACH 두 번 정산된 것(두 가게) · 옛 시스템 입력분 정리
 
 ## ✅ 최근 끝남
+- [x] 2026-11-14 · Drive API 켜기 (the-one-app-ff40e) — 서비스 계정으로 켬 · ENABLED 확인

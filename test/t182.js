@@ -1,7 +1,7 @@
 /* v0.8.183 시험 — 🚢 공장 인보이스 메일 자동 등록 (inbound@theonefl.com → 입고 예정) (2026-11-11 관리자)
  *   ① apps-script/InboundParse.gs 는 src/inbound-parse.js 에서 만든 것 — 같은 줄들을 같게 읽음 (build.sh 로 늘 맞춤)
  *   ② 메일 하나 (모든 코드가 앱에 있음) → inbound 🚢 오는 중 + inboundCost(단가 · 본문의 송금 요청 · 금액 다름 표시) + 창고 · 오피스 알림 + 라벨
- *   ③ 모르는 코드가 있는 메일 → 🔎 확인 대기 (오피스 · 관리자 알림, ≈ 비슷한 코드) · 같은 번호 다시 → 건너뜀 · 제목 REVISED → 같은 문서를 새것으로 · 엑셀 없는 메일 → 알림
+ *   ③ 모르는 코드가 있는 메일 → 🔎 확인 대기 (오피스 · 관리자 알림, ≈ 비슷한 코드) · 같은 번호 다시 → 건너뜀 · 제목 REVISED → 같은 문서를 새것으로 · 엑셀 없는 메일 → 알림 (v0.8.244: 인보이스처럼 보일 때만)
  *   ④ 앱: 확인 대기를 열어 코드를 고쳐 등록 → 오는 중 + 알림 · 창고는 확인 대기를 받을 수 없음 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path'), fs = require('fs'), vm = require('vm');
@@ -48,8 +48,10 @@ const fmtTz = (d, tz, f) => { const p = Object.fromEntries(new Intl.DateTimeForm
   const rev = run([mail('INVOICE JR-2222', '', [{ name: 'v1.xlsx', aoa: INV2 }]), mail('INVOICE JR-2222 REVISED', '', [{ name: 'v2.xlsx', aoa: INV2.filter(r => r[1] !== 'HG0S01') }])]);
   const rv = Object.values(rev.store.inbound); log('③ revised:', rv.length, rv[0] && rv[0].st, rv[0] && rv[0].file);
   if (rv.length !== 1 || rv[0].file !== 'v2.xlsx' || rv[0].st !== 'coming') errs.push('③ REVISED replaces the pending one (now all codes known → coming)');
-  const noX = run([mail('hello', 'see attached pdf', [])]); const nx = Object.values(noX.store.notifyq);
-  if (noX.n !== 0 || !nx.length || nx[0].kind !== 'inboundErr') errs.push('③ a mail without Excel → error notice to office/admin');
+  const noX = run([mail('INVOICE SX#99', 'see attached pdf', [])]); const nx = Object.values(noX.store.notifyq);
+  if (noX.n !== 0 || !nx.length || nx[0].kind !== 'inboundErr') errs.push('③ an invoice mail without Excel → error notice to office/admin');
+  /* v0.8.244: 인보이스처럼 보이지 않는 메일(Google 보안 알림 등)은 경고 없이 건너뜀 (t286) */
+  const noX2 = run([mail('hello', 'see you tomorrow', [])]); if (noX2.n !== 0 || Object.values(noX2.store.notifyq).length) errs.push('③ a non-invoice mail without Excel → no notice');
   /* ④ 앱 — 확인 대기 */
   const { spawn } = require('child_process'); const srv = spawn('python3', ['-m', 'http.server', '8851', '--bind', '127.0.0.1'], { cwd: root, stdio: 'ignore' }); await new Promise(r => setTimeout(r, 700));
   const br = await pw.chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
