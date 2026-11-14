@@ -559,6 +559,34 @@ body.omenu-on #page,body.dock.omenu-on #page{margin-left:0!important}
 .omenu [data-ocmp],.omenu .ochips button[data-ocmp]{display:none!important}
 .ohead{position:sticky!important;top:var(--hdr,56px)!important;z-index:26!important;background:var(--bg)!important;margin:0 -4px 6px!important;padding:4px 4px 0!important;box-shadow:0 6px 8px -8px rgba(15,23,42,.25)!important}
 body.dock .ohead.ohome,.ohead.ohome{display:none!important}
+/* 🎨 화면 안쪽도 조의 디자인 톤으로 (v0.8.242 · 2026-11-14 관리자 "아이콘 · 화면 톤을 조가 바꾼 톤으로") — 1단계 견본: 세일즈맨 홈 · 담당자 주문 목록
+ *   이모지 → icons.js 선 아이콘 · 색 네모(.tq) · 제목 앞 초록 아이콘(.hic) · 숫자 칸은 대시보드(.wd-kpi) 모양 */
+.card h2 .hic{color:var(--green);vertical-align:-4px;margin-right:2px}
+.tq{flex:none;width:38px;height:38px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;background:var(--blue2);color:var(--blue)}
+.tq.g,.tq.ok{background:var(--green2);color:var(--green)}.tq.a,.tq.warn{background:var(--amber2);color:var(--amber)}.tq.r,.tq.bad{background:var(--red2);color:var(--red)}
+.trow .tq{width:36px;height:36px}.todo .none{display:flex;align-items:center;gap:10px}
+.qb{border:1px solid var(--line)!important;border-radius:12px!important;min-height:84px;justify-content:center;gap:7px!important;box-shadow:0 1px 2px rgba(15,23,42,.04)!important}
+.qb .i{display:flex;align-items:center;justify-content:center;height:28px}.qb .i .ic{color:var(--green)}.qb.blue .i .ic{color:#fff}.qb:not(.blue):hover{border-color:#bbf7d0!important;background:#f7fef9}
+#page .card.dhead{background:transparent!important;box-shadow:none!important;border:0!important;padding:6px 2px 10px!important}#page .card.dhead h1{font-size:24px;font-weight:800;color:var(--ink)!important}
+#page .card.dhead .muted .ic{vertical-align:-3px;color:var(--muted)}
+#oStrip.ostrip2{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;background:none!important;padding:0!important;border:0!important;box-shadow:none!important}
+#oStrip.ostrip2>div{display:flex!important;flex-direction:row!important;align-items:center;gap:10px;min-width:0;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;border-bottom:3px solid var(--green);box-shadow:0 1px 2px rgba(15,23,42,.04)}
+#oStrip.ostrip2>div:nth-child(2){border-bottom-color:var(--blue)}#oStrip.ostrip2>div:nth-child(3){border-bottom-color:var(--amber)}
+#oStrip.ostrip2 .kt{display:flex;flex-direction:column;min-width:0}#oStrip.ostrip2 .kt>span{font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#oStrip.ostrip2 .kt .en{display:none}
+#oStrip.ostrip2 b{font-size:22px;font-weight:800;line-height:1.15;color:var(--ink)}
+@media (max-width:600px){#oStrip.ostrip2{gap:6px}#oStrip.ostrip2>div{flex-direction:column!important;align-items:flex-start;gap:4px;padding:8px 9px}#oStrip.ostrip2 .tq{width:30px;height:30px;border-radius:9px}#oStrip.ostrip2 .tq .ic{width:17px;height:17px}#oStrip.ostrip2 .kt>span{font-size:11.5px}#oStrip.ostrip2 b{font-size:19px}}
+.omenu .ochips button .ci{display:inline-flex;align-items:center;color:var(--muted)}.omenu .ochips button.on .ci{color:#fff}.omenu .ogl .ci{color:var(--muted);display:flex}
+.card h2 .ic{vertical-align:-4px}
+/* 📝 세일즈맨 오늘 플랜 — 번호 · 체크 목록 (v0.8.242) */
+.plan .pll{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.plan .pli,.plan .pladd{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px 6px 4px 10px}
+.plan .pn{flex:none;min-width:22px;height:22px;border-radius:99px;background:#f1f5f9;color:var(--ink2);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.plan .pck{display:inline-flex;align-items:center;cursor:pointer}.plan .pck input{width:22px;height:22px;accent-color:var(--green);margin:0}
+.plan .pt,.plan #dPlanNew{flex:1;min-width:0;border:0!important;background:transparent!important;box-shadow:none!important;padding:8px 2px!important;font-size:15px}
+.plan .pli.done{background:#f0fdf4;border-color:#bbf7d0}.plan .pli.done .pt{text-decoration:line-through;color:var(--muted)}.plan .pli.done .pn{background:var(--green);color:#fff}
+.plan .px{flex:none;border:0;background:none;color:#94a3b8;width:32px;height:32px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}.plan .px:hover{background:#fee2e2;color:var(--red)}
+.plan .pladd{margin-top:6px;border-style:dashed;background:#f8fafc}.plan .pladd .pn{background:none;color:#94a3b8}.plan #dPlanAdd{flex:none;display:inline-flex;align-items:center;gap:4px}
+.plan .plcnt{margin-top:6px;font-size:12.5px;font-weight:700;color:var(--muted);text-align:right}.plan .plcnt.all{color:var(--green)}.plan .plcnt:empty{display:none}
 /* 🧭 관리 › 서랍 메뉴 편집 (v0.8.241) — 묶음 줄(굵게) 아래 화면 줄(들여쓰기) · ☑ · 이름 · ↑ ↓ · 묶음 옮기기 */
 .mcfg{padding:8px 10px}.mcg{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:4px 6px;background:#fff}.mcg.off{opacity:.55}
 .mcr{display:flex;align-items:center;gap:6px;padding:4px 2px;flex-wrap:wrap}.mch{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}.mch .mcn{font-weight:800}

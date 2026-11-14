@@ -148,27 +148,67 @@ export async function syncOutbox(quiet) {
  * ============================================================ */
 /* 🏠 세일즈맨 홈 — 오늘 한눈에: 인사 · 숫자 4개 · ✅ 오늘 할 일 · 📝 오늘 플랜 · 바로 가기 (주문 작업 자체는 🛒 세일 탭) */
 const PLAN_KEY = () => 'theone.plan.' + ((S.user && S.user.email) || '');
-const planGet = () => { try { return JSON.parse(localStorage.getItem(PLAN_KEY()) || 'null') || { text: '', at: '' }; } catch (e) { return { text: '', at: '' }; } };
-const planPut = text => { try { localStorage.setItem(PLAN_KEY(), JSON.stringify({ text, at: new Date().toISOString() })); } catch (e) {} };
+/* 📝 오늘 플랜 = 번호 목록 + ✓ 체크 (v0.8.242 · 2026-11-14 관리자: "번호순으로 · 체크해서 한 것과 안 한 것 구분")
+ *   폰 저장 모양: { v: 2, items: [{ t, done }], at, text } — text 는 줄마다 한 항목 (옛 앱 버전이 읽는 칸이라 계속 같이 씀)
+ *   옛 모양 { text, at } (v0.8.150 ~ 0.8.241 의 자유 글) 은 줄마다 한 항목으로 읽음 — 그대로 이어서 씀 */
+const planGet = () => { let p = null; try { p = JSON.parse(localStorage.getItem(PLAN_KEY()) || 'null'); } catch (e) {} p = p || {};
+  const items = Array.isArray(p.items) ? p.items.filter(x => x && String(x.t || '').trim()).map(x => ({ t: String(x.t), done: !!x.done })) : String(p.text || '').split(/\r?\n/).map(t => t.trim()).filter(Boolean).map(t => ({ t, done: false }));
+  return { items, at: p.at || '' }; };
+const planPut = items => { try { const it = items.filter(x => String(x.t || '').trim()); localStorage.setItem(PLAN_KEY(), JSON.stringify({ v: 2, items: it, at: new Date().toISOString(), text: it.map(x => x.t).join('\n') })); } catch (e) {} };
+/* 🎨 선 아이콘 (조의 디자인 v0.8.203 톤 — v0.8.242 화면 안쪽까지): 제목 앞 · 색 네모 안 */
+const hic = n => icon(n, 20, 'hic'), tic = (n, c) => '<span class="tq ' + (c || '') + '">' + icon(n, 20) + '</span>';
 const WD_KO = ['일', '월', '화', '수', '목', '금', '토'], WD_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** 📝 오늘 플랜 목록 — 1 2 3 번호 · ☐/☑ 체크(한 것은 줄 긋고 회색) · 글 바로 고치기 · ✕ 지우기 · 맨 아래 칸에 쓰고 Enter = 추가
+ *  줄에서 Enter = 바로 아래 새 줄 · 빈 줄에서 ⌫ = 그 줄 지우기 · 바뀔 때마다 이 폰에 저장 */
+function planBox(box, items) {
+  if (!box) return;
+  const save = () => { planPut(items); const at = $('dPlanAt'); if (at) at.textContent = bt('저장됨', 'saved') + ' ' + md(today()); cnt(); };
+  const saveSoon = debounce(save, 300);
+  const cnt = () => { const c = box.querySelector('.plcnt'), n = items.filter(x => String(x.t).trim()).length, d = items.filter(x => x.done && String(x.t).trim()).length; if (c) { c.textContent = n ? bt('완료', 'Done') + ' ' + d + ' / ' + n : ''; c.classList.toggle('all', !!n && d === n); } };
+  const draw = focus => {
+    box.innerHTML = '<ol class="pll">' + items.map((x, i) => '<li class="pli' + (x.done ? ' done' : '') + '"><span class="pn">' + (i + 1) + '</span>' +
+      '<label class="pck" title="' + esc(bt('한 것 · 안 한 것', 'Done / not done')) + '"><input type="checkbox" data-pc="' + i + '"' + (x.done ? ' checked' : '') + '></label>' +
+      '<input class="pt" data-pt="' + i + '" value="' + esc(x.t) + '" enterkeyhint="next">' +
+      '<button type="button" class="px" data-px="' + i + '" title="' + esc(bt('지우기', 'Remove')) + '" aria-label="' + esc(bt('지우기', 'Remove')) + '">' + icon('x', 16) + '</button></li>').join('') + '</ol>' +
+      '<div class="pladd"><span class="pn">' + (items.length + 1) + '</span><input id="dPlanNew" placeholder="' + esc(items.length ? bt('할 일 더하기 — 쓰고 Enter', 'Add a task — type and press Enter') : bt('예: 올랜도 3곳 방문 — 쓰고 Enter', 'e.g. visit 3 stores in Orlando — press Enter')) + '" enterkeyhint="done">' +
+      '<button type="button" class="b-ghost b-sm" id="dPlanAdd">' + icon('plus', 16) + ' ' + bt('추가', 'Add') + '</button></div><div class="plcnt"></div>';
+    cnt();
+    box.querySelectorAll('[data-pc]').forEach(c => c.onchange = () => { items[+c.dataset.pc].done = c.checked; c.closest('li').classList.toggle('done', c.checked); save(); });
+    box.querySelectorAll('[data-pt]').forEach(t => {
+      const i = +t.dataset.pt;
+      t.oninput = () => { items[i].t = t.value; saveSoon(); };
+      t.onkeydown = e => {
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); items[i].t = t.value; items.splice(i + 1, 0, { t: '', done: false }); draw(i + 1); }
+        else if (e.key === 'Backspace' && !t.value) { e.preventDefault(); items.splice(i, 1); save(); draw(i > 0 ? i - 1 : 'new'); }
+      };
+      t.onblur = () => { if (items[i] && items[i].t === t.value) save(); };   // 빈 줄은 저장할 때 빠짐 (planPut)
+    });
+    box.querySelectorAll('[data-px]').forEach(b => b.onclick = () => { items.splice(+b.dataset.px, 1); save(); draw(); });
+    const nw = $('dPlanNew'), add = () => { const v = nw.value.trim(); if (!v) return; items.push({ t: v, done: false }); save(); draw('new'); };
+    nw.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); add(); } };
+    $('dPlanAdd').onclick = add;
+    if (focus === 'new') nw.focus(); else if (typeof focus === 'number') { const t = box.querySelector('[data-pt="' + focus + '"]'); if (t) t.focus(); }
+  };
+  draw();
+}
 async function pageHome() {
   const name = (S.user && (S.user.name || S.user.email)) || '', sm = mySm(), now = new Date(), hr = now.getHours();
   const hello = hr < 11 ? bt('좋은 아침이에요', 'Good morning') : hr < 17 ? bt('좋은 오후예요', 'Good afternoon') : bt('수고 많으셨어요', 'Good evening');
   const dateTxt = bt((now.getMonth() + 1) + '월 ' + now.getDate() + '일 (' + WD_KO[now.getDay()] + ')', WD_EN[now.getDay()] + ', ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][now.getMonth()] + ' ' + now.getDate());
   const out = outboxList().filter(x => x.o.sm === sm);
   const kpi = (id, v, lab, go) => '<button type="button" class="dk" data-hg="' + go + '"><b id="' + id + '">' + v + '</b><span>' + lab + '</span></button>';
-  const qa = (go, icon, lab, cls) => '<button type="button" class="qb ' + (cls || '') + '" data-hg="' + go + '"><span class="i">' + icon + '</span><b>' + lab + '</b></button>';
+  const qa = (go, ic, lab, cls) => '<button type="button" class="qb ' + (cls || '') + '" data-hg="' + go + '"><span class="i">' + (icon(ic, 26) || ic) + '</span><b>' + lab + '</b></button>';
   const plan = planGet();
   $('page').innerHTML =
-    '<div class="card dhead"><div><div class="muted">' + dateTxt + '</div><h1>' + hello + ', ' + esc(String(name).split(/\s+/)[0]) + '</h1><div class="muted">🧑‍💼 ' + esc(sm) + ' · ' + (navigator.onLine === false ? '<span class="warn">' + bt('오프라인', 'Offline') + '</span>' : '<span class="ok">' + bt('온라인', 'Online') + '</span>') + (out.length ? ' · <span class="warn">📤 ' + bt('안 보낸 주문', 'unsent') + ' ' + out.length + '</span>' : '') + '</div></div><img src="logo.png" alt=""></div>' +
+    '<div class="card dhead"><div><div class="muted">' + dateTxt + '</div><h1>' + hello + ', ' + esc(String(name).split(/\s+/)[0]) + '</h1><div class="muted">' + icon('car', 15) + ' ' + esc(sm) + ' · ' + (navigator.onLine === false ? '<span class="warn">' + bt('오프라인', 'Offline') + '</span>' : '<span class="ok">' + bt('온라인', 'Online') + '</span>') + (out.length ? ' · <span class="warn">📤 ' + bt('안 보낸 주문', 'unsent') + ' ' + out.length + '</span>' : '') + '</div></div><img src="logo.png" alt=""></div>' +
     '<div class="dkpi">' + kpi('dkSales', '…', bt('이번 달 매출', 'Sales this month'), 'mysales') + kpi('dkToday', '…', bt('오늘 주문', 'Orders today'), 'order') + kpi('dkSend', out.length ? out.length : '…', bt('보낼 주문', 'To send'), 'order') + kpi('dkAr', '…', bt('미수금', 'Receivables'), 'ar') + '</div>' +
-    '<div class="card"><h2>✅ ' + bi('오늘 할 일', 'Today') + '</h2><div id="dTodo" class="todo"><div class="muted">' + bt('읽는 중…', 'Loading…') + '</div></div></div>' +
-    '<div class="card"><h2>📝 ' + bi('오늘 플랜', 'Today\'s plan') + ' <span class="muted" style="font-weight:400;font-size:12px" id="dPlanAt">' + (plan.at ? bt('마지막 수정', 'last edit') + ' ' + esc(md(plan.at.substring(0, 10))) : bt('이 폰에 저장됩니다', 'saved on this phone')) + '</span></h2>' +
-    '<textarea id="dPlan" rows="3" placeholder="' + esc(bt('예: 올랜도 3곳 방문 · ALI 수금 · 샘플 전달', 'e.g. 3 stores in Orlando · collect at ALI · drop samples')) + '">' + esc(plan.text) + '</textarea></div>' +
-    '<div class="card"><h2>⚡ ' + bi('바로 가기', 'Quick actions') + '</h2><div class="qgrid">' + qa('order/new', '🛒', bi('새 주문', 'New order'), 'blue') + qa('entry/new', '✍️', bi('수금 입력', 'Payment')) + qa(isStaff() ? 'credit/new' : 'order/credit', '↩', bi('크레딧 · 리턴', 'Credit')) + qa('stores', '🏬', bi('가게 찾기', 'Stores')) + qa('cat', '📒', bi('카탈로그', 'Catalog')) + qa('mysales', '📈', bi('내 매출', 'My sales')) + qa('mine', '📋', bi('수금 기록', 'Payment log')) + '</div></div>' +
+    '<div class="card"><h2>' + hic('check') + ' ' + bi('오늘 할 일', 'Today') + '</h2><div id="dTodo" class="todo"><div class="muted">' + bt('읽는 중…', 'Loading…') + '</div></div></div>' +
+    '<div class="card"><h2>' + hic('pen') + ' ' + bi('오늘 플랜', 'Today\'s plan') + ' <span class="muted" style="font-weight:400;font-size:12px" id="dPlanAt">' + (plan.at ? bt('마지막 수정', 'last edit') + ' ' + esc(md(plan.at.substring(0, 10))) : bt('이 폰에 저장됩니다', 'saved on this phone')) + '</span></h2>' +
+    '<div id="dPlan" class="plan"></div></div>' +
+    '<div class="card"><h2>' + hic('zap') + ' ' + bi('바로 가기', 'Quick actions') + '</h2><div class="qgrid">' + qa('order/new', 'cart', bi('새 주문', 'New order'), 'blue') + qa('entry/new', 'pen', bi('수금 입력', 'Payment')) + qa(isStaff() ? 'credit/new' : 'order/credit', 'undo', bi('크레딧 · 리턴', 'Credit')) + qa('stores', 'store', bi('가게 찾기', 'Stores')) + qa('cat', 'book', bi('카탈로그', 'Catalog')) + qa('mysales', 'trend', bi('내 매출', 'My sales')) + qa('mine', 'clipList', bi('수금 기록', 'Payment log')) + '</div></div>' +
     '<div id="dayCf"></div><div id="offCard"></div>' + Notify.blockedHtml();   /* 🔔 알림은 항상 켜짐 (v0.8.179) — 켜기 단추 없이 처음 누를 때 자동으로 물어봄 · 막혔으면 허용하는 법 */
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
-  const ta = $('dPlan'); ta.oninput = debounce(() => { planPut(ta.value); const at = $('dPlanAt'); if (at) at.textContent = bt('저장됨', 'saved') + ' ' + md(today()); }, 400);
+  planBox($('dPlan'), plan.items);
   Notify.dayCard($('dayCf')); import('./offline.js').then(O => O.homeCard($('offCard'), true));
   /* 숫자 — 폰에 둔 지난 값 먼저, 그 다음 새로 읽음 */
   try { const ms = JSON.parse(localStorage.getItem('theone.snap.mysales.' + sm) || 'null'), M = ms && ms.html && ms.html.M, k = M && Object.keys(M).sort().pop(); if (k && $('dkSales')) $('dkSales').textContent = money(M[k].tot || 0); } catch (e) {}
@@ -178,14 +218,14 @@ async function pageHome() {
     const t = today(), outIds = new Set(out.map(x => x.o.id)), drafts = rows.filter(o => o.st === 'draft' && !outIds.has(o.id)).length + out.length,   /* 폰 보관함에 있는 주문은 서버 임시 저장과 겹쳐 세지 않음 (v0.8.233: 2건이 4건으로 보이던 것) */ todayN = rows.filter(o => o.d === t && o.st !== 'x').length + out.filter(x => x.o.d === t).length;
     const cf = rows.filter(o => o.cfReq && !o.cfOk && o.st !== 'x').length;
     if ($('dkToday')) $('dkToday').textContent = todayN; if ($('dkSend')) $('dkSend').textContent = drafts;
-    if (drafts) todo.push(['order', '📤', bt('보낼 주문', 'Orders to send') + ' <b>' + drafts + '</b>' + bt('건', ''), bt('주문 확인 · 보낼 주문에서 한 번에', 'review and send together'), 'warn']);
-    if (cf) todo.push(['order/cf', '❓', bt('사무실이 확인 요청한 주문', 'Office asks you to confirm') + ' <b>' + cf + '</b>' + bt('건', ''), bt('내용을 보고 ✅ 또는 ✏️', 'open and confirm or fix'), 'warn']);
+    if (drafts) todo.push(['order', 'send', bt('보낼 주문', 'Orders to send') + ' <b>' + drafts + '</b>' + bt('건', ''), bt('주문 확인 · 보낼 주문에서 한 번에', 'review and send together'), 'warn']);
+    if (cf) todo.push(['order/cf', 'help', bt('사무실이 확인 요청한 주문', 'Office asks you to confirm') + ' <b>' + cf + '</b>' + bt('건', ''), bt('내용을 보고 ✅ 또는 ✏️', 'open and confirm or fix'), 'warn']);
     if ($('dkSales') && $('dkSales').textContent === '…') { const m = ym(t); const tot = R2(sum(rows.filter(o => o.ym === m && o.st !== 'x' && o.st !== 'draft'), o => o.amt || 0)); $('dkSales').textContent = money(tot); }
   } catch (e) { if ($('dkToday')) $('dkToday').textContent = '—'; }
-  try { const ar = await S.DB.get('ar', sm); if ($('dkAr')) $('dkAr').textContent = ar ? money(ar.total || 0) : '—'; if (ar && ar.total > 0) todo.push(['ar', '💰', bt('미수금', 'Receivables') + ' <b>' + money(ar.total) + '</b> · ' + (ar.n || 0) + bt('곳', ' stores'), bt('기준일', 'as of') + ' ' + esc(md(String(ar.asOf || '').substring(0, 10))), '']); } catch (e) { if ($('dkAr')) $('dkAr').textContent = '—'; }
-  try { const E = await S.DB.list('entries', { where: [['sm', '==', sm], ['d', '==', today()]] }); const n = E.length, amt = R2(sum(E, x => Number(x.amt) || 0)); if (n) todo.push(['mine', '✍️', bt('오늘 수금 입력', 'Payments entered today') + ' <b>' + n + '</b>' + bt('건', '') + ' · ' + money(amt), bt('퇴근 전 Daily Report 전송', 'send the daily report before you leave'), 'ok']); } catch (e) {}
+  try { const ar = await S.DB.get('ar', sm); if ($('dkAr')) $('dkAr').textContent = ar ? money(ar.total || 0) : '—'; if (ar && ar.total > 0) todo.push(['ar', 'dollar', bt('미수금', 'Receivables') + ' <b>' + money(ar.total) + '</b> · ' + (ar.n || 0) + bt('곳', ' stores'), bt('기준일', 'as of') + ' ' + esc(md(String(ar.asOf || '').substring(0, 10))), '']); } catch (e) { if ($('dkAr')) $('dkAr').textContent = '—'; }
+  try { const E = await S.DB.list('entries', { where: [['sm', '==', sm], ['d', '==', today()]] }); const n = E.length, amt = R2(sum(E, x => Number(x.amt) || 0)); if (n) todo.push(['mine', 'pen', bt('오늘 수금 입력', 'Payments entered today') + ' <b>' + n + '</b>' + bt('건', '') + ' · ' + money(amt), bt('퇴근 전 Daily Report 전송', 'send the daily report before you leave'), 'ok']); } catch (e) {}
   const box = $('dTodo'); if (!box) return;
-  box.innerHTML = (todo.length ? todo.map(x => '<button type="button" class="trow ' + x[4] + '" data-hg="' + x[0] + '"><span class="i">' + x[1] + '</span><span class="t"><b>' + x[2] + '</b><small>' + x[3] + '</small></span><span class="chev">›</span></button>').join('') : '<div class="none">🎉 ' + bt('밀린 일이 없습니다 — 새 주문을 시작하세요', 'Nothing pending — start a new order') + '</div>');
+  box.innerHTML = (todo.length ? todo.map(x => '<button type="button" class="trow ' + x[4] + '" data-hg="' + x[0] + '">' + tic(x[1], x[4] || 'b') + '<span class="t"><b>' + x[2] + '</b><small>' + x[3] + '</small></span><span class="chev">›</span></button>').join('') : '<div class="none">' + tic('check', 'ok') + ' ' + bt('밀린 일이 없습니다 — 새 주문을 시작하세요', 'Nothing pending — start a new order') + '</div>');
   box.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
 }
 
@@ -286,7 +326,7 @@ async function pageOrder(arg) {
   const bulk = isStaff() && (NEWK[LF.st] || LF.st === 'pick' || LF.st === 'mine') && rows.length;
   if (bulk) h += '<div class="card" style="padding:10px 14px"><div class="chips" style="margin:0"><button class="' + (LF.grp !== 'day' ? 'on' : '') + '" data-grp="sm">👤 ' + bi('세일즈맨별', 'By salesman') + '</button><button class="' + (LF.grp === 'day' ? 'on' : '') + '" data-grp="day">📅 ' + bi('날짜별', 'By day') + '</button><button data-ckall="1">☑ ' + bi('모두 선택', 'Select all') + '</button><button data-ckall="0">☐ ' + bi('선택 해제', 'Clear') + '</button><span class="tag t-b" id="ckN" style="align-self:center">0' + bt('건 선택', ' selected') + '</span></div>' +
     '<div id="bulkBar" class="muted" style="margin-top:6px">' + (assignMode() ? bi('세일즈맨이 확인한 주문입니다. 주문을 <b>누르면 바로 할당 팝업</b>이 뜹니다. 여러 건은 체크한 뒤 아무 줄이나 누르거나 👷 작업 배정. 주문 내용은 줄 끝 📄', 'Confirmed by the salesman. Tap an order to pick who handles it. For many: check them, then tap any row or 👷 Assign. 📄 opens the order') : LF.st === 'sent' ? bi('① 세일즈맨별로 주문이 맞는지 <b>❓ 확인 요청</b> → ② 세일즈맨이 전체를 보고 ✅ → ③ 👍 배정 대기 탭에서 작업 배정. 줄을 누르면 주문 내용이 열립니다.', '① Ask the salesman to confirm (per salesman) → ② the salesman reviews all and taps ✅ → ③ assign from the 👍 tab. Tap a row to open the order.') : bi('주문을 체크한 뒤 → 작업 배정 또는 세일즈맨 확인 요청', 'Check orders, then assign picking or ask the salesman to confirm')) + '</div><div class="btns" style="margin-top:6px;flex-wrap:wrap">' + (LF.st === 'sent' || LF.st === 'cfw' ? '<button class="' + (LF.st === 'sent' ? 'b-blue' : 'b-ghost') + ' b-sm" id="bkCf">❓ ' + bi(LF.st === 'cfw' ? '확인 다시 요청' : '세일즈맨 확인 요청', 'Ask salesman to confirm') + '</button><button class="b-ghost b-sm" id="bkCfOk">👍 ' + bi('확인 완료로 (전화 등)', 'Mark confirmed') + '</button>' : '') + (can('assign') ? '<button class="' + (LF.st === 'sent' || LF.st === 'cfw' ? 'b-ghost' : 'b-blue') + ' b-sm" id="bkAssign">👷 ' + bi('작업 배정', 'Assign Picker') + (LF.st === 'sent' || LF.st === 'cfw' ? ' <small>(' + bt('확인 없이', 'skip confirm') + ')</small>' : '') + '</button>' : '') + '</div></div>';
-  h += '<div class="card"><h2>' + (isStaff() ? (chip ? chip[1] + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' +
+  h += '<div class="card"><h2>' + (isStaff() ? (chip ? stageIcon(chip[0], chip[1].split(' ')[0], 20) + ' ' + chip[1].substring(chip[1].indexOf(' ') + 1) + ' <span class="en">' + chip[2] + '</span> · ' : '') : bi('내 주문', 'My orders') + ' ') + rows.length + '건 · ' + money(tot) + (isStaff() ? '' : ' <span class="muted">(최근 2달 · last 2 months)</span>') + '</h2>' +
     (isStaff() ? '' : '<div class="chips" style="margin:0 0 8px"><button class="' + (LF.sx ? '' : 'on') + '" data-sx="0">📋 ' + bi('접수된 주문', 'Active orders') + '</button><button class="' + (LF.sx ? 'on' : '') + '" data-sx="1">✕ ' + bi('취소된 주문', 'Cancelled') + ' ' + myX + '</button></div>') +
     (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문이 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
@@ -345,7 +385,7 @@ const OPEN_CH = ['mine', 'pick', 'picked', 'done', 'packed', 'dlv'];   // 목록
 export const HIDE_ST = ['done', 'ups', 'packed', 'dlv'];
 export function chipsFor() { return chipsFor0().filter(c => !HIDE_ST.includes(c[0])); }
 function chipsFor0() { const J = myJobs(); if (J.some(j => !JOB_CHIPS[j])) return CHIPS.filter(c => c[0] !== 'ups' || can('ship')); const keys = []; J.forEach(j => JOB_CHIPS[j].forEach(k => { if (!keys.includes(k)) keys.push(k); })); keys.sort((a, b) => CHIPS.findIndex(c => c[0] === a) - CHIPS.findIndex(c => c[0] === b)); return (keys.map(k => CHIPS.find(c => c[0] === k)).filter(Boolean)).filter(c => c[0] !== 'ups' || can('ship')); }
-export function statusStrip() { return '<div class="kpi strip" id="oStrip" style="margin:0 0 10px"><div><b>…</b><span>📥 신규 주문 · New</span></div><div><b>…</b><span>📦 출고 작업 · In Fulfillment</span></div><div><b>…</b><span>✅ 검수 대기 · Review</span></div></div>'; }   // 🚫 포장 · 픽업 대기 칸 뺌 (HIDE_ST)
+export function statusStrip() { const k = (ic, c, ko, en) => '<div>' + '<span class="tq ' + c + '">' + icon(ic, 20) + '</span><span class="kt"><span>' + ko + ' <span class="en">' + en + '</span></span><b>…</b></span></div>'; return '<div class="kpi strip ostrip2" id="oStrip" style="margin:0 0 10px">' + k('inbox', 'g', '신규 주문', 'New') + k('package', 'b', '출고 작업', 'In Fulfillment') + k('clipCheck', 'a', '검수 대기', 'Review') + '</div>'; }   /* 🎨 조의 대시보드 숫자 칸 모양 (v0.8.242) */   // 🚫 포장 · 픽업 대기 칸 뺌 (HIDE_ST)
 export async function fillStrip() {
   const el = $('oStrip'); if (!el) return;
   try {
@@ -544,12 +584,12 @@ export function openStage(k) {
   LF.st = k; LF.list = true; if (location.hash === '#/order') pageOrder(''); else Router.go('order');
 }
 export function menuHtml(cmp, home) {
-  const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '" title="' + esc(ko + ' · ' + en) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + ' <span class="en">' + en + '</span></span>' + (k === 'home' ? '' : '<b class="obn" data-lfn="' + k + '"></b>') + '</button>';   // 🔢 칸마다 건수 (fillStrip 이 채움 · v0.8.241)
+  const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '" title="' + esc(ko + ' · ' + en) + '"><span class="ci">' + stageIcon(k, ic, 17) + '</span><span class="cl">' + ko + ' <span class="en">' + en + '</span></span>' + (k === 'home' ? '' : '<b class="obn" data-lfn="' + k + '"></b>') + '</button>';   // 🔢 칸마다 건수 (fillStrip 이 채움 · v0.8.241)
   const chipOf = c => { const i = c[1].indexOf(' '); return chip(c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2], !home && LF.st === c[0]); };
   const av = chipsFor(), groups = STG.map(g => [g, av.filter(c => g[4].includes(c[0]))]).filter(x => x[1].length);
-  return '<div class="omenu"><div class="og otop"><div class="ochips">' + chip('home', '🏠', '홈', 'Home', !!home) + (home ? '' : '<button data-orf="1" title="' + esc('새로 고침 · Refresh') + '"><span class="ci">🔄</span><span class="cl">새로 고침 <span class="en">Refresh</span></span></button>') +
+  return '<div class="omenu"><div class="og otop"><div class="ochips">' + chip('home', '🏠', '홈', 'Home', !!home) + (home ? '' : '<button data-orf="1" title="' + esc('새로 고침 · Refresh') + '"><span class="ci">' + icon('refresh', 17) + '</span><span class="cl">새로 고침 <span class="en">Refresh</span></span></button>') +
     '<button data-ocmp="1" title="' + esc(bt('메뉴 작게 · 크게', 'Compact / full menu')) + '"><span class="ci">' + (cmp ? '🔽' : '🔼') + '</span><span class="cl">' + (cmp ? bt('크게', 'Full') : bt('작게', 'Compact')) + '</span></button></div></div>' +
-    groups.map(([g, cs]) => '<div class="og" data-og="' + g[0] + '"><div class="ogl" title="' + esc(g[2] + ' · ' + g[3]) + '"><span class="ci">' + g[1] + '</span><span class="cl">' + g[2] + ' <span class="en">' + g[3] + '</span></span></div><div class="ochips">' + cs.map(chipOf).join('') + '</div></div>').join('') + '</div>';
+    groups.map(([g, cs]) => '<div class="og" data-og="' + g[0] + '"><div class="ogl" title="' + esc(g[2] + ' · ' + g[3]) + '"><span class="ci">' + (icon({ recv: 'inbox', ship: 'package', fin: 'check', etc: 'hourglass' }[g[0]], 14) || g[1]) + '</span><span class="cl">' + g[2] + ' <span class="en">' + g[3] + '</span></span></div><div class="ochips">' + cs.map(chipOf).join('') + '</div></div>').join('') + '</div>';
 }
 function listHead() {
   if (!isStaff()) return pageHead('🛒 ' + bi('세일', 'Sales'), bt('새 주문 · 보낼 주문 · 사무실 확인 · 최근 주문', 'new order · to send · office confirmations · recent orders')) +
