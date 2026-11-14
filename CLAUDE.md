@@ -46,6 +46,7 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 
 ## 변경 한 번의 순서
 저장소 스킬: `/ship` (이 순서 전부) · `/incident` (현장 오류 — 먼저 이미 고쳐졌는지) · `/merge-deploy` (머지 · 배포 위임) · `/live-status` (라이브가 main 과 같은지 · `node tools/live-status.mjs`).
+관리 스킬: `/todo` (할 일 장부 `ops/TODO.md` — **세션을 시작하면 먼저 읽는다** · 남은 일은 대화가 아니라 장부에 · 경영 숫자 금지) · `/screens` (역할별 화면 사진 · 전/후) · 관리자 전용 `/sessions` (내 세션 현황 · 겹침 · 말 전하기) · `/data-fix` (라이브 자료 일괄 수정 순서) · `/morning-check` (매일 04:53 플로리다 예약 작업 · 읽기만).
 1. `sh tools/sync-main.sh` — **먼저 최신 main 을 합친다** (다른 세션의 변경을 잃지 않기 위해). 버전 세 곳 · app.js · i18n.json 은 이 스크립트가 충돌 없이 처리하고, 남는 충돌은 진짜 src 충돌뿐이다.
 2. `src/` 수정 → `node tools/impact.mjs` 로 이어진 곳(통째 덮어쓰기 · 폰 저장 자료 · 규칙 · 부르는 곳 · 같이 돌릴 시험) 확인 → `sh build.sh` (app.js 다시 빌드. src 를 고쳤으면 반드시). build.sh 는 package-lock 에 고정된 esbuild(node_modules)만 쓴다 — `npx esbuild` 를 직접 부르지 않는다 (버전이 다르면 app.js 가 통째로 달라져 CI 가 막는다).
 3. 버전 세 곳을 같이 올린다 (**Firebase 에 올릴 때마다** — 같은 번호로 다시 올리면 app.js?v= 주소가 같아 폰 · 컴퓨터가 보관해 둔 옛 app.js 를 계속 씀, 2026-11-09): `src/ver.js` 의 `VER`, `index.html` 의 `app.js?v=`, `sw.js` 의 `CACHE` 이름(`theone-shell-vNNN`). 하나라도 빠지면 폰이 옛 앱을 계속 쓴다. 손으로 고치지 말고 `node tools/version.js bump origin/main` (main 다음 번호) — `sh tools/sync-main.sh` 도 src 가 바뀐 브랜치면 알아서 올린다.
