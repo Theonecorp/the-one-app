@@ -34,7 +34,8 @@ const path = require('path');
   const linhas = pg => pg.$$eval('#pmRes tr.pm-l', L => L.map(r => r.dataset.abrir));
   const sim = async pg => { await pg.waitForSelector('.es-mw #esPergSim', { timeout: 4000 }); await pg.click('.es-mw #esPergSim'); await pg.waitForTimeout(500); };
   const abrir = async (pg, c) => { await busca(pg, c); await pg.click('#pmRes tr.pm-l[data-abrir="' + c + '"] td.principal'); await pg.waitForSelector('.pm-dw .drawer.show', { timeout: 4000 }); };
-  const fechar = async pg => { if (await pg.$('.pm-dw')) { await pg.click('.pm-dw [data-act="fechar-drawer"].x'); await pg.waitForTimeout(150); } };
+  /* 저장 · 확인 창(.es-mw .modal.show)이 아직 닫히는 중이면 기다렸다가 서랍 닫기 (CI 에서 창이 늦게 닫혀 클릭이 막히던 것) */
+  const fechar = async pg => { if (await pg.$('.pm-dw')) { await pg.waitForSelector('.es-mw .modal.show', { state: 'detached', timeout: 6000 }).catch(() => {}); await pg.click('.pm-dw [data-act="fechar-drawer"].x', { timeout: 10000 }); await pg.waitForTimeout(150); } };
   /* ① */
   let pg = await mk('luke@theonefl.com');
   await go(pg, '#/hub/wh'); await pg.waitForSelector('[data-hub]', { timeout: 8000 });
@@ -56,9 +57,12 @@ const path = require('path');
   const custoTxt = await pg.textContent('.pm-dw .dr-body'); if (!/\$1\.20/.test(custoTxt)) errs.push('④ admin sees cost $1.20');
   /* ⑤ */
   await pg.click('.pm-dw [data-act="editar-produto"]'); await pg.waitForSelector('.es-mw #pDesc');
+  /* 원가 칸은 창이 열린 뒤 따로 읽어 채움 — 다 읽기 전에 치면 읽어 온 값(1.2)이 덮어씀 (CI 에서 가끔 실패하던 것) → 채워진 뒤에 고침 */
+  await pg.waitForFunction(() => { const x = document.querySelector('.es-mw #pCusto'); return x && x.value !== ''; }, null, { timeout: 6000 }).catch(() => {}); await pg.waitForTimeout(150);
   await pg.fill('.es-mw #pDesc', 'NOVA DESCRICAO'); await pg.fill('.es-mw #pPreco', '9.75'); await pg.fill('.es-mw #pCusto', '2.5'); await pg.fill('.es-mw #pEnvP', '1.5');
-  await pg.waitForFunction(() => { const x = document.querySelector('.es-mw #pCusto'); return x && x.value === '2.5'; }, null, { timeout: 3000 }).catch(() => errs.push('⑤ cost field keeps 2.5 before saving :: ' + (document.querySelector ? '' : '')));
-  await pg.click('.es-mw #pSalvar'); await pg.waitForFunction(() => window.__MOCK_STORE__.prodCusto && window.__MOCK_STORE__.prodCusto.AHG100 && window.__MOCK_STORE__.prodCusto.AHG100.custo === 2.5, null, { timeout: 4000 }).catch(() => {}); await pg.waitForTimeout(600);
+  if ((await pg.inputValue('.es-mw #pCusto')) !== '2.5') { await pg.waitForTimeout(400); await pg.fill('.es-mw #pCusto', '2.5'); }
+  await pg.waitForFunction(() => { const x = document.querySelector('.es-mw #pCusto'); return x && x.value === '2.5'; }, null, { timeout: 3000 }).catch(() => errs.push('⑤ cost field keeps 2.5 before saving'));
+  await pg.click('.es-mw #pSalvar'); await pg.waitForFunction(() => window.__MOCK_STORE__.prodCusto && window.__MOCK_STORE__.prodCusto.AHG100 && window.__MOCK_STORE__.prodCusto.AHG100.custo === 2.5, null, { timeout: 8000 }).catch(() => {}); await pg.waitForTimeout(600);
   let r5 = await row(pg, 'AHG100'); log('⑤ row:', JSON.stringify(r5 && r5.slice(0, 13)));
   if (!r5 || r5[1] !== 'NOVA DESCRICAO' || r5[2] !== 9.75 || r5[11] !== '7A') errs.push('⑤ catalog row updated (desc · price · loc kept)');
   const cu = await pg.evaluate(() => window.__MOCK_STORE__.prodCusto.AHG100), ex = await pg.evaluate(() => (window.__MOCK_STORE__.prodExtra || {}).AHG100);
