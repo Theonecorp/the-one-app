@@ -35,7 +35,8 @@ const path = require('path');
   await pg.context().close();
   /* ② 인보이스 조회 · ④ 사무실 일부 사용 */
   const of = await mk('luke@theonefl.com', 1100);   // v0.8.181: 1200px 이상은 주문 칸이 고정 서랍에 (t177)
-  await of.evaluate(() => { location.hash = '#/order'; }); await of.waitForSelector('[data-lf="inv"]', { timeout: 8000 }); await of.click('[data-lf="inv"]');
+  await of.evaluate(() => { location.hash = '#/order'; }); await of.waitForSelector('[data-hg="all"]', { state: 'attached', timeout: 8000 }); await of.evaluate(() => { document.querySelectorAll('.hgrp').forEach(g => g.classList.add('open')); }); await of.click('[data-hg="all"]');   /* v0.8.241: 홈(대시보드)에는 단계 탭이 없음 — 목록에 들어가 위쪽 탭에서 */
+  await of.waitForSelector('.omenu [data-lf="inv"]', { timeout: 8000 }); await of.click('.omenu [data-lf="inv"]');
   await of.waitForSelector('[data-im="date"]', { timeout: 8000 }); await of.click('[data-im="date"]'); await of.waitForTimeout(700);
   await of.waitForSelector('[data-it="CM"]', { timeout: 8000 }).catch(() => errs.push('② invoice lookup has the ↩ CM credit chip'));
   if (await of.$('[data-it="CM"]')) { await of.click('[data-it="CM"]'); await of.waitForTimeout(400); if (await of.$('[data-ip="month"]')) { await of.click('[data-ip="month"]'); await of.waitForTimeout(700); } }
