@@ -92,7 +92,7 @@ export const ROUTE_ICON = {
 /** 주문 단계 칸(서랍 · 주문 메뉴) → 아이콘 이름 */
 export const STAGE_ICON = {
   home: 'dashboard', sent: 'inbox', cfw: 'help', cfok: 'userCheck', mine: 'userCheck', pick: 'package', picked: 'clipCheck',
-  done: 'receipt', ups: 'truck', packed: 'packageCheck', dlv: 'car', shipped: 'send', bo: 'hourglass', all: 'clipList', inv: 'file', x: 'x'
+  done: 'receipt', ups: 'truck', packed: 'packageCheck', dlv: 'car', shipped: 'send', bo: 'hourglass', all: 'clipList', inv: 'file', x: 'x', draft: 'pen'
 };
 /** 화면 아이콘 — 등록된 선 아이콘, 없으면 받은 이모지 그대로 (모든 화면이 빠짐없이 보이게) */
 export const routeIcon = (route, emoji, size) => icon(ROUTE_ICON[route] || ROUTE_ICON[String(route).split('/')[0]], size) || emoji || '';
