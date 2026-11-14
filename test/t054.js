@@ -77,7 +77,7 @@ const path = require('path'), fs = require('fs');
   await pg.click('[data-ivs="abc"]'); await pg.waitForTimeout(300); log('abc subtotal rows:', await pg.$$eval('#prtbody .ivsub', e => e.length));
   await shot(pg, 'd2_inv'); await pg.click('#prtClose');
   /* 픽킹 할당 → 픽킹 완료 → 인보이스 발행 → 출고 · 세일즈맨 확인 요청 */
-  const home = async () => { await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(600); if (await pg.$('[data-lf="home"]')) await pg.click('[data-lf="home"]'); await pg.waitForSelector('.htile'); await pg.waitForTimeout(600); };
+  const home = async () => { await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForTimeout(600); if (await pg.$('[data-lf="home"]')) await pg.evaluate(() => { location.hash = '#/shome'; }); await pg.waitForSelector('.htile');   /* v0.8.243: 관리자의 🏠 탭 = 관리자 대시보드 (t285) */ await pg.waitForTimeout(600); };
   await home();
   await tile('sent'); await pg.waitForSelector('[data-ck]'); log('sent list groups:', await pg.$$eval('[data-smhd]', e => e.length), 'rows:', await pg.$$eval('[data-ck]', e => e.length));   // 세일즈맨별 묶음 머리 = [data-smhd]
   await pg.click('[data-ckall="1"]'); await pg.click('#bkCf'); await pg.waitForSelector('#cfOk'); await pg.click('#cfOk'); await pg.waitForTimeout(800);

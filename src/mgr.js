@@ -18,7 +18,7 @@ export function register(state) {
   S = state; regInactive(state);
   Router.on('verify', pageVerify); Router.on('cod', pageCod); Router.on('stores', pageStores); Router.on('arup', pageArUp);
 }
-function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
+export function recentYms(n) { const out = [], d = new Date(); for (let i = 0; i < n; i++) { out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); } return out; }
 function smOptions(v, allowBlank) { return (allowBlank ? [['', '— 세일즈맨 —']] : []).concat(S.sms.filter(x => x.active !== false).map(x => [x.code, x.code])); }
 function methodTag(p) { return p.m === 'CHECK' ? '#' + esc(p.ref) : p.m === 'CASH' ? '캐쉬' : 'Zelle'; }
 
@@ -26,6 +26,8 @@ function methodTag(p) { return p.m === 'CHECK' ? '#' + esc(p.ref) : p.m === 'CAS
  *  ① 확인 — 세일즈맨이 넣은 수금을 보며 ① 접수 확인, 실물 체크 오면 수령 ✓
  * ============================================================ */
 let VF = { f: 'todo', sm: '', q: '', grp: 'sm', acct: '' };
+/** 🏠 회계 대시보드(acctdash.js)에서 칸을 누르면 그 칸으로 걸러서 수금 확인을 엶 — f: todo · wait · bad · all(진행 중 전부) · sm: 세일즈맨 */
+export function verifyFilter(f, sm) { if (f) VF.f = f; VF.sm = sm || ''; VF.q = ''; }
 const VSEL = new Set();   // ☑ 체크해서 한 번에 ① 접수 확인 · ② 체크 수령
 /* ---- 앱 인보이스에 입금 반영 (이전 시스템 입력을 대신함) ----
  *  invoices/{no}.pays = { [수금 id]: 금액 } · bal = total − Σpays  — 같은 수금을 두 번 넣어도 한 번만 잡힘, 취소하면 되돌아옴 */

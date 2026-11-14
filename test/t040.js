@@ -71,7 +71,7 @@ const path = require('path'), fs = require('fs');
   /* 목록으로 가기: 홈(묶음 타일)으로 돌아가 묶음(📥 접수 · 📦 출고 · 💵 수금 · 📚 조회)을 펴고 타일을 누름 — 백오더 · 인보이스 목록(fulfill.pageLists)에서는 단계 버튼이 안 먹어 홈을 거침 */
   const goList = async k => {
     await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="home"], [data-hg="sent"]'); await pg.waitForTimeout(300);
-    if (await pg.$('[data-lf="home"]')) { await pg.click('[data-lf="home"]'); await pg.waitForSelector('[data-hg="sent"]'); await pg.waitForTimeout(300); }
+    if (await pg.$('[data-lf="home"]')) { await pg.evaluate(() => { location.hash = '#/shome'; }); await pg.waitForSelector('[data-hg="sent"]'); await pg.waitForTimeout(300); }   // v0.8.243: 관리자의 🏠 탭은 관리자 대시보드(#/own)로 감 (t285) — 담당자 홈은 주소로
     await pg.evaluate(k => { const t = document.querySelector('[data-hg="' + k + '"]'), g = t && t.closest('.hgrp'); if (g) g.classList.add('open'); }, k); await pg.click('[data-hg="' + k + '"]');
     await pg.waitForTimeout(600);
   };

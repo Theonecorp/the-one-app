@@ -12,7 +12,7 @@ const path = require('path');
   /* 홈 묶음 타일로 목록 열기 (접힌 묶음은 펴서) */
   const goList = async k => {
     await pg.evaluate(() => { location.hash = '#/order'; }); await pg.waitForSelector('[data-lf="home"], [data-hg="sent"]'); await pg.waitForTimeout(300);
-    if (await pg.$('[data-lf="home"]')) { await pg.click('[data-lf="home"]'); await pg.waitForSelector('[data-hg="sent"]'); await pg.waitForTimeout(300); }
+    if (await pg.$('[data-lf="home"]')) { await pg.evaluate(() => { location.hash = '#/shome'; }); await pg.waitForSelector('[data-hg="sent"]'); await pg.waitForTimeout(300); }   // v0.8.243: 관리자의 🏠 탭은 관리자 대시보드(#/own)로 감 (t285) — 담당자 홈은 주소로
     await pg.evaluate(k => { const t = document.querySelector('[data-hg="' + k + '"]'), g = t && t.closest('.hgrp'); if (g) g.classList.add('open'); }, k); await pg.click('[data-hg="' + k + '"]');
     await pg.waitForTimeout(600);
   };
