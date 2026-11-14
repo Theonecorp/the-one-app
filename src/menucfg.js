@@ -10,7 +10,7 @@ import { JOBS, drawerModel, redrawDrawer } from './main.js';
 
 let ROLE = 'office', ED = null, DIRTY = false;
 /* 이름이 같은 화면 구별 (홈이 여러 개) */
-const HINT = () => ({ shome: bt('담당자 대시보드', 'Staff dashboard'), own: bt('관리자 · 오너 대시보드', 'Owner dashboard'), home: bt('세일즈맨 홈', 'Salesman home'), catmg: bt('디자인 홈', 'Design home'), verify: bt('회계 홈 · 수금 확인', 'Accounting home'), now: bt('수금 현황', 'Collections status') });
+const HINT = () => ({ shome: bt('담당자 대시보드', 'Staff dashboard'), adash: bt('회계 대시보드', 'Accounting dashboard'), own: bt('관리자 · 오너 대시보드', 'Owner dashboard'), home: bt('세일즈맨 홈', 'Salesman home'), catmg: bt('디자인 홈', 'Design home'), verify: bt('회계 홈 · 수금 확인', 'Accounting home'), now: bt('수금 현황', 'Collections status') });
 const ROLES = () => [['admin', '⚙️ ' + bt('관리자', 'Admin')], ['owner', '👑 ' + bt('오너', 'Owner')], ['salesman', '🚗 ' + bt('세일즈맨', 'Salesman')]].concat(JOBS.filter(j => j[0] !== 'agente').map(j => [j[0], '🧑‍💼 ' + j[1]]));
 /** 모든 역할의 기본 서랍을 합친 목록 — 이 역할에 없던 화면도 꺼진 채로 원래 묶음에 (전체를 한눈에) */
 function fullModel(role) {

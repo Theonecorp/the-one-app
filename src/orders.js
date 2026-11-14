@@ -580,7 +580,7 @@ export function stageNow() { const h = location.hash; if (h === '#/shome' || ((h
 /** 서랍에서 주문 칸 누르기 */
 export function openStage(k) {
   LF.init = true;
-  if (k === 'home') { LF.list = false; if (location.hash === '#/shome') staffHome(); else Router.go('shome'); return; }
+  if (k === 'home') { LF.list = false; if (Router.home && Router.home !== 'shome') return Router.go(Router.home); if (location.hash === '#/shome') staffHome(); else Router.go('shome'); return; }   // 🏠 = 내 역할의 대시보드 (관리자 → 관리자 대시보드 · v0.8.243)
   LF.st = k; LF.list = true; if (location.hash === '#/order') pageOrder(''); else Router.go('order');
 }
 export function menuHtml(cmp, home) {
@@ -607,7 +607,7 @@ function bindHead() {
   document.querySelectorAll('[data-hp2]').forEach(b => b.onclick = () => { LF.hp = b.dataset.hp2; pageOrder(''); });
   if ($('hCal2')) $('hCal2').onclick = async () => { const pr = Fulfill.periodRange(LF.hp || 'today', LF.hfrom, LF.hto), r = await pickDates({ from: pr[0], to: pr[1], quick: Fulfill.quickRanges() }); if (!r) return; LF.hp = 'custom'; LF.hfrom = r[0]; LF.hto = r[1]; pageOrder(''); };
   if ($('oNew')) $('oNew').onclick = () => { if (readWip() && !confirm('작성 중인 주문이 있습니다. 버리고 새로 시작할까요?')) return; clearWip(); Router.go('order', 'new'); };
-  document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') { LF.list = false; return pageOrder(''); } LF.st = b.dataset.lf; pageOrder(''); });
+  document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { if (b.dataset.lf === 'home') { LF.list = false; if (Router.home && Router.home !== 'shome') return Router.go(Router.home); return pageOrder(''); } LF.st = b.dataset.lf; pageOrder(''); });
   if ($('lfSm')) $('lfSm').onchange = () => { LF.sm = $('lfSm').value; pageOrder(''); };
 }
 /** 날짜별로 묶어서 — 하루치가 한눈에 (담당자 화면) */

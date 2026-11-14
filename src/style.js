@@ -587,6 +587,10 @@ body.dock .ohead.ohome,.ohead.ohome{display:none!important}
 .plan .px{flex:none;border:0;background:none;color:#94a3b8;width:32px;height:32px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}.plan .px:hover{background:#fee2e2;color:var(--red)}
 .plan .pladd{margin-top:6px;border-style:dashed;background:#f8fafc}.plan .pladd .pn{background:none;color:#94a3b8}.plan #dPlanAdd{flex:none;display:inline-flex;align-items:center;gap:4px}
 .plan .plcnt{margin-top:6px;font-size:12.5px;font-weight:700;color:var(--muted);text-align:right}.plan .plcnt.all{color:var(--green)}.plan .plcnt:empty{display:none}
+/* 🏠 회계 대시보드 (acctdash.js · v0.8.243) */
+#adash .wd-qa{grid-template-columns:repeat(3,minmax(0,1fr))}.wd-kpi.k-red{--k:var(--red);--k2:var(--red2)}.wd-kpi .aks{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-top:1px}.wd-kpi .aks:empty{display:none}
+.adsm{width:100%;border-collapse:collapse;font-size:14px}.adsm th{text-align:left;font-size:12px;color:var(--muted);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--line)}.adsm td{padding:9px 8px;border-bottom:1px solid var(--line)}
+.adsm th:not(:first-child),.adsm td:not(:first-child){text-align:right}.adsm tbody tr{cursor:pointer}.adsm tbody tr:hover{background:#f8fafc}
 /* 🧭 관리 › 서랍 메뉴 편집 (v0.8.241) — 묶음 줄(굵게) 아래 화면 줄(들여쓰기) · ☑ · 이름 · ↑ ↓ · 묶음 옮기기 */
 .mcfg{padding:8px 10px}.mcg{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:4px 6px;background:#fff}.mcg.off{opacity:.55}
 .mcr{display:flex;align-items:center;gap:6px;padding:4px 2px;flex-wrap:wrap}.mch{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}.mch .mcn{font-weight:800}

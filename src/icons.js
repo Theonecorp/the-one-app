@@ -79,7 +79,7 @@ export function icon(name, size, cls) {
 }
 /** 화면(주소) → 아이콘 이름. 메뉴 · 서랍 · 묶음 타일이 같은 모양을 씀 */
 export const ROUTE_ICON = {
-  shome: 'dashboard', own: 'dashboard', home: 'home', catmg: 'dashboard', now: 'wallet',
+  shome: 'dashboard', own: 'dashboard', adash: 'dashboard', home: 'home', catmg: 'dashboard', now: 'wallet',
   order: 'cart', invs: 'file', stores: 'store', flow: 'compass',
   verify: 'wallet', cod: 'card', ach: 'bank', bounce: 'undo', credit: 'receipt',
   track: 'mapPin', cat: 'book', stock: 'warehouse', items: 'tag', estoque: 'warehouse', produtos: 'package', recebimento: 'inbox', repor: 'refresh', recheca: 'search', plan: 'clipList', pocompra: 'receipt', etiquetas: 'printer',

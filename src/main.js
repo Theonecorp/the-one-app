@@ -28,6 +28,7 @@ import * as Credit from './credit.js';
 import * as Bounce from './bounce.js';
 import * as Offline from './offline.js';
 import * as OwnHome from './ownhome.js';
+import * as AcctDash from './acctdash.js';
 import * as Bank from './bank.js';
 import * as Items from './items.js';
 import * as Stock from './stock.js';
@@ -77,7 +78,7 @@ const NAV = {
   salesman: [['home', '🏠', '홈', 'Home'], SALE, HUB_SMONEY, STORES, HUB_SLOOK],
   /* 담당자 — 큰 묶음만 (🗂 hub.js): 💵 수금 · 📚 조회 · 📦 재고 — 누르면 그 안의 세부 화면 (v0.8.125) */
   office:   [HOME_STAFF, SALE, HUB_MONEY, HUB_LOOK, HUB_WH],
-  acct:     [['verify', '🏠', '홈', 'Home'], HUB_MONEY, HUB_LOOK],   // 회계: 홈 = 수금 확인
+  acct:     [['adash', '🏠', '홈', 'Home'], ['verify', '💵', '회계', 'Accounting'], HUB_MONEY, HUB_LOOK],   // 회계: 🏠 홈 = 회계 대시보드(acctdash.js · v0.8.243) · 💵 회계 = 수금 확인(예전 홈)
   pickinv:  [HOME_STAFF, SALE, HUB_LOOK, HUB_WH],
   invoice:  [HOME_STAFF, SALE, HUB_LOOK, HUB_WH],   // 인보이스 담당: 수금은 안 봄 (오피스 매니저 · 회계 담당만) — 인보이스 · 조회 · 재고 (v0.8.137)
   whmgr:    [HOME_STAFF, SALE, HUB_WH, HUB_LOOK],   // 창고 매니저: 재고 · 출고 중심
@@ -176,6 +177,7 @@ function shell() {
   $('hLang').onclick = () => { openModal('<h2 translate="no">🌐 Language · 언어 · Idioma</h2><div class="langpick" translate="no">' + LANGS.map(l => '<button class="' + (LANG === l[0] ? 'b-blue' : 'b-ghost') + '" data-lang="' + l[0] + '">' + ({ ko: '🇰🇷 ', en: '🇺🇸 ', pt: '🇧🇷 ' })[l[0]] + l[1] + '</button>').join('') + '</div>');
     document.querySelectorAll('#mbox [data-lang]').forEach(b => b.onclick = () => { closeModal(); if (b.dataset.lang !== LANG) setLang(b.dataset.lang); }); };
   $('hBack').onclick = () => Router.back();
+  { const lg = document.querySelector('header .hlogo'); if (lg) { lg.style.cursor = 'pointer'; lg.title = '홈 · Home'; lg.onclick = () => Router.go(Router.home || 'home'); } }   // 🏠 머리띠 로고 = 내 역할의 대시보드 (v0.8.243)
   /* 🟢 온라인 · 🔴 오프라인 + 📤 아직 회사로 안 올라간 것 (주문 보낼 함 · 수금 등 폰 보관함) — 누르면 설명 · 지금 보내기 */
   const net = () => {
     const d = $('hNet'); if (!d) return;
@@ -245,7 +247,7 @@ function drawerPlan() {
   return [].concat(...myJobs().map(j => DPLAN[j] || DPLAN.office));
 }
 const DGRP = [
-  ['ov', 'dashboard', '메인', 'Main', ['shome', 'own', 'home', 'catmg'], 'Principal'],
+  ['ov', 'dashboard', '메인', 'Main', ['shome', 'own', 'adash', 'home', 'catmg'], 'Principal'],
   ['sales', 'cart', '영업', 'Sales', ['order', 'stores', 'mysales'], 'Vendas'],
   ['sep', 'truck', '피킹', 'Picking', ['flow'], 'Separação'],
   ['ship', 'truck', '출고', 'Shipping', ['displays', 'notesups', 'balcao', 'shiphist'], 'Expedição'],   // 🚫 배송 조회(track) 화면 없앰 → Shipping History (2026-11-13 창고 매니저)
@@ -664,7 +666,7 @@ async function boot() {
   const [{ DB, AUTH }] = await Promise.all([connect(), initLang(VER)]);
   S.DB = DB; S.AUTH = AUTH;
   Router.on('view', a => switchRole(a));   /* 아래 메뉴 🚗 세일즈 모드 · 🏭 경영 모드 */
-  BizDay.register(S); Inbound.register(S); Sales.register(S); Plan.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); NotesUps.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page); Estoque.register(S); Etiquetas.register(S); Produtos.register(S); Recebidos.register(S); Repor.register(S);
+  BizDay.register(S); Inbound.register(S); Sales.register(S); Plan.register(S); NewAcct.register(S); Notify.register(S); Photos.register(S); Envelope.register(S); Credit.register(S); Bounce.register(S); Offline.register(S); OwnHome.register(S); AcctDash.register(S); Bank.register(S); Stock.register(S); Hub.register(S); MySales.register(S); Collect.register(S); Ach.register(S); Mgr.register(S); Boss.register(S); Mg.register(S); Admin.register(S); Orders.register(S); Items.register(S); CatPage.register(S); Track.register(S); Balcao.register(S); ShipHist.register(S); Inserts.register(S); NotesUps.register(S); Reports.register(S); Flow.register(S); Access.register(S); Invlook.register(S); Labels.register(S); Displays.register(S); Push.register(S); Msg.register(S); Router.on('msg', Msg.page); Estoque.register(S); Etiquetas.register(S); Produtos.register(S); Recebidos.register(S); Repor.register(S);
   Router.on('settings', settingsPage);
   /* 🔒 경영 화면 잠금 (v0.8.217) — 경영 현황 · 매출 · 정산 · 미수금 현황 · 수금 현황 · 오너 홈은 오너 · 관리자만 (주소를 알아도). 판매 리포트는 오피스 매니저도 (매출은 보여도 됨) */
   const lockR = (name, ok) => { const f = Router.routes[name]; if (!f) return; Router.routes[name] = a => ok() ? f(a) : ($('page').innerHTML = '<div class="card"><div class="none">🔒 ' + bt('오너 · 관리자만 보는 화면입니다', 'Owners and admins only') + '</div></div>'); };
