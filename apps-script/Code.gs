@@ -338,11 +338,21 @@ function inboundRelayRun_(cat) {
       const f = files.next(); if (f.getDescription() === 'done') continue;
       let doc = null; try { doc = JSON.parse(f.getBlob().getDataAsString()); } catch (e) { f.setDescription('done'); continue; }
       const m = inboundRelayMsg_(doc);
-      try { n += inboundMessage_(m, cat()); } catch (e) { Logger.log('📥 ' + doc.subject + ': ' + e.message); inboundNotify_('inboundErr', '⚠️ 공장 인보이스 메일을 읽지 못했습니다 — ' + doc.subject, doc.from + '\n' + e.message, true); }
-      f.setDescription('done');
+      /* 실패하면 다시 시도 (v0.8.241 — Drive API 꺼짐 같은 설정 문제로 실패한 메일을 "처리함"으로 표시해 다시 안 읽던 것)
+       *   설명 칸: '' → 'err1' → 'err2' → 'err3'(3번째 실패에만 알림) → 그 뒤로는 건너뜀 · 성공하면 'done' */
+      const tries = Number((/^err(\d+)$/.exec(f.getDescription() || '') || [0, 0])[1]);
+      if (tries >= 3) continue;
+      try { n += inboundMessage_(m, cat()); f.setDescription('done'); }
+      catch (e) { Logger.log('📥 ' + doc.subject + ': ' + e.message + ' (시도 ' + (tries + 1) + '/3)'); f.setDescription('err' + (tries + 1)); if (tries + 1 >= 3) inboundNotify_('inboundErr', '⚠️ 공장 인보이스 메일을 읽지 못했습니다 (3번 시도) — ' + doc.subject, doc.from + '\n' + e.message, true); }
     }
   }
   return n;
+}
+/** 🔁 받은편지 폴더의 메일을 모두 다시 읽게 (설명 칸 지움) — 설정을 고친 뒤 한 번 실행 (같은 공장 · 같은 번호는 입고 예정에 두 번 안 들어감) */
+function inboundRelayRetry() {
+  const folders = DriveApp.searchFolders('title = "' + INBOUND_RELAY_FOLDER + '" and trashed = false'); let k = 0;
+  while (folders.hasNext()) { const files = folders.next().searchFiles('title contains "msg-" and trashed = false'); while (files.hasNext()) { files.next().setDescription(''); k++; } }
+  Logger.log('🔁 다시 읽기 ' + k + '통'); const n = inboundMailRun_(); Logger.log('🚢 공장 인보이스 메일 → 입고 예정 ' + n + '건'); return n;
 }
 /** 카탈로그 → { 코드: { c, d, p } } (앱 parseFactoryInvoice 가 쓰는 모양) */
 function inboundCatalog_() {

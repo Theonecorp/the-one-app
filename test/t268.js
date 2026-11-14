@@ -2,7 +2,8 @@
  *   ① inbound@ 계정의 InboundRelay.gs: 받은편지함 새 메일 → 드라이브 폴더에 msg-<id>.json 한 통씩 (제목 · 보낸 사람 · 본문 · 엑셀/CSV 첨부 내용) · 라벨 · 관리자에게 폴더 편집 공유
  *   ② 다시 돌려도 같은 메일은 다시 넣지 않음
  *   ③ 관리자 스크립트(Code.gs inboundMailRun_): 폴더의 새 JSON → 메일과 똑같이 inboundMessage_ (첨부 바이트 · 이름 · 제목 · 본문 · 날짜 그대로) → 읽은 파일은 done
- *   ④ 다음 5분에는 done 파일을 다시 읽지 않음 · 관리자 메일함 검색(to:inbound@)도 그대로 돎 */
+ *   ④ 다음 5분에는 done 파일을 다시 읽지 않음 · 관리자 메일함 검색(to:inbound@)도 그대로 돎
+ *   ⑤ (v0.8.241) 읽다 실패하면 err1 · err2 … 로 두고 다시 시도 (전에는 실패해도 done — Drive API 를 켠 뒤에도 다시 안 읽던 것) · inboundRelayRetry 로 모두 다시 */
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const errs = [], log = (...a) => console.log(...a);
 /* 가짜 드라이브 (두 스크립트가 같은 폴더를 봄) */
@@ -41,4 +42,11 @@ log('③ got:', JSON.stringify(GOT), 'n:', n1, n2, 'desc:', FILES[0] && FILES[0]
 if (GOT.length !== 1 || GOT[0].subj !== 'INVOICE SX#80' || GOT[0].atts.join() !== 'sx80.csv:' + csv || GOT[0].date !== '2026-11-12T10:00:00.000Z' || GOT[0].by !== 'AHG100') errs.push('③ relay JSON read like the mail (attachment bytes · subject · date · catalog)');
 if (n1 !== 1 || n2 !== 0 || FILES[0].desc !== 'done') errs.push('④ processed file marked done and not read again');
 if (!SEARCH_Q.some(q => /^to:inbound@theonefl\.com/.test(q))) errs.push('④ admin mailbox search still runs');
+/* ⑤ v0.8.241: 읽다 실패(예: Drive API 꺼짐 403)하면 "처리함"으로 표시하지 않고 다시 시도 (err1 → err2 → err3 뒤 건너뜀) · inboundRelayRetry 로 모두 다시 */
+FILES.push(...[]); const f2 = mkFile('msg-m2.json', JSON.stringify(Object.assign({}, doc, { id: 'm2', subject: 'INVOICE FAIL' })));
+let failNow = true; const SEEN2 = []; C.inboundMessage_ = m => { SEEN2.push(m.getSubject()); if (failNow && m.getSubject() === 'INVOICE FAIL') throw new Error('엑셀 변환 실패 403'); return 1; };
+C.inboundNotify_ = () => {}; C.inboundMailRun_(); const d1 = f2.desc; C.inboundMailRun_(); const d2 = f2.desc;
+failNow = false; C.inboundMailRun_(); const d3 = f2.desc;
+log('⑤ retry:', d1, d2, d3); if (d1 !== 'err1' || d2 !== 'err2' || d3 !== 'done') errs.push('⑤ failed mail is retried (err1 → err2 → done), not marked done on failure');
+const before = SEEN2.length; C.inboundRelayRetry(); log('⑤ retry-all re-read:', SEEN2.length - before); if (SEEN2.length - before !== 2) errs.push('⑤ inboundRelayRetry re-reads every relay mail');
 console.log(errs.length ? 'FAIL\n' + errs.join('\n') : 'PASS'); process.exit(errs.length ? 1 : 0);
