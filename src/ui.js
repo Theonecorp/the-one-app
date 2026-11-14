@@ -356,11 +356,16 @@ export const Router = {
   /** 화면마다 "한 단계 위" 가 따로 있으면 — up[name](arg) 가 처리하고 true, upHas[name]() 는 위가 있는지 */
   up: {}, upHas: {},
   /** ‹ 뒤로 = 한 단계 위로 (바로 전에 본 화면이 아님) — 열린 창 → 닫기, 상세 → 그 목록, 목록 → 그 탭의 첫 화면, 탭 → 홈 */
+  /** 💾 저장 · 확정한 뒤 (주문 보냄 · 크레딧 확정 · 수금 입력 · COD/ACH/카드 저장 …) — 다음 ‹ 뒤로는 저장 전 입력 화면이 아니라 그 메뉴의 첫 화면(first)으로
+   *   (v0.8.241 · 2026-11-14 관리자: "어떤 값을 입력해서 저장이 되는 경우에는 뒤로가기를 누르면 확정 전으로 돌아가는 것이 아니라 그 메뉴의 첫 화면으로")
+   *   저장 뒤 옮겨 간 화면(또는 지금 화면)에서 ‹ 를 누를 때만 · 다른 곳으로 가면 보통 뒤로 */
+  markSaved(first) { this._saved = { first: String(first || '').replace(/^#?\/?/, ''), at: location.hash.replace(/^#\/?/, ''), pend: true, t: Date.now() }; this.refreshBack(); },
   back() {
     const m = $('modal'); if (m && m.classList.contains('on')) { closeModal(); return; }
     const v = document.getElementById('viewer'); if (v) { v.remove(); return; }
     const p = $('prt'); if (p && p.classList.contains('on')) { printClose(); return; }
     const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
+    const sv = this._saved; if (sv && sv.at === h && sv.first) { this._saved = null; const k = this.stack.lastIndexOf(sv.first); this.stack = k >= 0 ? this.stack.slice(0, k + 1) : this.stack.slice(0, -1).filter(x => x.indexOf(sv.first.split('/')[0]) !== 0).concat([sv.first]); this._back = true; if (h === sv.first) { this.rerender(); this.refreshBack(); } else goHash('#/' + sv.first); return; }
     if (this.backTo && arg && this.backTo.name === name) { const b = this.backTo.hash; this.backTo = null; goHash(b); return; }   // 다른 화면(🧭 흐름 감독)에서 열었으면 그리로
     const up = this.up[name]; if (up && up(arg ? decodeURIComponent(arg) : '')) { this.refreshBack(); return; }
     /* ‹ 뒤로 = 바로 전 화면 (우리가 기록한 순서대로). 전 화면이 없을 때만 묶음 · 홈으로 */
@@ -370,13 +375,15 @@ export const Router = {
   },
   /** 지금 화면을 같은 주소로 다시 그림 (👁 금액 숨기기 등) */
   rerender() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); const fn = this.routes[name] || this.routes['']; if (fn) { try { fn(arg ? decodeURIComponent(arg) : ''); } catch (e) {} } },
-  hasUp() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); return this.stack.length > 1 || !!arg || !!(this.home && name !== this.home) || !!(this.upHas[name] && this.upHas[name]()); },
+  hasUp() { const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/'); return this.stack.length > 1 || !!arg || !!(this.home && name !== this.home) || !!(this.upHas[name] && this.upHas[name]()) || !!(this._saved && this._saved.at === h); },
   refreshBack() { const bk = $('hBack'); if (bk) bk.classList.toggle('show', this.hasUp()); },
   start() {
     const run = () => {
       const h = location.hash.replace(/^#\/?/, ''), [name, arg] = h.split('/');
       this.cur = name || '';
       if (this.backTo && this.backTo.name !== name && '#/' + h !== this.backTo.hash) this.backTo = null;
+      if (this._saved && this._saved.pend && this._saved.at !== h && Date.now() - this._saved.t < 5000) { this._saved.at = h; this._saved.pend = false; }   // 저장 뒤 바로 옮겨 간 화면 — 여기서 ‹ 는 그 메뉴 첫 화면
+      else if (this._saved && !this._saved.pend && this._saved.at !== h) this._saved = null;   // 다른 곳으로 갔으면 보통 뒤로
       if (this._back) this._back = false;
       else if (this.stack.length > 1 && this.stack[this.stack.length - 2] === h) this.stack.pop();   // 브라우저(안드로이드) 뒤로 — 우리 기록도 한 칸 뒤로
       else if (this.stack[this.stack.length - 1] !== h) { this.stack.push(h); if (this.stack.length > 60) this.stack.shift(); }

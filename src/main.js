@@ -275,6 +275,34 @@ function userMenu() {
   if (matchMedia(DOCK_MQ).matches) { dockDrawer(); return; }   // 🖥 컴퓨터: 서랍은 늘 고정 — ☰ 는 숨김 (theme.js), 눌려도 고정 그대로   // 데스크탑: ☰ = 고정 켜기 · 끄기 (끄면 이번엔 팝업으로 열어 줌)
   drawerRender(false);
 }
+/* ---------- 🧭 서랍 메뉴 설정 (v0.8.241 · 2026-11-14 관리자: "서랍 고정 메뉴 전체를 관리 화면에서 역할별로 — 이름 바꾸기 · 위아래 이동") ----------
+ *   settings/app.drawerCfg = { [역할]: [{ id, name, on, items: [{ k, name, on }] }] } — 역할: admin · owner · salesman · 담당자 일(office · whmgr · pickinv · acct · catalog …)
+ *   k = 화면 주소(order · stores · cod …) 또는 '@' + 주문 칸(@sent · @pick …) */
+const realAdmin = () => !!S.me && (S.me.role === 'admin' || ADMIN_EMAILS.includes(String((S.user && S.user.email) || '').toLowerCase()));
+export const drawerKey = () => S.role === 'manager' ? jobOf() : S.role;
+/** 묶음 기본 이름 (이름을 안 바꾼 묶음 — 보는 사람 언어로) */
+function grpLabel(id) { const g = DGRP.find(x => x[0] === id); if (g) return LANG === 'pt' && g[5] ? g[5] : bt(g[2], g[3]); const st = id.indexOf('st:') === 0 && Orders.stageMenuAll().find(x => x[0][0] === id.slice(3)); return st ? st[0][1] + ' ' + bt(st[0][2], st[0][3]) : id === 'etc' ? bt('기타', 'Other') : id; }
+/** 🧭 서랍 다시 그리기 (관리 › 메뉴에서 저장한 뒤) */
+export function redrawDrawer() { const d = $('drawer'); if (d && d.classList.contains('dock')) drawerRender(true); }
+function drawerCfgOf(key) { const c = S.settings && S.settings.drawerCfg && S.settings.drawerCfg[key]; return Array.isArray(c) && c.length ? c : null; }
+/** 편집 화면의 기본 목록 — 그 역할의 원래 서랍 (묶음 · 화면 · 주문 칸). 권한 판단은 하지 않음(편집용 — 실제 서랍에서 권한으로 거름) */
+export function drawerModel(key) {
+  const base = (NAV[key] || NAV.office).slice(), items = [], seen = new Set();
+  if (key === 'admin' || key === 'owner') { if (!base.some(x => x[0] === 'admin') && key === 'admin') base.push(['admin', '⚙️', '관리', 'Admin']); }
+  base.forEach(x => { if (/^hub\//.test(x[0])) { const H = Hub.HUBS[x[0].split('/')[1]]; (H ? H.items : []).forEach(c => { if (!seen.has(c[0])) { seen.add(c[0]); items.push([c[0], c[1], c[2], c[3]]); } }); } else if (!/^view\//.test(x[0]) && !seen.has(x[0])) { seen.add(x[0]); items.push(x); } });
+  const TOP_ONLY = ['own', 'mg', 'mg/sales', 'pay', 'now', 'bossar'], top = key === 'admin' || key === 'owner';
+  const plan = key === 'owner' ? DPLAN.owner : (key === 'admin' || key === 'salesman') ? null : (DPLAN[key] || DPLAN.office), allow = {};
+  if (plan) plan.forEach(p => { const [g, l] = p.split(':'); allow[g] = l ? (allow[g] === true ? true : (allow[g] || []).concat(l.split(','))) : true; });
+  const grpOf = r => (DGRP.find(g => g[4].includes(r)) || DGRP.find(g => g[4].includes(r.split('/')[0])) || ['etc'])[0];
+  const groups = [];
+  DGRP.concat([['etc', 'layers', '기타', 'Other', [], 'Outros']]).forEach(g => {
+    const pos = r => { const k = g[4].indexOf(r); return k >= 0 ? k : g[4].indexOf(r.split('/')[0]) >= 0 ? g[4].indexOf(r.split('/')[0]) : 999; };
+    const L = items.filter(x => grpOf(x[0]) === g[0] && (top || !TOP_ONLY.includes(x[0]))).sort((a, b) => pos(a[0]) - pos(b[0])).map(x => ({ k: x[0], ic: x[1], ko: x[2], en: x[3], on: !plan || allow[g[0]] === true || (Array.isArray(allow[g[0]]) && allow[g[0]].includes(x[0])) }));
+    if (L.length) groups.push({ id: g[0], ko: g[2], en: g[3], on: L.some(x => x.on), items: L });
+    if (g[0] === 'sep' && key !== 'salesman' && key !== 'catalog' && key !== 'acct') Orders.stageMenuAll().forEach(([sg, cs]) => groups.push({ id: 'st:' + sg[0], ko: sg[2], en: sg[3], on: !plan || allow.sep === true, items: cs.map(c => ({ k: '@' + c[0], ic: c[1], ko: c[2], en: c[3], on: !plan || allow.sep === true })) }));
+  });
+  return groups;
+}
 function drawerRender(dock) {
   if (!S.user) return;
   const items = navFor(S.role).filter(x => !/^view\//.test(x[0]));
@@ -290,6 +318,8 @@ function drawerRender(dock) {
   items.forEach(x => { if (!/^hub\//.test(x[0])) { flat.push(x); seen.add(x[0]); } });
   items.forEach(x => { if (/^hub\//.test(x[0])) Hub.hubItems(x[0].split('/')[1]).forEach(c => { if (!seen.has(c[0])) { seen.add(c[0]); flat.push([c[0], c[1], c[2], c[3]]); } }); });
   if (!isOwner()) for (let i = flat.length - 1; i >= 0; i--) if (TOP_ONLY.includes(flat[i][0])) flat.splice(i, 1);
+  /* ⚙️ 진짜 관리자는 어느 모드(오너 · 담당자 …)에서든 서랍에 ⚙️ 관리 (v0.8.241 — 오너 모드로 바꾸면 관리 화면이 사라지던 것) */
+  if (realAdmin() && !seen.has('admin')) { flat.push(['admin', '⚙️', '관리', 'Admin']); seen.add('admin'); }
   /* 🧭 v0.8.203 묶음 — 개요 · 운영 · 재고 관리 · 수금 · 재무 · 거래처 · 관리 (+ 기타). 역할이 볼 수 있는 화면만, 묶음에 없는 화면은 기타로 (빠지는 화면 없음)
    *   묶음 머리를 누르면 접고 펼침 (이 기기에 기억) · 지금 화면이 든 묶음은 늘 펼침 */
   let fold = []; try { fold = JSON.parse(localStorage.getItem('theone.dfold') || '[]'); if (!Array.isArray(fold)) fold = []; } catch (e) {}
@@ -297,8 +327,26 @@ function drawerRender(dock) {
   const onR = r => location.hash.indexOf('#/' + r) === 0;
   /* 👥 역할별 서랍 묶음 (v0.8.219 · 2026-11-13 관리자: "모두 같은 메뉴가 보이면 일에 효율적이지 못함") — DPLAN 에 없는 묶음은 안 보임 · '묶음:화면,화면' 은 그 화면만 */
   const plan = drawerPlan(), allow = {}; if (plan) plan.forEach(p => { const [g, l] = p.split(':'); allow[g] = l ? (allow[g] === true ? true : (allow[g] || []).concat(l.split(','))) : true; });
-  if (plan) for (let i = flat.length - 1; i >= 0; i--) { const a = allow[grpOf(flat[i][0])]; if (!(a === true || (Array.isArray(a) && a.includes(flat[i][0])))) flat.splice(i, 1); }
-  const secs = DGRP.concat([['etc', 'layers', '기타', 'Other', [], 'Outros']]).map(g => {
+  if (plan && !drawerCfgOf(drawerKey())) for (let i = flat.length - 1; i >= 0; i--) { const a = allow[grpOf(flat[i][0])]; if (!(a === true || (Array.isArray(a) && a.includes(flat[i][0])))) flat.splice(i, 1); }   // 관리자가 정한 서랍이 있으면 그 설정이 기준
+  /* 🧭 관리자가 정한 서랍 (관리 › 🧭 메뉴 · settings/app.drawerCfg[역할]) — 있으면 그 묶음 · 순서 · 이름 · 보이기 대로 (v0.8.241)
+   *   권한은 그대로: 이 사람이 못 여는 화면은 설정에 있어도 안 나옴 · 오너 전용(TOP_ONLY)은 오너 · 관리자에게만 · 설정에 없는 새 화면은 원래 묶음 끝에 */
+  const cfg = drawerCfgOf(drawerKey());
+  if (cfg) {
+    const avail = {}; flat.forEach(x => { avail[x[0]] = { k: x[0], html: row(x), on: onR(x[0]), grp: grpOf(x[0]) }; });
+    stages.forEach(([g, cs]) => cs.forEach(c => { avail['@' + c[0]] = { k: '@' + c[0], html: srow(c[0], c[1], c[2], c[3]), on: sNow === c[0], grp: 'st:' + g[0] }; }));
+    const used = new Set(); cfg.forEach(G => (G.items || []).forEach(it => used.add(it.k)));
+    const out = cfg.filter(G => G.on !== false).map(G => {
+      const L = (G.items || []).filter(it => it.on !== false && avail[it.k]).map(it => { const a = avail[it.k]; return it.name ? a.html.replace(/(<span class="t">)[^<]*/, '$1' + esc(it.name)) : a.html; });
+      Object.values(avail).forEach(a => { if (!used.has(a.k) && a.grp === G.id) { L.push(a.html); used.add(a.k); } });   // 설정에 없는 새 화면 — 원래 묶음 끝에
+      if (!L.length) return '';
+      const live = (G.items || []).some(it => avail[it.k] && avail[it.k].on), shut = fold.includes(G.id) && !live;
+      return '<div class="dsec dgrp' + (shut ? ' fold' : '') + '" data-dg="' + esc(G.id) + '"><small class="dgh" data-dgh="' + esc(G.id) + '" role="button" tabindex="0">' + esc(G.name || grpLabel(G.id)) + '<span class="dgc">' + icon('chevDown', 14) + '</span></small>' + L.join('') + '</div>';
+    });
+    const rest = Object.values(avail).filter(a => !used.has(a.k));   // 어느 묶음에도 없는 것 (설정에 없는 묶음의 새 화면) — 기타
+    if (rest.length) out.push('<div class="dsec dgrp" data-dg="etc"><small class="dgh" data-dgh="etc" role="button" tabindex="0">' + bt('기타', 'Other') + '<span class="dgc">' + icon('chevDown', 14) + '</span></small>' + rest.map(a => a.html).join('') + '</div>');
+    var secsCfg = out.join('');
+  }
+  const secs = secsCfg != null ? secsCfg : DGRP.concat([['etc', 'layers', '기타', 'Other', [], 'Outros']]).map(g => {
     const pos = r => { const k = g[4].indexOf(r); return k >= 0 ? k : g[4].indexOf(r.split('/')[0]) >= 0 ? g[4].indexOf(r.split('/')[0]) : 999; };
     const L = flat.filter(x => grpOf(x[0]) === g[0]).sort((a, b) => pos(a[0]) - pos(b[0])), withOrd = g[0] === 'sep' && ord && (!plan || allow.sep === true);   // 옛 메뉴 순서 · 주문 칸(.dord) = 피킹 묶음
     if (!L.length && !withOrd) return '';

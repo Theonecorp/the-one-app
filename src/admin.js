@@ -81,11 +81,11 @@ function bkLine() {
 }
 async function pageAdmin(arg) {
   if (arg) TAB = arg;
-  let h = itabs([['users', '👤', '사용자', 'Users'], ['sms', '🧑‍💼', '세일즈맨', 'Salesmen'], ['set', '⚙️', '설정', 'Settings'], ['cat', '📦', '아이템', 'Items'], ['tree', '🗂', '분류', 'Categories'], ['imp', '📥', '가져오기', 'Import']], TAB, 'at', 'stick') + '<div class="btns" style="display:none"></div><div id="adminBody"><div class="load">읽는 중…</div></div>';
+  let h = itabs([['users', '👤', '사용자', 'Users'], ['sms', '🧑‍💼', '세일즈맨', 'Salesmen'], ['set', '⚙️', '설정', 'Settings'], ['cat', '📦', '아이템', 'Items'], ['tree', '🗂', '분류', 'Categories'], ['imp', '📥', '가져오기', 'Import'], ['menu', '🧭', '메뉴', 'Menu']], TAB, 'at', 'stick') + '<div class="btns" style="display:none"></div><div id="adminBody"><div class="load">읽는 중…</div></div>';
   h = h.replace('<div class="btns"', bkLine() + '<div class="btns"');
   $('page').innerHTML = h;
   document.querySelectorAll('[data-at]').forEach(b => b.onclick = () => { TAB = b.dataset.at; pageAdmin(); });
-  try { if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') { await settings(); if ($('adminBody')) await formsCard($('adminBody')); } else if (TAB === 'cat') await catalogAdmin(); else if (TAB === 'tree') await treeAdmin(); else await importer(); }
+  try { if (TAB === 'users') await users(); else if (TAB === 'sms') await salesmen(); else if (TAB === 'set') { await settings(); if ($('adminBody')) await formsCard($('adminBody')); } else if (TAB === 'cat') await catalogAdmin(); else if (TAB === 'tree') await treeAdmin(); else if (TAB === 'menu') { const M = await import('./menucfg.js'); await M.menuAdmin($('adminBody'), S); } else await importer(); }
   catch (e) {
     const perm = /permission/i.test(String(e.code || e.message));
     $('adminBody').innerHTML = '<div class="card"><div class="alert a-red">읽지 못했습니다: ' + esc(e.code || e.message) + '</div>' +

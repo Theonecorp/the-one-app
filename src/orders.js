@@ -291,6 +291,7 @@ async function pageOrder(arg) {
     (rows.length ? dayGroups(rows) : '<div class="none">' + bt('주문이 없습니다', 'No orders') + '</div>') + '</div>';
   $('page').innerHTML = listHead() + h;
   bindHead(); fillStrip();
+  { const M = document.querySelector('.ohead .omenu'), on = M && M.querySelector('[data-lf].on'); if (M && on) M.scrollLeft = Math.max(0, on.offsetLeft - M.clientWidth / 2 + on.offsetWidth / 2); }   // 위쪽 단계 탭 — 지금 칸이 보이게 옆으로
   SH.bindSort($('page'), LF.osrt, () => pageOrder(''));   // ↕ 머리글 정렬 (v0.8.198)
   if ($('dayCfL')) Notify.dayCard($('dayCfL'));
   if ($('oOld')) $('oOld').onclick = () => { LF.old = !LF.old; pageOrder(''); };
@@ -351,6 +352,10 @@ export async function fillStrip() {
     const live = await S.DB.list('orders', { where: [['st', 'in', LIVE_ST]] });
     if (!$('oStrip')) return;
     const b = el.querySelectorAll('b');
+    /* 🔢 위쪽 단계 탭의 건수 (v0.8.241 — 대시보드의 칸들이 목록 안에서도 보이게) */
+    const me = S.user && S.user.email, CNT = { sent: live.filter(o => o.st === 'sent' && subOf(o) === 'sent').length, cfw: live.filter(o => o.st === 'sent' && subOf(o) === 'cfw').length, cfok: live.filter(o => o.st === 'sent' && subOf(o) === 'cfok').length,
+      mine: live.filter(o => (o.st === 'pick' || o.st === 'ok') && o.picker === me).length, pick: live.filter(o => o.st === 'pick' || o.st === 'ok').length, picked: live.filter(o => o.st === 'picked').length, done: live.filter(o => o.st === 'done').length, packed: live.filter(o => o.st === 'packed').length };
+    document.querySelectorAll('[data-lfn]').forEach(e => { const n = CNT[e.dataset.lfn]; e.textContent = n ? n : ''; e.classList.toggle('z', !n); });
     b[0].textContent = live.filter(o => o.st === 'sent').length; b[1].textContent = live.filter(o => o.st === 'pick' || o.st === 'ok').length; b[2].textContent = live.filter(o => o.st === 'picked').length; if (b[3]) b[3].textContent = live.filter(o => o.st === 'done').length; if (b[4]) b[4].textContent = live.filter(o => o.st === 'packed').length;
     el.querySelectorAll('div').forEach((d, i) => { d.onclick = () => { LF.st = ['sent', 'pick', 'picked', 'done', 'packed'][i]; LF.list = true; if (i === 3) LF.hp = 'year'; pageOrder(''); }; d.classList.add('tap'); });
   } catch (e) { el.querySelectorAll('b').forEach(x => { x.textContent = '—'; }); }
@@ -524,6 +529,8 @@ async function staffHome() {
  *   폰: 목록 위 고정 머리 · 컴퓨터(≥900px): 왼쪽 메뉴 아래에 세로로 고정 (style.js .omenu). 홈 화면(staffHome)에도 같은 메뉴 — 홈 칸이 켜짐.
  *   🔄 새로 고침 = 지금 칸을 다시 읽음 (연결이 느려 폰에 저장된 옛 목록이 먼저 보였을 때) */
 /** 🧭 고정 서랍(데스크탑 왼쪽 메뉴)에 넣을 주문 메뉴 — 같은 칸(접수 · 출고 · 완료 · 기타). [[묶음, [[key, 아이콘, 한글, 영어]]]] (v0.8.181) */
+/** 🧭 서랍 메뉴 설정(관리 › 메뉴)용 — 모든 주문 칸 (일에 상관없이 · 숨긴 단계 빼고) */
+export function stageMenuAll() { return STG.map(g => [g, CHIPS.filter(c => g[4].includes(c[0]) && !HIDE_ST.includes(c[0])).map(c => { const i = c[1].indexOf(' '); return [c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2]]; })]).filter(x => x[1].length); }
 export function stageMenu() {
   if (!isStaff()) return [];
   const av = chipsFor(); return STG.map(g => [g, av.filter(c => g[4].includes(c[0])).map(c => { const i = c[1].indexOf(' '); return [c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2]]; })]).filter(x => x[1].length);
@@ -537,7 +544,7 @@ export function openStage(k) {
   LF.st = k; LF.list = true; if (location.hash === '#/order') pageOrder(''); else Router.go('order');
 }
 export function menuHtml(cmp, home) {
-  const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '" title="' + esc(ko + ' · ' + en) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + ' <span class="en">' + en + '</span></span></button>';
+  const chip = (k, ic, ko, en, on) => '<button class="' + (on ? 'on' : '') + '" data-lf="' + k + '" title="' + esc(ko + ' · ' + en) + '"><span class="ci">' + ic + '</span><span class="cl">' + ko + ' <span class="en">' + en + '</span></span>' + (k === 'home' ? '' : '<b class="obn" data-lfn="' + k + '"></b>') + '</button>';   // 🔢 칸마다 건수 (fillStrip 이 채움 · v0.8.241)
   const chipOf = c => { const i = c[1].indexOf(' '); return chip(c[0], c[1].substring(0, i), c[1].substring(i + 1), c[2], !home && LF.st === c[0]); };
   const av = chipsFor(), groups = STG.map(g => [g, av.filter(c => g[4].includes(c[0]))]).filter(x => x[1].length);
   return '<div class="omenu"><div class="og otop"><div class="ochips">' + chip('home', '🏠', '홈', 'Home', !!home) + (home ? '' : '<button data-orf="1" title="' + esc('새로 고침 · Refresh') + '"><span class="ci">🔄</span><span class="cl">새로 고침 <span class="en">Refresh</span></span></button>') +
@@ -681,7 +688,7 @@ function viewOrder(o, lines, local) {
   if ($('oCxReq')) $('oCxReq').onclick = () => cancelReq(o);
   if ($('oDropLocal')) $('oDropLocal').onclick = async () => { if (!(await confirmBox('회사로 못 간 이 주문을 폰에서 지울까요? (' + readOut()[o.id].err + ')', '지우기'))) return; const b = readOut(); delete b[o.id]; writeOut(b); Router.go('order'); };
   if ($('oSyncOne')) $('oSyncOne').onclick = async () => { busy(true); const r = await syncOutbox(false); busy(false); if (!r.sent) toast('인터넷이 안 됩니다 — 폰에 그대로 있습니다', 'bad'); else goOrder(o.id); };
-  if ($('oSend')) $('oSend').onclick = async () => { const ol = Object.assign({}, o, sendStamp(o)); putOut(ol, lines); await syncOutbox(false); goOrder(o.id); };
+  if ($('oSend')) $('oSend').onclick = async () => { const ol = Object.assign({}, o, sendStamp(o)); putOut(ol, lines); await syncOutbox(false); Router.markSaved('order'); goOrder(o.id); };
 }
 /* ---------- 📍 세일즈맨이 보는 주문 단계 · 📣 사무실에 요청 (2026-11-12 관리자: "오더를 보낸 뒤 오피스에서 작업 중이면 어느 단계인지 보고, 수정 · 홀드 · 디스플레이 추가 등을 메시지 · 노티스로") · v0.8.190 ---------- */
 const REQ_ST = ['sent', 'ok', 'pick', 'picked', 'done', 'packed', 'dlv'];
@@ -1483,12 +1490,12 @@ async function saveOrder(st) {
   busy(true); const r = await syncOutbox(true); busy(false);
   const left = !!readOut()[id];
   if (kd === 'credit' && isStaff() && st === 'sent' && !left) { toast('↩ ' + bt('크레딧 요청을 고쳤습니다 — 확인 후 CM 발행', 'Credit request updated — review and issue the CM'), 'good'); return goOrder(id); }   // ✏️ 사무실이 확인 대기 크레딧을 고친 뒤 → 다시 확인 화면 (v0.8.227)
-  if (kd === 'credit') { toast(left ? '📱 ' + bt('폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다', 'Saved on the phone') : '↩ ' + bt('크레딧 저장 — 보낼 주문에서 주문과 같이 보냅니다', 'Credit saved — send it with your orders'), left ? '' : 'good'); return Router.go(Router.home || 'order'); }
+  if (kd === 'credit') { Router.markSaved('order'); toast(left ? '📱 ' + bt('폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다', 'Saved on the phone') : '↩ ' + bt('크레딧 저장 — 보낼 주문에서 주문과 같이 보냅니다', 'Credit saved — send it with your orders'), left ? '' : 'good'); return Router.go(Router.home || 'order'); }
   toast(left ? '📱 폰에 저장했습니다 — 인터넷이 되면 자동으로 보냅니다' : (st === 'sent' ? '보냈습니다 📤' : '저장했습니다 — 수정 · 추가는 보내기 전까지 자유, 하루 치는 "보낼 주문"에서 한 번에 보냅니다'), left ? '' : 'good');
   /* 💵 그 가게에 받을 돈이 있으면 "수금할 것 있나요?" → 수금 입력으로 바로 (v0.8.185) */
   if (acct && await askCollect(acct, store)) return;
-  /* 저장 · 보내기 뒤에는 홈으로 */
-  Router.go(Router.home || 'order');
+  /* 저장 · 보내기 뒤에는 홈으로 — ‹ 뒤로는 주문 첫 화면 (보내기 전 편집 화면으로 안 감) */
+  Router.markSaved('order'); Router.go(Router.home || 'order');
 }
 /** 💵 주문 저장 뒤 — 가게 미수금(AR · 미결 인보이스)이 있으면 묻고, "수금 입력"을 누르면 그 가게가 골라진 수금 입력으로 (true = 넘어감)
  *   잔액을 3초 안에 못 읽으면(오프라인 등) 금액 없이 물음 · 잔액이 0 이면 묻지 않음 (v0.8.185 관리자: "오더 저장 뒤 그 가게의 수금할 것이 있는지 물어보고 수금으로 바로 연결") */

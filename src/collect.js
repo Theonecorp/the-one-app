@@ -363,7 +363,7 @@ async function saveEntry() {
     clearEntryCache();
     if (S.DB.queued) toast('📱 ' + bt('폰에 저장했습니다 — 인터넷이 되면 자동으로 올라갑니다 (다시 입력하지 마세요)', 'Saved on this phone — uploads automatically when online (don\'t re-enter)') + ' ' + money(total), 'good');
     else toast((F.editing ? '수정되었습니다 · Updated' : '저장 완료 · Saved') + ' ' + money(total) + (F.newStore ? ' (신규 거래처 · new store)' : ''), 'good');
-    resetForm(); Router.go(isSales() ? 'mine' : 'verify');
+    resetForm(); Router.markSaved('entry'); Router.go(isSales() ? 'mine' : 'verify');   // ‹ 뒤로 = 수금 입력 첫 화면 (저장 전 입력으로 안 감)
   } catch (e) { toast('저장 실패 Save failed: ' + (e.code || e.message), 'bad'); }
   busy(false);
 }

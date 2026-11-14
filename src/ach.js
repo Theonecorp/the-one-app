@@ -168,7 +168,7 @@ async function saveNew(force) {
   const doc = { id, acct: F.acct, store: F.store, sm: F.sm || '', lines: lines.map(v => ({ no: v.no, t: invType(v.no), amt: R2(num(v.amt)) })), inv: lines.map(v => v.no).join(', '), amt, invDate: F.invDate, terms: F.terms, drawOn: F.drawOn, drawYm: ym(F.drawOn), moved: !!F.moved && !F.touched, fixed: !!F.touched,
     setup: false, setupBy: '', setupAt: '', mail: '', st: '', open: true, done: false, doneOn: '', doneYm: '', doneAmt: 0, auto: false, codId: '', note: F.note.trim(), void: false, createdBy: S.user.email, createdAt: now, updatedAt: now };
   busy(true);
-  try { await S.DB.set('ach', id, doc); if (F.orderId) { try { await S.DB.update('orders', F.orderId, { achId: id, achAt: now, achBy: S.user.email }); } catch (e) {} } drop(); toast('저장했습니다 · ' + money(amt) + ' · 인출 예정 ' + F.drawOn, 'good'); resetF(); paintNew(); }
+  try { await S.DB.set('ach', id, doc); if (F.orderId) { try { await S.DB.update('orders', F.orderId, { achId: id, achAt: now, achBy: S.user.email }); } catch (e) {} } drop(); toast('저장했습니다 · ' + money(amt) + ' · 인출 예정 ' + F.drawOn, 'good'); resetF(); Router.markSaved('ach'); paintNew(); }
   catch (e) { toast('저장 실패: ' + (e.code || e.message), 'bad'); }
   busy(false);
 }
