@@ -4,6 +4,7 @@ THE ONE CORP 의 주문 · 수금 · 재고 PWA. 소스는 `src/`, 빌드 결과
 Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 보고 · 커밋 설명은 한국어, UI 문구는 KO/EN/PT (`i18n.json`).
 
 ## 절대 지킬 것
+- **있던 연결을 잃지 않는다** (2026-11-13 세일즈맨 주문 permission-denied): 직원 폰은 앱을 다시 열 때까지 옛 버전 · 폰에는 옛 버전이 저장한 자료(보낼 함 등)가 남아 있음 · 다른 화면 · 사무실이 같은 문서에 칸을 붙임 · 앱 밖 프로그램(Apps Script · 출고 PC 프린터 에이전트 · 서버 함수)은 따로 배포돼 옛 모양을 계속 씀. 새 코드 · 새 규칙은 이 넷을 모두 받아야 한다. src 를 고치면 `node tools/impact.mjs` (연결 지도)의 ⚠️ 를 처리하고, 규칙을 바꾸면 `tools/rules-test.mjs` 에 옛 앱 모양 · 새 모양 케이스를 둘 다 넣는다.
 - **있던 기능을 없애거나 바꾸기 전에 `test/INDEX.md` 에서 그 기능의 시험을 찾아 읽는다.** 기능마다 시험이 있고, 시험이 기능의 명세다. 요약만 보고 다시 짜지 않는다.
 - 새 기능 · 고친 버그는 **새 시험(다음 번호 `test/tNNN.js`)과 함께** 들어온다. 시험 첫 줄은 `/* vX.Y.Z 시험 — 무엇을 지키는지 */`. 만든 뒤 `node test/index.js` 로 `test/INDEX.md` 갱신.
 - 가져오기 · 일괄 저장은 **문서를 통째로 바꾸지 않는다**: 이미 있는 문서는 `op: 'merge'`(DB.batch) 또는 `DB.update` 로 적은 칸만 바꾼다. 사용자(`users`) 문서는 가져오기가 절대 덮어쓰지 않는다 (관리자 역할이 지워졌던 사고: v0.8.158).
@@ -44,8 +45,9 @@ Firebase 프로젝트 `the-one-app-ff40e` (Firestore 규칙 `firestore.rules`). 
 6. **보고**: 머지한 PR · 건너뛴 PR(이유) · 배포한 버전 · 남은 할 일을 짧게.
 
 ## 변경 한 번의 순서
+저장소 스킬: `/ship` (이 순서 전부) · `/incident` (현장 오류 — 먼저 이미 고쳐졌는지) · `/merge-deploy` (머지 · 배포 위임) · `/live-status` (라이브가 main 과 같은지 · `node tools/live-status.mjs`).
 1. `sh tools/sync-main.sh` — **먼저 최신 main 을 합친다** (다른 세션의 변경을 잃지 않기 위해). 버전 세 곳 · app.js · i18n.json 은 이 스크립트가 충돌 없이 처리하고, 남는 충돌은 진짜 src 충돌뿐이다.
-2. `src/` 수정 → `sh build.sh` (app.js 다시 빌드. src 를 고쳤으면 반드시). build.sh 는 package-lock 에 고정된 esbuild(node_modules)만 쓴다 — `npx esbuild` 를 직접 부르지 않는다 (버전이 다르면 app.js 가 통째로 달라져 CI 가 막는다).
+2. `src/` 수정 → `node tools/impact.mjs` 로 이어진 곳(통째 덮어쓰기 · 폰 저장 자료 · 규칙 · 부르는 곳 · 같이 돌릴 시험) 확인 → `sh build.sh` (app.js 다시 빌드. src 를 고쳤으면 반드시). build.sh 는 package-lock 에 고정된 esbuild(node_modules)만 쓴다 — `npx esbuild` 를 직접 부르지 않는다 (버전이 다르면 app.js 가 통째로 달라져 CI 가 막는다).
 3. 버전 세 곳을 같이 올린다 (**Firebase 에 올릴 때마다** — 같은 번호로 다시 올리면 app.js?v= 주소가 같아 폰 · 컴퓨터가 보관해 둔 옛 app.js 를 계속 씀, 2026-11-09): `src/ver.js` 의 `VER`, `index.html` 의 `app.js?v=`, `sw.js` 의 `CACHE` 이름(`theone-shell-vNNN`). 하나라도 빠지면 폰이 옛 앱을 계속 쓴다. 손으로 고치지 말고 `node tools/version.js bump origin/main` (main 다음 번호) — `sh tools/sync-main.sh` 도 src 가 바뀐 브랜치면 알아서 올린다.
 4. 새 UI 문구가 있으면 `i18n.json` 에 EN · PT 를 넣는다: `node tools/i18n.js add '한글' 'English' 'Português'` 또는 i18n.json 에 한 줄 추가. i18n.json 은 **한 줄에 한 문구 · 정렬** 형식이고 `sh build.sh` 가 매번 정리한다 (CI 가 형식을 확인).
 5. 시험: 새 시험 + 관련 시험 `node test/tNNN.js`. **푸시 전에는 반드시 `sh test/run-par.sh`(전체 시험 4조각 동시, 약 7분)로 전부 통과를 확인한다.** 하나라도 ❌ 이면 고칠 때까지 푸시하지 않는다 — PR 의 CI 실패는 관리자에게 메일로 간다. 화면을 바꿨으면 그 화면을 쓰는 옛 시험도 같이 고친다.
