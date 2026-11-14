@@ -20,9 +20,10 @@ const path = require('path');
   if (!todo.some(t => /^order:/.test(t) && /1/.test(t))) errs.push('todo should list orders to send'); if (!todo.some(t => /^order\/cf:/.test(t))) errs.push('todo should list the office confirmation request'); if (!todo.some(t => /^ar:/.test(t))) errs.push('todo should list receivables');
   for (const g of ['order/new', 'entry/new', 'order/credit', 'mysales', 'stores', 'cat'])   /* v0.8.187: 세일즈맨 ↩ 크레딧 = 주문처럼 담는 크레딧 (t193) */ if (!(await pg.$('.qgrid [data-hg="' + g + '"]'))) errs.push('quick action missing: ' + g);
   /* 📝 플랜 저장 → 새로 그려도 남음 */
-  await pg.fill('#dPlan', '올랜도 3곳 · ALI 수금'); await pg.waitForTimeout(700);
-  await pg.evaluate(() => { location.hash = '#/stores'; }); await pg.waitForTimeout(500); await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('#dPlan', { timeout: 8000 });
-  const plan = await pg.$eval('#dPlan', e => e.value); log('plan:', plan); if (plan !== '올랜도 3곳 · ALI 수금') errs.push('plan should persist');
+  /* v0.8.242: 플랜은 번호 · 체크 목록 (t284) — 쓰고 Enter 로 한 줄 */
+  await pg.fill('#dPlanNew', '올랜도 3곳 · ALI 수금'); await pg.press('#dPlanNew', 'Enter'); await pg.waitForTimeout(500);
+  await pg.evaluate(() => { location.hash = '#/stores'; }); await pg.waitForTimeout(500); await pg.evaluate(() => { location.hash = '#/home'; }); await pg.waitForSelector('#dPlan .pt', { timeout: 8000 });
+  const plan = await pg.$eval('#dPlan .pt', e => e.value); log('plan:', plan); if (plan !== '올랜도 3곳 · ALI 수금') errs.push('plan should persist');
   await pg.screenshot({ path: path.resolve(__dirname, 'out', 'home_sales.png'), fullPage: true });
   /* 🛒 세일 탭 */
   await pg.click('#nav button[data-go="order"]'); await pg.waitForTimeout(1200);

@@ -148,11 +148,49 @@ export async function syncOutbox(quiet) {
  * ============================================================ */
 /* 🏠 세일즈맨 홈 — 오늘 한눈에: 인사 · 숫자 4개 · ✅ 오늘 할 일 · 📝 오늘 플랜 · 바로 가기 (주문 작업 자체는 🛒 세일 탭) */
 const PLAN_KEY = () => 'theone.plan.' + ((S.user && S.user.email) || '');
-const planGet = () => { try { return JSON.parse(localStorage.getItem(PLAN_KEY()) || 'null') || { text: '', at: '' }; } catch (e) { return { text: '', at: '' }; } };
-const planPut = text => { try { localStorage.setItem(PLAN_KEY(), JSON.stringify({ text, at: new Date().toISOString() })); } catch (e) {} };
+/* 📝 오늘 플랜 = 번호 목록 + ✓ 체크 (v0.8.242 · 2026-11-14 관리자: "번호순으로 · 체크해서 한 것과 안 한 것 구분")
+ *   폰 저장 모양: { v: 2, items: [{ t, done }], at, text } — text 는 줄마다 한 항목 (옛 앱 버전이 읽는 칸이라 계속 같이 씀)
+ *   옛 모양 { text, at } (v0.8.150 ~ 0.8.241 의 자유 글) 은 줄마다 한 항목으로 읽음 — 그대로 이어서 씀 */
+const planGet = () => { let p = null; try { p = JSON.parse(localStorage.getItem(PLAN_KEY()) || 'null'); } catch (e) {} p = p || {};
+  const items = Array.isArray(p.items) ? p.items.filter(x => x && String(x.t || '').trim()).map(x => ({ t: String(x.t), done: !!x.done })) : String(p.text || '').split(/\r?\n/).map(t => t.trim()).filter(Boolean).map(t => ({ t, done: false }));
+  return { items, at: p.at || '' }; };
+const planPut = items => { try { const it = items.filter(x => String(x.t || '').trim()); localStorage.setItem(PLAN_KEY(), JSON.stringify({ v: 2, items: it, at: new Date().toISOString(), text: it.map(x => x.t).join('\n') })); } catch (e) {} };
 /* 🎨 선 아이콘 (조의 디자인 v0.8.203 톤 — v0.8.242 화면 안쪽까지): 제목 앞 · 색 네모 안 */
 const hic = n => icon(n, 20, 'hic'), tic = (n, c) => '<span class="tq ' + (c || '') + '">' + icon(n, 20) + '</span>';
 const WD_KO = ['일', '월', '화', '수', '목', '금', '토'], WD_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** 📝 오늘 플랜 목록 — 1 2 3 번호 · ☐/☑ 체크(한 것은 줄 긋고 회색) · 글 바로 고치기 · ✕ 지우기 · 맨 아래 칸에 쓰고 Enter = 추가
+ *  줄에서 Enter = 바로 아래 새 줄 · 빈 줄에서 ⌫ = 그 줄 지우기 · 바뀔 때마다 이 폰에 저장 */
+function planBox(box, items) {
+  if (!box) return;
+  const save = () => { planPut(items); const at = $('dPlanAt'); if (at) at.textContent = bt('저장됨', 'saved') + ' ' + md(today()); cnt(); };
+  const saveSoon = debounce(save, 300);
+  const cnt = () => { const c = box.querySelector('.plcnt'), n = items.filter(x => String(x.t).trim()).length, d = items.filter(x => x.done && String(x.t).trim()).length; if (c) { c.textContent = n ? bt('완료', 'Done') + ' ' + d + ' / ' + n : ''; c.classList.toggle('all', !!n && d === n); } };
+  const draw = focus => {
+    box.innerHTML = '<ol class="pll">' + items.map((x, i) => '<li class="pli' + (x.done ? ' done' : '') + '"><span class="pn">' + (i + 1) + '</span>' +
+      '<label class="pck" title="' + esc(bt('한 것 · 안 한 것', 'Done / not done')) + '"><input type="checkbox" data-pc="' + i + '"' + (x.done ? ' checked' : '') + '></label>' +
+      '<input class="pt" data-pt="' + i + '" value="' + esc(x.t) + '" enterkeyhint="next">' +
+      '<button type="button" class="px" data-px="' + i + '" title="' + esc(bt('지우기', 'Remove')) + '" aria-label="' + esc(bt('지우기', 'Remove')) + '">' + icon('x', 16) + '</button></li>').join('') + '</ol>' +
+      '<div class="pladd"><span class="pn">' + (items.length + 1) + '</span><input id="dPlanNew" placeholder="' + esc(items.length ? bt('할 일 더하기 — 쓰고 Enter', 'Add a task — type and press Enter') : bt('예: 올랜도 3곳 방문 — 쓰고 Enter', 'e.g. visit 3 stores in Orlando — press Enter')) + '" enterkeyhint="done">' +
+      '<button type="button" class="b-ghost b-sm" id="dPlanAdd">' + icon('plus', 16) + ' ' + bt('추가', 'Add') + '</button></div><div class="plcnt"></div>';
+    cnt();
+    box.querySelectorAll('[data-pc]').forEach(c => c.onchange = () => { items[+c.dataset.pc].done = c.checked; c.closest('li').classList.toggle('done', c.checked); save(); });
+    box.querySelectorAll('[data-pt]').forEach(t => {
+      const i = +t.dataset.pt;
+      t.oninput = () => { items[i].t = t.value; saveSoon(); };
+      t.onkeydown = e => {
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); items[i].t = t.value; items.splice(i + 1, 0, { t: '', done: false }); draw(i + 1); }
+        else if (e.key === 'Backspace' && !t.value) { e.preventDefault(); items.splice(i, 1); save(); draw(i > 0 ? i - 1 : 'new'); }
+      };
+      t.onblur = () => { if (items[i] && items[i].t === t.value) save(); };   // 빈 줄은 저장할 때 빠짐 (planPut)
+    });
+    box.querySelectorAll('[data-px]').forEach(b => b.onclick = () => { items.splice(+b.dataset.px, 1); save(); draw(); });
+    const nw = $('dPlanNew'), add = () => { const v = nw.value.trim(); if (!v) return; items.push({ t: v, done: false }); save(); draw('new'); };
+    nw.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); add(); } };
+    $('dPlanAdd').onclick = add;
+    if (focus === 'new') nw.focus(); else if (typeof focus === 'number') { const t = box.querySelector('[data-pt="' + focus + '"]'); if (t) t.focus(); }
+  };
+  draw();
+}
 async function pageHome() {
   const name = (S.user && (S.user.name || S.user.email)) || '', sm = mySm(), now = new Date(), hr = now.getHours();
   const hello = hr < 11 ? bt('좋은 아침이에요', 'Good morning') : hr < 17 ? bt('좋은 오후예요', 'Good afternoon') : bt('수고 많으셨어요', 'Good evening');
@@ -166,11 +204,11 @@ async function pageHome() {
     '<div class="dkpi">' + kpi('dkSales', '…', bt('이번 달 매출', 'Sales this month'), 'mysales') + kpi('dkToday', '…', bt('오늘 주문', 'Orders today'), 'order') + kpi('dkSend', out.length ? out.length : '…', bt('보낼 주문', 'To send'), 'order') + kpi('dkAr', '…', bt('미수금', 'Receivables'), 'ar') + '</div>' +
     '<div class="card"><h2>' + hic('check') + ' ' + bi('오늘 할 일', 'Today') + '</h2><div id="dTodo" class="todo"><div class="muted">' + bt('읽는 중…', 'Loading…') + '</div></div></div>' +
     '<div class="card"><h2>' + hic('pen') + ' ' + bi('오늘 플랜', 'Today\'s plan') + ' <span class="muted" style="font-weight:400;font-size:12px" id="dPlanAt">' + (plan.at ? bt('마지막 수정', 'last edit') + ' ' + esc(md(plan.at.substring(0, 10))) : bt('이 폰에 저장됩니다', 'saved on this phone')) + '</span></h2>' +
-    '<textarea id="dPlan" rows="3" placeholder="' + esc(bt('예: 올랜도 3곳 방문 · ALI 수금 · 샘플 전달', 'e.g. 3 stores in Orlando · collect at ALI · drop samples')) + '">' + esc(plan.text) + '</textarea></div>' +
+    '<div id="dPlan" class="plan"></div></div>' +
     '<div class="card"><h2>' + hic('zap') + ' ' + bi('바로 가기', 'Quick actions') + '</h2><div class="qgrid">' + qa('order/new', 'cart', bi('새 주문', 'New order'), 'blue') + qa('entry/new', 'pen', bi('수금 입력', 'Payment')) + qa(isStaff() ? 'credit/new' : 'order/credit', 'undo', bi('크레딧 · 리턴', 'Credit')) + qa('stores', 'store', bi('가게 찾기', 'Stores')) + qa('cat', 'book', bi('카탈로그', 'Catalog')) + qa('mysales', 'trend', bi('내 매출', 'My sales')) + qa('mine', 'clipList', bi('수금 기록', 'Payment log')) + '</div></div>' +
     '<div id="dayCf"></div><div id="offCard"></div>' + Notify.blockedHtml();   /* 🔔 알림은 항상 켜짐 (v0.8.179) — 켜기 단추 없이 처음 누를 때 자동으로 물어봄 · 막혔으면 허용하는 법 */
   document.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { const [r, a] = b.dataset.hg.split('/'); if (a) Router.go(r, a); else Router.go(r); });
-  const ta = $('dPlan'); ta.oninput = debounce(() => { planPut(ta.value); const at = $('dPlanAt'); if (at) at.textContent = bt('저장됨', 'saved') + ' ' + md(today()); }, 400);
+  planBox($('dPlan'), plan.items);
   Notify.dayCard($('dayCf')); import('./offline.js').then(O => O.homeCard($('offCard'), true));
   /* 숫자 — 폰에 둔 지난 값 먼저, 그 다음 새로 읽음 */
   try { const ms = JSON.parse(localStorage.getItem('theone.snap.mysales.' + sm) || 'null'), M = ms && ms.html && ms.html.M, k = M && Object.keys(M).sort().pop(); if (k && $('dkSales')) $('dkSales').textContent = money(M[k].tot || 0); } catch (e) {}

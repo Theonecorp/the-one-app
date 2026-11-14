@@ -577,6 +577,16 @@ body.dock .ohead.ohome,.ohead.ohome{display:none!important}
 @media (max-width:600px){#oStrip.ostrip2{gap:6px}#oStrip.ostrip2>div{flex-direction:column!important;align-items:flex-start;gap:4px;padding:8px 9px}#oStrip.ostrip2 .tq{width:30px;height:30px;border-radius:9px}#oStrip.ostrip2 .tq .ic{width:17px;height:17px}#oStrip.ostrip2 .kt>span{font-size:11.5px}#oStrip.ostrip2 b{font-size:19px}}
 .omenu .ochips button .ci{display:inline-flex;align-items:center;color:var(--muted)}.omenu .ochips button.on .ci{color:#fff}.omenu .ogl .ci{color:var(--muted);display:flex}
 .card h2 .ic{vertical-align:-4px}
+/* 📝 세일즈맨 오늘 플랜 — 번호 · 체크 목록 (v0.8.242) */
+.plan .pll{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.plan .pli,.plan .pladd{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px 6px 4px 10px}
+.plan .pn{flex:none;min-width:22px;height:22px;border-radius:99px;background:#f1f5f9;color:var(--ink2);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.plan .pck{display:inline-flex;align-items:center;cursor:pointer}.plan .pck input{width:22px;height:22px;accent-color:var(--green);margin:0}
+.plan .pt,.plan #dPlanNew{flex:1;min-width:0;border:0!important;background:transparent!important;box-shadow:none!important;padding:8px 2px!important;font-size:15px}
+.plan .pli.done{background:#f0fdf4;border-color:#bbf7d0}.plan .pli.done .pt{text-decoration:line-through;color:var(--muted)}.plan .pli.done .pn{background:var(--green);color:#fff}
+.plan .px{flex:none;border:0;background:none;color:#94a3b8;width:32px;height:32px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}.plan .px:hover{background:#fee2e2;color:var(--red)}
+.plan .pladd{margin-top:6px;border-style:dashed;background:#f8fafc}.plan .pladd .pn{background:none;color:#94a3b8}.plan #dPlanAdd{flex:none;display:inline-flex;align-items:center;gap:4px}
+.plan .plcnt{margin-top:6px;font-size:12.5px;font-weight:700;color:var(--muted);text-align:right}.plan .plcnt.all{color:var(--green)}.plan .plcnt:empty{display:none}
 /* 🧭 관리 › 서랍 메뉴 편집 (v0.8.241) — 묶음 줄(굵게) 아래 화면 줄(들여쓰기) · ☑ · 이름 · ↑ ↓ · 묶음 옮기기 */
 .mcfg{padding:8px 10px}.mcg{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:4px 6px;background:#fff}.mcg.off{opacity:.55}
 .mcr{display:flex;align-items:center;gap:6px;padding:4px 2px;flex-wrap:wrap}.mch{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}.mch .mcn{font-weight:800}
