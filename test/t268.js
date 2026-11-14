@@ -19,7 +19,7 @@ const csv = 'ITEM NO,QTY,PRICE\nAHG100,10,1.5\n';
 const att = (name, s) => ({ getName: () => name, getContentType: () => 'text/csv', getBytes: () => Array.from(Buffer.from(s)) });
 const M1 = { getId: () => 'm1', getSubject: () => 'INVOICE SX#80', getFrom: () => 'factory@cn.com', getTo: () => 'inbound@theonefl.com', getDate: () => new Date('2026-11-12T10:00:00Z'), getPlainBody: () => 'INVOICE NO: SX80\nCARTONS: 4', getAttachments: () => [att('sx80.csv', csv), att('photo.jpg', 'x')] };
 let LABELED = 0, SEARCH_Q = [];
-const GmailApp = { search: q => { SEARCH_Q.push(q); return /inbox/.test(q) ? [{ getMessages: () => [M1], addLabel: () => { LABELED++; } }] : []; }, getUserLabelByName: () => ({}), createUserLabel: () => ({}) };
+let MADE = []; const GmailApp = { search: q => { SEARCH_Q.push(q); return /inbox/.test(q) ? [{ getMessages: () => [M1], addLabel: () => { LABELED++; } }] : []; }, getUserLabelByName: () => null, createLabel: n => { MADE.push(n); return {}; } };   /* 라벨이 아직 없는 새 계정 — 진짜 Apps Script 에는 createLabel 만 있음 (createUserLabel 은 없어 TypeError 이던 것, v0.8.241) */
 const base = { console, JSON, Date, Math, String, Number, Array, Object, RegExp, Set, Error, Buffer, Logger: { log: () => {} }, DriveApp, GmailApp, Utilities,
   ScriptApp: { getProjectTriggers: () => [], deleteTrigger: () => {}, newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => {} }) }) }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) } };
@@ -31,6 +31,7 @@ const doc = FILES[0] ? JSON.parse(FILES[0].body) : {};
 if (FILES.length !== 1 || FILES[0].name !== 'msg-m1.json') errs.push('①② one JSON per message, not repeated');
 if (doc.subject !== 'INVOICE SX#80' || doc.from !== 'factory@cn.com' || !/CARTONS: 4/.test(doc.body) || (doc.atts || []).length !== 1 || doc.atts[0].name !== 'sx80.csv' || (doc.other || []).join() !== 'photo.jpg') errs.push('① message fields + only xlsx/csv attachment contents');
 if (EDITORS.join() !== 'luke@theonefl.com') errs.push('① folder shared with the admin account');
+if (!MADE.includes('THE ONE/앱으로 보냄')) errs.push('① label created with GmailApp.createLabel on a fresh inbound@ account');
 /* ③ ④ */
 const C = Object.assign({}, base); vm.createContext(C); vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../apps-script/Code.gs'), 'utf8'), C);
 const GOT = []; C.inboundMessage_ = (m, by) => { GOT.push({ subj: m.getSubject(), from: m.getFrom(), body: m.getPlainBody(), date: m.getDate().toISOString(), atts: m.getAttachments().map(a => a.getName() + ':' + a.getDataAsString()), by: Object.keys(by).join() }); return 1; };

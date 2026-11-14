@@ -311,7 +311,7 @@ function inboundMailRun_() {
   try { n += inboundRelayRun_(cat); } catch (e) { Logger.log('📥 받은편지 폴더 실패: ' + e.message); }   // 📥 inbound@ 계정이 넣어 둔 메일 (InboundRelay.gs · v0.8.227)
   const threads = GmailApp.search('to:' + to + ' -label:"' + INBOUND_LABEL + '" newer_than:30d', 0, 10);
   if (!threads.length) return n;
-  const label = GmailApp.getUserLabelByName(INBOUND_LABEL) || GmailApp.createUserLabel(INBOUND_LABEL);
+  const label = GmailApp.getUserLabelByName(INBOUND_LABEL) || GmailApp.createLabel(INBOUND_LABEL);
   cat();
   threads.forEach(th => {
     th.getMessages().forEach(m => {

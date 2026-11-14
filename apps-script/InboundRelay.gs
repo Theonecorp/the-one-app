@@ -37,7 +37,7 @@ function relaySetup() {
 function relayRun() {
   const threads = GmailApp.search('in:inbox -label:"' + RELAY_LABEL + '" newer_than:30d', 0, 20);
   if (!threads.length) { Logger.log('📥 새 메일 없음'); return 0; }
-  const folder = relayFolder_(), label = GmailApp.getUserLabelByName(RELAY_LABEL) || GmailApp.createUserLabel(RELAY_LABEL);
+  const folder = relayFolder_(), label = GmailApp.getUserLabelByName(RELAY_LABEL) || GmailApp.createLabel(RELAY_LABEL);
   let n = 0;
   threads.forEach(th => {
     th.getMessages().forEach(m => {

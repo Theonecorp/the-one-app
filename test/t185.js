@@ -41,7 +41,7 @@ const fmtTz = (d, tz, f) => { const p = Object.fromEntries(new Intl.DateTimeForm
     const store = Object.assign({ inbound: {}, inboundCost: {}, notifyq: {}, factories: { SX: { code: 'SX', name: 'SHENGXING YIWU', active: true } }, factoryInvoices: {}, factoryPayments: {} }, store0 || {}), mails = [], saved = [];
     const ctx = { console, Date, JSON, Math, Number, String, Object, Array, Logger: { log: () => {} }, Utilities: { formatDate: fmtTz, parseCsv: t => t.split('\n').map(l => l.split(',')), newBlob: () => ({ getBytes: () => [] }) },
       PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) }, MailApp: { sendEmail: o => mails.push(o) },
-      GmailApp: { search: () => msgs.length ? [{ getMessages: () => msgs, addLabel: () => {} }] : [], getUserLabelByName: () => ({}), createUserLabel: () => ({}) } };
+      GmailApp: { search: () => msgs.length ? [{ getMessages: () => msgs, addLabel: () => {} }] : [], getUserLabelByName: () => ({}), createLabel: () => ({}) } };
     vm.createContext(ctx); vm.runInContext(gs + '\n' + code, ctx);
     ctx.inboundCatalog_ = () => CAT; ctx.inboundBook_ = att => [{ name: 'Sheet1', rows: att.aoa }]; ctx.today_ = () => '2026-11-11';
     ctx.inboundSaveFile_ = (att, sub) => { saved.push(sub + '/' + att.getName()); return 'https://drive.google.com/file/d/X' + saved.length; };
