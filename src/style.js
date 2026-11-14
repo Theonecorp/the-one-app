@@ -543,6 +543,28 @@ header h1{white-space:nowrap}#hWho{display:inline-block;max-width:30vw;overflow:
 #prtbody .ivco{font-weight:900;font-size:23px;letter-spacing:.3px}
 #prtbody .ivpn{font-weight:900;font-size:15px;line-height:1.3}
 #prtbody .docnm{font-weight:900;font-size:15px}#prtbody .doccn{font-weight:900}
+/* 🧾 담당자 주문 화면 위쪽 단계 탭 — 폰 · 컴퓨터 같은 모양 (v0.8.241 · 2026-11-14 관리자: "대시보드의 들어온 주문 · 신규 주문 · 출고 작업 … 이 화면 안에서도 보이게 · 순서 고정해서 위에 · 모바일도 데스크탑처럼")
+ *   예전: 폰 = 큰 격자 · 컴퓨터 = 왼쪽 210px 기둥(고정 서랍이 있으면 숨김) → 이제 둘 다 화면 위 한 줄(옆으로 밀기) · 묶음(접수 · 출고 · 완료 · 기타) 순서 고정 · 칸마다 건수 */
+.ohead .omenu,body.dock .ohead .omenu{position:static!important;display:flex!important;flex-wrap:nowrap;align-items:stretch;gap:6px;width:auto!important;overflow-x:auto;overflow-y:hidden;padding:2px 0 6px!important;margin:0!important;background:none!important;border:0!important;scrollbar-width:thin;inset:auto!important}
+body.omenu-on #page,body.dock.omenu-on #page{margin-left:0!important}
+.omenu .og,.omenu .og.otop{display:flex!important;flex:0 0 auto;align-items:center;gap:4px;margin:0!important;padding:3px 4px!important;border:0!important;border-radius:12px;background:#f1f5f9!important;grid-template-columns:none}
+.omenu .og.otop{background:none!important;padding-left:0!important}
+.omenu .ogl{display:flex!important;flex-direction:column;align-items:center;justify-content:center;padding:0 4px!important;font-size:10.5px;font-weight:800;color:var(--muted);white-space:nowrap;min-width:0}.omenu .ogl .ci{font-size:14px}.omenu .ogl .en{display:none}
+.omenu .ochips,body.oscr .omenu .ochips{display:flex!important;flex-direction:row!important;flex-wrap:nowrap;gap:4px;margin:0!important}
+.omenu .ochips button,body.oscr .omenu .ochips button{display:inline-flex!important;flex-direction:row!important;align-items:center;gap:5px;min-height:36px!important;height:auto;padding:5px 10px!important;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:13px;font-weight:700;white-space:nowrap;color:var(--ink2);box-shadow:none}
+.omenu .ochips button .ci{font-size:15px}.omenu .ochips button .cl{display:inline}.omenu .ochips button .en{display:none}
+.omenu .ochips button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.omenu .obn{display:inline-block;min-width:20px;padding:1px 6px;border-radius:99px;background:#dc2626;color:#fff;font-size:11px;font-weight:800;text-align:center}.omenu .obn.z,.omenu .obn:empty{display:none}
+.omenu .ochips button.on .obn{background:#fff;color:var(--navy)}
+.omenu [data-ocmp],.omenu .ochips button[data-ocmp]{display:none!important}
+.ohead{position:sticky!important;top:var(--hdr,56px)!important;z-index:26!important;background:var(--bg)!important;margin:0 -4px 6px!important;padding:4px 4px 0!important;box-shadow:0 6px 8px -8px rgba(15,23,42,.25)!important}
+body.dock .ohead.ohome,.ohead.ohome{display:none!important}
+/* 🧭 관리 › 서랍 메뉴 편집 (v0.8.241) — 묶음 줄(굵게) 아래 화면 줄(들여쓰기) · ☑ · 이름 · ↑ ↓ · 묶음 옮기기 */
+.mcfg{padding:8px 10px}.mcg{border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:4px 6px;background:#fff}.mcg.off{opacity:.55}
+.mcr{display:flex;align-items:center;gap:6px;padding:4px 2px;flex-wrap:wrap}.mch{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}.mch .mcn{font-weight:800}
+.mci{padding-left:22px}.mci.off .mcn{text-decoration:line-through;color:var(--muted)}.mck input{width:20px;height:20px}.mic{width:24px;text-align:center}
+.mcn{flex:1 1 160px;min-width:120px;padding:6px 8px;font-size:14px}.mcb{display:inline-flex;gap:4px;align-items:center}.mcb .b-sm{padding:4px 9px;min-width:0}.mcb select{max-width:150px;padding:4px 6px;font-size:12.5px}
+.mck2{flex:0 0 100%;padding-left:54px;font-size:11px;margin-top:-4px}.mci{padding-top:2px;padding-bottom:2px}
 /* ↩ 결제 입력의 미결 CM 칩 (v0.8.232) */
 .chips button.cmchip{background:#fff7ed;border-color:#fdba74;color:#9a3412}
 /* 🏷 타사 제품 — 🧾 담은 것 (맨 위 고정 · 줄마다 − 수량 + 🗑, v0.8.231) */

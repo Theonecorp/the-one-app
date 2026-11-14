@@ -216,7 +216,7 @@ async function confirm() {
     dropInvCache(monthsOf([doc]));
     try { const N = await import('./notify.js'); await N.queue({ kind: 'credit', toStaff: true, pushOnly: true, subject: '[THE ONE] ↩ 크레딧 ' + (F.length ? '⚠️ ' : '') + '— ' + CR.store + ' ' + money(-t.sub), text: '↩ 크레딧 ' + no + ' · ' + CR.sm + ' · ' + CR.store + ' (' + CR.acct + ')\n' + CR.why + (CR.note ? ' — ' + CR.note.trim() : '') + (CR.dback != null ? '\n🏷 할인 백 ' + CR.dback + '%' : '') + '\n' + CR.lines.map(l => l.c + ' ×' + l.q + ' @' + money(l.p)).join(', ') + '\n크레딧 −' + money(t.sub) + (F.length ? '\n⚠️ ' + F.join(' · ') : ''), url: N.appUrl('credit/' + encodeURIComponent(no)) }); } catch (e) {}
     closeModal(); toast('↩ ' + no + ' — ' + bt('크레딧 확정', 'credit confirmed') + ' −' + money(t.sub), 'good');
-    Router.go('credit', encodeURIComponent(no));
+    Router.markSaved('credit'); Router.go('credit', encodeURIComponent(no));
   } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
   busy(false);
 }
@@ -390,7 +390,7 @@ export async function reviewRequest(o, lines) {
       dropInvCache(monthsOf([doc]));
       try { const N = await import('./notify.js'); await N.queue({ kind: 'creditReq', toSm: o.sm, pushOnly: true, subject: '[THE ONE] ↩ 크레딧 발행 ' + no + ' — ' + o.store, text: '↩ ' + no + ' · ' + o.store + ' −' + money(sub) + ' (' + (o.why || '') + ')' }); } catch (e) {}
       toast('↩ ' + no + ' — ' + bt('발행', 'issued') + ' −' + money(sub), 'good');
-      Router.go('credit', encodeURIComponent(no));
+      Router.markSaved('order'); Router.go('credit', encodeURIComponent(no));   // 사무실이 주문 목록의 크레딧 요청에서 확정 — ‹ 는 주문 첫 화면
     } catch (e) { toast(bt('실패', 'Failed') + ': ' + (e.code || e.message), 'bad'); }
     busy(false);
   };

@@ -1,6 +1,6 @@
 /* v0.8.174 시험 — 🖥 넓은 화면 정리: 아래 메뉴(홈 · 세일 · 수금 …)가 왼쪽 기둥 대신 머리띠 안 가로 메뉴로 · 담당자 주문 메뉴만 왼쪽 기둥 · 아이템 줄은 한 줄로 · 사진 크게 보기 확대 · 축소 · 이동
  *   ① 900px 이상(고정 서랍이 없는 1199px 까지 — v0.8.181): #nav 가 header 안(position static)에 있고 단추가 눌림 · 430px: 다시 body 끝의 아래 고정 메뉴
- *   ② 담당자 주문 화면(홈 · 목록)에서만 body.omenu-on → 본문이 210px 오른쪽 · 주문 편집 화면에서는 아님 · .omenu 는 머리띠 바로 아래부터
+ *   ② 담당자 주문 목록: 단계 탭이 본문 위 가로 한 줄(머리띠 바로 아래 · 본문이 옆으로 밀리지 않음 — v0.8.241 부터 왼쪽 210px 기둥 없음, 폰 · 컴퓨터 같음) · 주문 편집 화면에는 탭 없음
  *   ③ 1200px 이상 목록 보기: 아이템 줄의 코드 · 이름 · 재고가 한 줄(flex) · 줄 높이 60px 미만
  *   ④ 사진 팝업: 휠로 확대(배율 표시) · 끌어서 이동(translate) · ↺ 100% · 사진을 눌러도 안 닫힘 · 바깥을 누르면 닫힘 */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
@@ -19,11 +19,11 @@ const path = require('path');
   const pm = await open(1000, 900); let nv = await navInfo(pm); log('① pc nav:', JSON.stringify(nv));
   if (nv.parent !== 'HEADER' || nv.pos !== 'static' || nv.top > 60) errs.push('① wide: nav lives inside the header bar');
   await pm.click('#nav button[data-go="hub/look"]'); await pm.waitForTimeout(400); if (!/#\/hub\/look/.test(await pm.evaluate(() => location.hash))) errs.push('① nav buttons in the header still navigate');
-  await pm.evaluate(() => { location.hash = '#/order'; }); await pm.waitForTimeout(900);
+  await pm.evaluate(() => { location.hash = '#/order'; }); await pm.waitForTimeout(900); await pm.evaluate(() => { document.querySelectorAll('.hgrp').forEach(g => g.classList.add('open')); }); await pm.click('[data-hg="pick"]'); await pm.waitForTimeout(900);
   const dkw = () => document.body.classList.contains('dock') ? Math.round(document.getElementById('drawer').getBoundingClientRect().width) : 0;
-  let st = await pm.evaluate(() => ({ dock: document.body.classList.contains('dock') ? Math.round(document.getElementById('drawer').getBoundingClientRect().width) : 0, on: document.body.classList.contains('omenu-on'), left: Math.round(document.getElementById('page').getBoundingClientRect().left), mtop: Math.round((document.querySelector('.omenu') || { getBoundingClientRect: () => ({ top: -1 }) }).getBoundingClientRect().top), hdr: Math.round(document.querySelector('header').getBoundingClientRect().bottom) })); log('② order home:', JSON.stringify(st));
-  if (!st.on || st.left < st.dock + 210) errs.push('② staff order home: body.omenu-on and the page shifted right of the 210px column (+ docked drawer ' + st.dock + ') — got ' + st.left);
-  if (st.mtop < st.hdr - 2 || st.mtop > st.hdr + 4) errs.push('② the staff menu column starts right under the header (menu top ' + st.mtop + ', header bottom ' + st.hdr + ')');
+  let st = await pm.evaluate(() => ({ dock: document.body.classList.contains('dock') ? Math.round(document.getElementById('drawer').getBoundingClientRect().width) : 0, left: Math.round(document.getElementById('page').getBoundingClientRect().left), mtop: Math.round((document.querySelector('.ohead') || { getBoundingClientRect: () => ({ top: -1 }) }).getBoundingClientRect().top), hdr: Math.round(document.querySelector('header').getBoundingClientRect().bottom), pos: getComputedStyle(document.querySelector('.ohead')).position, stop: parseInt(getComputedStyle(document.querySelector('.ohead')).top, 10), mh: Math.round((document.querySelector('.omenu') || { getBoundingClientRect: () => ({ height: 0 }) }).getBoundingClientRect().height) })); log('② list:', JSON.stringify(st));
+  if (Math.abs(st.left - st.dock) > 30) errs.push('② staff order list: page is not pushed right by a column (left ' + st.left + ' vs drawer ' + st.dock + ')');
+  if (st.pos !== 'sticky' || Math.abs(st.stop - st.hdr) > 4 || st.mtop > 300 || !st.mh || st.mh > 80) errs.push('② the stage tab bar is one row near the top and sticks right under the header when scrolled (pos ' + st.pos + ' top ' + st.stop + ', header bottom ' + st.hdr + ', height ' + st.mh + ')');
   await pm.evaluate(() => { location.hash = '#/order/new'; }); await pm.waitForSelector('#eStoreQ'); await pm.waitForTimeout(400);
   st = await pm.evaluate(() => ({ dock: document.body.classList.contains('dock') ? Math.round(document.getElementById('drawer').getBoundingClientRect().width) : 0, on: document.body.classList.contains('omenu-on'), left: Math.round(document.getElementById('page').getBoundingClientRect().left) })); log('② editor:', JSON.stringify(st));
   if (st.on || st.left !== st.dock) errs.push('② the order editor has no staff column (omenu-on off) — page starts right after the docked drawer, got ' + st.left + ' vs ' + st.dock);

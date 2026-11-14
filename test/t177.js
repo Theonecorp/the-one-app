@@ -1,5 +1,6 @@
 /* v0.8.181 시험 — 🧭 데스크탑(1200px 이상): 고정 서랍이 하나뿐인 메뉴 (2026-11-10 관리자: "메뉴가 왜 두 개가 떠")
- *   ① 머리띠 가로 메뉴(#nav) · 주문 화면의 왼쪽 기둥(.omenu)은 숨김 — 본문은 서랍 바로 옆에서 시작 (기둥만큼 밀리지 않음)
+ *   ① 머리띠 가로 메뉴(#nav) 숨김 · 담당자 홈(대시보드)에는 단계 탭 없음 — 본문은 서랍 바로 옆에서 시작 (기둥만큼 밀리지 않음)
+ *      (v0.8.241: 목록 안에서는 위쪽 가로 단계 탭이 보임 — 2026-11-14 관리자 "화면 안으로 들어간 뒤에도 보이게" · 왼쪽 기둥은 없음)
  *   ② 담당자 서랍에 주문 칸이 묶음별로 (접수 · 출고 · 완료 · 기타) — 누르면 그 목록 · 그 칸만 켜짐 · 🏠 홈은 담당자 홈
  *   ③ 한 화면은 서랍에 한 번만 (배송 조회가 재고 · 조회 두 묶음에 있어도 하나)
  *   ④ 세일즈맨 서랍에는 주문 칸이 없음 (세일즈 메뉴 그대로) */
@@ -25,7 +26,8 @@ const path = require('path');
   log('② order sections:', secs.join(' | '));
   if (secs.length !== 4 || !/^접수:sent,cfw,cfok/.test(secs[0]) || !/pick/.test(secs[1]) || !/shipped/.test(secs[2]) || !/bo/.test(secs[3])) errs.push('② drawer has the 4 order groups with their chips');
   await pg.click('#drawer [data-dlf="pick"]'); await pg.waitForTimeout(1000); L = await lay(pg); log('② pick:', JSON.stringify(L));
-  if (L.hash !== '#/order' || L.on.join() !== 'pick' || L.omenu || L.nav) errs.push('② clicking 출고 작업 opens that list, only that chip is on, still one menu');
+  if (L.hash !== '#/order' || L.on.join() !== 'pick' || !L.omenu || L.nav) errs.push('② clicking 출고 작업 opens that list, only that drawer item is on, the top stage tab bar shows (no header menu)');
+  if (await pg.evaluate(() => [...document.querySelectorAll('.omenu [data-lf].on')].map(b => b.dataset.lf).join()) !== 'pick') errs.push('② the top tab bar has 출고 작업 on too');
   if (!(await pg.$('#page h2:has-text("출고 작업")'))) errs.push('② fulfillment list shown');
   if (Math.abs(L.left - L.dock) > 30) errs.push('② list page is not pushed right by a hidden column');
   await pg.click('#drawer [data-dlf="sent"]'); await pg.waitForTimeout(900); L = await lay(pg); if (L.on.join() !== 'sent' || !(await pg.$('#page h2:has-text("신규 주문")'))) errs.push('② 신규 주문 list from the drawer');

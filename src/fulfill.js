@@ -231,7 +231,7 @@ export function manage(o, lines) {
     catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); }
     busy(false);
   };
-  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 주문을 들어온 주문으로 보낼까요?', '보내기'))) return; busy(true); try { const sx = await soStamp(o); await S.DB.update('orders', o.id, Object.assign(sendStamp(o), sx || {})); toast('보냈습니다 📤' + (sx ? ' ' + sx.no : ''), 'good'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
+  if ($('mSend')) $('mSend').onclick = async () => { if (!(await confirmBox(o.store + ' — ' + lines.length + '줄 · ' + money(o.amt) + ' 주문을 들어온 주문으로 보낼까요?', '보내기'))) return; busy(true); try { const sx = await soStamp(o); await S.DB.update('orders', o.id, Object.assign(sendStamp(o), sx || {})); toast('보냈습니다 📤' + (sx ? ' ' + sx.no : ''), 'good'); Router.markSaved('order'); goOrder(o.id); } catch (e) { toast('실패: ' + (e.code || e.message), 'bad'); } busy(false); };
   if ($('mAssign')) $('mAssign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mReassign')) $('mReassign').onclick = () => assignPicker([o], () => goOrder(o.id));
   if ($('mIMemo')) $('mIMemo').onclick = () => imemoForm(o);
@@ -633,7 +633,7 @@ async function confirmInvoice(o, lines) {
       toast('인보이스 ' + invs.map(x => x.no).join(', '), 'good');
       busy(false);
       await printInvoices(invs, acc);
-      goOrder(o.id);
+      Router.markSaved('order'); goOrder(o.id);   // ‹ 뒤로 = 주문 첫 화면 (인보이스 발행 전 확인 화면으로 안 감)
     } catch (e) { busy(false); toast('실패: ' + (e.code || e.message), 'bad'); }
   };
 }

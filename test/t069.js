@@ -1,4 +1,5 @@
-/* v0.8.80 시험 — 주문 목록 스크롤 때 위 메뉴(상태 아이콘) 높이가 바뀌지 않음 (아이폰은 높이가 바뀌면 목록이 튕김) · 작게/크게 버튼 */
+/* v0.8.80 시험 — 주문 목록 스크롤 때 위 메뉴(상태 아이콘) 높이가 바뀌지 않음 (아이폰은 높이가 바뀌면 목록이 튕김)
+ *   (v0.8.241: 작게/크게 버튼은 없어짐 — 위쪽 단계 탭이 늘 한 줄 · 폰 · 컴퓨터 같음. 대신 탭이 한 줄(높이 80px 이하)인지 확인) */
 let pw; try { pw = require('playwright'); } catch (e) { pw = require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright'); }
 const path = require('path');
 (async () => {
@@ -19,11 +20,9 @@ const path = require('path');
     await pg.evaluate(() => window.scrollTo(0, 900)); await pg.waitForTimeout(300);
     for (let i = 0; i < 70; i++) { await pg.mouse.move(W / 2, 500); await pg.mouse.wheel(0, -15); await pg.waitForTimeout(40); const r = await pg.evaluate(() => [Math.round(window.scrollY), document.querySelector('.ohead').offsetHeight]); ys.push(r[0]); hs.add(r[1]); }
     if (hs.size !== 1) errs.push(W + 'px: menu height changed while scrolling ' + [...hs].join('/'));
-    /* 작게 · 크게 버튼 */
-    const h0 = [...hs][0]; await pg.evaluate(() => window.scrollTo(0, 0)); await pg.click('[data-ocmp]'); await pg.waitForTimeout(300);
-    const h1 = await pg.evaluate(() => document.querySelector('.ohead').offsetHeight), saved = await pg.evaluate(() => localStorage.getItem('theone.ocompact'));
-    console.log(W, 'menu height', h0, '→ compact', h1, 'saved', saved); if (!(h1 < h0) || saved !== '1') errs.push(W + 'px: compact toggle failed');
-    await pg.click('[data-ocmp]'); await pg.waitForTimeout(200); if ((await pg.evaluate(() => document.querySelector('.ohead').offsetHeight)) !== h0) errs.push('toggle back failed');
+    /* 한 줄 탭 (v0.8.241 — 작게 버튼 없음) */
+    const h0 = [...hs][0], mh = await pg.evaluate(() => document.querySelector('.omenu').offsetHeight), cmp = await pg.evaluate(() => { const b = document.querySelector('[data-ocmp]'); return !!b && b.offsetWidth > 0; });
+    console.log(W, 'head height', h0, 'tab bar', mh, 'compact button shown', cmp); if (!(mh > 0 && mh <= 80)) errs.push(W + 'px: stage tabs are one row (' + mh + 'px)'); if (cmp) errs.push(W + 'px: no compact toggle any more');
     /* 위로만 올렸으니 scrollY 가 커지는(튕겨 내려가는) 때가 있으면 안 됨 */
     let back = 0, flips = 0, prev = null; ys.forEach((y, i) => { if (i && y > ys[i - 1] + 2) back++; });
     const cls = []; for (let i = 0; i < 0; i++) cls.push(0);

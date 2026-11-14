@@ -281,7 +281,7 @@ function codForm(r, rows) {
     const id = r.id || newId('C');
     const doc = { id, d, ym: ym(d), sm, acct, store, method, ref, amt, invs: invList, disc: $('cDisc').value.trim() === '' ? '' : num($('cDisc').value), note: $('cNote').value.trim(), updatedAt: new Date().toISOString() };
     busy(true);
-    try { if (r.id) await S.DB.update('cod', id, doc); else await S.DB.set('cod', id, Object.assign(doc, { v: false, vn: '', settled: '', void: false, createdBy: S.user.email, createdAt: new Date().toISOString() })); if (r.id && r.invs) await applyToInvoices(id, r.invs, false); await applyToInvoices(id, invList, true); closeModal(); toast(bt('저장', 'Saved')); pageCod(); }
+    try { if (r.id) await S.DB.update('cod', id, doc); else await S.DB.set('cod', id, Object.assign(doc, { v: false, vn: '', settled: '', void: false, createdBy: S.user.email, createdAt: new Date().toISOString() })); if (r.id && r.invs) await applyToInvoices(id, r.invs, false); await applyToInvoices(id, invList, true); closeModal(); toast(bt('저장', 'Saved')); Router.markSaved('cod'); pageCod(); }
     catch (e) { toast(bt('실패', 'Failed') + ': ' + e.message, 'bad'); } busy(false);
   };
   if ($('cDel')) $('cDel').onclick = async () => { if (!(await confirmBox(bt('지울까요?', 'Delete?'), bt('삭제', 'Delete')))) return; busy(true); try { await S.DB.update('cod', r.id, { void: true }); await applyToInvoices(r.id, r.invs, false); closeModal(); pageCod(); } catch (e) { toast(bt('실패', 'Failed') + ': ' + e.message, 'bad'); } busy(false); };

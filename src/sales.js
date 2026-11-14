@@ -298,7 +298,7 @@ async function saveEntry() {
     }
     CACHE.entries = null;
     toast((F.editing ? '수정했습니다' : '저장했습니다') + ' ' + money(total) + (mismatch ? ' · 차액 있음 (담당자에게 표시됨)' : ''), 'good');
-    resetForm(); Router.go(S.role === 'salesman' ? 'mine' : 'verify');
+    resetForm(); Router.markSaved('entry'); Router.go(S.role === 'salesman' ? 'mine' : 'verify');
   } catch (e) { toast('저장 실패: ' + (e.code || e.message), 'bad'); }
   busy(false);
 }
